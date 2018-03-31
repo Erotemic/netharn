@@ -59,6 +59,7 @@ class YoloHarn(nh.FitHarn):
         return metrics_dict
 
     def on_epoch(harn):
+        """ custom callback """
         loader = harn.current.loader
         tag = harn.current.tag
         y = pd.concat(harn.batch_confusions)
@@ -122,7 +123,7 @@ def setup_harness():
         'test': nh.data.VOC2012(tag='test'),
     }
 
-    hyper = {
+    hyper = nh.HyperParams({
         'nice': 'Yolo2Baseline',
         'workdir': ub.truepath('~/work/voc_yolo2'),
         'datasets': datasets,
@@ -187,7 +188,7 @@ def setup_harness():
             'anyway': 'you want it',
             'thats the way': 'you need it',
         },
-    }
+    })
 
     harn = YoloHarn(hyper=hyper)
     return harn
