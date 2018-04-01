@@ -7,7 +7,7 @@ import ubelt as ub
 import torch
 import six
 from netharn import util
-from netharn import nninit
+from netharn import initializers
 from netharn import device
 # from netharn import criterions
 from torch.optim.optimizer import required
@@ -127,8 +127,8 @@ def _rectify_initializer(arg, kw):
     def _lookup(arg):
         if isinstance(arg, six.string_types):
             options = [
-                nninit.KaimingNormal,
-                nninit.NoOp,
+                initializers.KaimingNormal,
+                initializers.NoOp,
             ]
             cls = {c.__name__: c for c in options}[arg]
         else:

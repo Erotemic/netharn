@@ -9,7 +9,7 @@ import torch.nn.init
 import torch.nn as nn
 import ubelt as ub
 from netharn import util
-from netharn.nninit import base
+from netharn.initializers import base
 
 
 def svd_orthonormal(shape, rng=None, cache_key=None):
@@ -84,11 +84,11 @@ class Orthonormal(base._BaseInitializer):
 class LSUV(base._BaseInitializer):
     """
     CommandLine:
-        python -m netharn.nninit.lsuv LSUV:0
+        python -m netharn.initializers.lsuv LSUV:0
 
     Example:
         >>> # xdoc: +REQUIRES(--slow)
-        >>> from netharn.nninit.lsuv import *
+        >>> from netharn.initializers.lsuv import *
         >>> import torchvision
         >>> import torch
         >>> #model = torchvision.models.AlexNet()
@@ -99,7 +99,7 @@ class LSUV(base._BaseInitializer):
 
     Example:
         >>> # DISABLE_DOCTEST
-        >>> from netharn.nninit.lsuv import *
+        >>> from netharn.initializers.lsuv import *
         >>> import torchvision
         >>> import torch
         >>> model = torchvision.models.AlexNet()
@@ -109,7 +109,7 @@ class LSUV(base._BaseInitializer):
 
     Example:
         >>> # DISABLE_DOCTEST
-        >>> from netharn.nninit.lsuv import *
+        >>> from netharn.initializers.lsuv import *
         >>> import torchvision
         >>> import torch
         >>> model = torchvision.models.DenseNet()
@@ -243,7 +243,7 @@ class LSUV(base._BaseInitializer):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m netharn.nninit.lsuv
+        python -m netharn.initializers.lsuv
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

@@ -160,7 +160,7 @@ def setup_harness():
 
         'initializer': (nh.Pretrained, {
             'fpath': nh.Yolo2.grab_initial_weights('imagenet')
-            # 'fpath': nh.nninit.KaimingNormal()
+            # 'fpath': nh.initializers.KaimingNormal()
         }),
 
         'optimizer': (torch.optim.SGD, {
