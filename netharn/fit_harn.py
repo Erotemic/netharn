@@ -11,13 +11,13 @@ import torch  # NOQA
 import ubelt as ub  # NOQA
 import parse
 import numpy as np  # NOQA
-from nnharn import device  # NOQA
-from nnharn import util
+from netharn import device  # NOQA
+from netharn import util
 from netharn import folders
 import itertools as it
 import logging  # NOQA
 
-from nnharn.util import profiler
+from netharn.util import profiler
 
 __all__ = ['FitHarn']
 
@@ -155,22 +155,19 @@ class InitializeMixin:
         n_params = util.number_of_parameters(harn.model)
         harn.log('Model has {!r} parameters'.format(n_params))
 
-        # more than one criterion? Wrap it in a single criterion OR
-        # specify a custom batch runner.
-        if harn.hyper.criterion_cls:
-            harn.criterion = harn.hyper.criterion_cls(
-                **harn.hyper.criterion_params)
+        harn.criterion = harn.hyper.make_criterion()
+        if harn.criterion:
             harn.log('Move {} model to {}'.format(harn.criterion, harn.xpu))
             harn.criterion = harn.xpu.move(harn.criterion)
-        else:
-            pass
 
         harn.log('Make optimizer')
         harn.optimizer = harn.hyper.make_optimizer(harn.model.parameters())
 
-        if harn.hyper.scheduler_cls:
-            harn.log('Make scheduler')
-            harn.scheduler = harn.hyper.make_scheduler(harn.optimizer)
+        harn.log('Make scheduler')
+        harn.scheduler = harn.hyper.make_scheduler(harn.optimizer)
+
+        harn.log('Make monitor')
+        harn.monitor = harn.hyper.make_monitor()
 
         needs_init = True
         harn.log('There are {} existing snapshots'.format(len(prev_states)))

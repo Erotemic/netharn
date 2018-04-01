@@ -6,9 +6,9 @@ import numpy as np
 import ubelt as ub
 import torch
 import six
-from clab import util
-from clab import criterions
-from clab import nninit
+from netharn import util
+from netharn import criterions
+from netharn import nninit
 from torch.optim.optimizer import required
 
 
@@ -168,10 +168,10 @@ class HyperParams(object):
     to use the training harness.
 
     CommandLine:
-        python -m clab.hyperparams HyperParams
+        python -m netharn.hyperparams HyperParams
 
     Example:
-        >>> from clab.hyperparams import *
+        >>> from netharn.hyperparams import *
         >>> hyper = HyperParams(
         >>>     criterion=('CrossEntropyLoss2D', {
         >>>         'weight': [0, 2, 1],
@@ -185,12 +185,24 @@ class HyperParams(object):
         >>> print(hyper.hyper_id())
     """
 
-    def __init__(hyper, criterion=None, optimizer=None, scheduler=None,
-                 model=None, other=None, initializer=None,
-
-                 # TODO: give hyper info about the inputs
-                 centering=None, augment=None, train=None, vali=None,
-                 **kwargs):
+    def __init__(hyper,
+                 # ----
+                 datasets=None,
+                 nice=None,
+                 workdir=None,
+                 xpu=None,
+                 # ----
+                 model=None,
+                 criterion=None,
+                 optimizer=None,
+                 initializer=None,
+                 scheduler=None,
+                 # ---
+                 monitor=None,
+                 augment=None,
+                 other=None,
+                 ):
+        kwargs = {}
 
         cls, kw = _rectify_model(model, kwargs)
         hyper.model_cls = cls
@@ -199,13 +211,11 @@ class HyperParams(object):
         cls, kw = _rectify_optimizer(optimizer, kwargs)
         hyper.optimizer_cls = cls
         hyper.optimizer_params = kw
-        # hyper.optimizer_params.pop('lr', None)  # hack
 
         cls, kw = _rectify_lr_scheduler(scheduler, kwargs)
         hyper.scheduler_cls = cls
         hyper.scheduler_params = kw
 
-        # What if multiple criterions are used?
         cls, kw = _rectify_criterion(criterion, kwargs)
         hyper.criterion_cls = cls
         hyper.criterion_params = kw
@@ -214,27 +224,16 @@ class HyperParams(object):
         hyper.initializer_cls = cls
         hyper.initializer_params = kw
 
-        # set an identifier based on the input train dataset
-        hyper.input_ids = {}  # TODO
+        hyper.monitor = monitor
+        hyper.initializer = initializer
 
-        hyper.train = train
-        hyper.vali = vali
+        hyper.nice = nice
+        hyper.workdir = workdir
+        hyper.datasets = datasets
 
         hyper.augment = augment
-        hyper.centering = centering
-
-        if len(kwargs) > 0:
-            raise ValueError('Unused kwargs {}'.format(list(kwargs.keys())))
 
         hyper.other = other
-    # def _normalize(hyper):
-    #     """
-    #     normalize for hashid generation
-    #     """
-    #     weight = hyper.criterion_params.get('weight', None)
-    #     if weight is not None:
-    #         weight = list(map(float, weight))
-    #         hyper.criterion_params['weight'] = weight
 
     def make_model(hyper):
         """ Instanciate the model defined by the hyperparams """
@@ -248,6 +247,8 @@ class HyperParams(object):
 
     def make_scheduler(hyper, optimizer):
         """ Instanciate the lr scheduler defined by the hyperparams """
+        if hyper.scheduler_cls is None:
+            return None
         scheduler = hyper.scheduler_cls(optimizer, **hyper.scheduler_params)
         return scheduler
 
@@ -258,40 +259,14 @@ class HyperParams(object):
 
     def make_criterion(hyper):
         """ Instanciate the criterion defined by the hyperparams """
-        # NOTE: for some problems a crition may not be defined here
+        if hyper.criterion_cls is None:
+            return None
         criterion = hyper.criterion_cls(**hyper.criterion_params)
         return criterion
 
-    # def model_id(hyper, brief=False):
-    #     """
-    #     CommandLine:
-    #         python -m clab.hyperparams HyperParams.model_id
-
-    #     Example:
-    #         >>> from clab.hyperparams import *
-    #         >>> hyper = HyperParams(model='DenseNet', optimizer=('SGD', dict(lr=.001)))
-    #         >>> print(hyper.model_id())
-    #         >>> hyper = HyperParams(model='AlexNet', optimizer=('SGD', dict(lr=.001)))
-    #         >>> print(hyper.model_id())
-    #         >>> print(hyper.hyper_id())
-    #         >>> hyper = HyperParams(model='AlexNet', optimizer=('SGD', dict(lr=.001)), scheduler='ReduceLROnPlateau')
-    #         >>> print(hyper.hyper_id())
-    #     """
-    #     arch = hyper.model_cls.__name__
-    #     # TODO: add model as a hyperparam specification
-    #     # archkw = _class_default_params(hyper.model_cls)
-    #     # archkw.update(hyper.model_params)
-    #     archkw = hyper.model_params
-    #     if brief:
-    #         arch_id = arch + ',' + util.hash_data(util.make_idstr(archkw))[0:8]
-    #     else:
-    #         # arch_id = arch + ',' + util.make_idstr(archkw)
-    #         arch_id = arch + ',' + util.make_short_idstr(archkw)
-    #     return arch_id
-
     def other_id(hyper):
         """
-            >>> from clab.hyperparams import *
+            >>> from netharn.hyperparams import *
             >>> hyper = HyperParams(other={'augment': True, 'n_classes': 10, 'n_channels': 5})
             >>> hyper.hyper_id()
         """
@@ -303,7 +278,7 @@ class HyperParams(object):
         Get augmentation info in json format
 
         Example:
-            >>> from clab.hyperparams import *
+            >>> from netharn.hyperparams import *
             >>> import imgaug as ia
             >>> import imgaug.augmenters as iaa
             >>> import imgaug
@@ -462,31 +437,16 @@ class HyperParams(object):
         idstr = ','.join(id_parts)
         return idstr
 
-    # def other_id2(hyper, short=False, hashed=False):
-    #     """
-    #     Example:
-    #         >>> from clab.hyperparams import *
-    #         >>> hyper = HyperParams(criterion='CrossEntropyLoss', aug='foobar', train='idfsds')
-    #         >>> hyper.other_id2(hashed=True)
-    #     """
-    #     parts = ub.odict([
-    #         ('aug', ('aug', hyper.augment)),
-    #         ('train', ('train', hyper.train)),
-    #         ('vali', ('vali', hyper.vali)),
-    #     ])
-    #     idstr = hyper._parts_id(parts, short, hashed)
-    #     return idstr
-
     def hyper_id(hyper, short=False, hashed=False):
         """
         Identification string that uniquely determined by training hyper.
         Suitable for hashing.
 
         CommandLine:
-            python -m clab.hyperparams HyperParams.hyper_id
+            python -m netharn.hyperparams HyperParams.hyper_id
 
         Example:
-            >>> from clab.hyperparams import *
+            >>> from netharn.hyperparams import *
             >>> hyper = HyperParams(criterion='CrossEntropyLoss', other={'n_classes': 10, 'n_channels': 5})
             >>> print(hyper.hyper_id())
             >>> print(hyper.hyper_id(short=['optimizer']))
@@ -502,7 +462,7 @@ class HyperParams(object):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.hyperparams
+        python -m netharn.hyperparams
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

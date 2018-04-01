@@ -118,11 +118,11 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         Download the Pascal VOC 2007 data if it does not already exist.
 
         CommandLine:
-            python -m clab.data.voc VOCDataset.ensure_voc_data
+            python -m netharn.data.voc VOCDataset.ensure_voc_data
 
         Example:
             >>> # SCRIPT
-            >>> from clab.data.voc import *  # NOQA
+            >>> from netharn.data.voc import *  # NOQA
             >>> VOCDataset.ensure_voc_data()
         """
         if dpath is None:
@@ -173,7 +173,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
             >>> hwc = chw.numpy().transpose(1, 2, 0)
             >>> boxes, class_idxs = label
             >>> # xdoc: +REQUIRES(--show)
-            >>> from clab.util import mplutil
+            >>> from netharn.util import mplutil
             >>> mplutil.qtensure()  # xdoc: +SKIP
             >>> mplutil.figure(fnum=1, doclf=True)
             >>> mplutil.imshow(hwc, colorspace='rgb')
@@ -194,7 +194,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         return chw, label
 
     def _load_item(self, index, inp_size=None):
-        # from clab.models.yolo2.utils.yolo import _offset_boxes
+        # from netharn.models.yolo2.utils.yolo import _offset_boxes
         image = self._load_image(index)
         annot = self._load_annotation(index)
 
@@ -440,7 +440,7 @@ class EvaluateVOC(object):
             ovidx = 1
         """
         if True:
-            from clab.models.yolo2.utils import yolo_utils
+            from netharn.models.yolo2.utils import yolo_utils
             true_boxes = np.array(true_boxes)
             pred_box = np.array(pred_box)
             overlaps = yolo_utils.bbox_ious(
@@ -607,7 +607,7 @@ class EvaluateVOC(object):
     def sanity_check(EvaluateVOC):
         """
         Example:
-            >>> from clab.data.voc import *
+            >>> from netharn.data.voc import *
             >>> EvaluateVOC.sanity_check()
         """
         import pandas as pd
@@ -869,7 +869,7 @@ class EvaluateVOC(object):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.data.voc all
+        python -m netharn.data.voc all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
