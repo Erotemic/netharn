@@ -12,7 +12,7 @@ class VGG16(_BaseInitializer):
             only be partially applied
 
     Example:
-        >>> from netharn.nninit import *
+        >>> from netharn.initializers import *
         >>> import netharn
         >>> model = netharn.models.segnet.SegNet(n_classes=5)
         >>> self = VGG16()
@@ -24,8 +24,8 @@ class VGG16(_BaseInitializer):
     """
     def __init__(self, initializer='KaimingUniform'):
         if isinstance(initializer, str):
-            from netharn import nninit
-            initializer = getattr(nninit, initializer)()
+            from netharn import initializers
+            initializer = getattr(initializers, initializer)()
         self.initializer = initializer
 
     def forward(self, model):

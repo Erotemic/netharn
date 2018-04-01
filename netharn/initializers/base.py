@@ -39,7 +39,7 @@ class _BaseInitializer(object):
 class NoOp(_BaseInitializer):
     """
     Example:
-        >>> from netharn.nninit import *
+        >>> from netharn.initializers import *
         >>> self = NoOp()
         >>> #info = self.history()
         >>> #assert info['__name__'] == 'NoOp'
@@ -86,10 +86,10 @@ def apply_initializer(input, func, funckw):
 def trainable_layers(model, names=False):
     """
     Example:
-        >>> from netharn import nninit
+        >>> from netharn import initializers
         >>> import torchvision
         >>> model = torchvision.models.AlexNet()
-        >>> list(nninit.trainable_layers(model, names=True))
+        >>> list(initializers.trainable_layers(model, names=True))
     """
     if names:
         stack = [('', '', model)]
