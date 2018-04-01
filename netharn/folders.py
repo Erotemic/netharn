@@ -2,7 +2,7 @@
 from os.path import dirname
 from os.path import join
 import ubelt as ub
-from clab import util
+from netharn import util
 
 
 class Folders(object):
@@ -15,7 +15,7 @@ class Folders(object):
     def train_info(self, short=True, hashed=True):
         # TODO: needs MASSIVE cleanup and organization
 
-        # TODO: if pretrained is another clab model, then we should read that
+        # TODO: if pretrained is another netharn model, then we should read that
         # train_info if it exists and append it to a running list of train_info
         hyper = self.hyper
 

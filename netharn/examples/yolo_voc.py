@@ -4,8 +4,8 @@ import torch
 import ubelt as ub
 import numpy as np
 import pandas as pd
-import nnharn as nh
-from nnharn import util
+import netharn as nh
+from netharn import util
 
 # def s(d):
 #     """ sorts a dict, returns as an OrderedDict """
@@ -197,8 +197,8 @@ def setup_harness():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        set PYTHONPATH=%PYTHONPATH%;C:/Users/erote/code/nnharn/nnharn
-        python %USERPROFILE%/code/nnharn/nnharn/yolo_voc.py
+        set PYTHONPATH=%PYTHONPATH%;C:/Users/erote/code/netharn/netharn
+        python %USERPROFILE%/code/netharn/netharn/yolo_voc.py
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

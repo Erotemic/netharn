@@ -1,5 +1,3 @@
-__all__ = ['XPU']
-
 """
 Abstracted processing device
 
@@ -10,6 +8,9 @@ import ubelt as ub
 import warnings
 import torch
 import six
+
+
+__all__ = ['XPU']
 
 
 if torch.__version__.startswith('0.3'):
@@ -41,7 +42,7 @@ class XPU(ub.NiceRepr):
         distributed processing
 
     CommandLine:
-        python -m nnharn.device XPU
+        python -m netharn.device XPU
 
     Example:
         >>> print(str(XPU(None)))
@@ -206,7 +207,7 @@ class XPU(ub.NiceRepr):
         Respect command line gpu and cpu argument
 
         CommandLine:
-            python -m nnharn.device XPU.from_argv --gpu=0,1
+            python -m netharn.device XPU.from_argv --gpu=0,1
 
         Example:
             >>> xpu = XPU.from_argv()
@@ -322,7 +323,7 @@ class XPU(ub.NiceRepr):
             torch.autograd.Variable: variable on the xpu
 
         Example:
-            >>> from nnharn.device import *
+            >>> from netharn.device import *
             >>> xpu = XPU(None)
             >>> data = torch.FloatTensor([0])
             >>> vari = xpu.variable(data)
@@ -390,7 +391,6 @@ class XPU(ub.NiceRepr):
         """
         # print('Loading data onto {} from {}'.format(xpu, fpath))
         try:
-            xpu._pickle_fixes()
             return torch.load(fpath, map_location=xpu._map_location)
         except Exception:
             print('XPU={} Failed to load fpath={}'.format(xpu, fpath))
@@ -414,13 +414,6 @@ class XPU(ub.NiceRepr):
         else:
             return storage
 
-    def _pickle_fixes(xpu):
-        # HACK: remove this and put in custom code
-        # HACK because we moved metrics module and we should have done that
-        from nnharn import metrics
-        import sys
-        sys.modules['nnharn.torch.metrics'] = metrics
-
 
 def find_unused_gpu(min_memory=0):
     """
@@ -433,7 +426,7 @@ def find_unused_gpu(min_memory=0):
         int or None: gpu num if a match is found otherwise None
 
     CommandLine:
-        python -c "from nnharn import device; print(device.find_unused_gpu(300))"
+        python -c "from netharn import device; print(device.find_unused_gpu(300))"
 
     Example:
         >>> item = find_unused_gpu()
@@ -527,7 +520,7 @@ def gpu_info():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m nnharn.device all
+        python -m netharn.device all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

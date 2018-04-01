@@ -5,6 +5,7 @@ netharn/device.py
 netharn/export.py
 netharn/fit_harn.py
 netharn/folders.py
+netharn/hello_world.py
 netharn/hyperparams.py
 netharn/monitor.py
 netharn/output_shape_for.py
@@ -14,3 +15,18 @@ netharn.egg-info/SOURCES.txt
 netharn.egg-info/dependency_links.txt
 netharn.egg-info/requires.txt
 netharn.egg-info/top_level.txt
+netharn/criterions/__init__.py
+netharn/models/__init__.py
+netharn/models/toynet.py
+netharn/nninit/__init__.py
+netharn/nninit/base.py
+netharn/nninit/core.py
+netharn/nninit/lsuv.py
+netharn/nninit/other.py
+netharn/util/__init__.py
+netharn/util/mpl.py
+netharn/util/mplutil.py
+netharn/util/profiler.py
+netharn/util/torch_utils.py
+netharn/util/util_fname.py
+netharn/util/util_idstr.py

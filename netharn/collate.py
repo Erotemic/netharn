@@ -89,7 +89,7 @@ def padded_collate(inbatch, fill_value=-1):
     Used for detection datasets with boxes.
 
     Example:
-        >>> from clab.data.collate import *
+        >>> from netharn.data.collate import *
         >>> import torch
         >>> rng = np.random.RandomState(0)
         >>> inbatch = []
@@ -177,7 +177,7 @@ def padded_collate(inbatch, fill_value=-1):
 if __name__ == '__main__':
     """
     CommandLine:
-        python -m clab.data.collate all
+        python -m netharn.data.collate all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

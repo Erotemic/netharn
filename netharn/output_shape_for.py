@@ -59,7 +59,7 @@ class OutputShapeFor(object):
             :math:`W_{out} = floor(W_{in}  * scale\_factor)`
 
         Example:
-            >>> from clab.models.output_shape_for import *
+            >>> from netharn.models.output_shape_for import *
             >>> input_shape = (1, 3, 256, 256)
             >>> module = nn.UpsamplingBilinear2d(scale_factor=2)
             >>> output_shape = OutputShapeFor(module)(input_shape)
@@ -83,7 +83,7 @@ class OutputShapeFor(object):
             :math:`W_{out} = floor(W_{in}  * scale\_factor)`
 
         Example:
-            >>> from clab.models.output_shape_for import *
+            >>> from netharn.models.output_shape_for import *
             >>> input_shape = (1, 3, 256, 256, 256)
             >>> module = nn.Upsample(scale_factor=(2, 3, 4))
             >>> output_shape = OutputShapeFor(module)(input_shape)
@@ -178,7 +178,7 @@ class OutputShapeFor(object):
             :math:`W_{out} = (W_{in} - 1) * stride[1] - 2 * padding[1] + kernel\_size[1] + output\_padding[1]`
 
         Example:
-            >>> from clab.models.output_shape_for import *
+            >>> from netharn.models.output_shape_for import *
             >>> input_shape = (1, 3, 256, 256)
             >>> module = nn.ConvTranspose2d(input_shape[1], 11, kernel_size=2, stride=2)
             >>> output_shape = OutputShapeFor(module)(input_shape)
@@ -186,7 +186,7 @@ class OutputShapeFor(object):
             output_shape = (1, 11, 512, 512)
 
         Example:
-            >>> from clab.models.output_shape_for import *
+            >>> from netharn.models.output_shape_for import *
             >>> input_shape = (1, 3, 25, 32, 32)
             >>> module = nn.Conv3d(in_channels=input_shape[1], out_channels=11,
             >>>                    kernel_size=(3, 3, 3), stride=1, padding=0,
@@ -218,7 +218,7 @@ class OutputShapeFor(object):
                 :math:`W_{out} = floor((W_{in}  + 2 * padding[1] - dilation[1] * (kernel\_size[1] - 1) - 1) / stride[1] + 1)`
 
         Example:
-            >>> from clab.models.output_shape_for import *
+            >>> from netharn.models.output_shape_for import *
             >>> input_shape = (1, 3, 256, 256)
             >>> module = nn.Conv2d(input_shape[1], 11, 3, 1, 0)
             >>> output_shape = OutputShapeFor(module)(input_shape)
@@ -245,7 +245,7 @@ class OutputShapeFor(object):
         """
 
         Example:
-            >>> from clab.models.output_shape_for import *
+            >>> from netharn.models.output_shape_for import *
             >>> input_shape = (1, 3, 256, 256)
             >>> module = nn.MaxPool2d(kernel_size=2)
             >>> output_shape = tuple(OutputShapeFor(module)(input_shape))
@@ -474,7 +474,7 @@ class OutputShapeFor(object):
         """
 
         Example:
-            >>> from clab.models.output_shape_for import *
+            >>> from netharn.models.output_shape_for import *
             >>> input_shape1 = (1, 3, 256, 256)
             >>> input_shape2 = (1, 4, 256, 256)
             >>> input_shapes = [input_shape1, input_shape2]

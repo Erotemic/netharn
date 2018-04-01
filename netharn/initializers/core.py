@@ -12,7 +12,7 @@ import ubelt as ub
 from os.path import exists
 from os.path import join
 import numpy as np
-from clab import util
+from netharn import util
 from torch.autograd import Variable
 import math
 import torch
@@ -61,14 +61,14 @@ class Pretrained(_BaseInitializer):
         self.fpath = fpath
 
         if isinstance(initializer, str):
-            from clab import nninit
+            from netharn import nninit
             initializer = getattr(nninit, initializer)()
 
         self.initializer = initializer
         self.shock_partial = shock_partial
 
     def forward(self, model):
-        from clab import xpu_device
+        from netharn import xpu_device
         xpu = xpu_device.XPU.from_data(model)
         model_state_dict = xpu.load(self.fpath)
         if 'model_state_dict' in model_state_dict:
@@ -102,19 +102,19 @@ class VGG16(_BaseInitializer):
             only be partially applied
 
     Example:
-        >>> from clab.nninit import *
-        >>> import clab
-        >>> model = clab.models.segnet.SegNet(n_classes=5)
+        >>> from netharn.nninit import *
+        >>> import netharn
+        >>> model = netharn.models.segnet.SegNet(n_classes=5)
         >>> self = VGG16()
         >>> self(model)
 
-        >>> model = clab.models.UNet(n_classes=5, feature_scale=1)
+        >>> model = netharn.models.UNet(n_classes=5, feature_scale=1)
         >>> self = VGG16()
         >>> self(model)
     """
     def __init__(self, initializer='KaimingUniform'):
         if isinstance(initializer, str):
-            from clab import nninit
+            from netharn import nninit
             initializer = getattr(nninit, initializer)()
         self.initializer = initializer
 
@@ -247,7 +247,7 @@ class VGG16(_BaseInitializer):
 class NoOp(_BaseInitializer):
     """
     Example:
-        >>> from clab.nninit import *
+        >>> from netharn.nninit import *
         >>> self = NoOp()
         >>> #info = self.history()
         >>> #assert info['__name__'] == 'NoOp'
@@ -259,7 +259,7 @@ class NoOp(_BaseInitializer):
 class HeNormal(_BaseInitializer):
     """
     Example:
-        >>> from clab.nninit import *
+        >>> from netharn.nninit import *
         >>> self = HeNormal()
         >>> #info = self.history()
         >>> #assert info['__name__'] == 'HeNormal'
@@ -277,9 +277,9 @@ def kaiming_normal(tensor, nonlinearity='leaky_relu', param=0, mode='fan_in'):
 
 
     Example:
-        >>> from clab.nninit import *
+        >>> from netharn.nninit import *
         >>> import torch
-        >>> from clab.xpu_device import XPU
+        >>> from netharn.xpu_device import XPU
         >>> xpu = XPU()
         >>> w = torch.Tensor(3, 5)
         >>> var = xpu.variable(w)
@@ -326,7 +326,7 @@ class KaimingNormal(_BaseInitializer):
     Same as HeNormal, but uses pytorch implementation
 
     Example:
-        >>> from clab.nninit import *
+        >>> from netharn.nninit import *
         >>> self = KaimingNormal()
     """
     def __init__(self, nonlinearity='leaky_relu', param=0, mode='fan_in'):
@@ -343,7 +343,7 @@ class Orthogonal(_BaseInitializer):
     Same as HeNormal, but uses pytorch implementation
 
     Example:
-        >>> from clab.nninit import *
+        >>> from netharn.nninit import *
         >>> self = Orthogonal()
     """
     def __init__(self, gain=1):
@@ -397,7 +397,7 @@ def uniform(tensor, a=0, b=1):
         b: the upper bound of the uniform distribution
 
     Examples:
-        >>> from clab.nninit.base import *
+        >>> from netharn.nninit.base import *
         >>> w = torch.Tensor(3, 5)
         >>> uniform(w)
     """
@@ -418,7 +418,7 @@ def normal(tensor, mean=0, std=1):
         std: the standard deviation of the normal distribution
 
     Examples:
-        >>> from clab.nninit.base import *
+        >>> from netharn.nninit.base import *
         >>> w = torch.Tensor(3, 5)
         >>> normal(w)
     """
@@ -440,7 +440,7 @@ def constant(tensor, val):
         val: the value to fill the tensor with
 
     Examples:
-        >>> from clab.nninit.base import *
+        >>> from netharn.nninit.base import *
         >>> w = torch.Tensor(3, 5)
         >>> constant(w, 3)
     """
@@ -482,7 +482,7 @@ def xavier_uniform(tensor, gain=1):
         gain: an optional scaling factor to be applied
 
     Examples:
-        >>> from clab.nninit.base import *
+        >>> from netharn.nninit.base import *
         >>> w = torch.Tensor(3, 5)
         >>> xavier_uniform(w, gain=np.sqrt(2.0))
     """
@@ -509,7 +509,7 @@ def xavier_normal(tensor, gain=1):
         gain: an optional scaling factor to be applied
 
     Examples:
-        >>> from clab.nninit.base import *
+        >>> from netharn.nninit.base import *
         >>> w = torch.Tensor(3, 5)
         >>> xavier_normal(w, gain=np.sqrt(2.0))
     """
@@ -537,7 +537,7 @@ def he_uniform(tensor, gain=1):
         gain: an optional scaling factor to be applied
 
     Examples:
-        >>> from clab.nninit.base import *
+        >>> from netharn.nninit.base import *
         >>> w = torch.Tensor(3, 5)
         >>> he_uniform(w, gain=np.sqrt(2.0))
     """
@@ -593,7 +593,7 @@ def orthogonal(tensor, gain=1):
         gain: optional gain to be applied
 
     Examples:
-        >>> from clab.nninit.base import *
+        >>> from netharn.nninit.base import *
         >>> w = torch.Tensor(3, 5)
         >>> orthogonal(w)
     """
@@ -628,7 +628,7 @@ def sparse(tensor, sparsity, std=0.01):
         std: the standard deviation of the normal distribution used to generate the non-zero values
 
     Examples:
-        >>> from clab.nninit.base import *
+        >>> from netharn.nninit.base import *
         >>> w = torch.Tensor(3, 5)
         >>> sparse(w, sparsity=0.1)
     """
@@ -730,7 +730,7 @@ def shock(tensor, func, scale=.0001, funckw={}):
 def trainable_layers(model, names=False):
     """
     Example:
-        >>> from clab import nninit
+        >>> from netharn import nninit
         >>> import torchvision
         >>> model = torchvision.models.AlexNet()
         >>> list(nninit.trainable_layers(model, names=True))
@@ -786,7 +786,7 @@ def init_he_normal(model):
 def load_partial_state(model, model_state_dict, initializer=None, shock_partial=True):
     """
     Example:
-        >>> from clab.models.unet import *  # NOQA
+        >>> from netharn.models.unet import *  # NOQA
         >>> self1 = UNet(in_channels=5, n_classes=3)
         >>> self2 = UNet(in_channels=6, n_classes=4)
         >>> model_state_dict = self1.state_dict()
