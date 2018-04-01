@@ -113,21 +113,11 @@ class ToyNet2D(torch.nn.Module):
 
     @classmethod
     def demodata(ToyNet2d, rng=None):
-        """
-        Math:
-            # demodata equation
-            x(t) = r(t) * cos(t)
-            y(t) = r(t) * sin(t)
+        from netharn.data import ToyData2d
+        dset = ToyData2d()
+        data, label = dset[0]
+        return data[None, :], label[:, None]
 
-        Example:
-            >>> data, labels = ToyNet2d.demodata()
-            >>> from netharn.util import mplutil
-            >>> mplutil.qtensure()
-            >>> from matplotlib import pyplot as plt
-            >>> mplutil.figure(fnum=1, doclf=True)
-            >>> mplutil.imshow(data1[0, 0], pnum=(1, 2, 1))
-            >>> mplutil.imshow(data2[0, 0], pnum=(1, 2, 2))
-        """
         import numpy as np
         if rng is None:
             rng = np.random.RandomState()

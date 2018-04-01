@@ -7,8 +7,9 @@ import ubelt as ub
 import torch
 import six
 from netharn import util
-from netharn import criterions
 from netharn import nninit
+from netharn import device
+# from netharn import criterions
 from torch.optim.optimizer import required
 
 
@@ -53,8 +54,7 @@ def _rectify_criterion(arg, kw):
     def _lookup(arg):
         if isinstance(arg, six.string_types):
             options = [
-                criterions.CrossEntropyLoss2D,
-                criterions.ContrastiveLoss,
+                # criterions.ContrastiveLoss,
                 torch.nn.CrossEntropyLoss,
             ]
             cls = {c.__name__: c for c in options}[arg]
@@ -127,7 +127,7 @@ def _rectify_initializer(arg, kw):
     def _lookup(arg):
         if isinstance(arg, six.string_types):
             options = [
-                nninit.HeNormal,
+                nninit.KaimingNormal,
                 nninit.NoOp,
             ]
             cls = {c.__name__: c for c in options}[arg]
@@ -173,8 +173,8 @@ class HyperParams(object):
     Example:
         >>> from netharn.hyperparams import *
         >>> hyper = HyperParams(
-        >>>     criterion=('CrossEntropyLoss2D', {
-        >>>         'weight': [0, 2, 1],
+        >>>     criterion=('CrossEntropyLoss', {
+        >>>         'weight': torch.FloatTensor([0, 2, 1]),
         >>>     }),
         >>>     optimizer=(torch.optim.SGD, {
         >>>         'nesterov': True, 'weight_decay': .0005,
@@ -225,7 +225,6 @@ class HyperParams(object):
         hyper.initializer_params = kw
 
         hyper.monitor = monitor
-        hyper.initializer = initializer
 
         hyper.nice = nice
         hyper.workdir = workdir
@@ -234,6 +233,8 @@ class HyperParams(object):
         hyper.augment = augment
 
         hyper.other = other
+
+        hyper.xpu = xpu
 
     def make_model(hyper):
         """ Instanciate the model defined by the hyperparams """
@@ -272,6 +273,46 @@ class HyperParams(object):
         """
         otherid = util.make_short_idstr(hyper.other, precision=4)
         return otherid
+
+    def _get_initkw(hyper):
+        """
+        Make list of class / params relevant to reproducing an experiment
+        """
+        initkw = ub.odict()
+        def _append_part(key, cls, params):
+            """
+            append an id-string derived from the class and params.
+            TODO: what if we have an instance and not a cls/params tuple?
+            """
+            if cls is None:
+                initkw[key] = None
+                return
+            d = ub.odict()
+            for k, v in sorted(params.items()):
+                # if k in total:
+                #     raise KeyError(k)
+                if isinstance(v, torch.Tensor):
+                    v = v.numpy()
+                if isinstance(v, np.ndarray):
+                    if v.dtype.kind == 'f':
+                        try:
+                            v = list(map(float, v))
+                        except Exception:
+                            v = v.tolist()
+                    else:
+                        raise NotImplementedError()
+                d[k] = v
+                # total[k] = v
+            modname = cls.__module__
+            type_str = modname + '.' + cls.__name__
+            # param_str = util.make_idstr(d)
+            initkw[key] = (type_str, d)
+        _append_part('model', hyper.model_cls, hyper.model_params)
+        _append_part('initializer', hyper.initializer_cls, hyper.initializer_params)
+        _append_part('optimizer', hyper.optimizer_cls, hyper.optimizer_params)
+        _append_part('scheduler', hyper.scheduler_cls, hyper.scheduler_params)
+        _append_part('criterion', hyper.criterion_cls, hyper.criterion_params)
+        return initkw
 
     def augment_json(hyper):
         """
@@ -363,43 +404,6 @@ class HyperParams(object):
         return augment_json
         # print(ub.repr2(augment))
 
-    def get_initkw(hyper):
-        initkw = ub.odict()
-        def _append_part(key, cls, params):
-            """
-            append an id-string derived from the class and params.
-            TODO: what if we have an instance and not a cls/params tuple?
-            """
-            if cls is None:
-                initkw[key] = None
-                return
-            d = ub.odict()
-            for k, v in sorted(params.items()):
-                # if k in total:
-                #     raise KeyError(k)
-                if isinstance(v, torch.Tensor):
-                    v = v.numpy()
-                if isinstance(v, np.ndarray):
-                    if v.dtype.kind == 'f':
-                        try:
-                            v = list(map(float, v))
-                        except Exception:
-                            v = v.tolist()
-                    else:
-                        raise NotImplementedError()
-                d[k] = v
-                # total[k] = v
-            modname = cls.__module__
-            type_str = modname + '.' + cls.__name__
-            # param_str = util.make_idstr(d)
-            initkw[key] = (type_str, d)
-        _append_part('model', hyper.model_cls, hyper.model_params)
-        _append_part('initializer', hyper.initializer_cls, hyper.initializer_params)
-        _append_part('optimizer', hyper.optimizer_cls, hyper.optimizer_params)
-        _append_part('scheduler', hyper.scheduler_cls, hyper.scheduler_params)
-        _append_part('criterion', hyper.criterion_cls, hyper.criterion_params)
-        return initkw
-
     def input_id(hyper, short=False, hashed=False):
         pass
 
@@ -454,9 +458,7 @@ class HyperParams(object):
             >>> print(hyper.hyper_id(short=['optimizer', 'criterion'], hashed=['criterion']))
             >>> print(hyper.hyper_id(hashed=True))
         """
-        # hyper._normalize()
-
-        parts = hyper.get_initkw()
+        parts = hyper._get_initkw()
         return hyper._parts_id(parts, short, hashed)
 
 if __name__ == '__main__':
