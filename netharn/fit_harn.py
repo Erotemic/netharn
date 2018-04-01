@@ -799,6 +799,9 @@ class FitHarn(*MIXINS):
             Because it is serializable it also has an easy to use dict
             representation.
 
+    CommandLine:
+        python ~/code/netharn/netharn/fit_harn.py FitHarn
+
     Example:
         >>> datasets = {'train': nh.data.ToyData()}
         >>> hyper = {
@@ -824,5 +827,13 @@ class FitHarn(*MIXINS):
         >>>         'max_epoch': 10
         >>>     }),
         >>> }
+        >>> harn = FitHarn(hyper)
     """
-    pass
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python -m netharn.fit_harn all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
