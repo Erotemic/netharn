@@ -8,7 +8,7 @@ class ToyNet1d(torch.nn.Module):
 
     Example:
         >>> self = ToyNet1d()
-        >>> data, true = ToyNet1d.demodata()
+        >>> dset = ToyNet1d.demodata()
         >>> inputs = torch.Tensor(data)
         >>> prob = self(inputs)
         >>> conf, pred = probs.max(dim=1)
@@ -29,56 +29,9 @@ class ToyNet1d(torch.nn.Module):
 
     @classmethod
     def demodata(ToyNet1d, rng=None):
-        """
-        Math:
-            # demodata equation
-            x(t) = r(t) * cos(t)
-            y(t) = r(t) * sin(t)
-
-        Example:
-            >>> data, labels = ToyNet1d.demodata()
-            >>> from netharn.util import mplutil
-            >>> mplutil.qtensure()
-            >>> from matplotlib import pyplot as plt
-            >>> mplutil.figure(fnum=1, doclf=True)
-            >>> cls1 = data[labels == 0]
-            >>> cls2 = data[labels == 1]
-            >>> plt.plot(*cls1.T, 'rx')
-            >>> plt.plot(*cls2.T, 'bx')
-        """
-        import numpy as np
-        # rng = util.ensure_rng(rng)
-        if rng is None:
-            rng = np.random.RandomState()
-
-        # class 1
-        n = 1000
-        theta1 = rng.rand(n) * 10
-        x1 = theta1 * np.cos(theta1)
-        y1 = theta1 * np.sin(theta1)
-
-        theta2 = rng.rand(n) * 10
-        x2 = -theta2 * np.cos(theta2)
-        y2 = -theta2 * np.sin(theta2)
-
-        data = []
-        labels = []
-
-        data.extend(list(zip(x1, y1)))
-        labels.extend([0] * n)
-
-        data.extend(list(zip(x2, y2)))
-        labels.extend([1] * n)
-
-        data = np.array(data)
-        labels = np.array(labels)
-
-        sortx = np.arange(len(data))
-        rng.shuffle(sortx)
-        data = data[sortx]
-        labels = labels[sortx]
-
-        return data, labels
+        from netharn.data.toydata import ToyData1d
+        dset = ToyData1d(rng)
+        return dset
 
 
 class ToyNet2D(torch.nn.Module):
@@ -87,8 +40,8 @@ class ToyNet2D(torch.nn.Module):
 
     Example:
         >>> self = ToyNet2D()
-        >>> data, true = ToyNet2D.demodata()
-        >>> inputs = torch.Tensor(data)
+        >>> data, true = ToyNet2D.demodata()[0]
+        >>> inputs = torch.Tensor(data[None, :])
         >>> prob = self(inputs)
         >>> conf, pred = probs.max(dim=1)
     """
@@ -114,35 +67,5 @@ class ToyNet2D(torch.nn.Module):
     @classmethod
     def demodata(ToyNet2d, rng=None):
         from netharn.data import ToyData2d
-        dset = ToyData2d()
-        data, label = dset[0]
-        return data[None, :], label[:, None]
-
-        import numpy as np
-        if rng is None:
-            rng = np.random.RandomState()
-        n = 100
-
-        whiteish = rng.rand(n, 1, 8, 8) * .9
-        blackish = rng.rand(n, 1, 8, 8) * .2
-        # class 0 is white block inside a black frame
-        # class 1 is black block inside a white frame
-
-        import itertools as it
-        fw = 2  # frame width
-        slices = [slice(None, fw), slice(-fw, None)]
-
-        data1 = whiteish.copy()
-        for sl1, sl2 in it.product(slices, slices):
-            data1[..., sl1, :] = blackish[..., sl1, :]
-            data1[..., :, sl2] = blackish[..., :, sl2]
-
-        data2 = blackish.copy()
-        for sl1, sl2 in it.product(slices, slices):
-            data2[..., sl1, :] = whiteish[..., sl1, :]
-            data2[..., :, sl2] = whiteish[..., :, sl2]
-
-        data = np.concatenate([data1, data2], axis=0)
-        labels = np.array(([0] * n) + ([1] * n))
-
-        return data, labels
+        dset = ToyData2d(rng)
+        return dset
