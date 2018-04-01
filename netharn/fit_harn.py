@@ -803,7 +803,7 @@ class FitHarn(*MIXINS):
         python ~/code/netharn/netharn/fit_harn.py FitHarn
 
     Example:
-        >>> datasets = {'train': nh.data.ToyData()}
+        >>> datasets = {'train': nh.data.ToyData2d()}
         >>> hyper = {
         >>>     # --- Data First
         >>>     'datasets'    : datasets,
@@ -811,7 +811,7 @@ class FitHarn(*MIXINS):
         >>>     'workdir'     : '~/work/netharn/toy'
         >>>     # --- Algorithm Second
         >>>     'xpu'         : 'cpu',
-        >>>     'model'       : (nh.models.ToyNet, {}),
+        >>>     'model'       : (nh.models.ToyNet2d, {}),
         >>>     'optimizer'   : (nh.optimizers.SGD, {
         >>>         'init_lr': 0.001
         >>>     })
@@ -828,6 +828,7 @@ class FitHarn(*MIXINS):
         >>>     }),
         >>> }
         >>> harn = FitHarn(hyper)
+        >>> harn.run()
     """
 
 if __name__ == '__main__':
