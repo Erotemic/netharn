@@ -772,38 +772,35 @@ class CoreMixin:
             harn.error('may need to make a custom batch runner with set_batch_runner')
             raise
 
+        loss_sum = float(loss.data.sum().cpu())
+
         # backprop and learn
         if learn:
             harn.optimizer.zero_grad()
             loss.backward()
             harn.optimizer.step()
 
-        return outputs, loss
+        return outputs, loss_sum
 
     def _on_batch(harn, batch, outputs, loss):
         """
         Overload Encouraged
         """
-        loss_sum = float(loss.data.sum().cpu())
-        inf = float("inf")
 
-        # FIXME: this check needs improvement
-        if loss_sum == inf or loss_sum == -inf:
-            harn.log("WARNING: received an inf loss, setting loss value to 0")
-            loss_value = 0
-        else:
-            loss_value = loss_sum
+        if not np.isfinite(loss):
+            harn.log("WARNING: received an inf loss, setting loss value to 1000")
+            loss = 1000
 
-        if harn.current_tag == 'train' and float(loss) > 1000:
+        if harn.current_tag == 'train' and loss > 100:
             # if the loss is getting very larg, check that the weights are
             # still ok
             state = harn.model.module.state_dict()
             weights = sum([v.sum() for v in state.values()])
-            if (not np.isfinite(weights) or np.isnan(weights)):
+            if not np.isfinite(weights):
                 raise Exception('NON-FINITE WEIGHTS weights = {!r}'.format(weights))
 
         metrics_dict = {
-            'loss': loss_value,
+            'loss': loss,
         }
         custom_metrics = harn.on_batch(batch, outputs, loss)
         if custom_metrics:

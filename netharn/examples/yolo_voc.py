@@ -389,9 +389,9 @@ class YoloHarn(nh.FitHarn):
             harn.batch_confusions.append(y)
 
         metrics_dict = ub.odict()
-        metrics_dict['L_bbox'] = harn.criterion.loss_coord
-        metrics_dict['L_iou'] = harn.criterion.loss_conf
-        metrics_dict['L_cls'] = harn.criterion.loss_cls
+        metrics_dict['L_bbox'] = float(harn.criterion.loss_coord)
+        metrics_dict['L_iou'] = float(harn.criterion.loss_conf)
+        metrics_dict['L_cls'] = float(harn.criterion.loss_cls)
         return metrics_dict
 
     def on_epoch(harn):
