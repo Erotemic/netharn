@@ -694,7 +694,8 @@ class CoreMixin:
             if harn.model.training != learn or learn:
                 harn.model.train(learn)
 
-        msg = harn._batch_msg({'loss': -1}, loader.batch_sampler.batch_size)
+        bsize = loader.batch_sampler.batch_size
+        msg = harn._batch_msg({'loss': -1}, bsize)
         desc = tag + ' ' + msg
         position = (list(harn.loaders.keys()).index(tag) +
                     harn.main_prog.pos + 1)
@@ -727,11 +728,11 @@ class CoreMixin:
                 if harn.check_interval('display_' + tag, bx):
                     ave_metrics = iter_moving_metrics.average()
 
-                    msg = harn._batch_msg({'loss': ave_metrics['loss']},
-                                          loader.batch_sampler.batch_size)
+                    msg = harn._batch_msg({'loss': ave_metrics['loss']}, bsize)
                     prog.set_description(tag + ' ' + msg)
 
-                    if harn.config['log_iter_values']:
+                    # if harn.check_interval('log_iter' + tag, bx):
+                    if True:
                         iter_idx = (harn.epoch * len(loader) + bx)
                         for key, value in ave_metrics.items():
                             harn.log_value(tag + ' iter ' + key, value, iter_idx)

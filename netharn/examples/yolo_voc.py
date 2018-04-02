@@ -580,11 +580,7 @@ def setup_harness(bsize=16, workers=0):
     })
     harn = YoloHarn(hyper=hyper)
     harn.config['use_tqdm'] = False
-    harn.config['log_iter_values'] = True
-
-    harn.intervals['display_train'] = 10
-    harn.intervals['display_test'] = 10
-    harn.intervals['display_vali'] = 10
+    harn.intervals['log_iter_train'] = 1
 
     return harn
 
