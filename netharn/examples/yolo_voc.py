@@ -392,6 +392,9 @@ class YoloHarn(nh.FitHarn):
         metrics_dict['L_bbox'] = float(harn.criterion.loss_coord)
         metrics_dict['L_iou'] = float(harn.criterion.loss_conf)
         metrics_dict['L_cls'] = float(harn.criterion.loss_cls)
+        for k, v in metrics_dict.items():
+            if not np.isfinite(v):
+                raise ValueError('{}={} is not finite'.format(k, v))
         return metrics_dict
 
     def on_epoch(harn):
