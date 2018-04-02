@@ -7,10 +7,10 @@ from os.path import dirname, exists, join
 from netharn import util
 import torch
 
-from netharn.initializers import base
+from netharn.initializers import nninit_base
 
 
-class Pretrained(base._BaseInitializer):
+class Pretrained(nninit_base._BaseInitializer):
     """
     Attributes:
         fpath (str): location of the pretrained weights file
@@ -18,7 +18,7 @@ class Pretrained(base._BaseInitializer):
             only be partially applied
 
     Example:
-        >>> from netharn.initializers.core import *
+        >>> from netharn.initializers.nninit_core import *
         >>> from netharn.models import toynet
         >>> self = Orthogonal()
         >>> model = toynet.ToyNet2d()
@@ -26,25 +26,21 @@ class Pretrained(base._BaseInitializer):
         >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
         >>> self(layer)
     """
-    def __init__(self, fpath, initializer='KaimingNormal', shock_partial=False):
+    def __init__(self, fpath, initializer=None):
         self.fpath = fpath
-
         if isinstance(initializer, str):
             from netharn import initializers
             initializer = getattr(initializers, initializer)()
-
         self.initializer = initializer
-        self.shock_partial = shock_partial
 
     def forward(self, model):
-        from netharn import xpu_device
-        xpu = xpu_device.XPU.from_data(model)
+        from netharn import XPU
+        xpu = XPU.from_data(model)
         model_state_dict = xpu.load(self.fpath)
         if 'model_state_dict' in model_state_dict:
             model_state_dict = model_state_dict['model_state_dict']
-        base.load_partial_state(model, model_state_dict,
-                                initializer=self.initializer,
-                                shock_partial=self.shock_partial)
+        nninit_base.load_partial_state(model, model_state_dict,
+                                       initializer=self.initializer)
 
     def history(self):
         """
@@ -59,12 +55,12 @@ class Pretrained(base._BaseInitializer):
             return '__UNKNOWN__'
 
 
-class Orthogonal(base._BaseInitializer):
+class Orthogonal(nninit_base._BaseInitializer):
     """
     Same as HeNormal, but uses pytorch implementation
 
     Example:
-        >>> from netharn.initializers.core import *
+        >>> from netharn.initializers.nninit_core import *
         >>> from netharn.models import toynet
         >>> self = Orthogonal()
         >>> model = toynet.ToyNet2d()
@@ -76,15 +72,15 @@ class Orthogonal(base._BaseInitializer):
         self.gain = gain
 
     def forward(self, model):
-        base.apply_initializer(model, torch.nn.init.orthogonal, self.__dict__)
+        nninit_base.apply_initializer(model, torch.nn.init.orthogonal, self.__dict__)
 
 
-class KaimingUniform(base._BaseInitializer):
+class KaimingUniform(nninit_base._BaseInitializer):
     """
     Same as HeNormal, but uses pytorch implementation
 
     Example:
-        >>> from netharn.initializers.core import *
+        >>> from netharn.initializers.nninit_core import *
         >>> from netharn.models import toynet
         >>> self = KaimingUniform()
         >>> model = toynet.ToyNet2d()
@@ -97,16 +93,16 @@ class KaimingUniform(base._BaseInitializer):
         self.mode = mode
 
     def forward(self, model):
-        base.apply_initializer(model, torch.nn.init.kaiming_uniform,
-                               self.__dict__)
+        nninit_base.apply_initializer(model, torch.nn.init.kaiming_uniform,
+                                      self.__dict__)
 
 
-class KaimingNormal(base._BaseInitializer):
+class KaimingNormal(nninit_base._BaseInitializer):
     """
     Same as HeNormal, but uses pytorch implementation
 
     Example:
-        >>> from netharn.initializers.core import *
+        >>> from netharn.initializers.nninit_core import *
         >>> from netharn.models import toynet
         >>> self = KaimingNormal()
         >>> model = toynet.ToyNet2d()
@@ -119,14 +115,14 @@ class KaimingNormal(base._BaseInitializer):
         self.mode = mode
 
     def forward(self, model):
-        base.apply_initializer(model, torch.nn.init.kaiming_uniform,
-                               self.__dict__)
+        nninit_base.apply_initializer(model, torch.nn.init.kaiming_uniform,
+                                      self.__dict__)
 
 
 if __name__ == '__main__':
     """
     CommandLine:
-        python -m netharn.initializers.core all
+        python -m netharn.initializers.nninit_core all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

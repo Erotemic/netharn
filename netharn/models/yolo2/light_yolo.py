@@ -3,6 +3,7 @@
 #   Copyright EAVISE
 #
 from collections import OrderedDict
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -60,14 +61,17 @@ class Yolo(lnn.Darknet):
         super(Yolo, self).__init__()
 
         if anchors is None:
-            anchors = dict(num=5, values=[1.3221, 1.73145, 3.19275, 4.00944,
-                                          5.05587, 8.09892, 9.47112, 4.84053,
-                                          11.2364, 10.0071])
+            anchors = np.asarray([(1.08, 1.19), (3.42, 4.41), (6.63, 11.38),
+                                  (9.42, 5.11), (16.62, 10.52)],
+                                 dtype=np.float)
+            # anchors = dict(num=5, values=[1.3221, 1.73145, 3.19275, 4.00944,
+            #                               5.05587, 8.09892, 9.47112, 4.84053,
+            #                               11.2364, 10.0071])
 
         # Parameters
         self.num_classes = num_classes
-        self.num_anchors = anchors['num']
-        self.anchors = anchors['values']
+        self.num_anchors = anchors.size // 2
+        self.anchors = anchors.ravel()
         self.reduction = 32             # input_dim/output_dim
 
         # Network

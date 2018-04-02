@@ -17,14 +17,14 @@ class Monitor(object):
         >>> n = 300
         >>> losses = (sorted(rng.randint(10, n, size=n)) + rng.randint(0, 20, size=n) - 10)[::-1]
         >>> mious = (sorted(rng.randint(10, n, size=n)) + rng.randint(0, 20, size=n) - 10)
-        >>> monitor = Monitor(min_keys=['loss'], max_keys=['miou'], smoothing=.6)
+        >>> monitor = Monitor(minimize=['loss'], maximize=['miou'], smoothing=.6)
         >>> for epoch, (loss, miou) in enumerate(zip(losses, mious)):
         >>>     monitor.update(epoch, {'loss': loss, 'miou': miou})
         >>> # xdoc: +REQUIRES(--show)
         >>> monitor.show()
     """
 
-    def __init__(monitor, min_keys=['loss'], max_keys=[], smoothing=.6,
+    def __init__(monitor, minimize=['loss'], maximize=[], smoothing=.6,
                  patience=40, max_epoch=1000):
         monitor.ewma = util.ExpMovingAve(alpha=1 - smoothing)
         monitor.raw_metrics = []
@@ -34,10 +34,10 @@ class Monitor(object):
         # monitor.other_data = []
 
         # Keep track of which metrics we want to maximize / minimize
-        monitor.min_keys = min_keys
-        monitor.max_keys = max_keys
-        # print('monitor.min_keys = {!r}'.format(monitor.min_keys))
-        # print('monitor.max_keys = {!r}'.format(monitor.max_keys))
+        monitor.minimize = minimize
+        monitor.maximize = maximize
+        # print('monitor.minimize = {!r}'.format(monitor.minimize))
+        # print('monitor.maximize = {!r}'.format(monitor.maximize))
 
         monitor.best_raw_metrics = None
         monitor.best_smooth_metrics = None
@@ -57,7 +57,7 @@ class Monitor(object):
         mplutil.qtensure()
         smooth_ydatas = pd.DataFrame.from_dict(monitor.smooth_metrics).to_dict('list')
         raw_ydatas = pd.DataFrame.from_dict(monitor.raw_metrics).to_dict('list')
-        keys = monitor.min_keys + monitor.max_keys
+        keys = monitor.minimize + monitor.maximize
         pnum_ = mplutil.PlotNums(nSubplots=len(keys))
         for i, key in enumerate(keys):
             mplutil.multi_plot(
@@ -130,12 +130,12 @@ class Monitor(object):
             >>> metrics = {'loss': 5, 'acc': .99}
             >>> best_metrics = {'loss': 4, 'acc': .98}
         """
-        keys = monitor.max_keys + monitor.min_keys
+        keys = monitor.maximize + monitor.minimize
 
         def _as_minimization(metrics):
             # convert to a minimization problem
-            sign = np.array(([-1] * len(monitor.max_keys)) +
-                            ([1] * len(monitor.min_keys)))
+            sign = np.array(([-1] * len(monitor.maximize)) +
+                            ([1] * len(monitor.minimize)))
             chosen = np.array(list(ub.take(metrics, keys)))
             return chosen, sign
 
@@ -201,15 +201,15 @@ class Monitor(object):
             ranked_epochs = np.array(monitor.epochs)[sortx]
             return ranked_epochs
 
-        for key in monitor.min_keys:
+        for key in monitor.minimize:
             rankings[key + '_raw'] = _rank(key, monitor.raw_metrics, 'min')
             rankings[key + '_smooth'] = _rank(key, monitor.smooth_metrics, 'min')
 
-        for key in monitor.max_keys:
+        for key in monitor.maximize:
             rankings[key + '_raw'] = _rank(key, monitor.raw_metrics, 'max')
             rankings[key + '_smooth'] = _rank(key, monitor.smooth_metrics, 'max')
 
-        for key in monitor.max_keys:
+        for key in monitor.maximize:
             values = [m[key] for m in monitor.raw_metrics]
             sortx = np.argsort(values)[::-1]
             ranked_epochs = np.array(monitor.epochs)[sortx]

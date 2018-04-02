@@ -19,7 +19,7 @@ class ListedLR(_LRScheduler2):
 
     Args:
         optimizer (Optimizer): Wrapped optimizer.
-        step_points (dict): Mapping from epoch number to a learning rate
+        points (dict): Mapping from epoch number to a learning rate
         last_epoch (int): The index of last epoch. Default: -1.
 
     CommandLine:
@@ -31,28 +31,28 @@ class ListedLR(_LRScheduler2):
         >>> import netharn as nh
         >>> model = nh.models.ToyNet2d()
         >>> optimizer = torch.optim.SGD(model.parameters(), lr=0)
-        >>> step_points = {0: .01, 1: .02, 2: .1, 6: .05, 9: .025}
-        >>> self = ListedLR(optimizer, step_points)
+        >>> points = {0: .01, 1: .02, 2: .1, 6: .05, 9: .025}
+        >>> self = ListedLR(optimizer, points)
         >>> lrs = [self._get_epoch_lr(epoch) for epoch in range(-1, 11)]
         >>> print(list(ub.flatten(lrs)))
         [0, 0.01, 0.02, 0.1, 0.1, 0.1, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025]
         >>> assert self.current_lrs() == [0.01]
-        >>> self = ListedLR(optimizer, step_points, interpolate=True)
+        >>> self = ListedLR(optimizer, points, interpolate=True)
         >>> lrs = [self._get_epoch_lr(epoch) for epoch in range(-1, 11)]
         >>> print(ub.repr2(list(ub.flatten(lrs)), precision=3, nl=0))
         [0.008, 0.010, 0.020, 0.100, 0.088, 0.075, 0.062, 0.050, 0.042, 0.033, 0.025, 0.025]
     """
 
-    def __init__(self, optimizer, step_points, interpolate=False,
+    def __init__(self, optimizer, points, interpolate=False,
                  last_epoch=-1):
         self.optimizer = optimizer
-        if not isinstance(step_points, dict):
-            raise TypeError(step_points)
+        if not isinstance(points, dict):
+            raise TypeError(points)
         self.interpolate = interpolate
-        self.step_points = step_points
+        self.points = points
         self.last_epoch = last_epoch
         # epochs where the lr changes
-        self.key_epochs = sorted(self.step_points.keys())
+        self.key_epochs = sorted(self.points.keys())
         super(ListedLR, self).__init__(optimizer, last_epoch)
 
     def get_lr(self):
@@ -61,7 +61,7 @@ class ListedLR(_LRScheduler2):
     def _get_epoch_lr(self, epoch):
         """ return lr based on the epoch """
         key_epochs = self.key_epochs
-        step_points = self.step_points
+        points = self.points
         base_lrs = self.base_lrs
 
         # if epoch < 0:
@@ -80,10 +80,10 @@ class ListedLR(_LRScheduler2):
 
         if self.interpolate:
             if next_key_epoch == prev_key_epoch:
-                new_lr = step_points[next_key_epoch]
+                new_lr = points[next_key_epoch]
             else:
-                prev_lr = step_points[next_key_epoch]
-                next_lr = step_points[prev_key_epoch]
+                prev_lr = points[next_key_epoch]
+                next_lr = points[prev_key_epoch]
 
                 alpha = (epoch - prev_key_epoch) / (next_key_epoch - prev_key_epoch)
 
@@ -94,7 +94,7 @@ class ListedLR(_LRScheduler2):
             if epoch < prev_key_epoch:
                 epoch_lrs = base_lrs
             else:
-                new_lr = step_points[prev_key_epoch]
+                new_lr = points[prev_key_epoch]
                 epoch_lrs = [new_lr for _ in base_lrs]
         return epoch_lrs
 

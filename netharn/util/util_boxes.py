@@ -170,6 +170,8 @@ class Boxes(ub.NiceRepr):
             x1, y1, w, h = self.components
             x2 = x1 + w
             y2 = y1 + h
+        else:
+            raise KeyError(self.format)
         tlbr = self._cat([x1, y1, x2, y2])
         return Boxes(tlbr, 'tlbr')
 

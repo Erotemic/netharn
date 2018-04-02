@@ -14,6 +14,7 @@ from netharn.transforms import (ImageCenterScale,)
 import imgaug as ia
 import imgaug.augmenters as iaa
 from netharn import util
+import netharn as nh
 
 
 class CropTo(iaa.Augmenter):
@@ -729,6 +730,45 @@ def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent',
     return datasets
 
 
+class CIFAR_FitHarn(nh.FitHarn):
+
+    def run_batch(harn, inputs, labels):
+        """
+        Custom function to compute the output of a batch and its loss.
+        """
+        output = harn.model(*inputs)
+        label = labels[0]
+        loss = harn.criterion(output, label)
+        outputs = [output]
+        return outputs, loss
+
+    def on_batch(harn, outputs, labels):
+        from netharn.metrics import (confusion_matrix,
+                                     pixel_accuracy_from_confusion,
+                                     perclass_accuracy_from_confusion)
+
+        task = harn.datasets['train'].task
+        all_labels = task.labels
+
+        label = labels[0]
+        output = outputs[0]
+
+        y_pred = output.data.max(dim=1)[1].cpu().numpy()
+        y_true = label.data.cpu().numpy()
+
+        cfsn = confusion_matrix(y_pred, y_true, labels=all_labels)
+
+        global_acc = pixel_accuracy_from_confusion(cfsn)  # same as acc
+        perclass_acc = perclass_accuracy_from_confusion(cfsn)
+        # class_accuracy = perclass_acc.fillna(0).mean()
+        class_accuracy = np.nan_to_num(perclass_acc).mean()
+
+        metrics_dict = ub.odict()
+        metrics_dict['global_acc'] = global_acc
+        metrics_dict['class_acc'] = class_accuracy
+        return metrics_dict
+
+
 def train():
     """
     Example:
@@ -832,44 +872,8 @@ def train():
                                    max_keys=['global_acc', 'class_acc'],
                                    patience=40)
 
-    @harn.set_batch_runner
-    def batch_runner(harn, inputs, labels):
-        """
-        Custom function to compute the output of a batch and its loss.
-        """
-        output = harn.model(*inputs)
-        label = labels[0]
-        loss = harn.criterion(output, label)
-        outputs = [output]
-        return outputs, loss
-
-    task = harn.datasets['train'].task
-    all_labels = task.labels
     # ignore_label = datasets['train'].ignore_label
     # from netharn import metrics
-    from netharn.metrics import (confusion_matrix,
-                              pixel_accuracy_from_confusion,
-                              perclass_accuracy_from_confusion)
-
-    @harn.add_batch_metric_hook
-    def custom_metrics(harn, outputs, labels):
-        label = labels[0]
-        output = outputs[0]
-
-        y_pred = output.data.max(dim=1)[1].cpu().numpy()
-        y_true = label.data.cpu().numpy()
-
-        cfsn = confusion_matrix(y_pred, y_true, labels=all_labels)
-
-        global_acc = pixel_accuracy_from_confusion(cfsn)  # same as acc
-        perclass_acc = perclass_accuracy_from_confusion(cfsn)
-        # class_accuracy = perclass_acc.fillna(0).mean()
-        class_accuracy = np.nan_to_num(perclass_acc).mean()
-
-        metrics_dict = ub.odict()
-        metrics_dict['global_acc'] = global_acc
-        metrics_dict['class_acc'] = class_accuracy
-        return metrics_dict
 
     workdir = ub.ensuredir('train_cifar_work')
     harn.setup_dpath(workdir)
