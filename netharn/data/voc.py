@@ -13,7 +13,7 @@ import torch
 import glob
 import ubelt as ub
 import numpy as np
-from . import collate
+from netharn.data import collate
 import torch.utils.data as torch_data
 
 

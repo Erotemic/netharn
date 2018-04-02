@@ -25,7 +25,7 @@ class Monitor(object):
     """
 
     def __init__(monitor, min_keys=['loss'], max_keys=[], smoothing=.6,
-                 patience=40):
+                 patience=40, max_epoch=1000):
         monitor.ewma = util.ExpMovingAve(alpha=1 - smoothing)
         monitor.raw_metrics = []
         monitor.smooth_metrics = []
@@ -47,6 +47,8 @@ class Monitor(object):
 
         monitor.patience = patience
         monitor.n_bad_epochs = 0
+
+        monitor.max_epoch = max_epoch
 
     def show(monitor):
         import matplotlib.pyplot as plt

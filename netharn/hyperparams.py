@@ -11,6 +11,7 @@ from netharn import initializers
 from netharn import device
 # from netharn import criterions
 from torch.optim.optimizer import required
+import torch.utils.data as torch_data
 
 
 def _rectify_class(lookup, arg, kw):
@@ -139,6 +140,19 @@ def _rectify_initializer(arg, kw):
     return cls, kw2
 
 
+def _rectify_monitor(arg, kw):
+    def _lookup(arg):
+        if isinstance(arg, six.string_types):
+            options = [
+            ]
+            cls = {c.__name__: c for c in options}[arg]
+        else:
+            cls = arg
+        return cls
+    cls, kw2 = _rectify_class(_lookup, arg, kw)
+    return cls, kw2
+
+
 def _rectify_model(arg, kw):
     if arg is None:
         return None, None
@@ -188,6 +202,7 @@ class HyperParams(object):
     def __init__(hyper,
                  # ----
                  datasets=None,
+                 loaders=None,
                  nice=None,
                  workdir=None,
                  xpu=None,
@@ -224,7 +239,11 @@ class HyperParams(object):
         hyper.initializer_cls = cls
         hyper.initializer_params = kw
 
-        hyper.monitor = monitor
+        cls, kw = _rectify_monitor(monitor, kwargs)
+        hyper.monitor_cls = cls
+        hyper.monitor_params = kw
+
+        hyper.loaders = loaders
 
         hyper.nice = nice
         hyper.workdir = workdir
@@ -265,10 +284,32 @@ class HyperParams(object):
         criterion = hyper.criterion_cls(**hyper.criterion_params)
         return criterion
 
+    def make_loaders(hyper):
+        assert hyper.loaders is not None
+
+        if isinstance(hyper.loaders.get('loaders', None), torch_data.Dataset):
+            # loaders were custom specified
+            return hyper.loaders
+        else:
+            # loaders is kwargs for Loader
+            kw = hyper.loaders
+            loaders = {
+                key: torch_data.DataLoader(dset, **kw)
+                for key, dset in hyper.datasets.items()
+            }
+            return loaders
+
     def make_xpu(hyper):
         """ Instanciate the criterion defined by the hyperparams """
         xpu = device.XPU.cast(hyper.xpu)
         return xpu
+
+    def make_monitor(hyper):
+        """ Instanciate the monitor defined by the hyperparams """
+        if hyper.monitor_cls is None:
+            return None
+        monitor = hyper.monitor_cls(**hyper.monitor_params)
+        return monitor
 
     def other_id(hyper):
         """
@@ -279,7 +320,7 @@ class HyperParams(object):
         otherid = util.make_short_idstr(hyper.other, precision=4)
         return otherid
 
-    def _get_initkw(hyper):
+    def get_initkw(hyper):
         """
         Make list of class / params relevant to reproducing an experiment
         """
@@ -435,7 +476,7 @@ class HyperParams(object):
 
             if request_hash:
                 param_str = util.make_idstr(params)
-                param_str = util.hash_data(param_str)[0:6]
+                param_str = ub.hash_data(param_str)[0:6]
             elif request_short:
                 param_str = util.make_short_idstr(params)
             else:
@@ -463,7 +504,7 @@ class HyperParams(object):
             >>> print(hyper.hyper_id(short=['optimizer', 'criterion'], hashed=['criterion']))
             >>> print(hyper.hyper_id(hashed=True))
         """
-        parts = hyper._get_initkw()
+        parts = hyper.get_initkw()
         return hyper._parts_id(parts, short, hashed)
 
 if __name__ == '__main__':
