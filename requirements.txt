@@ -1,0 +1,30 @@
+cffi
+imgaug
+psutil
+
+pygtrie
+numpy
+ubelt
+xdoctest
+sortedcontainers
+tqdm
+h5py
+bayesian-optimization
+torchvision
+pandas
+tensorboard_logger
+parse
+sympy
+Pillow
+matplotlib
+six
+protobuf
+
+# line_profiler
+# scipy
+# scikit-image
+
+# onnx
+# tensorboard
+# opencv_python # CAREFUL, dont clobber ones that we installed
+# pytorch # causing docker issues, comment out, ideally we will build this from source ourselves
