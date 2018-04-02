@@ -568,7 +568,7 @@ def setup_harness(bsize=16, workers=0):
         },
     })
     harn = YoloHarn(hyper=hyper)
-    harn.ovthresh = ovthresh
+    harn.use_tqdm = False
     return harn
 
 
