@@ -104,3 +104,4 @@ cython_*.c
 *.cu.o
 
 netharn/util/nms/cpu_nms.c
+.pytest_cache
