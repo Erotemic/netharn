@@ -107,6 +107,7 @@ class ConstructorMixin:
         }
         harn.config = {
             'show_prog': True,
+            'log_iter_values': True,
         }
         harn.epoch = 0
         harn.bxs = {
@@ -730,9 +731,10 @@ class CoreMixin:
                                           loader.batch_sampler.batch_size)
                     prog.set_description(tag + ' ' + msg)
 
-                    # iter_idx = (harn.epoch * len(loader) + bx)
-                    # for key, value in ave_metrics.items():
-                    #     harn.log_value(tag + ' iter ' + key, value, iter_idx)
+                    if harn.config['log_iter_values']:
+                        iter_idx = (harn.epoch * len(loader) + bx)
+                        for key, value in ave_metrics.items():
+                            harn.log_value(tag + ' iter ' + key, value, iter_idx)
 
                     prog.update(harn.intervals['display_' + tag])
                     if needs_postfix:
@@ -790,6 +792,14 @@ class CoreMixin:
             loss_value = 0
         else:
             loss_value = loss_sum
+
+        if harn.current_tag == 'train' and float(loss) > 1000:
+            # if the loss is getting very larg, check that the weights are
+            # still ok
+            state = harn.model.module.state_dict()
+            weights = sum([v.sum() for v in state.values()])
+            if (not np.isfinite(weights) or np.isnan(weights)):
+                raise Exception('NON-FINITE WEIGHTS weights = {!r}'.format(weights))
 
         metrics_dict = {
             'loss': loss_value,
