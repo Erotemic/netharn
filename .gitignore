@@ -1,2 +1,6 @@
 __pycache__
 *.pyc
+
+htmlcov
+.pytest_cache
+.coverage
