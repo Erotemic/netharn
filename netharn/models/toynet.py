@@ -8,10 +8,10 @@ class ToyNet1d(torch.nn.Module):
 
     Example:
         >>> self = ToyNet1d()
-        >>> dset = ToyNet1d.demodata()
-        >>> inputs = torch.Tensor(data)
+        >>> loader = self.demodata().make_loader(batch_size=16, shuffle=True)
+        >>> inputs, labels = next(iter(loader))
         >>> prob = self(inputs)
-        >>> conf, pred = probs.max(dim=1)
+        >>> conf, pred = prob.max(dim=1)
     """
     def __init__(self, num_classes=2):
         super().__init__()
@@ -28,22 +28,22 @@ class ToyNet1d(torch.nn.Module):
         return self.layers(inputs)
 
     @classmethod
-    def demodata(ToyNet1d, rng=None):
-        from netharn.data.toydata import ToyData1d
-        dset = ToyData1d(rng)
+    def demodata(ToyNet1d, *args, **kwargs):
+        import netharn.data
+        dset = netharn.data.ToyData1d(*args, **kwargs)
         return dset
 
 
-class ToyNet2D(torch.nn.Module):
+class ToyNet2d(torch.nn.Module):
     """
     Demo model for a simple 2 class learning problem
 
     Example:
-        >>> self = ToyNet2D()
-        >>> data, true = ToyNet2D.demodata()[0]
-        >>> inputs = torch.Tensor(data[None, :])
+        >>> self = ToyNet2d()
+        >>> loader = self.demodata().make_loader(batch_size=16, shuffle=True)
+        >>> inputs, labels = next(iter(loader))
         >>> prob = self(inputs)
-        >>> conf, pred = probs.max(dim=1)
+        >>> conf, pred = prob.max(dim=1)
     """
     def __init__(self, num_classes=2):
         super().__init__()
@@ -65,7 +65,16 @@ class ToyNet2D(torch.nn.Module):
         return probs
 
     @classmethod
-    def demodata(ToyNet2d, rng=None):
-        from netharn.data import ToyData2d
-        dset = ToyData2d(rng)
+    def demodata(ToyNet2d, *args, **kwargs):
+        import netharn.data
+        dset = netharn.data.ToyData2d(*args, **kwargs)
         return dset
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m netharn.models.toynet all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
