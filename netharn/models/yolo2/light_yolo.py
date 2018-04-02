@@ -118,10 +118,8 @@ class Yolo(lnn.Darknet):
 
             # Sequence 3 : input = sequence2 + sequence1
             OrderedDict([
-                ('28_convbatch',    lnn.layer.Conv2dBatchLeaky(
-                    (4 * 64) + 1024, 1024, 3, 1, 1)),
-                ('29_conv',         nn.Conv2d(
-                    1024, self.num_anchors * (5 + self.num_classes), 1, 1, 0)),
+                ('28_convbatch',    lnn.layer.Conv2dBatchLeaky((4 * 64) + 1024, 1024, 3, 1, 1)),
+                ('29_conv',         nn.Conv2d(1024, self.num_anchors * (5 + self.num_classes), 1, 1, 0)),
             ])
         ]
         self.layers = nn.ModuleList(
