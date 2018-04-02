@@ -25,7 +25,7 @@ Example:
     >>>     # --- Algorithm Second
     >>>     'model'       : (nh.models.ToyNet2d, {}),
     >>>     'optimizer'   : (nh.optimizers.SGD, {
-    >>>         'lr': 0.001
+    >>>         'lr': 0.0001
     >>>     }),
     >>>     'criterion'   : (nh.criterions.CrossEntropyLoss, {}),
     >>>     #'criterion'   : (nh.criterions.FocalLoss, {}),
@@ -33,7 +33,7 @@ Example:
     >>>         'param': 0,
     >>>     }),
     >>>     'scheduler'   : (nh.schedulers.ListedLR, {
-    >>>         'points': {0: .001, 2: .01, 5: .015, 6: .005, 9: .001},
+    >>>         'points': {0: .0001, 2: .01, 5: .015, 6: .005, 9: .001},
     >>>     }),
     >>>     'monitor'     : (nh.Monitor, {
     >>>         'max_epoch': 10
@@ -361,7 +361,6 @@ class HyperParams(object):
         return criterion
 
     def make_loaders(hyper):
-        assert hyper.loaders is not None
         if hyper.loaders is not None:
             return hyper.loaders
         else:

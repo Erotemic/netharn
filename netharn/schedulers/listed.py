@@ -31,16 +31,16 @@ class ListedLR(_LRScheduler2):
         >>> import netharn as nh
         >>> model = nh.models.ToyNet2d()
         >>> optimizer = torch.optim.SGD(model.parameters(), lr=0)
-        >>> points = {0: .01, 1: .02, 2: .1, 6: .05, 9: .025}
+        >>> points = {0: .01, 2: .02, 3: .1, 6: .05, 9: .025}
         >>> self = ListedLR(optimizer, points)
-        >>> lrs = [self._get_epoch_lr(epoch) for epoch in range(-1, 11)]
+        >>> lrs = [self._get_epoch_lr(epoch) for epoch in range(0, 11)]
         >>> print(list(ub.flatten(lrs)))
-        [0, 0.01, 0.02, 0.1, 0.1, 0.1, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025]
+        [0.01, 0.01, 0.02, 0.1, 0.1, 0.1, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025, 0.025]
         >>> assert self.current_lrs() == [0.01]
         >>> self = ListedLR(optimizer, points, interpolate=True)
-        >>> lrs = [self._get_epoch_lr(epoch) for epoch in range(-1, 11)]
+        >>> lrs = [self._get_epoch_lr(epoch) for epoch in range(0, 11)]
         >>> print(ub.repr2(list(ub.flatten(lrs)), precision=3, nl=0))
-        [0.008, 0.010, 0.020, 0.100, 0.088, 0.075, 0.062, 0.050, 0.042, 0.033, 0.025, 0.025]
+        [0.010, 0.015, 0.020, 0.100, 0.083, 0.067, 0.050, 0.042, 0.033, 0.025, 0.025]
     """
 
     def __init__(self, optimizer, points, interpolate=False,
@@ -64,8 +64,8 @@ class ListedLR(_LRScheduler2):
         points = self.points
         base_lrs = self.base_lrs
 
-        # if epoch < 0:
-        #     epoch = 0
+        if epoch < 0:
+            epoch = 0
 
         if epoch in key_epochs:
             prev_key_epoch = epoch

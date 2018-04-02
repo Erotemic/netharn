@@ -19,7 +19,7 @@ Example:
     >>>     # --- Algorithm Second
     >>>     'model'       : (nh.models.ToyNet2d, {}),
     >>>     'optimizer'   : (nh.optimizers.SGD, {
-    >>>         'lr': 0.001
+    >>>         'lr': 0.0001
     >>>     }),
     >>>     'criterion'   : (nh.criterions.CrossEntropyLoss, {}),
     >>>     #'criterion'   : (nh.criterions.FocalLoss, {}),
@@ -27,7 +27,7 @@ Example:
     >>>         'param': 0,
     >>>     }),
     >>>     'scheduler'   : (nh.schedulers.ListedLR, {
-    >>>         'points': {0: .001, 2: .01, 5: .015, 6: .005, 9: .001},
+    >>>         'points': {0: .0001, 2: .01, 5: .015, 6: .005, 9: .001},
     >>>         'interpolate': True,
     >>>     }),
     >>>     'monitor'     : (nh.Monitor, {
@@ -35,6 +35,7 @@ Example:
     >>>     }),
     >>> }
     >>> harn = FitHarn(hyper)
+    >>> harn.config['use_tqdm'] = False
     >>> harn.initialize(reset='delete')
     >>> harn.run()
 """
@@ -98,6 +99,10 @@ class ConstructorMixin:
             'display_train': 1,
             'display_vali': 1,
             'display_test': 1,
+
+            'log_iter_train': None,
+            'log_iter_test': None,
+            'log_iter_vali': None,
 
             'vali': 1,
             'test': 1,
@@ -560,7 +565,7 @@ class ScheduleMixin:
             #     # weights to the previous best state
             #     harn.backtrack_weights(harn.monitor.best_epoch)
         else:
-            harn.scheduler.step()
+            harn.scheduler.step(epoch=harn.epoch)
 
 
 @register_mixin
@@ -613,8 +618,14 @@ class CoreMixin:
         harn.optimizer.zero_grad()
 
         try:
+            # harn.debug('=== previous epoch {} ==='.format(harn.epoch))
+            # print('harn.epoch = {!r}'.format(harn.epoch))
+            # print('lrs = {}'.format(harn._current_lrs()))
+
             for harn.epoch in it.count(harn.epoch):
                 harn.debug('=== start epoch {} ==='.format(harn.epoch))
+                # print('harn.epoch = {!r}'.format(harn.epoch))
+                # print('lrs = {}'.format(harn._current_lrs()))
 
                 harn.log_value('epoch lr', np.mean(list(harn._current_lrs())),
                                harn.epoch)
