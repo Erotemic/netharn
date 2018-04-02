@@ -27,7 +27,7 @@ Example:
     >>>         'param': 0,
     >>>     }),
     >>>     'scheduler'   : (nh.schedulers.ListedLR, {
-    >>>         'step_points': {0: .001, 2: .01, 5: .015, 6: .005, 9: .001},
+    >>>         'points': {0: .001, 2: .01, 5: .015, 6: .005, 9: .001},
     >>>         'interpolate': True,
     >>>     }),
     >>>     'monitor'     : (nh.Monitor, {
@@ -109,7 +109,12 @@ class ConstructorMixin:
             'show_prog': True,
         }
         harn.epoch = 0
-        harn.bxs = {}
+        harn.bxs = {
+            'train': 0,
+            'vali': 0,
+            'test': 0,
+        }
+        harn.current_tag = None
 
     def check_interval(harn, tag, idx):
         """
@@ -125,8 +130,8 @@ class ExtraMixins:
         returns a single batch for testing / demo purposes.
         """
         loader = harn.loaders[tag]
+        harn.current_tag = tag
         for bx, batch in enumerate(iter(loader)):
-            print('bx = {!r}'.format(bx))
             if bx >= index:
                 break
         return harn.prepare_batch(batch)
@@ -504,9 +509,9 @@ class ScheduleMixin:
         if harn.scheduler is None:
             pass
         elif harn.scheduler.__class__.__name__ == 'reducelronplateau':
-            assert improved is not None, 'must validate for reducelronplateau schedule'
+            assert improved is not None, 'must validate for ReduceLROnPlateau schedule'
             # assert vali_metrics is not None, (
-            #     'must validate for reducelronplateau schedule')
+            #     'must validate for ReduceLROnPlateau schedule')
 
             # old_lrs = set(harn._current_lrs())
             # feed reduce on plateau dummy data from the monitor
@@ -705,13 +710,13 @@ class CoreMixin:
                 batch = next(batch_iter)
 
                 harn.bxs[tag] = bx
-                inputs, labels = harn.prepare_batch(batch)
+                batch = harn.prepare_batch(batch)
 
                 # core learning / backprop
-                outputs, loss = harn._run_batch(inputs, labels, learn=learn)
+                outputs, loss = harn._run_batch(batch, learn=learn)
 
                 # measure train accuracy and other informative metrics
-                cur_metrics = harn._on_batch(outputs, labels, loss)
+                cur_metrics = harn._on_batch(batch, outputs, loss)
 
                 # accumulate measures
                 epoch_moving_metrics.update(cur_metrics)
@@ -747,14 +752,14 @@ class CoreMixin:
         return epoch_metrics
 
     @profiler.profile
-    def _run_batch(harn, inputs, labels, learn=False):
+    def _run_batch(harn, batch, learn=False):
         """
         batch with weight updates
 
         https://github.com/meetshah1995/pytorch-semseg/blob/master/train.py
         """
         try:
-            outputs, loss = harn.run_batch(inputs, labels)
+            outputs, loss = harn.run_batch(batch)
         except Exception:
             harn.error('may need to make a custom batch runner with set_batch_runner')
             raise
@@ -767,7 +772,7 @@ class CoreMixin:
 
         return outputs, loss
 
-    def _on_batch(harn, output, labels, loss):
+    def _on_batch(harn, batch, outputs, loss):
         """
         Overload Encouraged
         """
@@ -784,7 +789,7 @@ class CoreMixin:
         metrics_dict = {
             'loss': loss_value,
         }
-        custom_metrics = harn.on_batch(output, labels, loss)
+        custom_metrics = harn.on_batch(batch, outputs, loss)
         if custom_metrics:
             isect = set(custom_metrics).intersection(set(metrics_dict))
             if isect:
@@ -827,20 +832,22 @@ class CoreCallback:
         inputs = [harn.xpu.variable(d) for d in batch_inputs]
         labels = [harn._tovar(d) for d in batch_labels]
 
-        return (inputs, labels)
+        prepared_batch = (inputs, labels)
+        return prepared_batch
 
-    def run_batch(harn, inputs, labels):
+    def run_batch(harn, batch):
         """
         Basic connection inputs -> model -> outputs -> criterion -> loss
 
         Overload Encouraged, but not always necessary
         """
         # Simple forward prop and loss computation
+        inputs, labels = batch
         outputs = harn.model(*inputs)
         loss = harn.criterion(outputs, *labels)
         return outputs, loss
 
-    def on_batch(harn, output, labels, loss):
+    def on_batch(harn, batch, outputs, loss):
         """
         custom callback typically used to compute batch evaluation measures
         or accumulate data.

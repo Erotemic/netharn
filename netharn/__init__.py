@@ -12,6 +12,7 @@ from netharn import folders
 from netharn import hyperparams
 from netharn import initializers
 from netharn import layers
+from netharn import metrics
 from netharn import models
 from netharn import monitor
 from netharn import optimizers
@@ -26,6 +27,7 @@ from netharn.device import (XPU,)
 from netharn.fit_harn import (FitHarn,)
 from netharn.folders import (Folders,)
 from netharn.hyperparams import (HyperParams,)
+
 
 
 

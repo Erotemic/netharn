@@ -133,7 +133,7 @@ def trainable_layers(model, names=False):
 def load_partial_state(model, model_state_dict, initializer=None):
     """
     CommandLine:
-        python -m netharn.initializers.base load_partial_state
+        python -m netharn.initializers.nninit_base load_partial_state
 
     Example:
         >>> import netharn as nh
@@ -142,9 +142,6 @@ def load_partial_state(model, model_state_dict, initializer=None):
         >>> model_state_dict = self1.state_dict()
         >>> load_partial_state(self2, model_state_dict)
     """
-    if initializer is None:
-        initializer = torch.nn.init.kaiming_normal
-
     self_state = model.state_dict()
 
     def _fix_keys(model_state_dict):
@@ -185,39 +182,45 @@ def load_partial_state(model, model_state_dict, initializer=None):
                 if key.endswith('bias'):
                     print('Skipping {} due to incompatable size'.format(key))
                 else:
-                    print('Partially add {} with incompatable size'.format(key))
-                    # Initialize all weights in case any are unspecified
-                    initializer(self_state[key])
+                    if initializer is None:
+                        print('Skipping {} due to incompatable size'.format(key))
+                    else:
+                        print('Partially add {} with incompatable size'.format(key))
+                        # Initialize all weights in case any are unspecified
+                        if initializer is not None:
+                            initializer(self_state[key])
 
-                    # Transfer as much as possible
-                    min_size = np.minimum(self_state[key].shape, other_value.shape)
-                    sl = tuple([slice(0, s) for s in min_size])
-                    self_state[key][sl] = other_value[sl]
+                        # Transfer as much as possible
+                        min_size = np.minimum(self_state[key].shape, other_value.shape)
+                        sl = tuple([slice(0, s) for s in min_size])
+                        self_state[key][sl] = other_value[sl]
 
-                    # if shock_partial:
-                    #     # Shock weights because we are doing something weird
-                    #     # might help the network recover in case this is
-                    #     # not a good idea
-                    #     shock(self_state[key], func=initializer)
-                    unused_keys.remove(key)
+                        # if shock_partial:
+                        #     # Shock weights because we are doing something weird
+                        #     # might help the network recover in case this is
+                        #     # not a good idea
+                        #     shock(self_state[key], func=initializer)
+                        unused_keys.remove(key)
             else:
                 print('Skipping {} due to incompatable size'.format(key))
         else:
             print('Skipping {} because it does not exist'.format(key))
 
     if unused_keys:
-        print('Initializing unused keys {} using he normal'.format(unused_keys))
-        for key in unused_keys:
-            if key.endswith('.bias'):
-                self_state[key].fill_(0)
-            else:
-                initializer(self_state[key])
+        print('Unused keys {}'.format(unused_keys))
+        if initializer:
+            print('Initializing unused keys using {}'.format(initializer))
+            for key in unused_keys:
+                if key.endswith('.bias'):
+                    self_state[key].fill_(0)
+                else:
+                    initializer(self_state[key])
     model.load_state_dict(self_state)
 
 if __name__ == '__main__':
     """
     CommandLine:
-        python -m netharn.initializers.base all
+        python -m netharn.initializers.nninit_base all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

@@ -11,11 +11,12 @@ if __DYNAMIC__:
     exec(dynamic_import(__name__))
 else:
     # <AUTOGEN_INIT>
-    from netharn.initializers import base
-    from netharn.initializers import core
     from netharn.initializers import lsuv
-    from netharn.initializers.base import (NoOp, apply_initializer, load_partial_state,
-                                     trainable_layers,)
-    from netharn.initializers.core import (KaimingNormal, KaimingUniform, Orthogonal,
-                                     Pretrained,)
+    from netharn.initializers import nninit_base
+    from netharn.initializers import nninit_core
     from netharn.initializers.lsuv import (LSUV, Orthonormal, svd_orthonormal,)
+    from netharn.initializers.nninit_base import (NoOp, apply_initializer,
+                                                  load_partial_state,
+                                                  trainable_layers,)
+    from netharn.initializers.nninit_core import (KaimingNormal, KaimingUniform,
+                                                  Orthogonal, Pretrained,)

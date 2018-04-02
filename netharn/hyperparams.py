@@ -1,6 +1,48 @@
 # -*- coding: utf-8 -*-
 """
 Torch version of hyperparams
+
+TODO:
+    [ ] - need to extract relavent params from loaders
+    [ ] - need to extract relavent params from datasets
+    [ ] - ensure monitor is handled gracefully
+
+CommandLine:
+    python ~/code/netharn/netharn/hyperparams.py __doc__
+
+Example:
+    >>> import netharn as nh
+    >>> datasets = {
+    >>>     'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
+    >>>     'vali': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+    >>> }
+    >>> hyper = nh.HyperParams(**{
+    >>>     # --- Data First
+    >>>     'datasets'    : datasets,
+    >>>     'nice'        : 'demo',
+    >>>     'loaders'     : {'batch_size': 64},
+    >>>     'xpu'         : nh.XPU.cast('auto'),
+    >>>     # --- Algorithm Second
+    >>>     'model'       : (nh.models.ToyNet2d, {}),
+    >>>     'optimizer'   : (nh.optimizers.SGD, {
+    >>>         'lr': 0.001
+    >>>     }),
+    >>>     'criterion'   : (nh.criterions.CrossEntropyLoss, {}),
+    >>>     #'criterion'   : (nh.criterions.FocalLoss, {}),
+    >>>     'initializer' : (nh.initializers.KaimingNormal, {
+    >>>         'param': 0,
+    >>>     }),
+    >>>     'scheduler'   : (nh.schedulers.ListedLR, {
+    >>>         'points': {0: .001, 2: .01, 5: .015, 6: .005, 9: .001},
+    >>>     }),
+    >>>     'monitor'     : (nh.Monitor, {
+    >>>         'max_epoch': 10
+    >>>     }),
+    >>> })
+    >>> print(ub.repr2(hyper.get_initkw()))
+    >>> print(ub.repr2(hyper.hyper_id()))
+
+
 """
 import numpy as np
 import ubelt as ub
@@ -17,6 +59,8 @@ import torch.utils.data as torch_data
 def _rectify_class(lookup, arg, kw):
     if arg is None:
         return None, {}
+    if lookup is None:
+        lookup = ub.identity
 
     if isinstance(arg, tuple):
         cls = lookup(arg[0])
@@ -173,6 +217,36 @@ def _rectify_model(arg, kw):
     return cls, kw2
 
 
+def _rectify_loaders(arg, kw):
+    """
+    Loaders are handled slightly differently than other classes
+    We construct them eagerly (if they are not already constructed)
+    """
+    if arg is None:
+        arg = {}
+
+    loaders = None
+
+    if isinstance(arg, dict):
+        if isinstance(arg.get('train', None), torch_data.DataLoader):
+            # loaders were custom specified
+            loaders = arg
+            # TODO: extract relevant loader params efficiently
+            cls = None
+            kw2 = {
+                'batch_size': loaders['train'].batch_sampler.batch_size,
+            }
+        else:
+            # loaders is kwargs for `torch_data.DataLoader`
+            arg = (torch_data.DataLoader, arg)
+            cls, kw2 = _rectify_class(None, arg, kw)
+    else:
+        raise ValueError('Loaders should be a dict')
+
+    kwnice = ub.dict_subset(kw2, ['batch_size'])
+    return loaders, cls, kw2, kwnice
+
+
 class HyperParams(object):
     """
     Holds hyperparams relavent to training strategy
@@ -202,10 +276,10 @@ class HyperParams(object):
     def __init__(hyper,
                  # ----
                  datasets=None,
-                 loaders=None,
                  nice=None,
                  workdir=None,
                  xpu=None,
+                 loaders=None,
                  # ----
                  model=None,
                  criterion=None,
@@ -218,6 +292,17 @@ class HyperParams(object):
                  other=None,
                  ):
         kwargs = {}
+
+        hyper.datasets = datasets
+        hyper.nice = nice
+        hyper.workdir = workdir
+        hyper.xpu = xpu
+
+        loaders, cls, kw, kwnice = _rectify_loaders(loaders, kwargs)
+        hyper.loaders = loaders
+        hyper.loader_cls = cls
+        hyper.loader_params = kw
+        hyper.loader_params_nice = kwnice
 
         cls, kw = _rectify_model(model, kwargs)
         hyper.model_cls = cls
@@ -243,17 +328,8 @@ class HyperParams(object):
         hyper.monitor_cls = cls
         hyper.monitor_params = kw
 
-        hyper.loaders = loaders
-
-        hyper.nice = nice
-        hyper.workdir = workdir
-        hyper.datasets = datasets
-
         hyper.augment = augment
-
         hyper.other = other
-
-        hyper.xpu = xpu
 
     def make_model(hyper):
         """ Instanciate the model defined by the hyperparams """
@@ -286,18 +362,14 @@ class HyperParams(object):
 
     def make_loaders(hyper):
         assert hyper.loaders is not None
-
-        if isinstance(hyper.loaders.get('loaders', None), torch_data.Dataset):
-            # loaders were custom specified
+        if hyper.loaders is not None:
             return hyper.loaders
         else:
-            # loaders is kwargs for Loader
-            kw = hyper.loaders
             loaders = {
-                key: torch_data.DataLoader(dset, **kw)
+                key: torch_data.DataLoader(dset, **hyper.loader_params)
                 for key, dset in hyper.datasets.items()
             }
-            return loaders
+        return loaders
 
     def make_xpu(hyper):
         """ Instanciate the criterion defined by the hyperparams """
@@ -323,6 +395,18 @@ class HyperParams(object):
     def get_initkw(hyper):
         """
         Make list of class / params relevant to reproducing an experiment
+
+        CommandLine:
+            python ~/code/netharn/netharn/hyperparams.py HyperParams.get_initkw
+
+        Example:
+            >>> from netharn.hyperparams import *
+            >>> hyper = HyperParams(
+            >>>     criterion='CrossEntropyLoss',
+            >>>     optimizer='Adam',
+            >>>     loaders={'batch_size': 64},
+            >>> )
+            >>> print(ub.repr2(hyper.get_initkw()))
         """
         initkw = ub.odict()
         def _append_part(key, cls, params):
@@ -358,6 +442,9 @@ class HyperParams(object):
         _append_part('optimizer', hyper.optimizer_cls, hyper.optimizer_params)
         _append_part('scheduler', hyper.scheduler_cls, hyper.scheduler_params)
         _append_part('criterion', hyper.criterion_cls, hyper.criterion_params)
+
+        # Loader is a bit hacked
+        _append_part('loader', hyper.loader_cls, hyper.loader_params_nice)
         return initkw
 
     def augment_json(hyper):
