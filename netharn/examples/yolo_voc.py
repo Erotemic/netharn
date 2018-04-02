@@ -576,8 +576,8 @@ def setup_harness(bsize=16, workers=0):
         }),
 
         'initializer': (nh.initializers.Pretrained, {
-            'fpath': light_yolo.demo_weights(),
-            # 'fpath': light_yolo.initial_imagenet_weights(),
+            # 'fpath': light_yolo.demo_weights(),
+            'fpath': light_yolo.initial_imagenet_weights(),
         }),
 
         'optimizer': (torch.optim.SGD, {
