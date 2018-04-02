@@ -192,7 +192,7 @@ def clean():
         ub.delete(dpath, verbose=1)
 
 
-CUDACONFIG = locate_cuda()
+gpu_setup.locate_cuda()
 
 # Obtain the numpy include directory.  This logic works across numpy versions.
 try:
@@ -217,22 +217,22 @@ class custom_build_ext(build_ext):
 ext_modules = []
 
 
-util_m = 'netharn.utils.'
+util_m = 'netharn.util.'
 util_p = util_m.replace('.', os.path.sep)
 
 ext_modules += [
-#     Extension(
-#         util_m + "cython_bbox",
-#         [join(util_p, "cython_bbox.pyx")],
-#         extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
-#         include_dirs=[numpy_include]
-#     ),
-#     Extension(
-#         util_m + "cython_yolo",
-#         [join(util_p, "cython_yolo.pyx")],
-#         extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
-#         include_dirs=[numpy_include]
-#     ),
+    # Extension(
+    #     util_m + "cython_bbox",
+    #     [join(util_p, "cython_bbox.pyx")],
+    #     extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
+    #     include_dirs=[numpy_include]
+    # ),
+    # Extension(
+    #     util_m + "cython_yolo",
+    #     [join(util_p, "cython_yolo.pyx")],
+    #     extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
+    #     include_dirs=[numpy_include]
+    # ),
     Extension(
         util_m + "nms.cpu_nms",
         [join(util_p, "nms/cpu_nms.pyx")],
@@ -246,10 +246,10 @@ ext_modules += [
     Extension(util_m + 'nms.gpu_nms',
               [join(util_p, 'nms/nms_kernel.cu'),
                join(util_p, 'nms/gpu_nms.pyx')],
-              library_dirs=[CUDACONFIG['lib64']],
+              library_dirs=[gpu_setup.CUDACONFIG['lib64']],
               libraries=['cudart'],
               language='c++',
-              runtime_library_dirs=[CUDACONFIG['lib64']],
+              runtime_library_dirs=[gpu_setup.CUDACONFIG['lib64']],
               # this syntax is specific to this build system
               # we're only going to use certain compiler args with
               # nvcc and not with gcc
@@ -261,7 +261,7 @@ ext_modules += [
                                            '-c',
                                            '--compiler-options',
                                            "'-fPIC'"]},
-              include_dirs=[numpy_include, CUDACONFIG['include']]
+              include_dirs=[numpy_include, gpu_setup.CUDACONFIG['include']]
               ),
 ]
 

@@ -62,6 +62,7 @@ def locate_cuda():
             raise EnvironmentError('The CUDA %s path could not '
                                    'be located in %s' % (k, v))
 
+    CUDACONFIG = cudaconfig
     return cudaconfig
 
 
@@ -74,9 +75,7 @@ def customize_compiler_for_nvcc(self):
     distutils.sysconfig.customize_compiler) run on it. So instead of going
     the OO route, I have this. Note, it's kindof like a wierd functional
     subclassing going on."""
-
-    if CUDACONFIG is None:
-        locate_cuda()
+    cudaconfig = CUDACONFIG or locate_cuda()
 
     # tell the compiler it can processes .cu
     self.src_extensions.append('.cu')
@@ -92,7 +91,7 @@ def customize_compiler_for_nvcc(self):
         print(extra_postargs)
         if os.path.splitext(src)[1] == '.cu':
             # use the cuda for .cu files
-            self.set_executable('compiler_so', CUDACONFIG['nvcc'])
+            self.set_executable('compiler_so', cudaconfig['nvcc'])
             # use only a subset of the extra_postargs, which are 1-1 translated
             # from the extra_compile_args in the Extension class
             postargs = extra_postargs['nvcc']
@@ -125,9 +124,7 @@ class TorchExtension(object):
     def build(self):
         from torch.utils.ffi import create_extension
         import ubelt as ub
-
-        if CUDACONFIG is None:
-            locate_cuda()
+        cudaconfig = CUDACONFIG or locate_cuda()
 
         sources = [p for p in self.sources if p.endswith('.c')]
         headers = [p for p in self.sources if p.endswith('.h')]
@@ -143,7 +140,7 @@ class TorchExtension(object):
             extra = ' '.join(self.extra_compile_args.get('nvcc', []))
             command_fmt = '{nvcc_exe} -c -o {cu_objects} {cu_sources} {extra}'
             command = command_fmt.format(
-                nvcc_exe=CUDACONFIG['nvcc'],
+                nvcc_exe=cudaconfig['nvcc'],
                 cu_objects=' '.join(cu_objects),
                 cu_sources=' '.join(cu_sources),
                 extra=extra,
