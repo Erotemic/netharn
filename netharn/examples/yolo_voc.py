@@ -578,13 +578,13 @@ def setup_harness(bsize=16, workers=0):
         }),
 
         'optimizer': (torch.optim.SGD, {
-            'lr': .001,
+            'lr': .0005,
             'momentum': 0.9,
             'weight_decay': 0.0005,
         }),
 
         'scheduler': (nh.schedulers.ListedLR, {
-            'points': {0: .001, 10: .01,  60: .015, 90: .001},
+            'points': {0: .0005, 10: .01,  60: .015, 90: .001},
             'interpolate': True
         }),
 
