@@ -410,11 +410,7 @@ class YoloHarn(nh.FitHarn):
         """
         tag = harn.current_tag
         if tag == 'train':
-            # check that the weights are still ok
-            state = harn.model.module.state_dict()
-            weights = sum([v.sum() for v in state.values()])
-            if (not np.isfinite(weights) or np.isnan(weights)):
-                raise Exception('NON-FINITE WEIGHTS weights = {!r}'.format(weights))
+            harn.datasets['train'].augmenter = harn.datasets['train']._augmenter
 
         loader = harn.loaders[tag]
         y = pd.concat(harn.batch_confusions)
@@ -577,7 +573,16 @@ def setup_harness(bsize=16, workers=0):
         },
     })
     harn = YoloHarn(hyper=hyper)
-    harn.use_tqdm = False
+    harn.config['use_tqdm'] = False
+    harn.config['log_iter_values'] = True
+
+    # disable augmenter for the first epoch
+    harn.datasets['train']._augmenter = harn.datasets['train'].augmenter
+    harn.datasets['train'].augmenter = None
+    harn.intervals['display_train'] = 10
+    harn.intervals['display_test'] = 10
+    harn.intervals['display_vali'] = 10
+
     return harn
 
 
