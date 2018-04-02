@@ -39,7 +39,10 @@ class ConstructorMixin:
         harn.hyper = hyper
 
         harn._main_prog = None
+
         harn.datasets = None
+        harn.loaders = None
+
         harn.model = None
         harn.optimizer = None
         harn.scheduler = None
@@ -49,6 +52,9 @@ class ConstructorMixin:
         harn.paths = None
 
         harn._initialized = False
+        harn.flog = None
+
+        harn.dry = None
 
         harn.intervals = {
             'display_train': 1,
@@ -98,9 +104,10 @@ class InitializeMixin:
         harn.nice_dpath = train_info['nice_dpath']
         harn.train_dpath = train_info['train_dpath']
         harn.link_dpath = train_info['link_dpath']
+
         return harn.train_dpath
 
-    def initialize(harn):
+    def initialize(harn, reset=False):
         """
         Uses the hyper parameters to initialize the necessary resources and
         restart from previously
@@ -111,7 +118,11 @@ class InitializeMixin:
         harn.xpu.set_as_default()
 
         if harn.paths is None:
-            harn.setup_paths(harn.workdir)
+            harn.setup_paths()
+
+        if reset == 'delete':
+            ub.delete(harn.train_dpath)
+            ub.ensuredir(harn.train_dpath)
 
         use_file_logger = True
         if use_file_logger and harn.flog is None:
@@ -153,6 +164,11 @@ class InitializeMixin:
         else:
             harn.log('No Scheduler')
 
+        harn.debug('Making loaders')
+        harn.datasets = harn.hyper.datasets
+        harn.loaders = harn.hyper.make_loaders()
+
+        harn.debug('Making model')
         harn.model = harn.hyper.make_model()
         harn.initializer = harn.hyper.make_initializer()
 
@@ -178,7 +194,7 @@ class InitializeMixin:
 
         needs_init = True
         harn.log('There are {} existing snapshots'.format(len(prev_states)))
-        if prev_states and not ub.argflag('--reset'):
+        if prev_states and not reset:
             harn.log('Loading previous states')
             # Ignore corrupted snapshots
             for load_path in reversed(prev_states):
@@ -220,7 +236,7 @@ class InitializeMixin:
 
 @register_mixin
 class ProgMixin:
-    def _make_prog(harn):
+    def _make_prog(harn, **kw):
         harn.use_tqdm = getattr(harn, 'use_tqdm', False)
         if harn.use_tqdm:
             import tqdm
@@ -228,7 +244,7 @@ class ProgMixin:
         else:
             import functools
             Prog = functools.partial(ub.ProgIter, verbose=1)
-        return Prog
+        return Prog(**kw)
 
     def _batch_msg(harn, metric_dict, batch_size):
         bs = 'x{}'.format(batch_size)
@@ -248,7 +264,7 @@ class ProgMixin:
         desc = 'epoch lr:{} │ {}'.format(lr_str, harn.monitor.message())
         harn.debug(desc)
         harn.main_prog.set_description(desc, refresh=False)
-        if isinstance(harn.main_prog, ub.progiter):
+        if isinstance(harn.main_prog, ub.ProgIter):
             if not harn.main_prog.started:
                 # harn.main_prog.ensure_newline()
                 harn.main_prog.clearline = False
@@ -429,7 +445,8 @@ class ScheduleMixin:
         harn.model.load_state_dict(snapshot['model_state_dict'])
 
     def _check_termination(harn):
-        if harn.epoch >= harn.config['max_iter']:
+        # if harn.epoch >= harn.config['max_epoch']:
+        if harn.epoch >= harn.monitor.max_epoch:
             harn._close_prog()
             harn.log('Maximum harn.epoch reached, terminating ...')
             return True
@@ -514,7 +531,8 @@ class CoreMixin:
             return
 
         harn.main_prog = harn._make_prog(desc='epoch',
-                                         total=harn.config['max_iter'],
+                                         # total=harn.config['max_epoch'],
+                                         total=harn.monitor.max_epoch,
                                          disable=not harn.config['show_prog'],
                                          leave=True, dynamic_ncols=True,
                                          position=1, initial=harn.epoch)
@@ -622,7 +640,7 @@ class CoreMixin:
         # use exponentially weighted or windowed moving averages across epochs
         iter_moving_metrics = harn._run_metrics[tag]
         # use simple moving average within an epoch
-        epoch_moving_metrics = util.cummovingave()
+        epoch_moving_metrics = util.CumMovingAve()
 
         # train batch
         if not harn.dry:
@@ -637,7 +655,9 @@ class CoreMixin:
         prog = harn._make_prog(desc=desc, total=len(loader), disable=not
                                harn.config['show_prog'], position=position,
                                leave=True, dynamic_ncols=True)
-        prog.set_postfix({'wall': time.strftime('%h:%m') + ' ' + time.tzname[0]})
+        needs_postfix = not isinstance(prog, ub.ProgIter)
+        if needs_postfix:
+            prog.set_postfix({'wall': time.strftime('%h:%m') + ' ' + time.tzname[0]})
 
         with util.grad_context(learn):
             batch_iter = iter(loader)
@@ -670,7 +690,8 @@ class CoreMixin:
                     #     harn.log_value(tag + ' iter ' + key, value, iter_idx)
 
                     prog.update(harn.intervals['display_' + tag])
-                    prog.set_postfix({'wall': time.strftime('%h:%m') + ' ' + time.tzname[0]})
+                    if needs_postfix:
+                        prog.set_postfix({'wall': time.strftime('%h:%m') + ' ' + time.tzname[0]})
 
         prog.close()
 
@@ -693,7 +714,7 @@ class CoreMixin:
         https://github.com/meetshah1995/pytorch-semseg/blob/master/train.py
         """
         try:
-            outputs, loss = harn.run_batch(harn, inputs, labels)
+            outputs, loss = harn.run_batch(inputs, labels)
         except Exception:
             harn.error('may need to make a custom batch runner with set_batch_runner')
             raise
@@ -706,7 +727,7 @@ class CoreMixin:
 
         return outputs, loss
 
-    def _on_batch(harn, output, label, loss):
+    def _on_batch(harn, output, labels, loss):
         """
         Overload Encouraged
         """
@@ -723,7 +744,7 @@ class CoreMixin:
         metrics_dict = {
             'loss': loss_value,
         }
-        custom_metrics = harn.on_batch(output, label, loss)
+        custom_metrics = harn.on_batch(output, labels, loss)
         if custom_metrics:
             isect = set(custom_metrics).intersection(set(metrics_dict))
             if isect:
@@ -776,10 +797,10 @@ class CoreCallback:
         """
         # Simple forward prop and loss computation
         outputs = harn.model(*inputs)
-        loss = harn.criterion(outputs, labels)
+        loss = harn.criterion(outputs, *labels)
         return outputs, loss
 
-    def on_batch(harn):
+    def on_batch(harn, output, labels, loss):
         """
         custom callback typically used to compute batch evaluation measures
         or accumulate data.
@@ -813,18 +834,24 @@ class FitHarn(*MIXINS):
 
     Example:
         >>> import netharn as nh
-        >>> datasets = {'train': nh.data.ToyData2d()}
+        >>> datasets = {
+        >>>     'train': nh.data.ToyData2d(size=4, border=1, n=1000, rng=0),
+        >>>     'vali': nh.data.ToyData2d(size=4, border=1, n=100, rng=1),
+        >>> }
         >>> hyper = {
         >>>     # --- Data First
         >>>     'datasets'    : datasets,
         >>>     'nice'        : 'demo',
         >>>     'workdir'     : ub.truepath('~/work/netharn/toy2d'),
-        >>>     # --- Algorithm Second
+        >>>     'loaders'     : {'batch_size': 16},
         >>>     'xpu'         : 'cpu',
+        >>>     # --- Algorithm Second
         >>>     'model'       : (nh.models.ToyNet2d, {}),
         >>>     'optimizer'   : (nh.optimizers.SGD, {
         >>>         'lr': 0.001
         >>>     }),
+        >>>     #'criterion'   : (nh.criterions.CrossEntropyLoss, {}),
+        >>>     'criterion'   : (nh.criterions.FocalLoss, {}),
         >>>     'initializer' : (nh.initializers.KaimingNormal, {
         >>>         'param': 0,
         >>>     }),
@@ -832,10 +859,12 @@ class FitHarn(*MIXINS):
         >>>         'step_points': {0: .001, 10: .01, 60: .01}
         >>>     }),
         >>>     'monitor'     : (nh.Monitor, {
-        >>>         'max_epoch': 10
+        >>>         'max_epoch': 100
         >>>     }),
         >>> }
         >>> harn = FitHarn(hyper)
+        >>> harn.use_tqdm = True
+        >>> harn.initialize(reset='delete')
         >>> harn.run()
     """
 

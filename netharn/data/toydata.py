@@ -12,7 +12,7 @@ class ToyData1d(torch_data.Dataset, base.DataMixin):
         Spiral 2d data points
 
         CommandLine:
-            python ~/code/netharn/netharn/data/toydata.py ToyData2D --show
+            python ~/code/netharn/netharn/data/toydata.py ToyData1d --show
 
         Example:
             >>> dset = ToyData1d()
@@ -71,10 +71,10 @@ class ToyData1d(torch_data.Dataset, base.DataMixin):
 class ToyData2d(torch_data.Dataset, base.DataMixin):
     """
     CommandLine:
-        python ~/code/netharn/netharn/data/toydata.py ToyData2D --show
+        python ~/code/netharn/netharn/data/toydata.py ToyData2d --show
 
     Example:
-        >>> self = ToyData2D()
+        >>> self = ToyData2d()
         >>> data1, label1 = self[0]
         >>> data2, label2 = self[-1]
         >>> # xdoctest: +REQUIRES(--show)
@@ -85,15 +85,15 @@ class ToyData2d(torch_data.Dataset, base.DataMixin):
         >>> mplutil.imshow(data2.numpy().squeeze(), pnum=(1, 2, 2))
         >>> mplutil.show_if_requested()
     """
-    def __init__(self, rng=None):
-        if rng is None:
-            rng = np.random.RandomState()
-        n = 100
+    def __init__(self, size=4, border=1, n=100, rng=None):
+        rng = util.ensure_rng(rng)
 
-        whiteish = rng.rand(n, 1, 8, 8) * .9
-        blackish = rng.rand(n, 1, 8, 8) * .2
+        h = w = size
 
-        fw = 2  # frame width
+        whiteish = 1 - (np.abs(rng.randn(n, 1, h, w) / 4) % 1)
+        blackish = (np.abs(rng.randn(n, 1, h, w) / 4) % 1)
+
+        fw = border
         slices = [slice(None, fw), slice(-fw, None)]
 
         # class 0 is white block inside a black frame

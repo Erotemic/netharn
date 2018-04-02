@@ -23,14 +23,13 @@ class Folders(object):
 
         arch_base = join(self.workdir, 'arch', arch)
 
-        if 'train' in hyper.input_ids:
-            # NEW WAY
-            input_id = hyper.input_ids['train']
-        else:
-            # OLD WAY
-            input_id = self.datasets['train'].input_id
+        train_dset = hyper.datasets['train']
+        if hasattr(train_dset, 'input_id'):
+            input_id = train_dset.input_id
             if callable(input_id):
                 input_id = input_id()
+        else:
+            input_id = 'none'
 
         train_hyper_id_long = hyper.hyper_id()
         train_hyper_id_brief = hyper.hyper_id(short=short, hashed=hashed)
@@ -42,11 +41,11 @@ class Folders(object):
         augment_json = hyper.augment_json()
 
         aug_brief = 'AU' + ub.hash_data(augment_json)[0:6]
-        extra_hash = ub.hash_data([hyper.centering])[0:6]
+        # extra_hash = ub.hash_data([hyper.centering])[0:6]
 
-        train_id = '{}_{}_{}_{}_{}'.format(
+        train_id = '{}_{}_{}_{}'.format(
             ub.hash_data(input_id)[:6], train_hyper_id_brief,
-            aug_brief, extra_hash, other_id)
+            aug_brief, other_id)
 
         # Gather all information about this run into a single hash
         train_hashid = ub.hash_data(train_id)[0:8]
@@ -104,7 +103,7 @@ class Folders(object):
 
             # TODO, add in n_classes if applicable
             # TODO, add in centering if applicable
-            ('centering', hyper.centering),
+            # ('centering', hyper.centering),
 
             # HACKED IN
             ('augment', hyper.augment_json()),
