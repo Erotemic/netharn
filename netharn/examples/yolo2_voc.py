@@ -29,20 +29,18 @@ import numpy as np
 import pandas as pd
 import imgaug as ia
 import imgaug.augmenters as iaa
-from netharn.models.yolo2.utils import yolo_utils as yolo_utils
+# from netharn.models.yolo2.utils import yolo_utils as yolo_utils
 from netharn.models.yolo2 import multiscale_batch_sampler
 from netharn.data import voc
-from netharn import hyperparams
-from netharn import xpu_device
-from netharn import fit_harness
-from netharn import monitor
-from netharn import initializers
-from netharn.lr_scheduler import ListedLR
+import netharn as nh
+# from netharn import monitor
+# from netharn import initializers
+# from netharn.lr_scheduler import ListedLR
 
 # from lightnet.network.loss import RegionLoss
 # from lightnet.models.network_yolo import Yolo
 # from netharn.models.yolo2.light_yolo import Yolo
-from netharn.models.yolo2.region_loss import RegionLoss
+from netharn.models.yolo2 import light_region_loss
 from netharn.models.yolo2 import light_yolo
 
 
@@ -170,7 +168,7 @@ class YoloVOCDataset(voc.VOCDataset):
         # load the raw data from VOC
 
         cacher = ub.Cacher('voc_img', cfgstr=ub.repr2([index, inp_size]),
-                           appname='netharn')
+                           appname='clab')
         data = cacher.tryload()
         if data is None:
             image = self._load_image(index)
@@ -266,7 +264,7 @@ class YoloVOCDataset(voc.VOCDataset):
 
             tlbr = np.array([[bb.x1, bb.y1, bb.x2, bb.y2]
                              for bb in bbs.bounding_boxes])
-            tlbr = yolo_utils.clip_boxes(tlbr, hwc255.shape[0:2])
+            tlbr = util.clip_boxes(tlbr, hwc255.shape[0:2])
 
         # Remove boxes that are too small
         # ONLY DO THIS FOR THE SMALL DEMO TASK
@@ -363,7 +361,7 @@ def ensure_ulimit():
 def ensure_lightnet_initial_weights():
     import os
     weight_fpath = ub.grabdata(
-        'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='netharn')
+        'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='clab')
     torch_fpath = weight_fpath + '.pt'
     if not os.path.exists(torch_fpath):
         # hack to transform initial state
@@ -427,7 +425,7 @@ def setup_harness(workers=None):
     pretrained_fpath = ensure_lightnet_initial_weights()
 
     # NOTE: XPU implicitly supports DataParallel just pass --gpu=0,1,2,3
-    xpu = xpu_device.XPU.cast('argv')
+    xpu = nh.XPU.cast('argv')
     print('xpu = {!r}'.format(xpu))
 
     ensure_ulimit()
@@ -480,7 +478,7 @@ def setup_harness(workers=None):
                                   8.09892, 9.47112, 4.84053, 11.2364, 10.0071])
 
     print('Making hyperparams')
-    hyper = hyperparams.HyperParams(
+    hyper = nh.HyperParams(
 
         # model=(darknet.Darknet19, {
         model=(light_yolo.Yolo, {
@@ -490,7 +488,7 @@ def setup_harness(workers=None):
             'nms_thresh': postproc_params['nms_thresh'],
         }),
 
-        criterion=(RegionLoss, {
+        criterion=(light_region_loss.RegionLoss, {
             'num_classes': datasets['train'].num_classes,
             'anchors': anchors,
             # 'object_scale': 5.0,
@@ -506,11 +504,11 @@ def setup_harness(workers=None):
             weight_decay=0.0005
         )),
 
-        initializer=(initializers.Pretrained, {
+        initializer=(nh.initializers.Pretrained, {
             'fpath': pretrained_fpath,
         }),
 
-        scheduler=(ListedLR, dict(
+        scheduler=(nh.schedulers.ListedLR, dict(
             step_points=lr_step_points
         )),
 
@@ -518,21 +516,25 @@ def setup_harness(workers=None):
             'nice': str(nice),
             'batch_size': loaders['train'].batch_sampler.batch_size,
         }, postproc_params),
-        centering=None,
+
+        nice=nice,
+        monitor=(nh.Monitor, {'min_keys': ['loss'],
+                              # max_keys=['global_acc', 'class_acc'],
+                              'patience': max_epoch}),
 
         # centering=datasets['train'].centering,
         augment=datasets['train'].augmenter,
-    )
-
-    harn = fit_harness.FitHarness(
-        hyper=hyper, xpu=xpu, loaders=loaders, max_iter=max_epoch,
+        xpu=xpu,
+        loaders=loaders,
         workdir=workdir,
     )
+
+    harn = nh.FitHarn(
+        hyper=hyper,
+        # xpu=xpu, loaders=loaders, max_iter=max_epoch,
+        # workdir=workdir,
+    )
     harn.postproc_params = postproc_params
-    harn.nice = nice
-    harn.monitor = monitor.Monitor(min_keys=['loss'],
-                                   # max_keys=['global_acc', 'class_acc'],
-                                   patience=max_epoch)
 
     @harn.set_batch_runner
     @profiler.profile
@@ -714,57 +716,9 @@ def setup_harness(workers=None):
 
 def train():
     """
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=baseline --workers=0
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=trainval2
-
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=med_batch --workers=6 --gpu=0,1 --batch_size=32
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=big_batch --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=combined
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=big_batch --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=normal
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=three_batch --workers=6 --gpu=1,2,3 --batch_size=48
-
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=basic --workers=0 --gpu=0 --batch_size=16
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=basic --workers=0 --batch_size=16
-
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=small_batch --workers=6 --gpu=0,1,2,3 --batch_size=16 --data=combined
-
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=simple --workers=2 --gpu=0 --batch_size=16 --data=notest
-
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=custom_batch64 --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=combined
-
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo_custom_batch16 --workers=2 --gpu=0 --batch_size=16 --data=combined
-
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo_longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw
-
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo_longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw --denom=num_boxes
-
-    # -------------
-    # ACIDALIA
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=0 --batch_size=16 --data=combined --denom=bsize --2012
-
-    # -------------
-    # ARETHA
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo12_batch16_div_boxes --workers=2 --gpu=0 --batch_size=16 --data=combined --denom=num_boxes --2012
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo07_batch16_div_bsize --workers=2 --gpu=3 --batch_size=16 --data=combined --denom=bsize --2007
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo07_batch16_div_boxes --workers=2 --gpu=2 --batch_size=16 --data=combined --denom=num_boxes --2007
-
-    # -------------
-    # HERMES
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo12_batch32_div_bsize --workers=4 --gpu=2,3 --batch_size=32 --data=combined --denom=bsize --2012
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo07_batch32_div_bsize --workers=4 --gpu=0,1 --batch_size=32 --data=combined --denom=bsize --2007
-
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo12_batch64_div_bsize --workers=8 --gpu=0,1,2,3 --batch_size=64 --data=combined --denom=bsize --2012
-
-
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize_light --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
-
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=notest_light_07 --workers=8 --gpu=1 --batch_size=16 --data=notest --2007 --warmup
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=light_combo12_b32 --workers=8 --gpu=2,3 --batch_size=32 --data=combined --2012 --warmup
-
     # -------
     # LOCAL
-    python ~/code/netharn/examples/yolo_voc2.py train --nice=test --workers=0 --gpu=0 --batch_size=32 --data=combined --2007 --warmup --small
+    python ~/code/netharn/netharn/examples/yolo2_voc.py train --nice=test --workers=0 --gpu=0 --batch_size=32 --data=combined --2007 --warmup --small
 
     """
     harn = setup_harness()
@@ -783,4 +737,3 @@ if __name__ == '__main__':
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
-

@@ -113,10 +113,15 @@ class YoloHarn(nh.FitHarn):
 
 def setup_harness():
     """
+    CommandLine:
+        python ~/code/netharn/netharn/examples/yolo_voc.py setup_harness
+
     Example:
         >>> harn = setup_harness()
         >>> harn.initialize()
     """
+    from netharn.models.yolo2 import light_region_loss
+    from netharn.models.yolo2 import light_yolo
 
     datasets = {
         'train': nh.data.VOC2012(tag='trainval'),
@@ -130,7 +135,8 @@ def setup_harness():
 
         # 'xpu': 'distributed(todo: fancy network stuff)',
         # 'xpu': 'cpu',
-        'xpu': 'gpu:0,1,2,3',
+        'xpu': 'gpu',
+        # 'xpu': 'gpu:0,1,2,3',
 
         # a single dict is applied to all datset loaders
         'loaders': {
@@ -140,7 +146,7 @@ def setup_harness():
             # 'init_fn': None,
         },
 
-        'model': (nh.Yolo2, {
+        'model': (light_yolo.Yolo, {
             'num_classes': datasets['train'].num_classes,
             'anchors': datasets['train'].anchors,
             'conf_thresh': 0.001,
@@ -148,7 +154,7 @@ def setup_harness():
             'ovthresh': 0.5,
         }),
 
-        'criterion': (nh.RegionLoss, {
+        'criterion': (light_region_loss.RegionLoss, {
             'num_classes': datasets['train'].num_classes,
             'anchors': datasets['train'].anchors,
             'object_scale': 5.0,
@@ -197,8 +203,7 @@ def setup_harness():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        set PYTHONPATH=%PYTHONPATH%;C:/Users/erote/code/netharn/netharn
-        python %USERPROFILE%/code/netharn/netharn/yolo_voc.py
+        python ~/code/netharn/netharn/examples/yolo_voc.py train
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
