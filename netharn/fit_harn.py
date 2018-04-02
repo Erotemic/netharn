@@ -1,23 +1,61 @@
 # -*- coding: utf-8 -*-
 """
+CommandLine:
+    python ~/code/netharn/netharn/fit_harn.py __doc__
+
+Example:
+    >>> import netharn as nh
+    >>> datasets = {
+    >>>     'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
+    >>>     'vali': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+    >>> }
+    >>> hyper = {
+    >>>     # --- Data First
+    >>>     'datasets'    : datasets,
+    >>>     'nice'        : 'demo',
+    >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/demo'),
+    >>>     'loaders'     : {'batch_size': 64},
+    >>>     'xpu'         : nh.XPU.cast('auto'),
+    >>>     # --- Algorithm Second
+    >>>     'model'       : (nh.models.ToyNet2d, {}),
+    >>>     'optimizer'   : (nh.optimizers.SGD, {
+    >>>         'lr': 0.001
+    >>>     }),
+    >>>     'criterion'   : (nh.criterions.CrossEntropyLoss, {}),
+    >>>     #'criterion'   : (nh.criterions.FocalLoss, {}),
+    >>>     'initializer' : (nh.initializers.KaimingNormal, {
+    >>>         'param': 0,
+    >>>     }),
+    >>>     'scheduler'   : (nh.schedulers.ListedLR, {
+    >>>         'step_points': {0: .001, 2: .01, 5: .015, 6: .005, 9: .001},
+    >>>         'interpolate': True,
+    >>>     }),
+    >>>     'monitor'     : (nh.Monitor, {
+    >>>         'max_epoch': 10
+    >>>     }),
+    >>> }
+    >>> harn = FitHarn(hyper)
+    >>> harn.initialize(reset='delete')
+    >>> harn.run()
 """
-import shutil
-import time
-from os.path import sys
-import os
 import glob
-from os.path import join
-import torch  # NOQA
-import ubelt as ub  # NOQA
-import parse
-import numpy as np  # NOQA
-from netharn import device  # NOQA
-from netharn import util
-from netharn import folders
 import itertools as it
 import logging  # NOQA
+import numpy as np  # NOQA
+import os
+import parse
+import shutil
+import time
+import torch
+import ubelt as ub
+import sys
+from os.path import join
 
+from netharn import device  # NOQA
+from netharn import folders
 from netharn import hyperparams
+
+from netharn import util
 from netharn.util import profiler
 
 __all__ = ['FitHarn']
@@ -107,15 +145,24 @@ class InitializeMixin:
 
         return harn.train_dpath
 
+    def setup_flogger(harn):
+        flog_fname = 'fitlog_{}.log'.format(ub.timestamp())
+        flog_fpath = os.path.join(harn.train_dpath, flog_fname)
+        flog = logging.getLogger(harn.__class__.__name__)
+        formatter = logging.Formatter('%(asctime)s : %(message)s')
+        handler = logging.FileHandler(flog_fpath, mode='w')
+        handler.setFormatter(formatter)
+        flog.propagate = False
+        flog.setLevel(logging.DEBUG)
+        flog.addHandler(handler)
+        harn.flog = flog
+        harn.debug('initialized file logger')
+
     def initialize(harn, reset=False):
         """
         Uses the hyper parameters to initialize the necessary resources and
         restart from previously
         """
-        # TODO: Initialize the classes and then have a different function move
-        # everything to GPU
-        harn.xpu = harn.hyper.make_xpu()
-        harn.xpu.set_as_default()
 
         if harn.paths is None:
             harn.setup_paths()
@@ -126,19 +173,12 @@ class InitializeMixin:
 
         use_file_logger = True
         if use_file_logger and harn.flog is None:
-            flog_fname = 'fitlog_{}.log'.format(ub.timestamp())
-            flog_fpath = os.path.join(harn.train_dpath, flog_fname)
-            flog = logging.getLogger(harn.__class__.__name__)
-            formatter = logging.Formatter('%(asctime)s : %(message)s')
-            handler = logging.FileHandler(flog_fpath, mode='w')
-            handler.setFormatter(formatter)
-            flog.propagate = False
-            flog.setLevel(logging.DEBUG)
-            flog.addHandler(handler)
-            harn.flog = flog
-            harn.debug('initialized file logger')
+            harn.setup_flogger()
 
+        harn.debug('make XPU')
+        harn.xpu = harn.hyper.make_xpu()
         harn.debug('harn.xpu = {!r}'.format(harn.xpu))
+        harn.xpu.set_as_default()
 
         import tensorboard_logger
         if tensorboard_logger:
@@ -237,7 +277,7 @@ class InitializeMixin:
 @register_mixin
 class ProgMixin:
     def _make_prog(harn, **kw):
-        harn.use_tqdm = getattr(harn, 'use_tqdm', False)
+        harn.use_tqdm = getattr(harn, 'use_tqdm', True)
         if harn.use_tqdm:
             import tqdm
             Prog = tqdm.tqdm
@@ -329,8 +369,8 @@ class SnapshotMixin:
         def _epochs_to_remove(epochs):
             """
             doctest:
-                >>> harn = fitharness()
-                >>> rng = np.random.randomstate(0)
+                >>> harn = FitHarn()
+                >>> rng = np.random.RandomState(0)
                 >>> for epoch in range(200):
                 >>>     harn.monitor.update(epoch, {'loss': rng.rand(),
                 >>>                                 'miou': rng.rand()})
@@ -828,45 +868,6 @@ class FitHarn(*MIXINS):
 
             Because it is serializable it also has an easy to use dict
             representation.
-
-    CommandLine:
-        python ~/code/netharn/netharn/fit_harn.py FitHarn
-
-    Example:
-        >>> import netharn as nh
-        >>> datasets = {
-        >>>     'train': nh.data.ToyData2d(size=4, border=1, n=256, rng=0),
-        >>>     'vali': nh.data.ToyData2d(size=4, border=1, n=128, rng=1),
-        >>> }
-        >>> hyper = {
-        >>>     # --- Data First
-        >>>     'datasets'    : datasets,
-        >>>     'nice'        : 'demo',
-        >>>     'workdir'     : ub.truepath('~/work/netharn/toy2d'),
-        >>>     'loaders'     : {'batch_size': 64},
-        >>>     'xpu'         : 'auto',
-        >>>     # --- Algorithm Second
-        >>>     'model'       : (nh.models.ToyNet2d, {}),
-        >>>     'optimizer'   : (nh.optimizers.SGD, {
-        >>>         'lr': 0.001
-        >>>     }),
-        >>>     #'criterion'   : (nh.criterions.CrossEntropyLoss, {}),
-        >>>     'criterion'   : (nh.criterions.FocalLoss, {}),
-        >>>     'initializer' : (nh.initializers.KaimingNormal, {
-        >>>         'param': 0,
-        >>>     }),
-        >>>     'scheduler'   : (nh.schedulers.ListedLR, {
-        >>>         'step_points': {0: 0.001, 2: 0.01, 5: 0.015, 6: 0.005, 9: 0.001},
-        >>>         'interpolate': True,
-        >>>     }),
-        >>>     'monitor'     : (nh.Monitor, {
-        >>>         'max_epoch': 10
-        >>>     }),
-        >>> }
-        >>> harn = FitHarn(hyper)
-        >>> harn.use_tqdm = True
-        >>> harn.initialize(reset='delete')
-        >>> harn.run()
     """
 
 if __name__ == '__main__':
