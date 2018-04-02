@@ -741,7 +741,7 @@ class CoreMixin:
                     msg = harn._batch_msg({'loss': ave_metrics['loss']}, bsize)
                     prog.set_description(tag + ' ' + msg)
 
-                    if harn.check_interval('log_iter' + tag, bx):
+                    if harn.check_interval('log_iter_' + tag, bx):
                         iter_idx = (harn.epoch * len(loader) + bx)
                         for key, value in ave_metrics.items():
                             harn.log_value(tag + ' iter ' + key, value, iter_idx)
