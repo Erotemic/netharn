@@ -285,6 +285,7 @@ class YoloHarn(nh.FitHarn):
             # disable augmenter for the first epoch
             harn.datasets['train'].augmenter = None
 
+    @profiler.profile
     def prepare_batch(harn, raw_batch):
         """
         ensure batch is in a standardized structure
@@ -297,6 +298,7 @@ class YoloHarn(nh.FitHarn):
         batch = (inputs, labels)
         return batch
 
+    @profiler.profile
     def run_batch(harn, batch):
         """
         Connect data -> network -> loss
@@ -330,6 +332,7 @@ class YoloHarn(nh.FitHarn):
         loss = harn.criterion(outputs, target, seen=n_seen)
         return outputs, loss
 
+    @profiler.profile
     def on_batch(harn, batch, outputs, loss):
         """
         custom callback
@@ -397,6 +400,7 @@ class YoloHarn(nh.FitHarn):
                 raise ValueError('{}={} is not finite'.format(k, v))
         return metrics_dict
 
+    @profiler.profile
     def on_epoch(harn):
         """
         custom callback
@@ -439,6 +443,7 @@ class YoloHarn(nh.FitHarn):
 
     # Non-standard problem-specific custom methods
 
+    @profiler.profile
     def _measure_confusion(harn, postout, labels):
         targets, gt_weights, orig_sizes, indices, bg_weights = labels
 
