@@ -107,6 +107,7 @@ class ConstructorMixin:
         }
         harn.config = {
             'show_prog': True,
+            'use_tqdm': True,
             'log_iter_values': True,
         }
         harn.epoch = 0
@@ -283,8 +284,7 @@ class InitializeMixin:
 @register_mixin
 class ProgMixin:
     def _make_prog(harn, **kw):
-        harn.use_tqdm = getattr(harn, 'use_tqdm', True)
-        if harn.use_tqdm:
+        if harn.config['use_tqdm']:
             import tqdm
             Prog = tqdm.tqdm
         else:
