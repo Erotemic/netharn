@@ -6,9 +6,10 @@
 import math
 import torch
 import torch.nn as nn
-import numpy as np
+import numpy as np  # NOQA
 from torch.autograd import Variable
 from lightnet.util import bbox_iou, bbox_multi_ious
+from netharn.util import profiler
 
 __all__ = ['RegionLoss']
 
@@ -219,11 +220,12 @@ class RegionLoss(torch.nn.modules.loss._Loss):
     def build_targets(self, pred_boxes, pred_confs, ground_truth, nH, nW, seen=0):
         """ Compare prediction boxes and targets, convert targets to network output tensors """
         if torch.is_tensor(ground_truth):
-            return self.__build_targets_tensor(pred_boxes, pred_confs, ground_truth, nH, nW, seen=seen)
+            return self._build_targets_tensor(pred_boxes, pred_confs, ground_truth, nH, nW, seen=seen)
         else:
             return self.__build_targets_brambox(pred_boxes, pred_confs, ground_truth, nH, nW, seen=seen)
 
-    def __build_targets_tensor(self, pred_boxes, pred_confs, ground_truth, nH, nW, seen=0):
+    @profiler.profile
+    def _build_targets_tensor(self, pred_boxes, pred_confs, ground_truth, nH, nW, seen=0):
         """ Compare prediction boxes and ground truths, convert ground truths to network output tensors """
         # Parameters
         nB = ground_truth.size(0)
