@@ -164,6 +164,8 @@ class InitializeMixin:
         flog.addHandler(handler)
         harn.flog = flog
         harn.debug('initialized file logger')
+        flog_link = os.path.join(harn.train_dpath, 'fit.log')
+        ub.symlink(flog_fpath, flog_link, overwrite=True)
 
     def initialize(harn, reset=False):
         """
