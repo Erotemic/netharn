@@ -531,6 +531,8 @@ def setup_harness(bsize=16, workers=0):
 
     batch_size = int(ub.argval('--batch_size', default=bsize))
     workers = int(ub.argval('--workers', default=workers))
+    lr = float(ub.argval('--lr', default=0.0001))
+    nice = ub.argval('--nice', default='Yolo2Baseline')
 
     datasets = {
         'train': YoloVOCDataset(split='trainval'),
@@ -544,7 +546,7 @@ def setup_harness(bsize=16, workers=0):
     ovthresh = 0.5
 
     hyper = nh.HyperParams(**{
-        'nice': ub.argval('--nice', default='Yolo2Baseline'),
+        'nice': nice,
         'workdir': ub.truepath('~/work/voc_yolo2'),
         'datasets': datasets,
 
@@ -578,13 +580,13 @@ def setup_harness(bsize=16, workers=0):
         }),
 
         'optimizer': (torch.optim.SGD, {
-            'lr': .001,
+            'lr': lr,
             'momentum': 0.9,
             'weight_decay': 0.0005,
         }),
 
         'scheduler': (nh.schedulers.ListedLR, {
-            'points': {0: .001, 10: .01,  60: .015, 90: .001},
+            'points': {0: lr, 10: .01,  60: .015, 90: .001},
             'interpolate': True
         }),
 
@@ -622,8 +624,8 @@ if __name__ == '__main__':
     r"""
     CommandLine:
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=Warmup64
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=ColdOpen64
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=Warmup64 --lr=.00001
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=ColdOpen64 --lr=.001
 
         python ~/code/netharn/netharn/examples/yolo_voc.py all
     """
