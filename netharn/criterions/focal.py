@@ -20,7 +20,7 @@ def one_hot_embedding(labels, num_classes, cpu=True):
         https://discuss.pytorch.org/t/convert-int-into-one-hot-format/507/4
 
     CommandLine:
-        python -m clab.loss one_hot_embedding
+        python -m netharn.loss one_hot_embedding
 
     Example:
         >>> # each element in target has to have 0 <= value < C
@@ -163,8 +163,8 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
           (tensor) sized [N,] focal loss for each class
 
         CommandLine:
-            python -m clab.loss FocalLoss.focal_loss:0 --profile
-            python -m clab.loss FocalLoss.focal_loss:1 --profile
+            python -m netharn.loss FocalLoss.focal_loss:0 --profile
+            python -m netharn.loss FocalLoss.focal_loss:1 --profile
 
         Example:
             >>> # input is of size N x C
@@ -235,7 +235,7 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.loss
+        python -m netharn.loss
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

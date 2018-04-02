@@ -32,7 +32,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         thresh (float): minimum iou for a predicted box to be assigned to a target
 
     Example:
-        >>> from clab.models.yolo2.light_yolo import Yolo
+        >>> from netharn.models.yolo2.light_yolo import Yolo
         >>> from brambox.boxes.annotations import Annotation
         >>> torch.random.manual_seed(0)
         >>> def as_anno(class_id, x_center, y_center, w, h, Win, Hin):
@@ -61,7 +61,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         loss = 20.18
 
     Example:
-        >>> from clab.models.yolo2.light_yolo import Yolo
+        >>> from netharn.models.yolo2.light_yolo import Yolo
         >>> torch.random.manual_seed(0)
         >>> network = Yolo(num_classes=2, conf_thresh=4e-2)
         >>> anchors = {'num': network.num_anchors, 'values': network.anchors}
@@ -405,7 +405,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
 if __name__ == '__main__':
     """
     CommandLine:
-        python -m clab.models.yolo2.region_loss all
+        python -m netharn.models.yolo2.region_loss all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

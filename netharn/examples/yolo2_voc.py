@@ -168,7 +168,7 @@ class YoloVOCDataset(voc.VOCDataset):
         # load the raw data from VOC
 
         cacher = ub.Cacher('voc_img', cfgstr=ub.repr2([index, inp_size]),
-                           appname='clab')
+                           appname='netharn')
         data = cacher.tryload()
         if data is None:
             image = self._load_image(index)
@@ -361,7 +361,7 @@ def ensure_ulimit():
 def ensure_lightnet_initial_weights():
     import os
     weight_fpath = ub.grabdata(
-        'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='clab')
+        'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='netharn')
     torch_fpath = weight_fpath + '.pt'
     if not os.path.exists(torch_fpath):
         # hack to transform initial state
