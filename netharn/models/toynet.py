@@ -13,10 +13,10 @@ class ToyNet1d(torch.nn.Module):
         >>> prob = self(inputs)
         >>> conf, pred = prob.max(dim=1)
     """
-    def __init__(self, num_classes=2):
+    def __init__(self, input_channels=2, num_classes=2):
         super().__init__()
         self.layers = torch.nn.Sequential(*[
-            torch.nn.Linear(2, 8),
+            torch.nn.Linear(input_channels, 8),
             # torch.nn.BatchNorm1d(8),
             torch.nn.Linear(8, 8),
             # torch.nn.BatchNorm1d(8),
@@ -45,10 +45,10 @@ class ToyNet2d(torch.nn.Module):
         >>> prob = self(inputs)
         >>> conf, pred = prob.max(dim=1)
     """
-    def __init__(self, num_classes=2):
+    def __init__(self, input_channels=1, num_classes=2):
         super().__init__()
         self.layers = torch.nn.Sequential(*[
-            torch.nn.Conv2d(1, 8, kernel_size=3, padding=1, bias=False),
+            torch.nn.Conv2d(input_channels, 8, kernel_size=3, padding=1, bias=False),
             torch.nn.BatchNorm2d(8),
             torch.nn.Conv2d(8, 8, kernel_size=3, padding=1, bias=False),
             torch.nn.BatchNorm2d(8),

@@ -21,7 +21,7 @@ class Pretrained(base._BaseInitializer):
         >>> from netharn.initializers.core import *
         >>> from netharn.models import toynet
         >>> self = Orthogonal()
-        >>> model = toynet.ToyNet2D()
+        >>> model = toynet.ToyNet2d()
         >>> self(model)
         >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
         >>> self(layer)
@@ -67,7 +67,7 @@ class Orthogonal(base._BaseInitializer):
         >>> from netharn.initializers.core import *
         >>> from netharn.models import toynet
         >>> self = Orthogonal()
-        >>> model = toynet.ToyNet2D()
+        >>> model = toynet.ToyNet2d()
         >>> self(model)
         >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
         >>> self(layer)
@@ -87,7 +87,7 @@ class KaimingUniform(base._BaseInitializer):
         >>> from netharn.initializers.core import *
         >>> from netharn.models import toynet
         >>> self = KaimingUniform()
-        >>> model = toynet.ToyNet2D()
+        >>> model = toynet.ToyNet2d()
         >>> self(model)
         >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
         >>> self(layer)
@@ -109,7 +109,7 @@ class KaimingNormal(base._BaseInitializer):
         >>> from netharn.initializers.core import *
         >>> from netharn.models import toynet
         >>> self = KaimingNormal()
-        >>> model = toynet.ToyNet2D()
+        >>> model = toynet.ToyNet2d()
         >>> self(model)
         >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
         >>> self(layer)

@@ -835,7 +835,7 @@ class FitHarn(*MIXINS):
     Example:
         >>> import netharn as nh
         >>> datasets = {
-        >>>     'train': nh.data.ToyData2d(size=4, border=1, n=512, rng=0),
+        >>>     'train': nh.data.ToyData2d(size=4, border=1, n=256, rng=0),
         >>>     'vali': nh.data.ToyData2d(size=4, border=1, n=128, rng=1),
         >>> }
         >>> hyper = {
@@ -844,7 +844,7 @@ class FitHarn(*MIXINS):
         >>>     'nice'        : 'demo',
         >>>     'workdir'     : ub.truepath('~/work/netharn/toy2d'),
         >>>     'loaders'     : {'batch_size': 64},
-        >>>     'xpu'         : 'cpu',
+        >>>     'xpu'         : 'auto',
         >>>     # --- Algorithm Second
         >>>     'model'       : (nh.models.ToyNet2d, {}),
         >>>     'optimizer'   : (nh.optimizers.SGD, {
@@ -856,11 +856,11 @@ class FitHarn(*MIXINS):
         >>>         'param': 0,
         >>>     }),
         >>>     'scheduler'   : (nh.schedulers.ListedLR, {
-        >>>         'step_points': {0: 0.001, 4: 0.01, 10: 0.015, 16: 0.005, 18: 0.001},
+        >>>         'step_points': {0: 0.001, 2: 0.01, 5: 0.015, 6: 0.005, 9: 0.001},
         >>>         'interpolate': True,
         >>>     }),
         >>>     'monitor'     : (nh.Monitor, {
-        >>>         'max_epoch': 20
+        >>>         'max_epoch': 10
         >>>     }),
         >>> }
         >>> harn = FitHarn(hyper)

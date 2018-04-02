@@ -130,18 +130,17 @@ def trainable_layers(model, names=False):
                 queue.append(child)
 
 
-def load_partial_state(model, model_state_dict, initializer=None, shock_partial=True):
+def load_partial_state(model, model_state_dict, initializer=None):
     """
-    Example:
-        >>> from netharn.models.unet import *  # NOQA
-        >>> self1 = UNet(in_channels=5, n_classes=3)
-        >>> self2 = UNet(in_channels=6, n_classes=4)
-        >>> model_state_dict = self1.state_dict()
-        >>> self2.load_partial_state(model_state_dict)
+    CommandLine:
+        python -m netharn.initializers.base load_partial_state
 
-        >>> key = 'conv1.conv1.0.weight'
-        >>> model = self2
-        >>> other_value = model_state_dict[key]
+    Example:
+        >>> import netharn as nh
+        >>> self1 = nh.models.ToyNet2d(input_channels=1, num_classes=10)
+        >>> self2 = nh.models.ToyNet2d(input_channels=3, num_classes=2)
+        >>> model_state_dict = self1.state_dict()
+        >>> load_partial_state(self2, model_state_dict)
     """
     if initializer is None:
         initializer = torch.nn.init.kaiming_normal
@@ -195,11 +194,11 @@ def load_partial_state(model, model_state_dict, initializer=None, shock_partial=
                     sl = tuple([slice(0, s) for s in min_size])
                     self_state[key][sl] = other_value[sl]
 
-                    if shock_partial:
-                        # Shock weights because we are doing something weird
-                        # might help the network recover in case this is
-                        # not a good idea
-                        shock(self_state[key], func=initializer)
+                    # if shock_partial:
+                    #     # Shock weights because we are doing something weird
+                    #     # might help the network recover in case this is
+                    #     # not a good idea
+                    #     shock(self_state[key], func=initializer)
                     unused_keys.remove(key)
             else:
                 print('Skipping {} due to incompatable size'.format(key))
@@ -214,3 +213,11 @@ def load_partial_state(model, model_state_dict, initializer=None, shock_partial=
             else:
                 initializer(self_state[key])
     model.load_state_dict(self_state)
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python -m netharn.initializers.base all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
