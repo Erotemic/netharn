@@ -207,7 +207,7 @@ class GetBoundingBoxes(object):
 
         # Variables
         cuda = output.is_cuda
-        batch = output.size(0)
+        bsize = output.size(0)
         h = output.size(2)
         w = output.size(3)
 
@@ -224,7 +224,7 @@ class GetBoundingBoxes(object):
             anchor_h = anchor_h.cuda()
 
         # -1 == 5+num_classes (we can drop feature maps if 1 class)
-        output_ = output.view(batch, self.num_anchors, -1, h * w)
+        output_ = output.view(bsize, self.num_anchors, -1, h * w)
         output_[:, :, 0, :].sigmoid_().add_(lin_x).div_(w)          # X center
         output_[:, :, 1, :].sigmoid_().add_(lin_y).div_(h)          # Y center
         output_[:, :, 2, :].exp_().mul_(anchor_w).div_(w)           # Width
@@ -252,7 +252,7 @@ class GetBoundingBoxes(object):
             cls_max = cls_max.cpu()
             cls_max_idx = cls_max_idx.cpu()
             boxes = []
-            for b in range(batch):
+            for b in range(bsize):
                 box_batch = []
                 for a in range(self.num_anchors):
                     for i in range(h * w):
@@ -273,12 +273,12 @@ class GetBoundingBoxes(object):
             flat_flags = flags.view(-1)
 
             if not np.any(flat_flags):
-                return []
+                return [[] for _ in range(bsize)]
 
             # number of potential detections per batch
             item_size = np.prod(flags.shape[1:])
             slices = [slice((item_size * i), (item_size * (i + 1)))
-                      for i in range(batch)]
+                      for i in range(bsize)]
             # number of detections per batch (prepended with a zero)
             n_dets = torch.stack(
                 [flat_flags[0].long() * 0] + [flat_flags[sl].long().sum() for sl in slices])
