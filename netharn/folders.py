@@ -6,11 +6,11 @@ from netharn import util
 
 
 class Folders(object):
-    def __init__(self, workdir='.', hyper=None, datasets=None, nice=None):
-        self.datasets = datasets
-        self.workdir = workdir
+    def __init__(self, hyper):
+        self.datasets = hyper.datasets
+        self.workdir = hyper.workdir
+        self.nice = hyper.nice
         self.hyper = hyper
-        self.nice = nice
 
     def train_info(self, short=True, hashed=True):
         # TODO: needs MASSIVE cleanup and organization
@@ -138,4 +138,3 @@ class Folders(object):
         print('train_id = {!r}'.format(train_info['train_id']))
         print('+=========')
         return train_info
-
