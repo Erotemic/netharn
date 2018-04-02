@@ -278,6 +278,13 @@ class YoloHarn(nh.FitHarn):
         harn.batch_confusions = []
         harn.aps = {}
 
+    def initialize(harn):
+        super().initialize()
+        harn.datasets['train']._augmenter = harn.datasets['train'].augmenter
+        if harn.epoch <= 0:
+            # disable augmenter for the first epoch
+            harn.datasets['train'].augmenter = None
+
     def prepare_batch(harn, raw_batch):
         """
         ensure batch is in a standardized structure
@@ -545,13 +552,13 @@ def setup_harness(bsize=16, workers=0):
         }),
 
         'optimizer': (torch.optim.SGD, {
-            'lr': .0001,
+            'lr': .001,
             'momentum': 0.9,
             'weight_decay': 0.0005,
         }),
 
         'scheduler': (nh.schedulers.ListedLR, {
-            'points': {0: .0001, 10: .01,  60: .015, 90: .001},
+            'points': {0: .001, 10: .01,  60: .015, 90: .001},
             'interpolate': True
         }),
 
@@ -576,9 +583,6 @@ def setup_harness(bsize=16, workers=0):
     harn.config['use_tqdm'] = False
     harn.config['log_iter_values'] = True
 
-    # disable augmenter for the first epoch
-    harn.datasets['train']._augmenter = harn.datasets['train'].augmenter
-    harn.datasets['train'].augmenter = None
     harn.intervals['display_train'] = 10
     harn.intervals['display_test'] = 10
     harn.intervals['display_vali'] = 10
