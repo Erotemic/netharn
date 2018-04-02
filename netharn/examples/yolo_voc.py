@@ -375,6 +375,13 @@ class YoloHarn(nh.FitHarn):
             >>> mplutil.draw_boxes(pred_boxes_, color='blue', box_format='cxywh')
             >>> mplutil.show_if_requested()
         """
+        if harn.current_tag == 'train':
+            # check that the weights are still ok
+            state = harn.model.module.state_dict()
+            weights = sum([v.sum() for v in state.values()])
+            if (not np.isfinite(weights) or np.isnan(weights)):
+                raise Exception('NON-FINITE WEIGHTS weights = {!r}'.format(weights))
+
         inputs, labels = batch
         postout = harn.model.module.postprocess(outputs)
 
@@ -384,9 +391,9 @@ class YoloHarn(nh.FitHarn):
                 harn.batch_confusions.append(y)
 
         metrics_dict = ub.odict()
-        metrics_dict['L_bbox'] = asfloat(harn.criterion.loss_coord)
-        metrics_dict['L_iou'] = asfloat(harn.criterion.loss_conf)
-        metrics_dict['L_cls'] = asfloat(harn.criterion.loss_cls)
+        metrics_dict['L_bbox'] = harn.criterion.loss_coord
+        metrics_dict['L_iou'] = harn.criterion.loss_conf
+        metrics_dict['L_cls'] = harn.criterion.loss_cls
         return metrics_dict
 
     def on_epoch(harn):
@@ -409,6 +416,13 @@ class YoloHarn(nh.FitHarn):
             >>> harn.on_epoch()
         """
         tag = harn.current_tag
+        if tag == 'train':
+            # check that the weights are still ok
+            state = harn.model.module.state_dict()
+            weights = sum([v.sum() for v in state.values()])
+            if (not np.isfinite(weights) or np.isnan(weights)):
+                raise Exception('NON-FINITE WEIGHTS weights = {!r}'.format(weights))
+
         loader = harn.loaders[tag]
         y = pd.concat(harn.batch_confusions)
         # TODO: write out a few visualizations
