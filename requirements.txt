@@ -20,6 +20,8 @@ matplotlib
 six
 protobuf
 
+-e git+https://github.com/aleju/imgaug.git@master#egg=imgaug
+
 # line_profiler
 # scipy
 # scikit-image

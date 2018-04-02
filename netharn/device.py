@@ -180,7 +180,10 @@ class XPU(ub.NiceRepr):
                 if ',' in item:
                     item = list(map(int, ','.split(item)))
                 if item == '':
-                    item = XPU.default_gpu()
+                    if torch.cuda.is_available():
+                        item = XPU.default_gpu()
+                    else:
+                        item = None
                 if item == 'none':
                     item = None
                 else:
@@ -352,7 +355,7 @@ class XPU(ub.NiceRepr):
         Example:
             >>> print(XPU.default_gpu())
         """
-        if torch.cuda.is_available:
+        if torch.cuda.is_available():
             return torch.cuda.current_device()
         else:
             return None
@@ -363,11 +366,10 @@ class XPU(ub.NiceRepr):
 
         Example:
             >>> import pytest
-            >>> if torch.cuda.is_available:
-            >>>     pytest.skip()
             >>> XPU(None).set_as_default()
-            >>> XPU(0).set_as_default()
-            >>> assert torch.cuda.current_device() == 0
+            >>> if torch.cuda.is_available():
+            >>>     XPU(0).set_as_default()
+            >>>     assert torch.cuda.current_device() == 0
         """
         if xpu.is_gpu():
             torch.cuda.set_device(xpu.main_device)
