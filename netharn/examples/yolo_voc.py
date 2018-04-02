@@ -441,7 +441,7 @@ class YoloHarn(nh.FitHarn):
 
         bsize = len(labels[0])
         for bx in range(bsize):
-            target = asnumpy(targets[bx]).reshape(-1, 6)
+            target = asnumpy(targets[bx]).reshape(-1, 5)
             true_cxywh   = target[:, 1:5]
             true_cxs     = target[:, 0]
             true_weight  = asnumpy(gt_weights[bx])
