@@ -108,7 +108,6 @@ class ConstructorMixin:
         harn.config = {
             'show_prog': True,
             'use_tqdm': True,
-            'log_iter_values': True,
         }
         harn.epoch = 0
         harn.bxs = {
@@ -122,7 +121,10 @@ class ConstructorMixin:
         """
         check if its time to do something that happens every few iterations
         """
-        return (idx + 1) % harn.intervals[tag] == 0
+        n = harn.intervals[tag]
+        if n is None:
+            return False
+        return (idx + 1) % n == 0
 
 
 @register_mixin
@@ -739,8 +741,7 @@ class CoreMixin:
                     msg = harn._batch_msg({'loss': ave_metrics['loss']}, bsize)
                     prog.set_description(tag + ' ' + msg)
 
-                    # if harn.check_interval('log_iter' + tag, bx):
-                    if True:
+                    if harn.check_interval('log_iter' + tag, bx):
                         iter_idx = (harn.epoch * len(loader) + bx)
                         for key, value in ave_metrics.items():
                             harn.log_value(tag + ' iter ' + key, value, iter_idx)
