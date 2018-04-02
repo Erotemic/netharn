@@ -186,8 +186,17 @@ class GetBoundingBoxes(object):
             >>> assert len(boxes) == 16
             >>> assert all(len(b[0]) == 6 for b in boxes)
 
+        Ignore:
+
             %timeit self._get_boxes(output.data, mode=0)
             %timeit self._get_boxes(output.data, mode=1)
+
+            if False:
+                boxes3 = [torch.Tensor(box) for box in boxes]
+                list(map(len, boxes2))
+                list(map(len, boxes3))
+                for b2, b3 in zip(boxes3, boxes2):
+                    assert np.all(b2.cpu() == b3.cpu())
         """
         # dont modify inplace
         output = output.clone()
@@ -203,8 +212,8 @@ class GetBoundingBoxes(object):
         w = output.size(3)
 
         # Compute xc,yc, w,h, box_score on Tensor
-        lin_x = torch.linspace(0, w-1, w).repeat(h, 1).view(h*w)
-        lin_y = torch.linspace(0, h-1, h).repeat(w, 1).t().contiguous().view(h*w)
+        lin_x = torch.linspace(0, w - 1, w).repeat(h, 1).view(h * w)
+        lin_y = torch.linspace(0, h - 1, h).repeat(w, 1).t().contiguous().view(h * w)
         anchor_w = torch.Tensor(self.anchors[::2]).view(1, self.num_anchors, 1)
         anchor_h = torch.Tensor(self.anchors[1::2]).view(
             1, self.num_anchors, 1)
@@ -215,7 +224,7 @@ class GetBoundingBoxes(object):
             anchor_h = anchor_h.cuda()
 
         # -1 == 5+num_classes (we can drop feature maps if 1 class)
-        output_ = output.view(batch, self.num_anchors, -1, h*w)
+        output_ = output.view(batch, self.num_anchors, -1, h * w)
         output_[:, :, 0, :].sigmoid_().add_(lin_x).div_(w)          # X center
         output_[:, :, 1, :].sigmoid_().add_(lin_y).div_(h)          # Y center
         output_[:, :, 2, :].exp_().mul_(anchor_w).div_(w)           # Width
@@ -263,6 +272,9 @@ class GetBoundingBoxes(object):
             flags = cls_max > self.conf_thresh
             flat_flags = flags.view(-1)
 
+            if not np.any(flat_flags):
+                return []
+
             # number of potential detections per batch
             item_size = np.prod(flags.shape[1:])
             slices = [slice((item_size * i), (item_size * (i + 1)))
@@ -289,13 +301,6 @@ class GetBoundingBoxes(object):
             for lx, rx in zip(filtered_split_idxs, filtered_split_idxs[1:]):
                 batch_box = filtered_dets[lx:rx]
                 boxes2.append(batch_box)
-
-            if False:
-                boxes3 = [torch.Tensor(box) for box in boxes]
-                list(map(len, boxes2))
-                list(map(len, boxes3))
-                for b2, b3 in zip(boxes3, boxes2):
-                    assert np.all(b2.cpu() == b3.cpu())
 
             boxes = boxes2
 
@@ -360,7 +365,7 @@ class GetBoundingBoxes(object):
 
         a = boxes[:, :2]
         b = boxes[:, 2:4]
-        bboxes = torch.cat([a-b/2, a+b/2], 1)
+        bboxes = torch.cat([a - b / 2, a + b / 2], 1)
         scores = boxes[:, 4]
 
         if mode == 1:
@@ -385,7 +390,7 @@ class GetBoundingBoxes(object):
             x2 = bboxes[:, 2]
             y2 = bboxes[:, 3]
 
-            areas = ((x2-x1) * (y2-y1))
+            areas = ((x2 - x1) * (y2 - y1))
             _, order = scores.sort(0, descending=True)
 
             keep = []
@@ -407,16 +412,16 @@ class GetBoundingBoxes(object):
                 xx2 = x2[order[1:]].clamp(max=x2[i])
                 yy2 = y2[order[1:]].clamp(max=y2[i])
 
-                w = (xx2-xx1).clamp(min=0)
-                h = (yy2-yy1).clamp(min=0)
-                inter = w*h
+                w = (xx2 - xx1).clamp(min=0)
+                h = (yy2 - yy1).clamp(min=0)
+                inter = w * h
 
                 iou = inter / (areas[i] + areas[order[1:]] - inter)
 
                 ids = (iou <= self.nms_thresh).nonzero().squeeze()
                 if ids.numel() == 0:
                     break
-                order = order[ids+1]
+                order = order[ids + 1]
             return boxes[torch.LongTensor(keep)]
 
 
