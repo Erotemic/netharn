@@ -186,6 +186,20 @@ def demo_weights():
     return fpath
 
 
+def initial_imagenet_weights():
+    import os
+    import ubelt as ub
+    weight_fpath = ub.grabdata(
+        'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='clab')
+    torch_fpath = weight_fpath + '.pt'
+    if not os.path.exists(torch_fpath):
+        # hack to transform initial state
+        model = Yolo(num_classes=1000)
+        model.load_weights(weight_fpath)
+        torch.save(model.state_dict(), torch_fpath)
+    return torch_fpath
+
+
 def demo_image(inp_size):
     from clab import util
     import numpy as np
