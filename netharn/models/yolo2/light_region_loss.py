@@ -311,11 +311,12 @@ class RegionLoss(torch.nn.modules.loss._Loss):
                 conf_mask[b][best_n][gj*nW+gi] = self.object_scale
                 tcoord[b][best_n][0][gj*nW+gi] = gx - gi
                 tcoord[b][best_n][1][gj*nW+gi] = gy - gj
-
-                tcoord[b][best_n][2][gj*nW+gi] = math.log(gw/self.anchors[self.anchor_step*best_n])
-                tcoord[b][best_n][3][gj*nW+gi] = math.log(gh/self.anchors[self.anchor_step*best_n+1])
-                tconf[b][best_n][gj*nW+gi] = iou
-                tcls[b][best_n][gj*nW+gi] = ground_truth[b][t][0]
+                import utool
+                with utool.embed_on_exception_context:
+                    tcoord[b][best_n][2][gj*nW+gi] = math.log(gw/self.anchors[self.anchor_step*best_n])
+                    tcoord[b][best_n][3][gj*nW+gi] = math.log(gh/self.anchors[self.anchor_step*best_n+1])
+                    tconf[b][best_n][gj*nW+gi] = iou
+                    tcls[b][best_n][gj*nW+gi] = ground_truth[b][t][0]
 
         return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
 
