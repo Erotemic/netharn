@@ -141,6 +141,14 @@ def load_partial_state(model, model_state_dict, initializer=None):
         >>> self2 = nh.models.ToyNet2d(input_channels=3, num_classes=2)
         >>> model_state_dict = self1.state_dict()
         >>> load_partial_state(self2, model_state_dict)
+
+    Example:
+        >>> import netharn as nh
+        >>> xpu = nh.XPU(None)
+        >>> self1 = nh.models.ToyNet2d()
+        >>> self2 = xpu.mount(self1)
+        >>> load_partial_state(self2, self1.state_dict())
+        >>> load_partial_state(self1, self2.state_dict())
     """
     self_state = model.state_dict()
 
