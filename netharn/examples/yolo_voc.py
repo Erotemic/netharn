@@ -161,6 +161,16 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> mplutil.show_if_requested()
 
         Ignore:
+            >>> self = YoloVOCDataset(split='train')
+
+            for index in ub.ProgIter(range(len(self))):
+                chw01, label = self[index]
+                target = label[0]
+                wh = target[3:5]
+                if np.any(wh == 0):
+                    raise ValueError()
+                pass
+
             >>> # Check that we can collate this data
             >>> self = YoloVOCDataset(split='train')
             >>> inbatch = [self[index] for index in range(0, 16)]
@@ -200,14 +210,21 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                              for bb in bbs.bounding_boxes])
             tlbr = util.clip_boxes(tlbr, hwc255.shape[0:2])
 
-        # Remove boxes that are too small
-        # ONLY DO THIS FOR THE SMALL DEMO TASK
-        if False:
+            # REMOVE ANY BOXES THAT ARE NOW OUT OF BOUNDS
             tlbr = util.Boxes(tlbr, 'tlbr')
-            flags = (tlbr.area > 10).ravel()
+            flags = (tlbr.area > 0).ravel()
             tlbr = tlbr.data[flags]
             gt_classes = gt_classes[flags]
             gt_weights = gt_weights[flags]
+
+        # Remove boxes that are too small
+        # ONLY DO THIS FOR THE SMALL DEMO TASK
+        # if False:
+        #     tlbr = util.Boxes(tlbr, 'tlbr')
+        #     flags = (tlbr.area > 10).ravel()
+        #     tlbr = tlbr.data[flags]
+        #     gt_classes = gt_classes[flags]
+        #     gt_weights = gt_weights[flags]
 
         chw01 = torch.FloatTensor(hwc255.transpose(2, 0, 1) / 255)
 
@@ -221,6 +238,8 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         # [d.shape for d in datas]
         target = np.concatenate(datas, axis=-1)
         target = torch.FloatTensor(target)
+
+        target
 
         # Return index information in the label as well
         orig_size = torch.LongTensor(orig_size)
