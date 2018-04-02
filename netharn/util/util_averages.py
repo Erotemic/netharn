@@ -29,7 +29,6 @@ class CumMovingAve(MovingAve):
         https://en.wikipedia.org/wiki/Moving_average
 
     Example:
-        >>> from netharn.metrics import *
         >>> self = CumMovingAve()
         >>> print(str(self.update({'a': 10})))
         <CumMovingAve({'a': 10.0})>
@@ -64,7 +63,6 @@ class WindowedMovingAve(MovingAve):
         window (int): number of previous observations to consider
 
     Example:
-        >>> from netharn.metrics import *
         >>> self = WindowedMovingAve(window=3)
         >>> print(str(self.update({'a': 10})))
         <WindowedMovingAve({'a': 10.0})>
@@ -110,7 +108,6 @@ class ExpMovingAve(MovingAve):
         http://greenteapress.com/thinkstats2/html/thinkstats2013.html
 
     Example:
-        >>> from netharn.metrics import *
         >>> self = ExpMovingAve(span=3)
         >>> print(str(self.update({'a': 10})))
         <ExpMovingAve({'a': 10})>
@@ -289,7 +286,6 @@ class InternalRunningStats():
     across the dataset. So, this is an average of averages.
 
     Example:
-        >>> from netharn.util.imutil import *
         >>> ch1 = np.array([[0, 1], [3, 4]])
         >>> ch2 = np.zeros((2, 2))
         >>> img = np.dstack([ch1, ch2])
