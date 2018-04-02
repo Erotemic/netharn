@@ -10,6 +10,9 @@ import cv2
 import imgaug as ia
 import imgaug.augmenters as iaa
 from netharn.util import profiler  # NOQA
+from netharn.data import collate
+import torch.utils.data as torch_data
+from netharn.models.yolo2 import multiscale_batch_sampler
 
 # def s(d):
 #     """ sorts a dict, returns as an OrderedDict """
@@ -89,51 +92,11 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             ]
             self.augmenter = iaa.Sequential(augmentors)
 
-    def _find_anchors(self):
-        """
-
-        Example:
-            >>> self = YoloVOCDataset(split='train', years=[2007])
-            >>> anchors = self._find_anchors()
-            >>> print('anchors = {}'.format(ub.repr2(anchors, precision=2)))
-            >>> # xdoctest: +REQUIRES(--show)
-            >>> xy = -anchors / 2
-            >>> wh = anchors
-            >>> show_boxes = np.hstack([xy, wh])
-            >>> from netharn.util import mplutil
-            >>> mplutil.figure(doclf=True, fnum=1)
-            >>> mplutil.qtensure()  # xdoc: +SKIP
-            >>> mplutil.draw_boxes(show_boxes, box_format='xywh')
-            >>> from matplotlib import pyplot as plt
-            >>> plt.gca().set_xlim(xy.min() - 1, wh.max() / 2 + 1)
-            >>> plt.gca().set_ylim(xy.min() - 1, wh.max() / 2 + 1)
-            >>> plt.gca().set_aspect('equal')
-        """
-        from PIL import Image
-        from sklearn import cluster
-        all_norm_wh = []
-        for i in ub.ProgIter(range(len(self)), desc='find anchors'):
-            annots = self._load_annotation(i)
-            img_wh = np.array(Image.open(self.gpaths[i]).size)
-            boxes = np.array(annots['boxes'])
-            box_wh = boxes[:, 2:4] - boxes[:, 0:2]
-            # normalize to 0-1
-            norm_wh = box_wh / img_wh
-            all_norm_wh.extend(norm_wh.tolist())
-        # Re-normalize to the size of the grid
-        all_wh = np.array(all_norm_wh) * self.base_wh[0] / self.factor
-        algo = cluster.KMeans(
-            n_clusters=5, n_init=20, max_iter=10000, tol=1e-6,
-            algorithm='elkan', verbose=0)
-        algo.fit(all_wh)
-        anchors = algo.cluster_centers_
-        return anchors
-
     def _load_sized_image(self, index, inp_size):
         # load the raw data from VOC
 
         cacher = ub.Cacher('voc_img', cfgstr=ub.repr2([index, inp_size]),
-                           appname='clab')
+                           appname='netharn')
         data = cacher.tryload()
         if data is None:
             image = self._load_image(index)
@@ -169,7 +132,6 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
     def __getitem__(self, index):
         """
         Example:
-            >>> from yolo_voc2 import *
             >>> self = YoloVOCDataset(split='train')
             >>> index = 1
             >>> chw01, label = self[index]
@@ -184,7 +146,6 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> mplutil.draw_boxes(boxes.numpy(), box_format='tlbr')
 
         Ignore:
-            >>> from yolo_voc2 import *
             >>> # Check that we can collate this data
             >>> self = YoloVOCDataset(split='train')
             >>> inbatch = [self[index] for index in range(0, 16)]
@@ -225,11 +186,12 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
         # Remove boxes that are too small
         # ONLY DO THIS FOR THE SMALL DEMO TASK
-        tlbr = util.Boxes(tlbr, 'tlbr')
-        flags = (tlbr.area > 10).ravel()
-        tlbr = tlbr.data[flags]
-        gt_classes = gt_classes[flags]
-        gt_weights = gt_weights[flags]
+        if False:
+            tlbr = util.Boxes(tlbr, 'tlbr')
+            flags = (tlbr.area > 10).ravel()
+            tlbr = tlbr.data[flags]
+            gt_classes = gt_classes[flags]
+            gt_weights = gt_weights[flags]
 
         chw01 = torch.FloatTensor(hwc255.transpose(2, 0, 1) / 255)
 
@@ -263,8 +225,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 def make_loaders(datasets, batch_size=16, workers=0):
     """
     Example:
-        >>> datasets = {'train': YoloVOCDataset(split='train'),
-        >>>             'vali': YoloVOCDataset(split='val')}
+        >>> datasets = {'train': YoloVOCDataset(split='train')}
         >>> torch.random.manual_seed(0)
         >>> loaders = make_loaders(datasets)
         >>> train_iter = iter(loaders['train'])
@@ -275,18 +236,7 @@ def make_loaders(datasets, batch_size=16, workers=0):
         >>>     if len(shapes) > 1:
         >>>         break
         >>> assert len(shapes) > 1
-
-        >>> vali_loader = iter(loaders['vali'])
-        >>> vali_iter = iter(loaders['vali'])
-        >>> # vali batches should have one shape
-        >>> shapes = set()
-        >>> for batch, _ in zip(vali_iter, [1, 2, 3, 4]):
-        >>>     shapes.add(batch[0].shape[-1])
-        >>> assert len(shapes) == 1
     """
-    from netharn.data import collate
-    import torch.utils.data as torch_data
-    from netharn.models.yolo2 import multiscale_batch_sampler
     loaders = {}
     for key, dset in datasets.items():
         assert len(dset) > 0, 'must have some data'

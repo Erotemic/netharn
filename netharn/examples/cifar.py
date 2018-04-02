@@ -4,16 +4,16 @@ import torch
 # import torchvision
 import pandas as pd
 from torchvision.datasets import cifar
-from clab import xpu_device
-from clab import monitor
-from clab import initializers
-from clab import hyperparams
-from clab import fit_harness
-from clab.transforms import (ImageCenterScale,)
-# from clab.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
+from netharn import xpu_device
+from netharn import monitor
+from netharn import initializers
+from netharn import hyperparams
+from netharn import fit_harness
+from netharn.transforms import (ImageCenterScale,)
+# from netharn.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
 import imgaug as ia
 import imgaug.augmenters as iaa
-from clab import util
+from netharn import util
 
 
 class CropTo(iaa.Augmenter):
@@ -308,7 +308,7 @@ class CIFAR10_Task(Task):
     """
     def __init__(task, root=None):
         if root is None:
-            root = ub.ensure_app_cache_dir('clab')
+            root = ub.ensure_app_cache_dir('netharn')
         task.root = root
         task._initialize()
 
@@ -334,7 +334,7 @@ class CIFAR100_Task(Task):
     """
     def __init__(task, root=None):
         if root is None:
-            root = ub.ensure_app_cache_dir('clab')
+            root = ub.ensure_app_cache_dir('netharn')
         task.root = root
         task._initialize()
 
@@ -548,7 +548,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
             >>> dset = CIFAR_Wrapper(inputs, task, workdir, 'RGB')
             >>> index = 0
             >>> im, gt = dset.load_inputs(index)
-            >>> from clab.util import mplutil
+            >>> from netharn.util import mplutil
             >>> mplutil.qtensure()
             >>> dset = CIFAR_Wrapper(inputs, task, workdir, 'RGB')
             >>> dset.augment = True
@@ -595,7 +595,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         return im, gt
 
     def __getitem__(dset, index):
-        from clab import im_loaders
+        from netharn import im_loaders
         im, gt = dset.load_inputs(index)
         input_tensor = im_loaders.numpy_image_to_float_tensor(im)
 
@@ -620,7 +620,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
 
     def class_weights(dset):
         """
-            >>> from clab.live.sseg_train import *
+            >>> from netharn.live.sseg_train import *
             >>> dset = load_task_dataset('urban_mapper_3d')['train']
             >>> dset.class_weights()
         """
@@ -642,7 +642,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
 
 
 def cifar_inputs(train=False, cifar_num=10):
-    root = ub.ensure_app_cache_dir('clab')
+    root = ub.ensure_app_cache_dir('netharn')
 
     if cifar_num == 10:
         train_dset = cifar.CIFAR10(root=root, download=True, train=train)
@@ -756,7 +756,7 @@ def train():
     else:
         raise AssertionError('specify --rgb / --lab')
 
-    import clab.models.densenet
+    import netharn.models.densenet
 
     # batch_size = (128 // 3) * 3
     batch_size = 64
@@ -767,7 +767,7 @@ def train():
     initializer_ = (initializers.LSUV, {})
 
     hyper = hyperparams.HyperParams(
-        model=(clab.models.densenet.DenseNet, {
+        model=(netharn.models.densenet.DenseNet, {
             'cifar': True,
             'block_config': (32, 32, 32),  # 100 layer depth
             'num_classes': datasets['train'].n_classes,
@@ -846,8 +846,8 @@ def train():
     task = harn.datasets['train'].task
     all_labels = task.labels
     # ignore_label = datasets['train'].ignore_label
-    # from clab import metrics
-    from clab.metrics import (confusion_matrix,
+    # from netharn import metrics
+    from netharn.metrics import (confusion_matrix,
                               pixel_accuracy_from_confusion,
                               perclass_accuracy_from_confusion)
 

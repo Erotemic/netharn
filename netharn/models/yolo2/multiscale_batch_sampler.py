@@ -62,7 +62,7 @@ class MultiScaleBatchSampler(torch_sampler.BatchSampler):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.models.yolo2.multiscale_batch_sampler all
+        python -m netharn.models.yolo2.multiscale_batch_sampler all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

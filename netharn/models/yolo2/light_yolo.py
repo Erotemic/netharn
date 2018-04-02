@@ -32,7 +32,7 @@ class Yolo(lnn.Darknet):
     .. _Yolo v2: https://github.com/pjreddie/darknet/blob/777b0982322142991e1861161e68e1a01063d76f/cfg/yolo-voc.cfg
 
     Example:
-        >>> from clab.models.yolo2.light_yolo import *
+        >>> from netharn.models.yolo2.light_yolo import *
         >>> torch.random.manual_seed(0)
         >>> B, C, Win, Hin = 2, 20, 96, 96
         >>> self = Yolo(num_classes=C, conf_thresh=4.9e-2)
@@ -53,6 +53,7 @@ class Yolo(lnn.Darknet):
          [ 0.84211665  0.16787912  1.5673848   1.9569225   0.05154617 15.        ]
          [ 0.48864678  0.50975     0.8462989   0.79987097  0.04938301 10.        ]]
     """
+
     def __init__(self, num_classes=20, weights_file=None, conf_thresh=.25,
                  nms_thresh=.4, input_channels=3, anchors=None):
         """ Network initialisation """
@@ -73,7 +74,8 @@ class Yolo(lnn.Darknet):
         layer_list = [
             # Sequence 0 : input = image tensor
             OrderedDict([
-                ('1_convbatch',     lnn.layer.Conv2dBatchLeaky(input_channels, 32, 3, 1, 1)),
+                ('1_convbatch',     lnn.layer.Conv2dBatchLeaky(
+                    input_channels, 32, 3, 1, 1)),
                 ('2_max',           nn.MaxPool2d(2, 2)),
                 ('3_convbatch',     lnn.layer.Conv2dBatchLeaky(32, 64, 3, 1, 1)),
                 ('4_max',           nn.MaxPool2d(2, 2)),
@@ -112,26 +114,30 @@ class Yolo(lnn.Darknet):
 
             # Sequence 3 : input = sequence2 + sequence1
             OrderedDict([
-                ('28_convbatch',    lnn.layer.Conv2dBatchLeaky((4*64)+1024, 1024, 3, 1, 1)),
-                ('29_conv',         nn.Conv2d(1024, self.num_anchors*(5+self.num_classes), 1, 1, 0)),
+                ('28_convbatch',    lnn.layer.Conv2dBatchLeaky(
+                    (4 * 64) + 1024, 1024, 3, 1, 1)),
+                ('29_conv',         nn.Conv2d(
+                    1024, self.num_anchors * (5 + self.num_classes), 1, 1, 0)),
             ])
         ]
-        self.layers = nn.ModuleList([nn.Sequential(layer_dict) for layer_dict in layer_list])
+        self.layers = nn.ModuleList(
+            [nn.Sequential(layer_dict) for layer_dict in layer_list])
 
         self.load_weights(weights_file)
         # self.loss = lnn.RegionLoss(self)
-        from clab.models.yolo2 import light_postproc
-        self.postprocess = light_postproc.GetBoundingBoxes(self, conf_thresh, nms_thresh)
+        from netharn.models.yolo2 import light_postproc
+        self.postprocess = light_postproc.GetBoundingBoxes(
+            self, conf_thresh, nms_thresh)
 
     def output_shape_for(self, input_shape):
         b, c, h, w = input_shape
-        o = self.num_anchors*(5+self.num_classes)
+        o = self.num_anchors * (5 + self.num_classes)
         return (b, o, h // 32, w // 32)
 
     def forward(self, x):
         """
         Example:
-            >>> from clab.models.yolo2.light_yolo import *
+            >>> from netharn.models.yolo2.light_yolo import *
             >>> inp_size = (288, 288)
             >>> self = Yolo(num_classes=20, conf_thresh=0.01, nms_thresh=0.4)
             >>> state_dict = torch.load(demo_weights())['weights']
@@ -146,8 +152,8 @@ class Yolo(lnn.Darknet):
             >>> out_scores = postout[0][:, 4]
             >>> out_cxs = postout[0][:, 5]
             >>> # xdoc: +REQUIRES(--show)
-            >>> from clab.util import mplutil
-            >>> from clab import util
+            >>> from netharn.util import mplutil
+            >>> from netharn import util
             >>> mplutil.qtensure()  # xdoc: +SKIP
             >>> label_names = ('aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
             >>>  'bus', 'car', 'cat', 'chair', 'cow', 'diningtable',
@@ -178,6 +184,49 @@ class Yolo(lnn.Darknet):
         return out
 
 
+def find_anchors(dset):
+    """
+    Example:
+        >>> # xdoc: +SKIP
+        >>> self = YoloVOCDataset(split='train', years=[2007])
+        >>> anchors = self._find_anchors()
+        >>> print('anchors = {}'.format(ub.repr2(anchors, precision=2)))
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> xy = -anchors / 2
+        >>> wh = anchors
+        >>> show_boxes = np.hstack([xy, wh])
+        >>> from netharn.util import mplutil
+        >>> mplutil.figure(doclf=True, fnum=1)
+        >>> mplutil.qtensure()  # xdoc: +SKIP
+        >>> mplutil.draw_boxes(show_boxes, box_format='xywh')
+        >>> from matplotlib import pyplot as plt
+        >>> plt.gca().set_xlim(xy.min() - 1, wh.max() / 2 + 1)
+        >>> plt.gca().set_ylim(xy.min() - 1, wh.max() / 2 + 1)
+        >>> plt.gca().set_aspect('equal')
+    """
+    import ubelt as ub
+    import numpy as np
+    from PIL import Image
+    from sklearn import cluster
+    all_norm_wh = []
+    for i in ub.ProgIter(range(len(dset)), desc='find anchors'):
+        annots = dset._load_annotation(i)
+        img_wh = np.array(Image.open(dset.gpaths[i]).size)
+        boxes = np.array(annots['boxes'])
+        box_wh = boxes[:, 2:4] - boxes[:, 0:2]
+        # normalize to 0-1
+        norm_wh = box_wh / img_wh
+        all_norm_wh.extend(norm_wh.tolist())
+    # Re-normalize to the size of the grid
+    all_wh = np.array(all_norm_wh) * dset.base_wh[0] / dset.factor
+    algo = cluster.KMeans(
+        n_clusters=5, n_init=20, max_iter=10000, tol=1e-6,
+        algorithm='elkan', verbose=0)
+    algo.fit(all_wh)
+    anchors = algo.cluster_centers_
+    return anchors
+
+
 def demo_weights():
     from os.path import dirname, join
     import lightnet
@@ -190,7 +239,7 @@ def initial_imagenet_weights():
     import os
     import ubelt as ub
     weight_fpath = ub.grabdata(
-        'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='clab')
+        'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='netharn')
     torch_fpath = weight_fpath + '.pt'
     if not os.path.exists(torch_fpath):
         # hack to transform initial state
@@ -201,7 +250,7 @@ def initial_imagenet_weights():
 
 
 def demo_image(inp_size):
-    from clab import util
+    from netharn import util
     import numpy as np
     import cv2
     rgb255 = util.grab_test_image('astro', 'rgb')

@@ -45,7 +45,7 @@ import torch.nn
 import torchvision  # NOQA
 import torch.nn.functional as F
 from torch import nn
-import clab
+import netharn
 
 
 class MnistNet(nn.Module):
@@ -72,8 +72,8 @@ def train_mnist():
     CommandLine:
         python examples/mnist.py
 
-        python ~/code/clab/examples/mnist.py --gpu=2
-        python ~/code/clab/examples/mnist.py
+        python ~/code/netharn/examples/mnist.py --gpu=2
+        python ~/code/netharn/examples/mnist.py
     """
 
     """
@@ -149,20 +149,20 @@ def train_mnist():
 
     batch_size = 128
     n_classes = 10
-    xpu = clab.xpu_device.XPU.from_argv(min_memory=300)
+    xpu = netharn.xpu_device.XPU.from_argv(min_memory=300)
 
     if False:
-        initializer = (clab.initializers.Pretrained, {
+        initializer = (netharn.initializers.Pretrained, {
             'fpath': 'path/to/pretained/weights.pt'
         })
     else:
-        initializer = (clab.initializers.KaimingNormal, {'nonlinearity': 'relu'})
+        initializer = (netharn.initializers.KaimingNormal, {'nonlinearity': 'relu'})
 
     """
     # Here is the fit_harness magic.
     # This keeps track of your stuff
     """
-    hyper = clab.hyperparams.HyperParams(
+    hyper = netharn.hyperparams.HyperParams(
         model=(MnistNet, dict(n_channels=1, n_classes=n_classes)),
         # optimizer=torch.optim.Adam,
         optimizer=(torch.optim.SGD, {'lr': 0.01}),
@@ -192,7 +192,7 @@ def train_mnist():
                                              **data_kw_)
         loaders[tag] = loader
 
-    harn = clab.fit_harness.FitHarness(
+    harn = netharn.fit_harness.FitHarness(
         xpu=xpu, hyper=hyper, loaders=loaders, dry=dry,
         min_keys=['loss'], max_keys=['global_acc', 'class_acc'],
     )
@@ -204,7 +204,7 @@ def train_mnist():
         # ignore_label = datasets['train'].ignore_label
         # labels = datasets['train'].task.labels
         label = labels[0]
-        metrics_dict = clab.metrics._clf_metrics(output, label,
+        metrics_dict = netharn.metrics._clf_metrics(output, label,
                                                  all_labels=all_labels)
         return metrics_dict
 
