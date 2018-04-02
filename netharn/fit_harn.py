@@ -221,18 +221,18 @@ class InitializeMixin:
 
         harn.debug('Making model')
         harn.model = harn.hyper.make_model()
-        harn.initializer = harn.hyper.make_initializer()
-
         harn.log('Mounting {} model on {}'.format(model_name, harn.xpu))
         harn.model = harn.xpu.mount(harn.model)
+
+        harn.debug('Making initializer')
+        harn.initializer = harn.hyper.make_initializer()
 
         n_params = util.number_of_parameters(harn.model)
         harn.log('Model has {!r} parameters'.format(n_params))
 
         harn.criterion = harn.hyper.make_criterion()
-        if harn.criterion:
-            harn.log('Move {} model to {}'.format(harn.criterion, harn.xpu))
-            harn.criterion = harn.xpu.move(harn.criterion)
+        harn.log('Move {} model to {}'.format(harn.criterion, harn.xpu))
+        harn.criterion = harn.xpu.move(harn.criterion)
 
         harn.log('Make optimizer')
         harn.optimizer = harn.hyper.make_optimizer(harn.model.parameters())
@@ -775,6 +775,9 @@ class CoreMixin:
 
         https://github.com/meetshah1995/pytorch-semseg/blob/master/train.py
         """
+        if learn:
+            harn.optimizer.zero_grad()
+
         try:
             outputs, loss = harn.run_batch(batch)
         except Exception:
@@ -785,7 +788,6 @@ class CoreMixin:
 
         # backprop and learn
         if learn:
-            harn.optimizer.zero_grad()
             loss.backward()
             harn.optimizer.step()
 
