@@ -31,13 +31,13 @@ class GetBoundingBoxes(object):
         self.nms_thresh = nms_thresh
         if anchors is not None:
             self.num_classes = num_classes
-            self.anchors = anchors['values']
-            self.num_anchors = anchors['num']
+            self.anchors = anchors.ravel()
+            self.num_anchors = int(len(anchors) // 2)
             self.anchor_step = len(self.anchors) // self.num_anchors
         else:
             self.num_classes = network.num_classes
             self.anchors = network.anchors
-            self.num_anchors = network.num_anchors
+            self.num_anchors = int(network.num_anchors)
             self.anchor_step = len(self.anchors) // self.num_anchors
 
     @profiler.profile
@@ -49,8 +49,8 @@ class GetBoundingBoxes(object):
         Examples:
             >>> import torch
             >>> torch.random.manual_seed(0)
-            >>> anchors = dict(num=5, values=[1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                               8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
+            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> output = torch.randn(8, 125, 9, 9)
             >>> boxes = self(output)
@@ -63,8 +63,8 @@ class GetBoundingBoxes(object):
         Benchmark:
             >>> import torch
             >>> torch.random.manual_seed(0)
-            >>> anchors = dict(num=5, values=[1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                               8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
+            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> import ubelt
             >>> output = torch.randn(16, 125, 9, 9)
@@ -100,7 +100,67 @@ class GetBoundingBoxes(object):
         """
         boxes = self._get_boxes(network_output.data, mode=mode)
         boxes = [self._nms(box, mode=mode) for box in boxes]
-        return boxes
+
+        # force all boxes to be inside the image
+        boxes = [self._clip_boxes(box) for box in boxes]
+        postout = boxes
+        return postout
+
+    def _clip_boxes(self, box):
+        """
+        CommandLine:
+            python ~/code/netharn/netharn/models/yolo2/light_postproc.py GetBoundingBoxes._clip_boxes
+
+        Example:
+            >>> import torch
+            >>> torch.random.manual_seed(0)
+            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
+            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
+            >>> # Make random boxes for one item in a batch
+            >>> box = torch.randn(7, 6)
+            >>> box[:, 0].sigmoid_()
+            >>> box[:, 1].sigmoid_()
+            >>> box.abs_()
+            >>> new_box = self._clip_boxes(box)
+            >>> box_tlbr = util.Boxes(box.cpu().numpy()[:, 0:4], 'cxywh').as_tlbr().data
+            >>> new_tlbr = util.Boxes(new_box.cpu().numpy()[:, 0:4], 'cxywh').as_tlbr().data
+            >>> #
+            >>> print('old')
+            >>> print(box_tlbr)
+            >>> print('new')
+            >>> print(new_tlbr)
+            >>> #print('trim_w = {}'.format(ub.repr2(trim_w.numpy(), precision=4)))
+            >>> #print('trim_h = {}'.format(ub.repr2(trim_h.numpy(), precision=4)))
+            >>> assert np.all(new_tlbr.T[2] <= 1.01)
+            >>> assert np.all(new_tlbr.T[2] >= -0.01)
+            >>> assert np.all(new_tlbr.T[3] <= 1.01)
+            >>> assert np.all(new_tlbr.T[3] >= -0.01)
+        """
+        if len(box) == 0:
+            return box
+
+        cx, cy, w, h = box.t()[0:4]
+
+        x1 = cx - (w / 2)
+        x2 = cx + (w / 2)
+
+        y1 = cy - (h / 2)
+        y2 = cy + (h / 2)
+
+        trim_w1 = (0 - x1).clamp(0, None)
+        trim_w2 = (x2 - 1).clamp(0, None)
+        # multiply by 2 because we are trimming from both sides
+        trim_w = torch.max(trim_w1, trim_w2) * 2
+
+        trim_h1 = (0 - y1).clamp(0, None)
+        trim_h2 = (y2 - 1).clamp(0, None)
+        trim_h = torch.max(trim_h1, trim_h2) * 2
+
+        new_box = box.clone()
+        new_box[:, 2] = new_box[:, 2] - trim_w
+        new_box[:, 3] = new_box[:, 3] - trim_h
+        return new_box
 
     @classmethod
     @profiler.profile
@@ -129,6 +189,8 @@ class GetBoundingBoxes(object):
             %timeit self._get_boxes(output.data, mode=0)
             %timeit self._get_boxes(output.data, mode=1)
         """
+        # dont modify inplace
+        output = output.clone()
 
         # Check dimensions
         if output.dim() == 3:
