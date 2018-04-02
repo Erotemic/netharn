@@ -273,7 +273,7 @@ class GetBoundingBoxes(object):
             flat_flags = flags.view(-1)
 
             if not np.any(flat_flags):
-                return [[] for _ in range(bsize)]
+                return [torch.FloatTensor([]) for _ in range(bsize)]
 
             # number of potential detections per batch
             item_size = np.prod(flags.shape[1:])
