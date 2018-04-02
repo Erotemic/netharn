@@ -81,7 +81,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         self.num_anchors = len(self.anchors)
         self.augmenter = None
 
-        if split == 'train':
+        if 'train' in split:
             augmentors = [
                 iaa.Fliplr(p=.5),
                 iaa.Flipud(p=.5),
@@ -149,13 +149,16 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> chw01, label = self[index]
             >>> hwc01 = chw01.numpy().transpose(1, 2, 0)
             >>> print(hwc01.shape)
-            >>> boxes, class_idxs = label[0:2]
+            >>> norm_boxes = label[0][:, 1:5].numpy()
+            >>> inp_size = hwc01.shape[-2::-1]
             >>> # xdoc: +REQUIRES(--show)
             >>> from netharn.util import mplutil
             >>> mplutil.figure(doclf=True, fnum=1)
             >>> mplutil.qtensure()  # xdoc: +SKIP
             >>> mplutil.imshow(hwc01, colorspace='rgb')
-            >>> mplutil.draw_boxes(boxes.numpy(), box_format='tlbr')
+            >>> inp_boxes = util.Boxes(norm_boxes, 'cxywh').scale(inp_size).data
+            >>> mplutil.draw_boxes(inp_boxes, box_format='cxywh')
+            >>> mplutil.show_if_requested()
 
         Ignore:
             >>> # Check that we can collate this data
@@ -275,7 +278,6 @@ class YoloHarn(nh.FitHarn):
         harn.batch_confusions = []
         harn.aps = {}
 
-
     def prepare_batch(harn, raw_batch):
         """
         ensure batch is in a standardized structure
@@ -325,15 +327,53 @@ class YoloHarn(nh.FitHarn):
         """
         custom callback
 
+        CommandLine:
+            python ~/code/netharn/netharn/examples/yolo_voc.py YoloHarn.on_batch --gpu=0 --show
+
         Example:
-            >>> harn = setup_harness(bsize=2)
+            >>> harn = setup_harness(bsize=3)
             >>> harn.initialize()
-            >>> batch = harn._demo_batch(0, 'test')
+            >>> batch = harn._demo_batch(0, 'train')
             >>> weights_fpath = light_yolo.demo_weights()
             >>> state_dict = torch.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn.run_batch(batch)
             >>> harn.on_batch(batch, outputs, loss)
+            >>> # xdoc: +REQUIRES(--show)
+            >>> postout = harn.model.module.postprocess(outputs)
+            >>> inputs, labels = batch
+            >>> chw01 = inputs[0]
+            >>> targets, gt_weights, orig_sizes, indices, bg_weights = labels
+            >>> target = targets[0]
+            >>> # ---
+            >>> hwc01 = chw01.cpu().numpy().transpose(1, 2, 0)
+            >>> orig_size = orig_sizes[0]
+            >>> # TRUE
+            >>> true_cxs = target[:, 0].long()
+            >>> true_boxes = target[:, 1:5]
+            >>> flags = true_cxs != -1
+            >>> true_boxes = true_boxes[flags]
+            >>> true_cxs = true_cxs[flags]
+            >>> # PRED
+            >>> pred_boxes = postout[0][:, 0:4]
+            >>> pred_scores = postout[0][:, 4]
+            >>> pred_cxs = postout[0][:, 5]
+            >>> flags = pred_scores > .5
+            >>> pred_cxs = pred_cxs[flags]
+            >>> pred_boxes = pred_boxes[flags]
+            >>> pred_scores = pred_scores[flags]
+            >>> classnames = list(ub.take(harn.datasets['train'].label_names, pred_cxs.long().cpu().numpy()))
+            >>> # ---
+            >>> inp_size = np.array(hwc01.shape[0:2][::-1])
+            >>> true_boxes_ = util.Boxes(true_boxes.cpu().numpy(), 'cxywh').scale(inp_size).data
+            >>> pred_boxes_ = util.Boxes(pred_boxes.cpu().numpy(), 'cxywh').scale(inp_size).data
+            >>> from netharn.util import mplutil
+            >>> mplutil.figure(doclf=True, fnum=1)
+            >>> mplutil.qtensure()  # xdoc: +SKIP
+            >>> mplutil.imshow(hwc01, colorspace='rgb')
+            >>> mplutil.draw_boxes(true_boxes_, color='green', box_format='cxywh')
+            >>> mplutil.draw_boxes(pred_boxes_, color='blue', box_format='cxywh')
+            >>> mplutil.show_if_requested()
         """
         inputs, labels = batch
         postout = harn.model.module.postprocess(outputs)
@@ -427,7 +467,7 @@ class YoloHarn(nh.FitHarn):
             y['gx'] = gx
             yield y
 
-    def visualize_prediction(harn, inputs, outputs, labels):
+    def visualize_prediction(harn, batch, outputs):
         """
         Returns:
             np.ndarray: numpy image
