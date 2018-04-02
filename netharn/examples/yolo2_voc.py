@@ -422,7 +422,7 @@ def setup_harness(workers=None):
 
     nice = ub.argval('--nice', default=None)
 
-    pretrained_fpath = ensure_lightnet_initial_weights()
+    pretrained_fpath = light_yolo.initial_imagenet_weights()
 
     # NOTE: XPU implicitly supports DataParallel just pass --gpu=0,1,2,3
     xpu = nh.XPU.cast('argv')
