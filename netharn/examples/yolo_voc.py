@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import netharn as nh
 from netharn import util
+import cv2
 import imgaug as ia
 import imgaug.augmenters as iaa
 from netharn.util import profiler  # NOQA
@@ -52,10 +53,6 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         super(YoloVOCDataset, self).__init__(devkit_dpath, split=split,
                                              years=years)
 
-        # From YOLO9000.pdf:
-        # With the addition of anchor boxes we changed the resolution to
-        # 416×416.  Since our model downsamples by a factor of 32, we pull
-        # from the following multiples of 32: {320, 352, ..., 608}.
         self.factor = factor  # downsample factor of yolo grid
 
         self.base_wh = np.array(base_wh, dtype=np.int)
@@ -74,12 +71,6 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         self.augmenter = None
 
         if split == 'train':
-            # From YOLO-V1 paper:
-            #     For data augmentation we introduce random scaling and
-            #     translations of up to 20% of the original image size. We
-            #     also randomly adjust the exposure and saturation of the image
-            #     by up to a factor of 1.5 in the HSV color space.
-            # YoloV2 seems to use the same augmentation as YoloV1
             augmentors = [
                 iaa.Fliplr(p=.5),
                 iaa.Flipud(p=.5),
@@ -91,14 +82,9 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                     order=[0, 1, 3],
                     cval=(0, 255),
                     mode=ia.ALL,
-                    # use any of scikit-image's warping modes (see 2nd image
-                    # from the top for examples)
-                    # Note: currently requires imgaug master version
                     backend='cv2',
                 ),
-                # change hue and saturation
                 iaa.AddToHueAndSaturation((-20, 20)),
-                # improve or worsen the contrast
                 iaa.ContrastNormalization((0.5, 2.0), per_channel=0.5),
             ]
             self.augmenter = iaa.Sequential(augmentors)
@@ -164,17 +150,9 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         hwc255, orig_size, factor = data
         return hwc255, orig_size, factor
 
-    @ub.memoize_method
     def _load_item(self, index, inp_size):
         # load the raw data from VOC
         hwc255, orig_size, factor = self._load_sized_image(index, inp_size)
-        # orig_size = np.array(image.shape[0:2][::-1])
-        # factor = inp_size / orig_size
-        # # squish the image into network input coordinates
-        # interpolation = (cv2.INTER_AREA if factor.sum() <= 2 else
-        #                  cv2.INTER_CUBIC)
-        # hwc255 = cv2.resize(image, tuple(inp_size),
-        #                     interpolation=interpolation)
 
         # VOC loads annotations in tlbr
         annot = self._load_annotation(index)
@@ -261,12 +239,10 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         tlbr_inp = util.Boxes(tlbr, 'tlbr')
         cxywh_norm = tlbr_inp.asformat('cxywh').scale(1 / inp_size)
 
-        import utool
-        with utool.embed_on_exception_context:
-            datas = [gt_classes[:, None], cxywh_norm.data]
-            # [d.shape for d in datas]
-            target = np.concatenate(datas, axis=-1)
-            target = torch.FloatTensor(target)
+        datas = [gt_classes[:, None], cxywh_norm.data]
+        # [d.shape for d in datas]
+        target = np.concatenate(datas, axis=-1)
+        target = torch.FloatTensor(target)
 
         # Return index information in the label as well
         orig_size = torch.LongTensor(orig_size)

@@ -213,7 +213,7 @@ def random_boxes(num, box_format='tlbr', scale=100):
         if box_format == 'xywh':
             return xywh
         elif box_format == 'tlbr':
-            return to_tlbr(xywh)
+            return Boxes(xywh, 'xywh').as_tlbr().data
         else:
             raise KeyError(box_format)
     else:
@@ -221,3 +221,12 @@ def random_boxes(num, box_format='tlbr', scale=100):
             return torch.LongTensor()
         else:
             return torch.FloatTensor()
+
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python -m netharn.util.util_boxes all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

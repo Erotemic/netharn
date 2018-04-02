@@ -856,11 +856,11 @@ class FitHarn(*MIXINS):
         >>>         'param': 0,
         >>>     }),
         >>>     'scheduler'   : (nh.schedulers.ListedLR, {
-        >>>         'step_points': {0: 0.001, 10: 0.01, 50: 0.015, 60: 0.005, 90: 0.001},
+        >>>         'step_points': {0: 0.001, 4: 0.01, 10: 0.015, 16: 0.005, 18: 0.001},
         >>>         'interpolate': True,
         >>>     }),
         >>>     'monitor'     : (nh.Monitor, {
-        >>>         'max_epoch': 100
+        >>>         'max_epoch': 20
         >>>     }),
         >>> }
         >>> harn = FitHarn(hyper)

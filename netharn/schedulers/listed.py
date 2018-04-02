@@ -40,7 +40,7 @@ class ListedLR(_LRScheduler2):
         >>> self = ListedLR(optimizer, step_points, interpolate=True)
         >>> lrs = [self._get_epoch_lr(epoch) for epoch in range(-1, 11)]
         >>> print(ub.repr2(list(ub.flatten(lrs)), precision=3, nl=0))
-        [0.027, 0.010, 0.020, 0.100, 0.062, 0.075, 0.088, 0.050, 0.033, 0.042, 0.025, 0.025]
+        [0.008, 0.010, 0.020, 0.100, 0.088, 0.075, 0.062, 0.050, 0.042, 0.033, 0.025, 0.025]
     """
 
     def __init__(self, optimizer, step_points, interpolate=False,
