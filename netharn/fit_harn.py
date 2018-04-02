@@ -338,6 +338,7 @@ class LogMixin:
             harn.flog.debug(msg)
 
     def error(harn, msg):
+        print(msg)
         if harn.flog:
             from xdoctest.utils import strip_ansi
             msg = strip_ansi(msg)
@@ -661,7 +662,12 @@ class CoreMixin:
         except StopIteration:
             pass
         except Exception as ex:
-            harn.log('an {} error occurred in the train loop'.format(type(ex)))
+            harn.error(
+                'an {} error occurred in the train loop: {}'.format(
+                    type(ex), repr(ex)))
+            import traceback
+            tb = traceback.format_exc()
+            harn.log(tb)
             harn._close_prog()
             raise
 
