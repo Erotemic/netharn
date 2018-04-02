@@ -378,8 +378,10 @@ class YoloHarn(nh.FitHarn):
         inputs, labels = batch
         postout = harn.model.module.postprocess(outputs)
 
-        for y in harn._measure_confusion(postout, labels):
-            harn.batch_confusions.append(y)
+        import utool
+        with utool.embed_on_exception_context:
+            for y in harn._measure_confusion(postout, labels):
+                harn.batch_confusions.append(y)
 
         metrics_dict = ub.odict()
         metrics_dict['L_bbox'] = asfloat(harn.criterion.loss_coord)
