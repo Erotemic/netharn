@@ -13,7 +13,7 @@ import pygtrie
 
 
 def shortest_unique_prefixes(items, sep=None, allow_simple=True, min_length=0, allow_end=False):
-    """
+    r"""
     The shortest unique prefix algorithm.
 
     Args:
@@ -37,7 +37,7 @@ def shortest_unique_prefixes(items, sep=None, allow_simple=True, min_length=0, a
     Requires:
         pip install pygtrie
 
-    Doctest:
+    Example:
         >>> items = ["zebra", "dog", "duck", "dove"]
         >>> shortest_unique_prefixes(items)
         ['z', 'dog', 'du', 'dov']
@@ -128,7 +128,7 @@ def _trie_iternodes(self):
 
 
 def shortest_unique_suffixes(items, sep=None):
-    """
+    r"""
     Example:
         >>> items = ["zebra", "dog", "duck", "dove"]
         >>> shortest_unique_suffixes(items)
@@ -144,81 +144,14 @@ def shortest_unique_suffixes(items, sep=None):
     return suffixes
 
 
-# def _align_fallback(paths1, paths2):
-#     """
-#     Ignore:
-#         >>> import itertools as it
-#         >>> from netharn.util.fnameutil import *
-#         >>> from netharn.util.fnameutil import _align_fallback, _safepaths
-#         >>> def _make_input(fmt, n=10):
-#         >>>     for i in range(n):
-#         >>>         yield (fmt.format(id=i, type='im'), fmt.format(id=i, type='gt'))
-#         >>>         #yield (fmt.format(id=i, type='im'), fmt.format(id=i, type='gt'))
-#         >>> #
-#         >>> n = 4
-#         >>> paths1, paths2 = map(list, zip(*it.chain(
-#         >>>     _make_input('{type}/{id}.png', n=n),
-#         >>>     _make_input('{id}/{type}.png', n=n),
-#         >>>     #_make_input('{type}/{id}-{type}.png', n=n),
-#         >>>     #_make_input('{type}/{type}-{id}.png', n=n),
-#         >>>     #_make_input('{id}/{type}-{id}.png', n=n),
-#         >>>     #_make_input('{id}/{id}-{type}.png', n=n),
-#         >>>     )))
-#         >>> np.random.shuffle(paths2)
-#     """
-#     import numpy as np
-#     import editdistance
-
-#     safe_paths1 = _safepaths(paths1)
-#     safe_paths2 = _safepaths(paths2)
-
-#     # initialize a cost matrix
-#     shape = (len(safe_paths1), len(safe_paths2))
-#     cost_matrix = np.full(shape, fill_value=np.inf)
-
-#     # Can we come up with the right distance function?
-#     # edit-distance wont work for long type specifiers
-#     # does tokenized strings help?
-#     import re
-#     tokens1 = [re.split('[-.]', p) for p in safe_paths1]
-#     tokens2 = [re.split('[-.]', p) for p in safe_paths2]
-
-#     import ubelt as ub
-#     # import itertools as it
-#     # TODO: use frequency weights
-#     # token_freq = ub.dict_hist(it.chain(*(tokens1 + tokens2)))
-#     # token_weights = ub.map_vals(lambda x: 1 / x, token_freq)
-
-#     # The right distance function might be to weight the disagree bit by the
-#     # frequency of the token in the dataset.
-
-#     # only compute one half of the triangle
-#     idxs1, idxs2 = np.triu_indices(len(safe_paths1), k=0)
-#     distances = [
-#         editdistance.eval(tokens1[i], tokens2[j])
-#         for i, j in zip(idxs1, idxs2)
-#     ]
-#     cost_matrix[(idxs1, idxs2)] = distances
-
-#     # make costs symmetric
-#     cost_matrix = np.minimum(cost_matrix.T, cost_matrix)
-
-#     import scipy.optimize
-#     assign = scipy.optimize.linear_sum_assignment(cost_matrix)
-
-#     sortx = assign[1][assign[0].argsort()]
-
-#     import ubelt as ub
-#     list(ub.take(paths2, sortx))
-
-
 def dumpsafe(paths, repl='<sl>'):
     """
     enforces that filenames will not conflict.
     Removes common the common prefix, and replaces slashes with <sl>
 
-    >>> paths = ['foo/{:04d}/{:04d}'.format(i, j) for i in range(2) for j in range(20)]
-    >>> list(dumpsafe(paths, '-'))
+    Ignore:
+        >>> paths = ['foo/{:04d}/{:04d}'.format(i, j) for i in range(2) for j in range(20)]
+        >>> list(dumpsafe(paths, '-'))
     """
     common_pref = commonprefix(paths)
     if not isdir(common_pref):
@@ -254,17 +187,18 @@ def _fast_basename_we(fname):
 
 
 def _safepaths(paths):
-    """
-    x = '/home/local/KHQ/jon.crall/code/netharn/netharn/live/urban_train.py'
-    import re
-    %timeit splitext(x.replace('<sl>', '-').replace('_', '-'))[0]
-    %timeit splitext(re.sub('<sl>|_', '-', x))
-    %timeit x[:x.rfind('.')].replace('<sl>', '-').replace('_', '-')
-    %timeit _fast_name_we(x)
-    %timeit x[:x.rfind('.')]
+    r"""
+    Ignore:
+        x = '/home/local/KHQ/jon.crall/code/netharn/netharn/live/urban_train.py'
+        import re
+        %timeit splitext(x.replace('<sl>', '-').replace('_', '-'))[0]
+        %timeit splitext(re.sub('<sl>|_', '-', x))
+        %timeit x[:x.rfind('.')].replace('<sl>', '-').replace('_', '-')
+        %timeit _fast_name_we(x)
+        %timeit x[:x.rfind('.')]
 
-    >>> paths = ['foo/{:04d}/{:04d}'.format(i, j) for i in range(2) for j in range(20)]
-    >>> _safepaths(paths)
+        >>> paths = ['foo/{:04d}/{:04d}'.format(i, j) for i in range(2) for j in range(20)]
+        >>> _safepaths(paths)
     """
     safe_paths = [
         # faster than splitext
@@ -276,7 +210,7 @@ def _safepaths(paths):
 
 
 def align_paths(paths1, paths2):
-    """
+    r"""
     return path2 in the order of path1
 
     This function will only work where file types (i.e. image / groundtruth)
@@ -289,7 +223,6 @@ def align_paths(paths1, paths2):
     paths1, paths2 = gt_paths, pred_paths
 
     Doctest:
-        >>> from netharn.util.fnameutil import *
         >>> def test_gt_arrangements(paths1, paths2, paths2_):
         >>>     # no matter what order paths2_ comes in, it should align with the groundtruth
         >>>     assert align_paths(paths1, paths2_) == paths2
@@ -428,7 +361,7 @@ def check_aligned(paths1, paths2):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m netharn.util.fnameutil all
+        python -m netharn.util.util_fname all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

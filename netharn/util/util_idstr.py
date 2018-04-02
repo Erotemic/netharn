@@ -44,7 +44,6 @@ def make_short_idstr(params, precision=None):
         python -m netharn.util.misc make_short_idstr
 
     Example:
-        >>> from netharn.util.misc import *  # NOQA
         >>> params = {'input_shape': (None, 3, 212, 212),
         >>>           'a': 'b',
         >>>           'center': {'im_mean': .5, 'std': 1},
