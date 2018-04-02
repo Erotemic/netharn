@@ -13,8 +13,8 @@ from lightnet.util import bbox_iou, bbox_multi_ious
 __all__ = ['RegionLoss']
 
 
-def _safelog(x):
-    return math.log(max(x, np.finfo(np.float).eps))
+# def math.log(x):
+#     return math.log(max(x, np.finfo(np.float).eps))
 
 
 class RegionLoss(torch.nn.modules.loss._Loss):
@@ -114,6 +114,8 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         self.loss_cls = None
         self.loss_tot = None
 
+        self.mse = nn.MSELoss(size_average=False)
+
     def forward(self, output, target, seen=0):
         """ Compute Region loss.
 
@@ -142,7 +144,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         # Get x,y,w,h,conf,cls
         output = output.view(nB, nA, -1, nH*nW)
         coord = torch.zeros_like(output[:, :, :4])
-        coord[:, :, :2] = output[:, :, :2].sigmoid()   # tx,ty
+        coord[:, :, 0:2] = output[:, :, 0:2].sigmoid()  # tx,ty
         coord[:, :, 2:4] = output[:, :, 2:4]            # tw,th
         conf = output[:, :, 4].sigmoid()
         if nC > 1:
@@ -198,9 +200,8 @@ class RegionLoss(torch.nn.modules.loss._Loss):
             cls = cls[cls_mask].view(-1, nC)
 
         # Compute losses
-        mse = nn.MSELoss(size_average=False)
-        loss_coord = self.coord_scale * mse(coord*coord_mask, tcoord*coord_mask) / nB
-        loss_conf = mse(conf*conf_mask, tconf*conf_mask) / nB
+        loss_coord = self.coord_scale * self.mse(coord * coord_mask, tcoord * coord_mask) / nB
+        loss_conf = self.mse(conf * conf_mask, tconf * conf_mask) / nB
         if nC > 1:
             loss_cls = self.class_scale * 2 * nn.CrossEntropyLoss(size_average=False)(cls, tcls) / nB
             loss_tot = loss_coord + loss_conf + loss_cls
@@ -228,8 +229,8 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         nB = ground_truth.size(0)
         nT = ground_truth.size(1)
         nA = self.num_anchors
-        nAnchors = nA*nH*nW
-        nPixels = nH*nW
+        nAnchors = nA * nH * nW
+        nPixels = nH * nW
 
         seen = seen + nB
 
@@ -244,10 +245,8 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         if seen < 12800:
             coord_mask.fill_(1)
             if self.anchor_step == 4:
-                tcoord[:, :, 0] = torch.Tensor(self.anchors[2::self.anchor_step]).view(
-                    1, nA, 1, 1).repeat(nB, 1, 1, nH*nW)
-                tcoord[:, :, 1] = torch.Tensor(self.anchors[3::self.anchor_step]).view(
-                    1, nA, 1, 1).repeat(nB, 1, 1, nH*nW)
+                tcoord[:, :, 0] = torch.Tensor(self.anchors[2::self.anchor_step]).view(1, nA, 1, 1).repeat(nB, 1, 1, nH * nW)
+                tcoord[:, :, 1] = torch.Tensor(self.anchors[3::self.anchor_step]).view(1, nA, 1, 1).repeat(nB, 1, 1, nH * nW)
             else:
                 tcoord[:, :, 0].fill_(0.5)
                 tcoord[:, :, 1].fill_(0.5)
@@ -255,7 +254,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         # Setting confidence mask
         for b in range(nB):
             cur_pred_boxes = pred_boxes[b*nAnchors:(b+1)*nAnchors]
-            cur_pred_confs = pred_confs[b*nAnchors:(b+1)*nAnchors]
+            # cur_pred_confs = pred_confs[b*nAnchors:(b+1)*nAnchors]
             cur_ious = torch.zeros(nAnchors)
             for t in range(nT):
                 if ground_truth[b][t][0] < 0:
@@ -264,10 +263,8 @@ class RegionLoss(torch.nn.modules.loss._Loss):
                 gy = ground_truth[b][t][2] * nH
                 gw = ground_truth[b][t][3] * nW
                 gh = ground_truth[b][t][4] * nH
-                cur_gt_boxes = torch.FloatTensor(
-                    [gx, gy, gw, gh]).repeat(nAnchors, 1)
-                cur_ious = torch.max(cur_ious, bbox_multi_ious(
-                    cur_pred_boxes, cur_gt_boxes))
+                cur_gt_boxes = torch.FloatTensor([gx, gy, gw, gh]).repeat(nAnchors, 1)
+                cur_ious = torch.max(cur_ious, bbox_multi_ious(cur_pred_boxes, cur_gt_boxes))
             conf_mask[b].view(-1)[cur_ious > self.thresh] = 0
 
         # Loop over ground_truths and construct tensors
@@ -282,8 +279,8 @@ class RegionLoss(torch.nn.modules.loss._Loss):
                 gy = ground_truth[b][t][2] * nH
                 gw = ground_truth[b][t][3] * nW
                 gh = ground_truth[b][t][4] * nH
-                gi = min(nW-1, max(0, int(gx)))
-                gj = min(nH-1, max(0, int(gy)))
+                gi = min(nW - 1, max(0, int(gx)))
+                gj = min(nH - 1, max(0, int(gy)))
                 gt_box = [0, 0, gw, gh]
                 for n in range(nA):
                     aw = self.anchors[self.anchor_step*n]
@@ -313,10 +310,8 @@ class RegionLoss(torch.nn.modules.loss._Loss):
                 tcoord[b][best_n][0][gj*nW+gi] = gx - gi
                 tcoord[b][best_n][1][gj*nW+gi] = gy - gj
 
-                tcoord[b][best_n][2][gj*nW+gi] = _safelog(
-                    gw/self.anchors[self.anchor_step*best_n])
-                tcoord[b][best_n][3][gj*nW+gi] = _safelog(
-                    gh/self.anchors[self.anchor_step*best_n+1])
+                tcoord[b][best_n][2][gj*nW+gi] = math.log(gw/self.anchors[self.anchor_step*best_n])
+                tcoord[b][best_n][3][gj*nW+gi] = math.log(gh/self.anchors[self.anchor_step*best_n+1])
                 tconf[b][best_n][gj*nW+gi] = iou
                 tcls[b][best_n][gj*nW+gi] = ground_truth[b][t][0]
 
@@ -410,10 +405,8 @@ class RegionLoss(torch.nn.modules.loss._Loss):
                     conf_mask[b][best_n][gj*nW+gi] = self.object_scale
                     tcoord[b][best_n][0][gj*nW+gi] = gx - gi
                     tcoord[b][best_n][1][gj*nW+gi] = gy - gj
-                    tcoord[b][best_n][2][gj*nW +
-                                         gi] = math.log(gw/self.anchors[self.anchor_step*best_n])
-                    tcoord[b][best_n][3][gj*nW +
-                                         gi] = math.log(gh/self.anchors[self.anchor_step*best_n+1])
+                    tcoord[b][best_n][2][gj*nW + gi] = math.log(gw/self.anchors[self.anchor_step*best_n])
+                    tcoord[b][best_n][3][gj*nW + gi] = math.log(gh/self.anchors[self.anchor_step*best_n+1])
                     tconf[b][best_n][gj*nW+gi] = iou
                     tcls[b][best_n][gj*nW+gi] = anno.class_id
 
