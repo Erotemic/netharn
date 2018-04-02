@@ -610,6 +610,7 @@ class CoreMixin:
         #     # prestep scheduler?
         #     if getattr(harn.scheduler, 'last_epoch', 0) == -1:
         #         harn.scheduler.step()
+        harn.optimizer.zero_grad()
 
         try:
             for harn.epoch in it.count(harn.epoch):
@@ -775,21 +776,18 @@ class CoreMixin:
 
         https://github.com/meetshah1995/pytorch-semseg/blob/master/train.py
         """
-        if learn:
-            harn.optimizer.zero_grad()
-
         try:
             outputs, loss = harn.run_batch(batch)
         except Exception:
             harn.error('may need to make a custom batch runner with set_batch_runner')
             raise
 
-        loss_sum = float(loss.data.sum().cpu())
-
         # backprop and learn
         if learn:
             loss.backward()
             harn.optimizer.step()
+            harn.optimizer.zero_grad()
+        loss_sum = float(loss.data.sum().cpu())
 
         return outputs, loss_sum
 
