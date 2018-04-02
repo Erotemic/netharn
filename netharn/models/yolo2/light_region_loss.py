@@ -82,6 +82,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         >>> im_data = torch.randn(len(target), 3, Hin, Win)
         >>> output = network.forward(im_data)
         >>> loss = float(self(output, target))
+        >>> print(f'output = {output.sum():.2f}')
         >>> print(f'loss = {loss:.2f}')
         loss = 20.18
     """
@@ -151,8 +152,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         # Create prediction boxes
         pred_boxes = torch.FloatTensor(nB*nA*nH*nW, 4)
         lin_x = torch.linspace(0, nW-1, nW).repeat(nH, 1).view(nH*nW)
-        lin_y = torch.linspace(0, nH-1, nH).repeat(nW,
-                                                   1).t().contiguous().view(nH*nW)
+        lin_y = torch.linspace(0, nH-1, nH).repeat(nW, 1).t().contiguous().view(nH*nW)
         anchor_w = torch.Tensor(self.anchors[::self.anchor_step]).view(nA, 1)
         anchor_h = torch.Tensor(self.anchors[1::self.anchor_step]).view(nA, 1)
         if cuda:
@@ -200,18 +200,21 @@ class RegionLoss(torch.nn.modules.loss._Loss):
 
         # Compute losses
         mse = nn.MSELoss(size_average=False)
-        self.loss_coord = self.coord_scale * \
-            mse(coord*coord_mask, tcoord*coord_mask) / nB
-        self.loss_conf = mse(conf*conf_mask, tconf*conf_mask) / nB
+        loss_coord = self.coord_scale * mse(coord*coord_mask, tcoord*coord_mask) / nB
+        loss_conf = mse(conf*conf_mask, tconf*conf_mask) / nB
         if nC > 1:
-            self.loss_cls = self.class_scale * 2 * \
-                nn.CrossEntropyLoss(size_average=False)(cls, tcls) / nB
-            self.loss_tot = self.loss_coord + self.loss_conf + self.loss_cls
+            loss_cls = self.class_scale * 2 * nn.CrossEntropyLoss(size_average=False)(cls, tcls) / nB
+            loss_tot = loss_coord + loss_conf + loss_cls
+            self.loss_cls = float(loss_cls.data.cpu().numpy())
         else:
-            self.loss_cls = None
-            self.loss_tot = self.loss_coord + self.loss_conf
+            self.loss_cls = 0
+            loss_tot = loss_coord + loss_conf
 
-        return self.loss_tot
+        self.loss_tot = float(loss_tot.data.cpu().numpy())
+        self.loss_coord = float(loss_coord.data.cpu().numpy())
+        self.loss_conf = float(loss_conf.data.cpu().numpy())
+
+        return loss_tot
 
     def build_targets(self, pred_boxes, pred_confs, ground_truth, nH, nW, seen=0):
         """ Compare prediction boxes and targets, convert targets to network output tensors """
