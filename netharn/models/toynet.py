@@ -17,10 +17,15 @@ class ToyNet1d(torch.nn.Module):
         super().__init__()
         self.layers = torch.nn.Sequential(*[
             torch.nn.Linear(input_channels, 8),
-            # torch.nn.BatchNorm1d(8),
+
+            torch.nn.BatchNorm1d(8),
+            torch.nn.ReLU(inplace=True),
             torch.nn.Linear(8, 8),
-            # torch.nn.BatchNorm1d(8),
+
+            torch.nn.BatchNorm1d(8),
+            torch.nn.ReLU(inplace=True),
             torch.nn.Linear(8, num_classes),
+
             torch.nn.Softmax(dim=1)
         ])
 
@@ -49,9 +54,13 @@ class ToyNet2d(torch.nn.Module):
         super().__init__()
         self.layers = torch.nn.Sequential(*[
             torch.nn.Conv2d(input_channels, 8, kernel_size=3, padding=1, bias=False),
+
             torch.nn.BatchNorm2d(8),
+            torch.nn.ReLU(inplace=True),
             torch.nn.Conv2d(8, 8, kernel_size=3, padding=1, bias=False),
+
             torch.nn.BatchNorm2d(8),
+            torch.nn.ReLU(inplace=True),
             torch.nn.Conv2d(8, num_classes, kernel_size=3, padding=1, bias=False),
         ])
 

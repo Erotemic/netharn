@@ -1,5 +1,5 @@
 # flake8: noqa
-__version__ = '0.0.1.dev'
+__version__ = '0.0.1.dev0'
 """
 python -c "import ubelt._internal as a; a.autogen_init('netharn', attrs=True)"
 """
