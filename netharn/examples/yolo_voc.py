@@ -226,7 +226,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         #     gt_classes = gt_classes[flags]
         #     gt_weights = gt_weights[flags]
 
-        chw01 = torch.FloatTensor(hwc255.transpose(2, 0, 1) / 255)
+        chw01 = torch.FloatTensor(hwc255.transpose(2, 0, 1) / 255.0)
 
         # Lightnet YOLO accepts truth tensors in the format:
         # [class_id, center_x, center_y, w, h]
@@ -578,13 +578,13 @@ def setup_harness(bsize=16, workers=0):
         }),
 
         'optimizer': (torch.optim.SGD, {
-            'lr': .0005,
+            'lr': .0001,
             'momentum': 0.9,
             'weight_decay': 0.0005,
         }),
 
         'scheduler': (nh.schedulers.ListedLR, {
-            'points': {0: .0005, 10: .01,  60: .015, 90: .001},
+            'points': {0: .0001, 10: .01,  60: .015, 90: .001},
             'interpolate': True
         }),
 
