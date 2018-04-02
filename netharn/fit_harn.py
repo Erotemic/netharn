@@ -17,6 +17,7 @@ from netharn import folders
 import itertools as it
 import logging  # NOQA
 
+from netharn import hyperparams
 from netharn.util import profiler
 
 __all__ = ['FitHarn']
@@ -33,6 +34,8 @@ def register_mixin(cls):
 @register_mixin
 class ConstructorMixin:
     def __init__(harn, hyper):
+        if isinstance(hyper, dict):
+            hyper = hyperparams.HyperParams(**hyper)
         harn.hyper = hyper
 
         harn._main_prog = None
@@ -44,6 +47,8 @@ class ConstructorMixin:
         harn.criterion = None
 
         harn.paths = None
+
+        harn._initialized = False
 
         harn.intervals = {
             'display_train': 1,
@@ -102,11 +107,11 @@ class InitializeMixin:
         """
         # TODO: Initialize the classes and then have a different function move
         # everything to GPU
+        harn.xpu = harn.hyper.make_xpu()
         harn.xpu.set_as_default()
-        harn.debug('harn.xpu = {!r}'.format(harn.xpu))
 
-        if harn.train_dpath is None:
-            harn.setup_dpath(harn.workdir)
+        if harn.paths is None:
+            harn.setup_paths(harn.workdir)
 
         use_file_logger = True
         if use_file_logger and harn.flog is None:
@@ -121,6 +126,8 @@ class InitializeMixin:
             flog.addHandler(handler)
             harn.flog = flog
             harn.debug('initialized file logger')
+
+        harn.debug('harn.xpu = {!r}'.format(harn.xpu))
 
         import tensorboard_logger
         if tensorboard_logger:
@@ -208,6 +215,7 @@ class InitializeMixin:
                     group.setdefault('initial_lr', group['lr'])
 
         harn.log('Snapshots will save to harn.snapshot_dpath = {!r}'.format(harn.snapshot_dpath))
+        harn._initialized = True
 
 
 @register_mixin
@@ -497,9 +505,10 @@ class CoreMixin:
         """
         main training loop
         """
-        harn.log('begin training')
+        if not harn._initialized:
+            harn.initialize()
 
-        harn.initialize()
+        harn.log('begin training')
 
         if harn._check_termination():
             return
@@ -803,25 +812,24 @@ class FitHarn(*MIXINS):
         python ~/code/netharn/netharn/fit_harn.py FitHarn
 
     Example:
+        >>> import netharn as nh
         >>> datasets = {'train': nh.data.ToyData2d()}
         >>> hyper = {
         >>>     # --- Data First
         >>>     'datasets'    : datasets,
-        >>>     'nice'        : 'demo'
-        >>>     'workdir'     : '~/work/netharn/toy'
+        >>>     'nice'        : 'demo',
+        >>>     'workdir'     : ub.truepath('~/work/netharn/toy2d'),
         >>>     # --- Algorithm Second
         >>>     'xpu'         : 'cpu',
         >>>     'model'       : (nh.models.ToyNet2d, {}),
         >>>     'optimizer'   : (nh.optimizers.SGD, {
-        >>>         'init_lr': 0.001
-        >>>     })
-        >>>     'initializer' : (nh.initializer.KaimingNormal, {
-        >>>         'nonlinearity': 'relu'
-        >>>         'value': 1e-2
-        >>>     })
-        >>>     'scheduler'   : (nh.schedulers.PlateauLR, {
-        >>>         'init_lr': .001
-        >>>         'warmup': .01
+        >>>         'lr': 0.001
+        >>>     }),
+        >>>     'initializer' : (nh.initializers.KaimingNormal, {
+        >>>         'param': 0,
+        >>>     }),
+        >>>     'scheduler'   : (nh.schedulers.ListedLR, {
+        >>>         'step_points': {0: .001, 10: .01, 60: .01}
         >>>     }),
         >>>     'monitor'     : (nh.Monitor, {
         >>>         'max_epoch': 10

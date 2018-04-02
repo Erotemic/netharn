@@ -1,36 +1,38 @@
-from torch.utils import data as torch_data
+import torch
 import numpy as np
+import itertools as it
+from torch.utils import data as torch_data
+from netharn.data import base
+from netharn import util
 
 
-class DataMixin(object):
-    def make_loader(self, *args, **kwargs):
-        loader = torch_data.DataLoader(self, *args, **kwargs)
-        return loader
-
-
-class ToyData1d(torch_data.Dataset, DataMixin):
+class ToyData1d(torch_data.Dataset, base.DataMixin):
     def __init__(self, rng=None):
         """
-        Math:
-            # demodata equation
-            x(t) = r(t) * cos(t)
-            y(t) = r(t) * sin(t)
+        Spiral 2d data points
+
+        CommandLine:
+            python ~/code/netharn/netharn/data/toydata.py ToyData2D --show
 
         Example:
-            >>> data, labels = ToyNet1d.demodata()
+            >>> dset = ToyData1d()
+            >>> data, labels = next(iter(dset.make_loader(batch_size=2000)))
+            >>> # xdoctest: +REQUIRES(--show)
             >>> from netharn.util import mplutil
-            >>> mplutil.qtensure()
-            >>> from matplotlib import pyplot as plt
+            >>> mplutil.qtensure()  # xdoc: +SKIP
             >>> mplutil.figure(fnum=1, doclf=True)
             >>> cls1 = data[labels == 0]
             >>> cls2 = data[labels == 1]
-            >>> plt.plot(*cls1.T, 'rx')
-            >>> plt.plot(*cls2.T, 'bx')
+            >>> from matplotlib import pyplot as plt
+            >>> plt.plot(*cls1.T.numpy(), 'rx')
+            >>> plt.plot(*cls2.T.numpy(), 'bx')
+            >>> mplutil.show_if_requested()
         """
-        import numpy as np
-        # rng = util.ensure_rng(rng)
-        if rng is None:
-            rng = np.random.RandomState()
+        rng = util.ensure_rng(rng)
+
+        # spiral equation in parameteric form:
+        # x(t) = r(t) * cos(t)
+        # y(t) = r(t) * sin(t)
 
         # class 1
         n = 1000
@@ -61,13 +63,12 @@ class ToyData1d(torch_data.Dataset, DataMixin):
         return len(self.data)
 
     def __getitem__(self, index):
-        import torch
         data = torch.FloatTensor(self.data[index])
         label = int(self.labels[index])
         return data, label
 
 
-class ToyData2d(torch_data.Dataset, DataMixin):
+class ToyData2d(torch_data.Dataset, base.DataMixin):
     """
     CommandLine:
         python ~/code/netharn/netharn/data/toydata.py ToyData2D --show
@@ -91,18 +92,17 @@ class ToyData2d(torch_data.Dataset, DataMixin):
 
         whiteish = rng.rand(n, 1, 8, 8) * .9
         blackish = rng.rand(n, 1, 8, 8) * .2
-        # class 0 is white block inside a black frame
-        # class 1 is black block inside a white frame
 
-        import itertools as it
         fw = 2  # frame width
         slices = [slice(None, fw), slice(-fw, None)]
 
+        # class 0 is white block inside a black frame
         data1 = whiteish.copy()
         for sl1, sl2 in it.product(slices, slices):
             data1[..., sl1, :] = blackish[..., sl1, :]
             data1[..., :, sl2] = blackish[..., :, sl2]
 
+        # class 1 is black block inside a white frame
         data2 = blackish.copy()
         for sl1, sl2 in it.product(slices, slices):
             data2[..., sl1, :] = whiteish[..., sl1, :]
@@ -115,7 +115,6 @@ class ToyData2d(torch_data.Dataset, DataMixin):
         return len(self.data)
 
     def __getitem__(self, index):
-        import torch
         data = torch.FloatTensor(self.data[index])
         label = int(self.labels[index])
         return data, label

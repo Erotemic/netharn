@@ -265,6 +265,11 @@ class HyperParams(object):
         criterion = hyper.criterion_cls(**hyper.criterion_params)
         return criterion
 
+    def make_xpu(hyper):
+        """ Instanciate the criterion defined by the hyperparams """
+        xpu = device.XPU.cast(hyper.xpu)
+        return xpu
+
     def other_id(hyper):
         """
             >>> from netharn.hyperparams import *
