@@ -1,11 +1,15 @@
 import torch
 from torch.autograd import Function
-from ._ext import reorg_layer
+try:
+    from ._ext import reorg_layer
+except Exception:
+    reorg_layer = None
 
 
 class ReorgFunction(Function):
     """
     Example:
+        >>> # xdoc: +SKIP
         >>> x = torch.randn(5, 512, 12, 12)
         >>> self = ReorgFunction()
         >>> out = self.forward(x)
@@ -56,6 +60,7 @@ class ReorgLayerC(torch.nn.Module):
     Restructure
 
     Example:
+        >>> # xdoc: +SKIP
         >>> x = torch.randn(5, 512, 12, 12)
         >>> self = ReorgLayerC(in_channels=512, stride=2)
         >>> out = self.forward(x)
@@ -72,5 +77,3 @@ class ReorgLayerC(torch.nn.Module):
     def forward(self, x):
         x = ReorgFunction(self.stride)(x)
         return x
-
-

@@ -384,7 +384,9 @@ class XPU(ub.NiceRepr):
             fpath (str or file): path to torch data file or file-like object
 
         Example:
-            >>> fpath = 'foo.pt'
+            >>> from os.path import join
+            >>> dpath = ub.ensure_app_cache_dir('netharn')
+            >>> fpath = join(dpath, 'foo.pt')
             >>> cpu = XPU(None)
             >>> data = torch.FloatTensor([0])
             >>> torch.save(data, fpath)

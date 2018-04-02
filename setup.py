@@ -40,7 +40,7 @@ from setuptools import setup, find_packages
 import os
 import sys
 import numpy as np
-from os.path import dirname, join, exists, abspath
+from os.path import dirname, join, exists
 from distutils.extension import Extension
 from Cython.Distutils import build_ext
 import gpu_setup
@@ -77,47 +77,51 @@ def parse_description():
     """
     from os.path import dirname, join, exists
     readme_fpath = join(dirname(__file__), 'README.md')
-    # print('readme_fpath = %r' % (readme_fpath,))
     # This breaks on pip install, so check that it exists.
     if exists(readme_fpath):
-        # try:
-        #     # convert markdown to rst for pypi
-        #     import pypandoc
-        #     return pypandoc.convert(readme_fpath, 'rst')
-        # except Exception as ex:
-            # strip out markdown to make a clean readme for pypi
-            textlines = []
-            with open(readme_fpath, 'r') as f:
-                capture = False
-                for line in f.readlines():
-                    if '# Purpose' in line:
-                        capture = True
-                    elif line.startswith('##'):
-                        break
-                    elif capture:
-                        textlines += [line]
-            text = ''.join(textlines).strip()
-            text = text.replace('\n\n', '_NLHACK_')
-            text = text.replace('\n', ' ')
-            text = text.replace('_NLHACK_', '\n\n')
-            return text
+        textlines = []
+        with open(readme_fpath, 'r') as f:
+            capture = False
+            for line in f.readlines():
+                if '# Purpose' in line:
+                    capture = True
+                elif line.startswith('##'):
+                    break
+                elif capture:
+                    textlines += [line]
+        text = ''.join(textlines).strip()
+        text = text.replace('\n\n', '_NLHACK_')
+        text = text.replace('\n', ' ')
+        text = text.replace('_NLHACK_', '\n\n')
+        return text
 
 
 def parse_requirements(fname='requirements.txt'):
     """
-    Parse the package dependencies listed in a requirements file.
+    Parse the package dependencies listed in a requirements file but strips
+    specific versioning information.
 
     CommandLine:
         python -c "import setup; print(setup.parse_requirements())"
     """
     from os.path import dirname, join, exists
+    import re
     require_fpath = join(dirname(__file__), fname)
     # This breaks on pip install, so check that it exists.
     if exists(require_fpath):
         with open(require_fpath, 'r') as f:
-            lines = [line.strip() for line in f.readlines()]
-            lines = [line for line in lines if not line.startswith('#')]
-            return lines
+            packages = []
+            for line in f.readlines():
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    if line.startswith('-e '):
+                        package = line.split('#egg=')[1]
+                        packages.append(package)
+                    else:
+                        pat = '|'.join(['>', '>=', '=='])
+                        package = re.split(pat, line)[0]
+                        packages.append(package)
+            return packages
     return []
 
 
