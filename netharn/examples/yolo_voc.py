@@ -385,10 +385,8 @@ class YoloHarn(nh.FitHarn):
         inputs, labels = batch
         postout = harn.model.module.postprocess(outputs)
 
-        import utool
-        with utool.embed_on_exception_context:
-            for y in harn._measure_confusion(postout, labels):
-                harn.batch_confusions.append(y)
+        for y in harn._measure_confusion(postout, labels):
+            harn.batch_confusions.append(y)
 
         metrics_dict = ub.odict()
         metrics_dict['L_bbox'] = harn.criterion.loss_coord
@@ -439,12 +437,13 @@ class YoloHarn(nh.FitHarn):
     # Non-standard problem-specific custom methods
 
     def _measure_confusion(harn, postout, labels):
-        target, gt_weights, orig_sizes, indices, bg_weights = labels
+        targets, gt_weights, orig_sizes, indices, bg_weights = labels
 
         bsize = len(labels[0])
         for bx in range(bsize):
-            true_cxywh   = asnumpy(target[bx][:, 1:5])
-            true_cxs     = asnumpy(target[bx][:, 0])
+            target = asnumpy(targets[bx]).reshape(-1, 6)
+            true_cxywh   = target[:, 1:5]
+            true_cxs     = target[:, 0]
             true_weight  = asnumpy(gt_weights[bx])
 
             # Remove padded truth
@@ -460,10 +459,10 @@ class YoloHarn(nh.FitHarn):
             bg_weight = float(asnumpy(bg_weights[bx]))
 
             # Unpack postprocessed predictions
-            sboxes = postout[bx]
-            pred_boxes = asnumpy(sboxes[:, 0:4])
-            pred_scores = asnumpy(sboxes[:, 4])
-            pred_cxs = asnumpy(sboxes[:, 5]).astype(np.int)
+            sboxes = asnumpy(postout[bx])
+            pred_boxes = sboxes[:, 0:4]
+            pred_scores = sboxes[:, 4]
+            pred_cxs = sboxes[:, 5].astype(np.int)
 
             tlbr = util.Boxes(true_cxywh, 'cxywh').as_tlbr()
             true_boxes = tlbr.scale(orig_size).data
