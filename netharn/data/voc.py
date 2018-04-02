@@ -439,7 +439,7 @@ class EvaluateVOC(object):
             >>> print('ovidx = {!r}'.format(ovidx))
             ovidx = 1
         """
-        if True:
+        if 0:
             from netharn.models.yolo2.utils import yolo_utils
             true_boxes = np.array(true_boxes)
             pred_box = np.array(pred_box)
@@ -604,14 +604,17 @@ class EvaluateVOC(object):
         return ap
 
     @classmethod
-    def sanity_check(EvaluateVOC):
+    def sanity_check(EvaluateVOC, n=10):
         """
+        CommandLine:
+            python ~/code/netharn/netharn/data/voc.py EvaluateVOC.sanity_check
+
         Example:
             >>> from netharn.data.voc import *
-            >>> EvaluateVOC.sanity_check()
+            >>> EvaluateVOC.sanity_check(n=3)
         """
         import pandas as pd
-        n_images = 100
+        n_images = n
         ovthresh = 0.8
         num_classes = 200
         rng = np.random.RandomState(0)
@@ -655,8 +658,6 @@ class EvaluateVOC(object):
             print('mean_ap1 = {!r}'.format(mean_ap1))
             print('mean_ap2 = {!r}'.format(mean_ap2))
             assert mean_ap2 == mean_ap1
-            # print('ap_list1 = {!r}'.format(ap_list1))
-            # print('ap_list2 = {!r}'.format(ap_list2))
             print('-------')
 
     @classmethod
@@ -788,82 +789,6 @@ class EvaluateVOC(object):
             ap_list1.append(ap)
         mean_ap1 = np.nanmean(ap_list1)
         return mean_ap1, ap_list1
-
-    # === Original Method 1
-    # def on_epoch1(harn, tag, loader):
-
-    #     # Measure accumulated outputs
-    #     num_images = len(loader.dataset)
-    #     num_classes = loader.dataset.num_classes
-    #     all_pred_boxes = [[[] for _ in range(num_images)]
-    #                       for _ in range(num_classes)]
-    #     all_true_boxes = [[[] for _ in range(num_images)]
-    #                       for _ in range(num_classes)]
-
-    #     # cx = 3
-    #     # cx = 7
-    #     print(ub.repr2([(gx, b) for gx, b in enumerate(all_true_boxes[cx]) if len(b)], nl=1))
-    #     print(ub.repr2([(gx, b) for gx, b in enumerate(all_pred_boxes[cx]) if len(b)], nl=1))
-
-    #     # Iterate over output from each batch
-    #     for postout, labels in harn.accumulated:
-
-    #         # Iterate over each item in the batch
-    #         cls_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
-    #         cls_true_boxes, batch_true_cls_inds = labels[0:2]
-    #         batch_orig_sz, batch_img_inds = labels[2:4]
-
-    #         batch_size = len(labels[0])
-    #         for bx in range(batch_size):
-    #             gx = batch_img_inds[bx]
-
-    #             true_boxes = cls_true_boxes[bx].data.cpu().numpy()
-    #             true_cxs = batch_true_cls_inds[bx]
-
-    #             pred_boxes  = cls_pred_boxes[bx]
-    #             pred_scores = batch_pred_scores[bx]
-    #             pred_cxs    = batch_pred_cls_inds[bx]
-
-    #             for cx, boxes, score in zip(pred_cxs, pred_boxes, pred_scores):
-    #                 all_pred_boxes[cx][gx].append(np.hstack([boxes, score]))
-
-    #             for cx, boxes in zip(true_cxs, true_boxes):
-    #                 all_true_boxes[cx][gx].append(boxes)
-
-    #     all_boxes = all_true_boxes
-    #     for cx, class_boxes in enumerate(all_boxes):
-    #         for gx, boxes in enumerate(class_boxes):
-    #             all_boxes[cx][gx] = np.array(boxes)
-    #             if len(boxes):
-    #                 boxes = np.array(boxes)
-    #             else:
-    #                 boxes = np.empty((0, 4))
-    #             all_boxes[cx][gx] = boxes
-
-    #     all_boxes = all_pred_boxes
-    #     for cx, class_boxes in enumerate(all_boxes):
-    #         for gx, boxes in enumerate(class_boxes):
-    #             # Sort predictions by confidence
-    #             if len(boxes):
-    #                 boxes = np.array(boxes)
-    #             else:
-    #                 boxes = np.empty((0, 5))
-    #             all_boxes[cx][gx] = boxes
-
-    #     self = voc.EvaluateVOC(all_true_boxes, all_pred_boxes)
-    #     ovthresh = 0.5
-    #     mean_ap1 = self.compute(ovthresh)
-    #     print('mean_ap1 = {!r}'.format(mean_ap1))
-
-    #     num_classes = len(self.all_true_boxes)
-    #     ap_list1 = []
-    #     for cx in range(num_classes):
-    #         rec, prec, ap = self.eval_class(cx, ovthresh)
-    #         ap_list1.append(ap)
-    #     print('ap_list1 = {!r}'.format(ap_list1))
-
-    #     # reset accumulated for next epoch
-    #     harn.accumulated.clear()
 
 
 if __name__ == '__main__':

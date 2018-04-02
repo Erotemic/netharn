@@ -243,14 +243,16 @@ class OutputShapeFor(object):
     @staticmethod
     def maxpoolnd(module, input_shape, n):
         """
+        CommandLine:
+            python -m xdoctest netharn.output_shape_for OutputShapeFor.maxpoolnd:0
 
         Example:
             >>> from netharn.output_shape_for import *
             >>> input_shape = (1, 3, 256, 256)
-            >>> module = nn.MaxPool2d(kernel_size=2)
+            >>> module = nn.MaxPool2d(kernel_size=2, stride=2)
             >>> output_shape = tuple(OutputShapeFor(module)(input_shape))
             >>> print('output_shape = {!r}'.format(output_shape))
-            output_shape = (1, 3, 256, 256)
+            output_shape = (1, 3, 128, 128)
 
         Shape:
             2d Case:
