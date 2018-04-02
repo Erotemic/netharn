@@ -459,7 +459,7 @@ class YoloHarn(nh.FitHarn):
             bg_weight = float(asnumpy(bg_weights[bx]))
 
             # Unpack postprocessed predictions
-            sboxes = asnumpy(postout[bx])
+            sboxes = asnumpy(postout[bx]).reshape(-1, 6)
             pred_boxes = sboxes[:, 0:4]
             pred_scores = sboxes[:, 4]
             pred_cxs = sboxes[:, 5].astype(np.int)
