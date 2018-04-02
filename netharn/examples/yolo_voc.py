@@ -419,6 +419,10 @@ class YoloHarn(nh.FitHarn):
         harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
         harn.log_value(tag + ' epoch max-AP', max_ap, harn.epoch)
         harn.batch_confusions.clear()
+        metrics_dict = ub.odict()
+        metrics_dict['max-AP'] = max_ap
+        metrics_dict['mAP'] = mean_ap
+        return metrics_dict
 
     # Non-standard problem-specific custom methods
 
@@ -577,7 +581,8 @@ def train():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python ~/code/netharn/netharn/examples/yolo_voc.py train
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16
+
         python ~/code/netharn/netharn/examples/yolo_voc.py all
     """
     import xdoctest

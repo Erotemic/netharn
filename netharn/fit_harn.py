@@ -743,11 +743,16 @@ class CoreMixin:
         # record a True average for the entire batch
         epoch_metrics = epoch_moving_metrics.average()
 
+        # call hooks after every epoch
+        custom_metrics = harn.on_epoch()
+        if custom_metrics:
+            isect = set(custom_metrics).intersection(set(epoch_metrics))
+            if isect:
+                raise Exception('Conflicting epoch metrics: {}'.format(isect))
+            epoch_metrics.update(custom_metrics)
+
         for key, value in epoch_metrics.items():
             harn.log_value(tag + ' epoch ' + key, value, harn.epoch)
-
-        # call hooks after every epoch
-        harn.on_epoch()
 
         return epoch_metrics
 
@@ -793,7 +798,7 @@ class CoreMixin:
         if custom_metrics:
             isect = set(custom_metrics).intersection(set(metrics_dict))
             if isect:
-                raise Exception('Conflicting metric hooks: {}'.format(isect))
+                raise Exception('Conflicting batch metrics: {}'.format(isect))
             metrics_dict.update(custom_metrics)
 
         return metrics_dict
@@ -858,7 +863,9 @@ class CoreCallback:
 
     def on_epoch(harn):
         """
-        custom callback typically used to compute epoch evaluation measures
+        custom callback typically used to compute epoch evaluation measures.
+
+        If a dict is returned they are added to epoch measures
 
         Overload Encouraged
         """
