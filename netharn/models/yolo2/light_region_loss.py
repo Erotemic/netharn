@@ -146,8 +146,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         coord[:, :, 2:4] = output[:, :, 2:4]            # tw,th
         conf = output[:, :, 4].sigmoid()
         if nC > 1:
-            cls = output[:, :, 5:].contiguous().view(
-                nB*nA, nC, nH*nW).transpose(1, 2).contiguous().view(-1, nC)
+            cls = output[:, :, 5:].contiguous().view(nB*nA, nC, nH*nW).transpose(1, 2).contiguous().view(-1, nC)
 
         # Create prediction boxes
         pred_boxes = torch.FloatTensor(nB*nA*nH*nW, 4)
