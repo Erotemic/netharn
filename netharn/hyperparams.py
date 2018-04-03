@@ -210,6 +210,8 @@ def _rectify_dynamics(arg, kw):
         # batch_step simulates larger batch sizes
         'batch_step': arg.pop('batch_step', 1),
     }
+    if not isinstance(dynamics['batch_step'], int):
+        raise ValueError('batch_step must be an integer')
     if arg:
         raise KeyError('UNKNOWN dynamics: {}'.format(arg))
     return dynamics
