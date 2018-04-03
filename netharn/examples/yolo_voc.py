@@ -250,6 +250,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
         return chw01, label
 
+    @ub.memoize_method
     def _load_image(self, index):
         return super(YoloVOCDataset, self)._load_image(index)
 
