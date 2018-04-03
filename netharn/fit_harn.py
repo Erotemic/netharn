@@ -796,6 +796,8 @@ class CoreMixin:
         # backprop and learn
         if learn:
             loss.backward()
+
+            # TODO: allow for subdividing batches
             harn.optimizer.step()
             harn.optimizer.zero_grad()
         loss_sum = float(loss.data.sum().cpu())
