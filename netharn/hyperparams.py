@@ -199,14 +199,16 @@ def _rectify_monitor(arg, kw):
 
 
 def _rectify_dynamics(arg, kw):
-    # Special params that control the dynamics of learning at the harness level
-    # at point that doesnt correspond to a decoupled class component.
+    """
+    Special params that control the dynamics of learning at the harness level
+    at point that doesnt correspond to a decoupled class component.
+    """
     if arg is None:
         arg = {}
     arg = arg.copy()
     dynamics = {
         # batch_step simulates larger batch sizes
-        'batch_step': arg.get('batch_step', 1),
+        'batch_step': arg.pop('batch_step', 1),
     }
     if arg:
         raise KeyError('UNKNOWN dynamics: {}'.format(arg))
@@ -303,7 +305,7 @@ class HyperParams(object):
                  initializer=None,
                  scheduler=None,
                  # ---
-                 dynamics=None
+                 dynamics=None,
                  monitor=None,
                  augment=None,
                  other=None,
@@ -345,7 +347,7 @@ class HyperParams(object):
         hyper.monitor_cls = cls
         hyper.monitor_params = kw
 
-        hyper.dynamics = _rectify_dynamics(arg, kw)
+        hyper.dynamics = _rectify_dynamics(dynamics, kw)
 
         hyper.augment = augment
         hyper.other = other
@@ -451,11 +453,11 @@ class HyperParams(object):
                             raise NotImplementedError()
                     d[k] = v
                     # total[k] = v
-                if cls is None:
+                if isinstance(cls, six.string_types):
+                    type_str = cls
+                else:
                     modname = cls.__module__
                     type_str = modname + '.' + cls.__name__
-                else:
-                    type_str = ''
                 # param_str = util.make_idstr(d)
                 initkw[key] = (type_str, d)
 
@@ -467,7 +469,7 @@ class HyperParams(object):
 
         # Loader is a bit hacked
         _append_part('loader', hyper.loader_cls, hyper.loader_params_nice)
-        _append_part('dynamics', None, hyper.dynamics)
+        _append_part('dynamics', 'Dynamics', hyper.dynamics)
 
         return initkw
 
