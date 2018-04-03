@@ -581,13 +581,19 @@ def setup_harness(bsize=16, workers=0):
         }),
 
         'optimizer': (torch.optim.SGD, {
-            'lr': lr,
+            'lr': lr / batch_size,
             'momentum': 0.9,
-            'weight_decay': 0.0005,
+            'weight_decay': 0.0005 / batch_size,
         }),
 
         'scheduler': (nh.schedulers.ListedLR, {
-            'points': {0: lr, 10: .01,  60: .015, 90: .001},
+            'points': {
+                # dividing by batch size was one of those unpublished details
+                0: lr / batch_size,
+                10: .01 / batch_size,
+                60: .015 / batch_size,
+                90: .001 / batch_size,
+            },
             'interpolate': True
         }),
 
@@ -601,8 +607,11 @@ def setup_harness(bsize=16, workers=0):
         'augment': datasets['train'].augmenter,
 
         'other': {
-            'nice': 'nice',
+            # currently a special param. TODO: incorporate more generally
+            # 'subdivisions': 4,
             'batch_size': batch_size,
+
+            'nice': nice,
             'ovthresh': ovthresh,  # used in mAP computation
             'input_range': 'norm01',
             # 'anyway': 'you want it',
@@ -627,9 +636,10 @@ def train():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=Small --lr=.0001
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=Small --lr=.00005
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=Warmup64 --lr=.0001
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=ColdOpen64 --lr=.0005
+
+        # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=ColdOpen64 --lr=.001
 
         python ~/code/netharn/netharn/examples/yolo_voc.py all
     """
