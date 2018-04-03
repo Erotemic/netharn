@@ -608,11 +608,13 @@ def setup_harness(bsize=16, workers=0):
 
         'augment': datasets['train'].augmenter,
 
-        'other': {
+        'dynamics': {
             # currently a special param. TODO: incorporate more generally
-            # 'subdivisions': 4,
-            'batch_size': batch_size,
+            'batch_step': ub.argval('--bstep', 1),
+        },
 
+        'other': {
+            'batch_size': batch_size,
             'nice': nice,
             'ovthresh': ovthresh,  # used in mAP computation
             'input_range': 'norm01',
@@ -642,6 +644,9 @@ if __name__ == '__main__':
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=Warmup64 --lr=.0001
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=ColdOpen64 --lr=.001
+
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=dynamic --lr=.001 --bstep=4
 
         python ~/code/netharn/netharn/examples/yolo_voc.py all
     """

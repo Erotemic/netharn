@@ -248,6 +248,9 @@ class InitializeMixin:
         harn.log('Make monitor')
         harn.monitor = harn.hyper.make_monitor()
 
+        harn.log('Make dynamics')
+        harn.dynamics = harn.hyper.dynamics.copy()
+
         needs_init = True
         harn.log('There are {} existing snapshots'.format(len(prev_states)))
         if prev_states and not reset:
@@ -737,10 +740,10 @@ class CoreMixin:
                 batch = harn.prepare_batch(batch)
 
                 # core learning / backprop
-                outputs, loss = harn._run_batch(batch, learn=learn)
+                outputs, loss = harn._run_batch(bx, batch, learn=learn)
 
                 # measure train accuracy and other informative metrics
-                cur_metrics = harn._on_batch(batch, outputs, loss)
+                cur_metrics = harn._on_batch(bx, batch, outputs, loss)
 
                 # accumulate measures
                 epoch_moving_metrics.update(cur_metrics)
@@ -781,7 +784,7 @@ class CoreMixin:
         return epoch_metrics
 
     @profiler.profile
-    def _run_batch(harn, batch, learn=False):
+    def _run_batch(harn, bx, batch, learn=False):
         """
         batch with weight updates
 
@@ -796,15 +799,17 @@ class CoreMixin:
         # backprop and learn
         if learn:
             loss.backward()
+            # approximates a batch size of (bsize * bstep) if step > 1,
+            bstep = harn.dynamics['batch_step']
+            if (bx + 1) % bstep  == 0:
+                harn.optimizer.step()
+                harn.optimizer.zero_grad()
 
-            # TODO: allow for subdividing batches
-            harn.optimizer.step()
-            harn.optimizer.zero_grad()
         loss_sum = float(loss.data.sum().cpu())
 
         return outputs, loss_sum
 
-    def _on_batch(harn, batch, outputs, loss):
+    def _on_batch(harn, bx, batch, outputs, loss):
         """
         Overload Encouraged
         """
