@@ -239,8 +239,6 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         target = np.concatenate(datas, axis=-1)
         target = torch.FloatTensor(target)
 
-        target
-
         # Return index information in the label as well
         orig_size = torch.LongTensor(orig_size)
         index = torch.LongTensor([index])
@@ -610,7 +608,7 @@ def setup_harness(bsize=16, workers=0):
 
         'dynamics': {
             # currently a special param. TODO: incorporate more generally
-            'batch_step': ub.argval('--bstep', 1),
+            'batch_step': int(ub.argval('--bstep', 1)),
         },
 
         'other': {
