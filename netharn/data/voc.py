@@ -70,7 +70,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
                             'pottedplant', 'sheep', 'sofa', 'train',
                             'tvmonitor')
         self._class_to_ind = ub.invert_dict(dict(enumerate(self.label_names)))
-        self.base_size = [320, 320]
+        self.base_wh = [416, 416]
 
         self.num_classes = len(self.label_names)
 
@@ -184,7 +184,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
             # Get size index from the batch loader
             index, inp_size = index
         else:
-            inp_size = self.base_size
+            inp_size = self.base_wh
         hwc, boxes, gt_classes = self._load_item(index, inp_size)
 
         chw = torch.FloatTensor(hwc.transpose(2, 0, 1))

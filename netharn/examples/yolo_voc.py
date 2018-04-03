@@ -189,7 +189,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             index, size_index = index
             inp_size = self.multi_scale_inp_size[size_index]
         else:
-            inp_size = self.base_size
+            inp_size = self.base_wh
         inp_size = np.array(inp_size)
 
         (hwc255, orig_size,
@@ -371,38 +371,9 @@ class YoloHarn(nh.FitHarn):
             >>> harn.on_batch(batch, outputs, loss)
             >>> # xdoc: +REQUIRES(--show)
             >>> postout = harn.model.module.postprocess(outputs)
-            >>> inputs, labels = batch
-            >>> chw01 = inputs[0]
-            >>> targets, gt_weights, orig_sizes, indices, bg_weights = labels
-            >>> target = targets[0]
-            >>> # ---
-            >>> hwc01 = chw01.cpu().numpy().transpose(1, 2, 0)
-            >>> orig_size = orig_sizes[0]
-            >>> # TRUE
-            >>> true_cxs = target[:, 0].long()
-            >>> true_boxes = target[:, 1:5]
-            >>> flags = true_cxs != -1
-            >>> true_boxes = true_boxes[flags]
-            >>> true_cxs = true_cxs[flags]
-            >>> # PRED
-            >>> pred_boxes = postout[0][:, 0:4]
-            >>> pred_scores = postout[0][:, 4]
-            >>> pred_cxs = postout[0][:, 5]
-            >>> flags = pred_scores > .5
-            >>> pred_cxs = pred_cxs[flags]
-            >>> pred_boxes = pred_boxes[flags]
-            >>> pred_scores = pred_scores[flags]
-            >>> classnames = list(ub.take(harn.datasets['train'].label_names, pred_cxs.long().cpu().numpy()))
-            >>> # ---
-            >>> inp_size = np.array(hwc01.shape[0:2][::-1])
-            >>> true_boxes_ = util.Boxes(true_boxes.cpu().numpy(), 'cxywh').scale(inp_size).data
-            >>> pred_boxes_ = util.Boxes(pred_boxes.cpu().numpy(), 'cxywh').scale(inp_size).data
             >>> from netharn.util import mplutil
-            >>> mplutil.figure(doclf=True, fnum=1)
             >>> mplutil.qtensure()  # xdoc: +SKIP
-            >>> mplutil.imshow(hwc01, colorspace='rgb')
-            >>> mplutil.draw_boxes(true_boxes_, color='green', box_format='cxywh')
-            >>> mplutil.draw_boxes(pred_boxes_, color='blue', box_format='cxywh')
+            >>> harn.visualize_prediction(batch, outputs, postout, idx=0)
             >>> mplutil.show_if_requested()
         """
         inputs, labels = batch
@@ -469,6 +440,7 @@ class YoloHarn(nh.FitHarn):
 
         bsize = len(labels[0])
         for bx in range(bsize):
+            postitem = asnumpy(postout[bx])
             target = asnumpy(targets[bx]).reshape(-1, 5)
             true_cxywh   = target[:, 1:5]
             true_cxs     = target[:, 0]
@@ -476,8 +448,8 @@ class YoloHarn(nh.FitHarn):
 
             # Remove padded truth
             flags = true_cxs != -1
-            true_cxywh = true_cxywh[flags]
-            true_cxs = true_cxs[flags]
+            true_cxywh  = true_cxywh[flags]
+            true_cxs    = true_cxs[flags]
             true_weight = true_weight[flags]
 
             orig_size    = asnumpy(orig_sizes[bx])
@@ -487,13 +459,16 @@ class YoloHarn(nh.FitHarn):
             bg_weight = float(asnumpy(bg_weights[bx]))
 
             # Unpack postprocessed predictions
-            sboxes = asnumpy(postout[bx]).reshape(-1, 6)
-            pred_boxes = sboxes[:, 0:4]
+            sboxes = postitem.reshape(-1, 6)
+            pred_cxywh = sboxes[:, 0:4]
             pred_scores = sboxes[:, 4]
             pred_cxs = sboxes[:, 5].astype(np.int)
 
-            tlbr = util.Boxes(true_cxywh, 'cxywh').as_tlbr()
-            true_boxes = tlbr.scale(orig_size).data
+            true_tlbr = util.Boxes(true_cxywh, 'cxywh').as_tlbr()
+            pred_tlbr = util.Boxes(pred_cxywh, 'cxywh').as_tlbr()
+
+            true_boxes = true_tlbr.scale(orig_size).data
+            pred_boxes = pred_tlbr.scale(orig_size).data
 
             y = nh.metrics.detection_confusions(
                 true_boxes=true_boxes,
@@ -510,12 +485,95 @@ class YoloHarn(nh.FitHarn):
             y['gx'] = gx
             yield y
 
-    def visualize_prediction(harn, batch, outputs):
+    @classmethod
+    def hack_sanity_check(cls):
+        harn = setup_harness(bsize=1)
+        harn.initialize()
+
+        # Load up pretrained VOC weights
+        weights_fpath = light_yolo.demo_weights()
+        state_dict = torch.load(weights_fpath)['weights']
+        harn.model.module.load_state_dict(state_dict)
+
+        batch_confusions = []
+        loader = harn.loaders['test']
+        for batch in ub.ProgIter(loader):
+            inputs, labels = harn.prepare_batch(batch)
+            outputs = harn.model(inputs)
+            postout = harn.model.module.postprocess(outputs)
+
+            y, = harn._measure_confusion(postout, labels)
+            batch_confusions.append(y)
+
+            harn.visualize_prediction(batch, outputs, postout, thresh=.1)
+
+        y = pd.concat(batch_confusions)
+        # TODO: write out a few visualizations
+        num_classes = len(loader.dataset.label_names)
+        labels = list(range(num_classes))
+
+        aps = nh.metrics.ave_precisions(y, labels)
+        aps = aps.rename(dict(zip(labels, loader.dataset.label_names)), axis=0)
+
+        mean_ap = np.nanmean(aps['ap'])
+        max_ap = np.nanmax(aps['ap'])
+
+        # import sklearn.metrics
+        # sklearn.metrics.accuracy_score(y.true, y.pred)
+        # sklearn.metrics.precision_score(y.true, y.pred, average='weighted')
+
+    def visualize_prediction(harn, batch, outputs, postout, idx=0, thresh=None):
         """
         Returns:
             np.ndarray: numpy image
         """
-        pass
+        # xdoc: +REQUIRES(--show)
+        inputs, labels = batch
+        targets, gt_weights, orig_sizes, indices, bg_weights = labels
+        chw01 = inputs[idx]
+        target = targets[idx]
+        postitem = postout[idx]
+        # ---
+        hwc01 = chw01.cpu().numpy().transpose(1, 2, 0)
+        # orig_size = orig_sizes[0]
+        # TRUE
+        true_cxs = target[:, 0].long()
+        true_boxes = target[:, 1:5]
+        flags = true_cxs != -1
+        true_boxes = true_boxes[flags]
+        true_cxs = true_cxs[flags]
+        # PRED
+        pred_boxes = postitem[:, 0:4]
+        pred_scores = postitem[:, 4]
+        pred_cxs = postitem[:, 5]
+
+        if thresh is not None:
+            flags = pred_scores > thresh
+            pred_cxs = pred_cxs[flags]
+            pred_boxes = pred_boxes[flags]
+            pred_scores = pred_scores[flags]
+
+        pred_clsnms = list(ub.take(harn.datasets['train'].label_names,
+                                   pred_cxs.long().cpu().numpy()))
+        pred_labels = ['{}@{:.2f}'.format(n, s)
+                       for n, s in zip(pred_clsnms, pred_scores)]
+
+        true_labels = list(ub.take(harn.datasets['train'].label_names,
+                                   true_cxs.long().cpu().numpy()))
+
+        # ---
+        inp_size = np.array(hwc01.shape[0:2][::-1])
+        true_boxes_ = util.Boxes(true_boxes.cpu().numpy(), 'cxywh').scale(inp_size).data
+        pred_boxes_ = util.Boxes(pred_boxes.cpu().numpy(), 'cxywh').scale(inp_size).data
+        from netharn.util import mplutil
+        mplutil.qtensure()  # xdoc: +SKIP
+
+        mplutil.figure(doclf=True, fnum=1)
+        mplutil.imshow(hwc01, colorspace='rgb')
+        mplutil.draw_boxes(true_boxes_, color='green', box_format='cxywh', labels=true_labels)
+        mplutil.draw_boxes(pred_boxes_, color='blue', box_format='cxywh', labels=pred_labels)
+
+        # mplutil.show_if_requested()
 
 
 def setup_harness(bsize=16, workers=0):

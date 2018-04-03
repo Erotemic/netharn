@@ -2218,7 +2218,8 @@ def draw_border(ax, color, lw=2, offset=None, adjust=True):
     return rect
 
 
-def draw_boxes(boxes, box_format='xywh', color='blue', ax=None):
+def draw_boxes(boxes, box_format='xywh', color='blue', labels=None,
+               textkw=None, ax=None):
     """
     Args:
         boxes (list): list of coordindates in xywh, tlbr, or cxywh format
@@ -2227,6 +2228,7 @@ def draw_boxes(boxes, box_format='xywh', color='blue', ax=None):
             cxywh is the center xy pixel width and height
             tlbr is the top left xy and the bottom right xy
         color (str): edge color of the boxes
+        labels (list): if specified, plots a text annotation on each box
 
     Example:
         >>> from netharn.util.mplutil import *
@@ -2238,6 +2240,9 @@ def draw_boxes(boxes, box_format='xywh', color='blue', ax=None):
     from matplotlib import pyplot as plt
     if ax is None:
         ax = plt.gca()
+
+    if not len(boxes):
+        return
 
     boxes = np.asarray(boxes)
 
@@ -2262,9 +2267,27 @@ def draw_boxes(boxes, box_format='xywh', color='blue', ax=None):
 
     patches = [mpl.patches.Rectangle((x, y), w, h, **rectkw)
                for x, y, w, h in xywh]
-
     col = mpl.collections.PatchCollection(patches, match_original=True)
     ax.add_collection(col)
+
+    if labels:
+        texts = []
+        default_textkw = {
+            'horizontalalignment': 'left',
+            'verticalalignment': 'top',
+            'backgroundcolor': (0, 0, 0, .3),
+            'color': 'white',
+            'fontproperties': mpl.font_manager.FontProperties(
+                size=6, family='monospace'),
+        }
+        tkw = default_textkw.copy()
+        if textkw is not None:
+            tkw.update(textkw)
+        for (x1, y1, w, h), label in zip(xywh, labels):
+            texts.append((x1, y1, label, tkw))
+
+        for (x1, y1, catname, tkw) in texts:
+            ax.text(x1, y1, catname, **tkw)
     return col
 
 
