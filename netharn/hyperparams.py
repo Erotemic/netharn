@@ -198,6 +198,21 @@ def _rectify_monitor(arg, kw):
     return cls, kw2
 
 
+def _rectify_dynamics(arg, kw):
+    # Special params that control the dynamics of learning at the harness level
+    # at point that doesnt correspond to a decoupled class component.
+    if arg is None:
+        arg = {}
+    arg = arg.copy()
+    dynamics = {
+        # batch_step simulates larger batch sizes
+        'batch_step': arg.get('batch_step', 1),
+    }
+    if arg:
+        raise KeyError('UNKNOWN dynamics: {}'.format(arg))
+    return dynamics
+
+
 def _rectify_model(arg, kw):
     if arg is None:
         return None, None
@@ -288,6 +303,7 @@ class HyperParams(object):
                  initializer=None,
                  scheduler=None,
                  # ---
+                 dynamics=None
                  monitor=None,
                  augment=None,
                  other=None,
@@ -328,6 +344,8 @@ class HyperParams(object):
         cls, kw = _rectify_monitor(monitor, kwargs)
         hyper.monitor_cls = cls
         hyper.monitor_params = kw
+
+        hyper.dynamics = _rectify_dynamics(arg, kw)
 
         hyper.augment = augment
         hyper.other = other
@@ -414,29 +432,33 @@ class HyperParams(object):
             append an id-string derived from the class and params.
             TODO: what if we have an instance and not a cls/params tuple?
             """
-            if cls is None:
+            if cls is None and not params:
                 initkw[key] = None
-                return
-            d = ub.odict()
-            for k, v in sorted(params.items()):
-                # if k in total:
-                #     raise KeyError(k)
-                if isinstance(v, torch.Tensor):
-                    v = v.numpy()
-                if isinstance(v, np.ndarray):
-                    if v.dtype.kind == 'f':
-                        try:
-                            v = list(map(float, v))
-                        except Exception:
-                            v = v.tolist()
-                    else:
-                        raise NotImplementedError()
-                d[k] = v
-                # total[k] = v
-            modname = cls.__module__
-            type_str = modname + '.' + cls.__name__
-            # param_str = util.make_idstr(d)
-            initkw[key] = (type_str, d)
+            else:
+                d = ub.odict()
+                for k, v in sorted(params.items()):
+                    # if k in total:
+                    #     raise KeyError(k)
+                    if isinstance(v, torch.Tensor):
+                        v = v.numpy()
+                    if isinstance(v, np.ndarray):
+                        if v.dtype.kind == 'f':
+                            try:
+                                v = list(map(float, v))
+                            except Exception:
+                                v = v.tolist()
+                        else:
+                            raise NotImplementedError()
+                    d[k] = v
+                    # total[k] = v
+                if cls is None:
+                    modname = cls.__module__
+                    type_str = modname + '.' + cls.__name__
+                else:
+                    type_str = ''
+                # param_str = util.make_idstr(d)
+                initkw[key] = (type_str, d)
+
         _append_part('model', hyper.model_cls, hyper.model_params)
         _append_part('initializer', hyper.initializer_cls, hyper.initializer_params)
         _append_part('optimizer', hyper.optimizer_cls, hyper.optimizer_params)
@@ -445,6 +467,8 @@ class HyperParams(object):
 
         # Loader is a bit hacked
         _append_part('loader', hyper.loader_cls, hyper.loader_params_nice)
+        _append_part('dynamics', None, hyper.dynamics)
+
         return initkw
 
     def augment_json(hyper):
