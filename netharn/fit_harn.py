@@ -30,6 +30,7 @@ Example:
     >>>         'points': {0: .0001, 2: .01, 5: .015, 6: .005, 9: .001},
     >>>         'interpolate': True,
     >>>     }),
+    >>>     'dynamics'   : {'batch_step': 4},
     >>>     'monitor'     : (nh.Monitor, {
     >>>         'max_epoch': 10
     >>>     }),
@@ -802,6 +803,8 @@ class CoreMixin:
             # approximates a batch size of (bsize * bstep) if step > 1,
             bstep = harn.dynamics['batch_step']
             if (bx + 1) % bstep  == 0:
+                # NOTE: the last few batches might be skipped if bstep > 1
+                # harn.log("STEP")
                 harn.optimizer.step()
                 harn.optimizer.zero_grad()
 
