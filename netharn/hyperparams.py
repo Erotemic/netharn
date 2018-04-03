@@ -6,6 +6,7 @@ TODO:
     [ ] - need to extract relavent params from loaders
     [ ] - need to extract relavent params from datasets
     [ ] - ensure monitor is handled gracefully
+    [ ] - prevent non-relevant params from being used in the hash
 
 CommandLine:
     python ~/code/netharn/netharn/hyperparams.py __doc__
