@@ -259,7 +259,8 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
     def _load_annotation(self, index):
         return super(YoloVOCDataset, self)._load_annotation(index)
 
-    def make_loader(self, batch_size=16, num_workers=0, shuffle=False):
+    def make_loader(self, batch_size=16, num_workers=0, shuffle=False,
+                    pin_memory=False):
         """
         CommandLine:
             python ~/code/netharn/netharn/examples/yolo_voc.py YoloVOCDataset.make_loader
@@ -286,7 +287,8 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         )
         loader = torch_data.DataLoader(self, batch_sampler=batch_sampler,
                                        collate_fn=collate.padded_collate,
-                                       num_workers=num_workers)
+                                       num_workers=num_workers,
+                                       pin_memory=pin_memory)
         loader.batch_size = batch_size
         return loader
 
