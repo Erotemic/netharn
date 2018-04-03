@@ -434,7 +434,7 @@ class HyperParams(object):
             append an id-string derived from the class and params.
             TODO: what if we have an instance and not a cls/params tuple?
             """
-            if cls is None and not params:
+            if cls is None:
                 initkw[key] = None
             else:
                 d = ub.odict()
