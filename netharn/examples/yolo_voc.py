@@ -530,9 +530,13 @@ def setup_harness(bsize=16, workers=0):
     xpu = nh.XPU.cast('argv')
 
     batch_size = int(ub.argval('--batch_size', default=bsize))
+    bstep = int(ub.argval('--bstep', 1))
     workers = int(ub.argval('--workers', default=workers))
     lr = float(ub.argval('--lr', default=0.0001))
     nice = ub.argval('--nice', default='Yolo2Baseline')
+
+    # We will divide the learning rate by the simulated batch size
+    simulated_bsize = bstep * batch_size
 
     datasets = {
         'train': YoloVOCDataset(split='trainval'),
@@ -581,18 +585,18 @@ def setup_harness(bsize=16, workers=0):
         }),
 
         'optimizer': (torch.optim.SGD, {
-            'lr': lr / batch_size,
+            'lr': lr / simulated_bsize,
             'momentum': 0.9,
-            'weight_decay': 0.0005 / batch_size,
+            'weight_decay': 0.0005 / simulated_bsize,
         }),
 
         'scheduler': (nh.schedulers.ListedLR, {
             'points': {
                 # dividing by batch size was one of those unpublished details
-                0: lr / batch_size,
-                10: .01 / batch_size,
-                60: .015 / batch_size,
-                90: .001 / batch_size,
+                0: lr / simulated_bsize,
+                10: .01 / simulated_bsize,
+                60: .015 / simulated_bsize,
+                90: .001 / simulated_bsize,
             },
             'interpolate': True
         }),
@@ -608,7 +612,7 @@ def setup_harness(bsize=16, workers=0):
 
         'dynamics': {
             # currently a special param. TODO: incorporate more generally
-            'batch_step': int(ub.argval('--bstep', 1)),
+            'batch_step': bstep,
         },
 
         'other': {
