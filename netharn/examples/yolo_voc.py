@@ -540,7 +540,7 @@ def setup_harness(bsize=16, workers=0):
     }
     loaders = {
         key: dset.make_loader(batch_size=batch_size, num_workers=workers,
-                              shuffle=(key == 'train'))
+                              shuffle=(key == 'train'), pin_memory=True)
         for key, dset in datasets.items()
     }
     ovthresh = 0.5
@@ -639,7 +639,7 @@ if __name__ == '__main__':
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=Small --lr=.00005
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=Warmup64 --lr=.0001
 
-        # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=ColdOpen64 --lr=.001
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=ColdOpen64 --lr=.001
 
         python ~/code/netharn/netharn/examples/yolo_voc.py all
     """
