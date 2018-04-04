@@ -67,8 +67,6 @@ def apply_img_letterbox(image, embed_size, shift, target_size):
 
     left, top = pad_lefttop
     right, bot = pad_rightbot
-    print('top = {!r}'.format(top))
-    print('bot = {!r}'.format(bot))
 
     fill_color = 0
     # 127
