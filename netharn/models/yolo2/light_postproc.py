@@ -60,6 +60,35 @@ class GetBoundingBoxes(object):
 
         CommandLine:
             python -m netharn.models.yolo2.light_postproc GetBoundingBoxes.__call__:1 --profile
+            python -m netharn.models.yolo2.light_postproc GetBoundingBoxes.__call__:2 --profile
+
+        Script:
+            >>> import torch
+            >>> torch.random.manual_seed(0)
+            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
+            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
+            >>> import ubelt
+            >>> output = torch.randn(16, 125, 9, 9)
+            >>> output = output.cuda()
+            >>> for timer in ubelt.Timerit(21, bestof=3, label='mode0+gpu'):
+            >>>     output_ = output.clone()
+            >>>     with timer:
+            >>>         self(output_, mode=0)
+
+        Script:
+            >>> import torch
+            >>> torch.random.manual_seed(0)
+            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
+            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
+            >>> import ubelt
+            >>> output = torch.randn(16, 125, 9, 9)
+            >>> output = output.cuda()
+            >>> for timer in ubelt.Timerit(21, bestof=3, label='mode1+gpu'):
+            >>>     output_ = output.clone()
+            >>>     with timer:
+            >>>         self(output_, mode=1)
 
         Benchmark:
             >>> import torch
@@ -90,10 +119,10 @@ class GetBoundingBoxes(object):
             >>>     output_ = output.clone()
             >>>     with timer:
             >>>         self(output_, mode=1)
-            >>> for timer in ubelt.Timerit(21, bestof=3, label='mode2+gpu'):
-            >>>     output_ = output.clone()
-            >>>     with timer:
-            >>>         self(output_, mode=2)
+            >>> #for timer in ubelt.Timerit(21, bestof=3, label='mode2+gpu'):
+            >>> #    output_ = output.clone()
+            >>> #    with timer:
+            >>> #        self(output_, mode=2)
 
             %timeit self(output.data, mode=0)
             %timeit self(output.data, mode=1)
@@ -107,6 +136,7 @@ class GetBoundingBoxes(object):
         postout = boxes
         return postout
 
+    @profiler.profile
     def _clip_boxes(self, box):
         """
         CommandLine:
@@ -187,17 +217,39 @@ class GetBoundingBoxes(object):
             >>> assert len(boxes) == 16
             >>> assert all(len(b[0]) == 6 for b in boxes)
 
-        Ignore:
+        Benchmark:
+            >>> from netharn.models.yolo2.light_postproc import *
+            >>> import torch
+            >>> torch.random.manual_seed(0)
+            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
+            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
+            >>> output = torch.randn(16, 125, 9, 9)
+            >>> from netharn import XPU
+            >>> output = XPU.cast('gpu').move(output)
+            >>> for timer in ub.Timerit(100, bestof=10, label='mode 0'):
+            >>>     output_ = output.clone()
+            >>>     with timer:
+            >>>         boxes0 = self._get_boxes(output_.data, mode=0)
+            >>> for timer in ub.Timerit(100, bestof=10, label='mode 1'):
+            >>>     output_ = output.clone()
+            >>>     with timer:
+            >>>         boxes1 = self._get_boxes(output_.data, mode=1)
+            >>> for b0, b1 in zip(boxes0, boxes1):
+            >>>     assert np.all(b0.cpu() == b1.cpu())
 
-            %timeit self._get_boxes(output.data, mode=0)
-            %timeit self._get_boxes(output.data, mode=1)
-
-            if False:
-                boxes3 = [torch.Tensor(box) for box in boxes]
-                list(map(len, boxes2))
-                list(map(len, boxes3))
-                for b2, b3 in zip(boxes3, boxes2):
-                    assert np.all(b2.cpu() == b3.cpu())
+            >>> from lightnet.data.postprocess import GetBoundingBoxes as GetBoundingBoxesOrig
+            >>> anchors_dict = dict(num=5, values=[1.3221,1.73145,3.19275,4.00944,5.05587,
+            >>>                               8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> post = GetBoundingBoxesOrig(anchors=anchors_dict, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
+            >>> for timer in ub.Timerit(100, bestof=10, label='original'):
+            >>>     output_ = output.clone()
+            >>>     with timer:
+            >>>         boxes3 = post._get_boxes(output_.data)
+            >>> # Check that the output is the same
+            >>> for b0, b3 in zip(boxes0, boxes3):
+            >>>     b3_ = torch.Tensor(b3)
+            >>>     assert np.all(b0.cpu() == b3_.cpu())
         """
         # dont modify inplace
         output = output.clone()
@@ -339,8 +391,8 @@ class GetBoundingBoxes(object):
             >>> self._nms(boxes, mode=0)
             >>> self._nms(boxes, mode=1)
 
+        Benchmark:
             boxes = torch.Tensor(boxes_[0])
-
             import ubelt
             for timer in ubelt.Timerit(100, bestof=10, label='nms0+cpu'):
                 with timer:
@@ -351,7 +403,6 @@ class GetBoundingBoxes(object):
                     self._nms(boxes, mode=1)
 
             boxes = boxes.cuda()
-
             import ubelt
             for timer in ubelt.Timerit(100, bestof=10, label='nms0+gpu'):
                 with timer:
