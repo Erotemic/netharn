@@ -68,8 +68,7 @@ def apply_img_letterbox(image, embed_size, shift, target_size):
     left, top = pad_lefttop
     right, bot = pad_rightbot
 
-    fill_color = 0
-    # 127
+    fill_color = 127
     channels = nh.util.get_num_channels(image)
 
     # NO DONT SQUISH: squish the image into network input coordinates
