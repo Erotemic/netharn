@@ -31,6 +31,9 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         class_scale (float): weight of categorical predictions
         thresh (float): minimum iou for a predicted box to be assigned to a target
 
+    CommandLine:
+        python ~/code/netharn/netharn/models/yolo2/light_region_loss.py RegionLoss
+
     Example:
         >>> from netharn.models.yolo2.light_yolo import Yolo
         >>> from brambox.boxes.annotations import Annotation
@@ -43,8 +46,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         >>>     anno.width, anno.height = w * Win, h * Hin
         >>>     return anno
         >>> network = Yolo(num_classes=2, conf_thresh=4e-2)
-        >>> anchors = network.anchors
-        >>> self = RegionLoss(num_classes=network.num_classes, anchors=anchors)
+        >>> self = RegionLoss(num_classes=network.num_classes, anchors=network.anchors)
         >>> Win, Hin = 96, 96
         >>> # Annotation coordinates are specified wrt the input image size
         >>> target = [
@@ -56,16 +58,17 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         >>> ]
         >>> im_data = torch.randn(len(target), 3, Hin, Win)
         >>> output = network.forward(im_data)
-        >>> loss = float(self(output, target))
+        >>> loss = float(self.forward(output, target))
+        >>> print(f'output.sum() = {output.sum():.2f}')
+        output.sum() = 2.15
         >>> print(f'loss = {loss:.2f}')
-        loss = 20.18
+        loss = 19.53
 
     Example:
         >>> from netharn.models.yolo2.light_yolo import Yolo
         >>> torch.random.manual_seed(0)
         >>> network = Yolo(num_classes=2, conf_thresh=4e-2)
-        >>> anchors = network.anchors
-        >>> self = RegionLoss(num_classes=network.num_classes, anchors=anchors)
+        >>> self = RegionLoss(num_classes=network.num_classes, anchors=network.anchors)
         >>> Win, Hin = 96, 96
         >>> Wout, Hout = 1, 1
         >>> # true boxes for each item in the batch
@@ -82,10 +85,11 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         >>> ])
         >>> im_data = torch.randn(len(target), 3, Hin, Win)
         >>> output = network.forward(im_data)
-        >>> loss = float(self(output, target))
-        >>> print(f'output = {output.sum():.2f}')
+        >>> loss = float(self.forward(output, target))
+        >>> print(f'output.sum() = {output.sum():.2f}')
+        output.sum() = 2.15
         >>> print(f'loss = {loss:.2f}')
-        loss = 20.18
+        loss = 19.53
     """
 
     def __init__(self, num_classes=None, anchors=None, coord_scale=1.0,
@@ -94,9 +98,9 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         super().__init__()
 
         if num_classes is None:
-            raise ValueError('Must specify num_classes if network is None')
+            raise ValueError('Must specify num_classes')
         if anchors is None:
-            raise ValueError('Must specify anchors if network is None')
+            raise ValueError('Must specify anchors')
 
         self.num_classes = num_classes
         self.num_anchors = anchors.size // 2
@@ -222,7 +226,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         if torch.is_tensor(ground_truth):
             return self._build_targets_tensor(pred_boxes, pred_confs, ground_truth, nH, nW, seen=seen)
         else:
-            return self.__build_targets_brambox(pred_boxes, pred_confs, ground_truth, nH, nW, seen=seen)
+            return self._build_targets_brambox(pred_boxes, pred_confs, ground_truth, nH, nW, seen=seen)
 
     @profiler.profile
     def _build_targets_tensor(self, pred_boxes, pred_confs, ground_truth, nH, nW, seen=0):
@@ -311,16 +315,14 @@ class RegionLoss(torch.nn.modules.loss._Loss):
                 conf_mask[b][best_n][gj*nW+gi] = self.object_scale
                 tcoord[b][best_n][0][gj*nW+gi] = gx - gi
                 tcoord[b][best_n][1][gj*nW+gi] = gy - gj
-                import utool
-                with utool.embed_on_exception_context:
-                    tcoord[b][best_n][2][gj*nW+gi] = math.log(gw/self.anchors[self.anchor_step*best_n])
-                    tcoord[b][best_n][3][gj*nW+gi] = math.log(gh/self.anchors[self.anchor_step*best_n+1])
-                    tconf[b][best_n][gj*nW+gi] = iou
-                    tcls[b][best_n][gj*nW+gi] = ground_truth[b][t][0]
+                tcoord[b][best_n][2][gj*nW+gi] = math.log(gw/self.anchors[self.anchor_step*best_n])
+                tcoord[b][best_n][3][gj*nW+gi] = math.log(gh/self.anchors[self.anchor_step*best_n+1])
+                tconf[b][best_n][gj*nW+gi] = iou
+                tcls[b][best_n][gj*nW+gi] = ground_truth[b][t][0]
 
         return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
 
-    def __build_targets_brambox(self, pred_boxes, pred_confs, ground_truth, nH, nW, seen=0):
+    def _build_targets_brambox(self, pred_boxes, pred_confs, ground_truth, nH, nW, seen=0):
         """ Compare prediction boxes and ground truths, convert ground truths to network output tensors """
         # Parameters
         nB = len(ground_truth)

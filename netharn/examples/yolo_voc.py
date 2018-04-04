@@ -192,8 +192,8 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             python ~/code/netharn/netharn/examples/yolo_voc.py YoloVOCDataset.__getitem__
 
         Example:
-            >>> self = YoloVOCDataset(split='train')
-            >>> index = 1
+            >>> self = YoloVOCDataset(split='test')
+            >>> index = 0
             >>> chw01, label = self[index]
             >>> hwc01 = chw01.numpy().transpose(1, 2, 0)
             >>> print(hwc01.shape)
@@ -578,26 +578,33 @@ class YoloHarn(nh.FitHarn):
 
         harn.model.eval()
 
-        batch_labels = []
-        batch_output = []
+        postprocess = harn.model.module.postprocess
+        # postprocess.conf_thresh = 0.001
+        # postprocess.nms_thresh = 0.5
+
+        batch_confusions = []
+        # batch_labels = []
+        # batch_output = []
         loader = harn.loaders['test']
         for batch in ub.ProgIter(loader):
             inputs, labels = harn.prepare_batch(batch)
             inp_size = np.array(inputs.shape[-2:][::-1])
             outputs = harn.model(inputs)
-            batch_output.append((outputs.cpu().data.numpy().copy(), inp_size))
-            batch_labels.append([x.cpu().data.numpy().copy() for x in labels])
 
-        batch_confusions = []
-        postprocess = harn.model.module.postprocess
-        postprocess.conf_thresh = 0.001
-        postprocess.nms_thresh = 0.5
-        for (outputs, inp_size), labels in ub.ProgIter(zip(batch_output, batch_labels), total=len(batch_labels)):
-            labels = [torch.Tensor(x) for x in labels]
-            outputs = torch.Tensor(outputs)
             postout = postprocess(outputs)
             for y in harn._measure_confusion(postout, labels, inp_size):
                 batch_confusions.append(y)
+
+            # batch_output.append((outputs.cpu().data.numpy().copy(), inp_size))
+            # batch_labels.append([x.cpu().data.numpy().copy() for x in labels])
+
+        # batch_confusions = []
+        # for (outputs, inp_size), labels in ub.ProgIter(zip(batch_output, batch_labels), total=len(batch_labels)):
+        #     labels = [torch.Tensor(x) for x in labels]
+        #     outputs = torch.Tensor(outputs)
+        #     postout = postprocess(outputs)
+        #     for y in harn._measure_confusion(postout, labels, inp_size):
+        #         batch_confusions.append(y)
 
         if False:
             from netharn.util import mplutil

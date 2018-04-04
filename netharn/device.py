@@ -525,6 +525,7 @@ if __name__ == '__main__':
     r"""
     CommandLine:
         python -m netharn.device all
+        pytest ~/code/netharn/netharn/device.py
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

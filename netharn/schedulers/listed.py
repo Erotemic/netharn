@@ -35,7 +35,7 @@ class ListedLR(_LRScheduler2):
         >>> self = ListedLR(optimizer, points)
         >>> lrs = [self._get_epoch_lr(epoch) for epoch in range(0, 11)]
         >>> print(list(ub.flatten(lrs)))
-        [0.01, 0.01, 0.02, 0.1, 0.1, 0.1, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025, 0.025]
+        [0.01, 0.01, 0.02, 0.1, 0.1, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025]
         >>> assert self.current_lrs() == [0.01]
         >>> self = ListedLR(optimizer, points, interpolate=True)
         >>> lrs = [self._get_epoch_lr(epoch) for epoch in range(0, 11)]

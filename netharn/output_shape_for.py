@@ -52,7 +52,7 @@ class OutputShapeFor(object):
     @staticmethod
     @compute_type(nn.UpsamplingBilinear2d)
     def UpsamplingBilinear2d(module, input_shape):
-        """
+        r"""
         - Input: :math:`(N, C, H_{in}, W_{in})`
         - Output: :math:`(N, C, H_{out}, W_{out})` where
             :math:`H_{out} = floor(H_{in} * scale\_factor)`
@@ -76,7 +76,7 @@ class OutputShapeFor(object):
     @staticmethod
     @compute_type(nn.Upsample)
     def Upsample(module, input_shape):
-        """
+        r"""
         - Input: :math:`(N, C, H_{in}, W_{in})`
         - Output: :math:`(N, C, H_{out}, W_{out})` where
             :math:`H_{out} = floor(H_{in} * scale\_factor)`
@@ -171,7 +171,7 @@ class OutputShapeFor(object):
 
     @staticmethod
     def convndT(module, input_shape, n):
-        """
+        r"""
         - Input: :math:`(N, C_{in}, H_{in}, W_{in})`
         - Output: :math:`(N, C_{out}, H_{out}, W_{out})` where
             :math:`H_{out} = (H_{in} - 1) * stride[0] - 2 * padding[0] + kernel\_size[0] + output\_padding[0]`
@@ -210,7 +210,7 @@ class OutputShapeFor(object):
 
     @staticmethod
     def convnd(module, input_shape, n):
-        """
+        r"""
         Notes:
             - Input: :math:`(N, C_{in}, H_{in}, W_{in})`
             - Output: :math:`(N, C_{out}, H_{out}, W_{out})` where
@@ -242,7 +242,7 @@ class OutputShapeFor(object):
 
     @staticmethod
     def maxpoolnd(module, input_shape, n):
-        """
+        r"""
         CommandLine:
             python -m xdoctest netharn.output_shape_for OutputShapeFor.maxpoolnd:0
 
@@ -279,7 +279,7 @@ class OutputShapeFor(object):
 
     @staticmethod
     def avepoolnd(module, input_shape, n):
-        """
+        r"""
         2D case:
           Shape:
               - Input: :math:`(N, C, H_{in}, W_{in})`
@@ -304,7 +304,7 @@ class OutputShapeFor(object):
     @staticmethod
     @compute_type(nn.Linear)
     def linear(module, input_shape):
-        """
+        r"""
            Shape:
                - Input: :math:`(N, *, in\_features)` where `*` means any number of
                  additional dimensions
@@ -473,7 +473,7 @@ class OutputShapeFor(object):
     @staticmethod
     @compute_type(torch.cat)
     def cat(input_shapes, dim=0):
-        """
+        r"""
 
         Example:
             >>> from netharn.output_shape_for import *
