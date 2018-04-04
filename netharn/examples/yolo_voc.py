@@ -728,7 +728,7 @@ def setup_harness(bsize=16, workers=0):
     batch_size = int(ub.argval('--batch_size', default=bsize))
     bstep = int(ub.argval('--bstep', 1))
     workers = int(ub.argval('--workers', default=workers))
-    lr = float(ub.argval('--lr', default=0.0001))
+    # lr = float(ub.argval('--lr', default=0.001))
     nice = ub.argval('--nice', default='Yolo2Baseline')
 
     # We will divide the learning rate by the simulated batch size
@@ -781,7 +781,7 @@ def setup_harness(bsize=16, workers=0):
         }),
 
         'optimizer': (torch.optim.SGD, {
-            'lr': lr / simulated_bsize,
+            'lr': .0001 / simulated_bsize,
             'momentum': 0.9,
             'weight_decay': 0.0005 / simulated_bsize,
         }),
@@ -789,10 +789,14 @@ def setup_harness(bsize=16, workers=0):
         'scheduler': (nh.schedulers.ListedLR, {
             'points': {
                 # dividing by batch size was one of those unpublished details
-                0: lr / simulated_bsize,
-                10: .01 / simulated_bsize,
-                60: .015 / simulated_bsize,
-                90: .001 / simulated_bsize,
+                # 0: lr / simulated_bsize,
+                # 5:  .01 / simulated_bsize,
+                # 60: .011 / simulated_bsize,
+                # 90: .001 / simulated_bsize,
+                0:  .0001 / simulated_bsize,
+                5:  .001 / simulated_bsize,
+                60: .0011 / simulated_bsize,
+                90: .00001 / simulated_bsize,
             },
             'interpolate': True
         }),
@@ -846,7 +850,7 @@ if __name__ == '__main__':
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=dynamic --lr=.001 --bstep=4
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=letterboxed --lr=.001 --bstep=4
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=letterboxed_copylr --bstep=4
 
         python ~/code/netharn/netharn/examples/yolo_voc.py all
     """
