@@ -85,7 +85,40 @@ class Boxes(ub.NiceRepr):
         return Boxes(new_data, self.format)
 
     def scale(self, factor):
-        new_data = scale_boxes(self.data, factor)
+        boxes = self.data
+        sx, sy = factor if ub.iterable(factor) else (factor, factor)
+        if torch.is_tensor(boxes):
+            new_data = boxes.float().clone()
+        else:
+            new_data = boxes.astype(np.float).copy()
+        new_data[..., 0:4:2] *= sx
+        new_data[..., 1:4:2] *= sy
+        return Boxes(new_data, self.format)
+
+    def shift(self, amount):
+        """
+        Example:
+            >>> Boxes([25, 30, 15, 10], 'xywh').shift(10)
+            <Boxes(xywh, array([35., 40., 15., 10.]))>
+            >>> Boxes([25, 30, 15, 10], 'xywh').shift((10, 0))
+            <Boxes(xywh, array([35., 30., 15., 10.]))>
+            >>> Boxes([25, 30, 15, 10], 'tlbr').shift((10, 5))
+            <Boxes(tlbr, array([35., 35., 25., 15.]))>
+        """
+        boxes = self.data
+        tx, ty = amount if ub.iterable(amount) else (amount, amount)
+        if torch.is_tensor(boxes):
+            new_data = boxes.float().clone()
+        else:
+            new_data = boxes.astype(np.float).copy()
+        if self.format in ['xywh', 'cxywh']:
+            new_data[..., 0] += tx
+            new_data[..., 1] += ty
+        elif self.format in ['tlbr']:
+            new_data[..., 0:4:2] += tx
+            new_data[..., 1:4:2] += ty
+        else:
+            raise KeyError(self.format)
         return Boxes(new_data, self.format)
 
     @property
@@ -199,10 +232,11 @@ def clip_boxes(boxes, im_shape):
 
     im_h, im_w = im_shape
     x1, y1, x2, y2 = boxes.T
-    np.minimum(x1, im_w - 1, out=x1)  # x1 >= 0
-    np.minimum(y1, im_h - 1, out=y1)  # y1 >= 0
+    np.minimum(x1, im_w - 1, out=x1)  # x1 < im_shape[1]
+    np.minimum(y1, im_h - 1, out=y1)  # y1 < im_shape[0]
     np.minimum(x2, im_w - 1, out=x2)  # x2 < im_shape[1]
     np.minimum(y2, im_h - 1, out=y2)  # y2 < im_shape[0]
+    # y1 >= 0 and  x1 >= 0
     boxes = np.maximum(boxes, 0, out=boxes)
     return boxes
 

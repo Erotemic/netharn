@@ -45,7 +45,7 @@ class MultiScaleBatchSampler(torch_sampler.BatchSampler):
         if self.shuffle:
             scale_index = int(torch.rand(1) * self.num_scales)
         else:
-            scale_index = 0
+            scale_index = None
 
         for idx in self.sampler:
             batch.append((int(idx), scale_index))
