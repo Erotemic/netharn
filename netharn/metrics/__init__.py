@@ -12,5 +12,5 @@ if __DYNAMIC__:
 else:
     # <AUTOGEN_INIT>
     from netharn.metrics import detections
-    from netharn.metrics.detections import (EvaluateVOC, detection_confusions,
+    from netharn.metrics.detections import (ave_precisions, detection_confusions,
                                             iou_overlap,)

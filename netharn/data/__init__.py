@@ -17,4 +17,4 @@ else:
     from netharn.data.collate import (default_collate, list_collate,
                                       padded_collate,)
     from netharn.data.toydata import (ToyData1d, ToyData2d,)
-    from netharn.data.voc import (EvaluateVOC, VOCDataset,)
+    from netharn.data.voc import (VOCDataset,)

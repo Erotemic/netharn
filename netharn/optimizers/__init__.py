@@ -11,4 +11,6 @@ if __DYNAMIC__:
     exec(dynamic_import(__name__))
 else:
     # <AUTOGEN_INIT>
+    # </AUTOGEN_INIT>
     pass
+
