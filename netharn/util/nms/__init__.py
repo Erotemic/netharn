@@ -1,6 +1,5 @@
 """
-python -c "import ubelt._internal as a; a.autogen_init('netharn.util')"
-python -m netharn
+dont autogen this file
 """
 # flake8: noqa
 __all__ = ['non_max_supression']

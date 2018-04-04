@@ -25,7 +25,7 @@ class MultiScaleBatchSampler(torch_sampler.BatchSampler):
         >>> assert len(rand_idxs[0][0]) == 2
         >>> assert len(rand_idxs[-1]) == 2
         >>> assert {len({x[1] for x in xs}) for xs in rand_idxs} == {1}
-        >>> assert {x[1] for xs in seq_idxs for x in xs} == {0}
+        >>> assert {x[1] for xs in seq_idxs for x in xs} == {None}
     """
 
     def __init__(self, data_source, shuffle=False, batch_size=16,

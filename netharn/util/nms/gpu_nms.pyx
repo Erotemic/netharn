@@ -11,6 +11,8 @@ CPATH=$CPATH:$NUMPY_INCLUDE cythonize -a -i ~/code/clab/clab/models/yolo2/utils/
 See Also:
     https://github.com/bharatsingh430/soft-nms/blob/dc97adf100fb2cad66e04f0d09e031fce81948c5/lib/nms/py_cpu_nms.py
 """
+# https://github.com/cython/cython/issues/1720 
+from __future__ import absolute_import
 
 import numpy as np
 cimport cython

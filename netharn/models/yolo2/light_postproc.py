@@ -26,7 +26,8 @@ class GetBoundingBoxes(object):
         The output tensor uses relative values for its coordinates.
     """
 
-    def __init__(self, network=None, conf_thresh=0.001, nms_thresh=0.4, anchors=None, num_classes=None):
+    def __init__(self, network=None, conf_thresh=0.001, nms_thresh=0.4,
+                 anchors=None, num_classes=None):
         self.conf_thresh = conf_thresh
         self.nms_thresh = nms_thresh
         if anchors is not None:
@@ -176,8 +177,8 @@ class GetBoundingBoxes(object):
         Examples:
             >>> import torch
             >>> torch.random.manual_seed(0)
-            >>> anchors = dict(num=5, values=[1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                               8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
+            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> output = torch.randn(16, 125, 9, 9)
             >>> from netharn import XPU
@@ -323,8 +324,8 @@ class GetBoundingBoxes(object):
         Examples:
             >>> import torch
             >>> torch.random.manual_seed(0)
-            >>> anchors = dict(num=5, values=[1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                               8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
+            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.01, nms_thresh=0.5)
             >>> output = torch.randn(8, 125, 9, 9)
             >>> boxes_ = self._get_boxes(output.data)
