@@ -46,13 +46,32 @@ def letterbox_transform(orig_size, target_size):
 
 
 def apply_img_letterbox(image, embed_size, shift, target_size):
+    """
+    Example:
+        >>> #image = np.ones((100, 50), dtype=np.uint8) * 255
+        >>> image = np.ones((100, 100), dtype=np.uint8) * 255
+        >>> target_size = np.array((100, 120))
+        >>> orig_size = np.array(image.shape[0:2][::-1])
+        >>> shift, embed_size = letterbox_transform(orig_size, target_size)
+        >>> hwc255 = apply_img_letterbox(image, embed_size, shift, target_size)
+        >>> # xdoc: +REQUIRES(--show)
+        >>> from netharn.util import mplutil
+        >>> mplutil.figure(doclf=True, fnum=1)
+        >>> mplutil.qtensure()  # xdoc: +SKIP
+        >>> mplutil.imshow(hwc255, colorspace='gray')
+        >>> mplutil.show_if_requested()
+    """
+
     pad_lefttop = shift
     pad_rightbot = target_size - (embed_size + shift)
 
     left, top = pad_lefttop
     right, bot = pad_rightbot
+    print('top = {!r}'.format(top))
+    print('bot = {!r}'.format(bot))
 
-    fill_color = 127
+    fill_color = 0
+    # 127
     channels = nh.util.get_num_channels(image)
 
     # NO DONT SQUISH: squish the image into network input coordinates
@@ -112,88 +131,50 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             self.base_wh + (self.factor * i) for i in range(*scales)])
         self.multi_scale_out_size = self.multi_scale_inp_size // self.factor
 
-        self.anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
-                                   (6.63, 11.38), (9.42, 5.11),
-                                   (16.62, 10.52)],
-                                  dtype=np.float)
+        # self.anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
+        #                            (6.63, 11.38), (9.42, 5.11),
+        #                            (16.62, 10.52)],
+        #                           dtype=np.float)
+
+        self.anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
+                                 (5.05587, 8.09892), (9.47112, 4.84053),
+                                 (11.2364, 10.0071)])
         self.num_anchors = len(self.anchors)
         self.augmenter = None
 
         if 'train' in split:
             augmentors = [
                 iaa.Fliplr(p=.5),
-                iaa.Flipud(p=.5),
+                # iaa.Flipud(p=.5),
                 iaa.Affine(
-                    scale={"x": (1.0, 1.01), "y": (1.0, 1.01)},
+                    # scale={"x": (1.0, 1.01), "y": (1.0, 1.01)},
+                    # translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
                     translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
-                    rotate=(-15, 15),
-                    shear=(-7, 7),
-                    order=[0, 1, 3],
-                    cval=(0, 255),
+                    # rotate=(-15, 15),
+                    # shear=(-7, 7),
+                    # order=[0, 1, 3],
+                    order=3,
+                    # cval=(0, 255),
+                    cval=127,
                     mode=ia.ALL,
                     backend='cv2',
                 ),
-                iaa.AddToHueAndSaturation((-20, 20)),
-                iaa.ContrastNormalization((0.5, 2.0), per_channel=0.5),
+                # iaa.AddToHueAndSaturation((-20, 20)),
+                # iaa.ContrastNormalization((0.5, 2.0), per_channel=0.5),
+                iaa.AddToHueAndSaturation((-10, 10)),
+                iaa.ContrastNormalization((0.7, 1.5), per_channel=0.5),
             ]
             self.augmenter = iaa.Sequential(augmentors)
-
-    def _load_sized_image(self, index, inp_size):
-        """
-        Example:
-            >>> self = YoloVOCDataset(split='test')
-            >>> index = 0
-            >>> target_size = inp_size = np.array((416, 416))
-            >>> hwc255 = self._load_sized_image(0, (inp_size))[0]
-            >>> # xdoc: +REQUIRES(--show)
-            >>> from netharn.util import mplutil
-            >>> mplutil.figure(doclf=True, fnum=1)
-            >>> mplutil.qtensure()  # xdoc: +SKIP
-            >>> mplutil.imshow(hwc255, colorspace='rgb')
-        """
-        # load the raw data from VOC
-
-        # cacher = ub.Cacher('voc_img', cfgstr=ub.repr2([index, inp_size]),
-        #                    appname='netharn', enabled=0)
-        # data = cacher.tryload()
-        # if data is None:
-        image = self._load_image(index)
-
-        orig_size = np.array(image.shape[0:2][::-1])
-
-        shift, embed_size = letterbox_transform(orig_size, inp_size)
-        hwc255 = apply_img_letterbox(image, embed_size, shift, inp_size)
-
-        scale = embed_size / orig_size
-
-        # cacher.save(data)
-        return hwc255, orig_size, scale, shift
-
-    def _load_item(self, index, inp_size):
-        # load the raw data from VOC
-        inp_size = np.array(inp_size)
-        hwc255, orig_size, scale, shift = self._load_sized_image(index, inp_size)
-
-        # VOC loads annotations in tlbr
-        annot = self._load_annotation(index)
-        tlbr_orig = util.Boxes(annot['boxes'].astype(np.float), 'tlbr')
-        gt_classes = annot['gt_classes']
-        # Weight samples so we dont care about difficult cases
-        gt_weights = 1.0 - annot['gt_ishard'].astype(np.float)
-        # squish the bounding box into network input coordinates
-        tlbr = tlbr_orig.scale(scale).shift(shift).data
-
-        return hwc255, orig_size, tlbr, gt_classes, gt_weights
 
     @profiler.profile
     def __getitem__(self, index):
         """
         CommandLine:
-            python ~/code/netharn/netharn/examples/yolo_voc.py YoloVOCDataset.__getitem__
+            python ~/code/netharn/netharn/examples/yolo_voc.py YoloVOCDataset.__getitem__ --show
 
         Example:
-            >>> self = YoloVOCDataset(split='test')
-            >>> index = 0
+            >>> self = YoloVOCDataset(split='train')
+            >>> index = 1
             >>> chw01, label = self[index]
             >>> hwc01 = chw01.numpy().transpose(1, 2, 0)
             >>> print(hwc01.shape)
@@ -300,6 +281,53 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         label = (target, gt_weights, orig_size, index, bg_weight)
 
         return chw01, label
+
+    def _load_sized_image(self, index, inp_size):
+        """
+        Example:
+            >>> self = YoloVOCDataset(split='test')
+            >>> index = 0
+            >>> target_size = inp_size = np.array((416, 416))
+            >>> hwc255 = self._load_sized_image(0, (inp_size))[0]
+            >>> # xdoc: +REQUIRES(--show)
+            >>> from netharn.util import mplutil
+            >>> mplutil.figure(doclf=True, fnum=1)
+            >>> mplutil.qtensure()  # xdoc: +SKIP
+            >>> mplutil.imshow(hwc255, colorspace='rgb')
+        """
+        # load the raw data from VOC
+
+        # cacher = ub.Cacher('voc_img', cfgstr=ub.repr2([index, inp_size]),
+        #                    appname='netharn', enabled=0)
+        # data = cacher.tryload()
+        # if data is None:
+        image = self._load_image(index)
+
+        orig_size = np.array(image.shape[0:2][::-1])
+
+        shift, embed_size = letterbox_transform(orig_size, inp_size)
+        hwc255 = apply_img_letterbox(image, embed_size, shift, inp_size)
+
+        scale = embed_size / orig_size
+
+        # cacher.save(data)
+        return hwc255, orig_size, scale, shift
+
+    def _load_item(self, index, inp_size):
+        # load the raw data from VOC
+        inp_size = np.array(inp_size)
+        hwc255, orig_size, scale, shift = self._load_sized_image(index, inp_size)
+
+        # VOC loads annotations in tlbr
+        annot = self._load_annotation(index)
+        tlbr_orig = util.Boxes(annot['boxes'].astype(np.float), 'tlbr')
+        gt_classes = annot['gt_classes']
+        # Weight samples so we dont care about difficult cases
+        gt_weights = 1.0 - annot['gt_ishard'].astype(np.float)
+        # squish the bounding box into network input coordinates
+        tlbr = tlbr_orig.scale(scale).shift(shift).data
+
+        return hwc255, orig_size, tlbr, gt_classes, gt_weights
 
     @ub.memoize_method  # remove this if RAM is a problem
     def _load_image(self, index):
@@ -820,6 +848,8 @@ if __name__ == '__main__':
 
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=dynamic --lr=.001 --bstep=4
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=letterboxed --lr=.001 --bstep=4
 
         python ~/code/netharn/netharn/examples/yolo_voc.py all
     """
