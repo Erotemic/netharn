@@ -10,4 +10,5 @@ if __DYNAMIC__:
     exec(dynamic_import(__name__))
 else:
     # <AUTOGEN_INIT>
-    pass
+    from netharn.criterions import focal
+    from netharn.criterions.focal import (FocalLoss, one_hot_embedding,)

@@ -95,7 +95,6 @@ class KernprofParser(object):
             print('profile is not on')
         else:
             #profile.dump_stats('out.lprof')
-            import ubelt as ub
             print(summary_text)
             suffix = ub.argval('--profname', default='')
             if suffix:
@@ -167,8 +166,10 @@ class KernprofParser(object):
         def named_field(key, regex, vim=False):
             return r'(?P<%s>%s)' % (key, regex)
 
-        fpath_regex = named_field('fpath', '\S+')
-        funcname_regex = named_field('funcname', '\S+')
+        non_unicode_whitespace = '[^ \t\n\r\f\v]'
+
+        fpath_regex = named_field('fpath', non_unicode_whitespace + '+')
+        funcname_regex = named_field('funcname', non_unicode_whitespace + '+')
         lineno_regex = named_field('lineno', '[0-9]+')
 
         fileline_regex = 'File: ' + fpath_regex + '$'
@@ -286,16 +287,17 @@ class KernprofParser(object):
 
 def find_parent_class(fpath, funcname, lineno, readlines=None):
     """
-    >>> from netharn import profiler
-    >>> funcname = 'clean_lprof_file'
-    >>> func = getattr(profiler.KernprofParser, funcname)
-    >>> lineno = func.__code__.co_firstlineno
-    >>> fpath = profiler.__file__
-    >>> #fpath = ub.truepath('~/code/netharn/netharn/util/profiler.py')
-    >>> #lineno   = 264
-    >>> readlines = lambda x: ub.readfrom(x, aslines=True)
-    >>> classname = find_parent_class(fpath, funcname, lineno, readlines)
-    >>> assert classname == 'KernprofParser'
+    Example:
+        >>> from netharn.util import profiler
+        >>> funcname = 'clean_lprof_file'
+        >>> func = getattr(profiler.KernprofParser, funcname)
+        >>> lineno = func.__code__.co_firstlineno
+        >>> fpath = profiler.__file__
+        >>> #fpath = ub.truepath('~/code/netharn/netharn/util/profiler.py')
+        >>> #lineno   = 264
+        >>> readlines = lambda x: ub.readfrom(x, aslines=True)
+        >>> classname = find_parent_class(fpath, funcname, lineno, readlines)
+        >>> assert classname == 'KernprofParser'
     """
     if readlines is None:
         def readlines(fpath):
@@ -311,7 +313,7 @@ def find_parent_class(fpath, funcname, lineno, readlines=None):
             # function is nested. fixme
             funcname = '<nested>:' + funcname
             return find_pyclass_above_row(line_list, row, indent)
-    except:
+    except Exception:
         pass
 
 
@@ -360,3 +362,12 @@ def find_pattern_above_row(pattern, line_list, row, indent, maxIter=None):
             retval = searchline, pos
             break
     return retval
+
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python -m netharn.util.profiler all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

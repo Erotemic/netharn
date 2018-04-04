@@ -9,4 +9,7 @@ if __DYNAMIC__:
     exec(dynamic_import(__name__))
 else:
     # <AUTOGEN_INIT>
-    pass
+    from netharn.layers import reorg
+    from netharn.layers import roi_pooling
+    
+    from netharn.layers.roi_pooling import (roi_pool, roi_pool,)
