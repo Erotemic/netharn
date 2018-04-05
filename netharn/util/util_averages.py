@@ -29,6 +29,7 @@ class CumMovingAve(MovingAve):
         https://en.wikipedia.org/wiki/Moving_average
 
     Example:
+        >>> from netharn.util.util_averages import *
         >>> self = CumMovingAve()
         >>> print(str(self.update({'a': 10})))
         <CumMovingAve({'a': 10.0})>
@@ -36,22 +37,41 @@ class CumMovingAve(MovingAve):
         <CumMovingAve({'a': 5.0})>
         >>> print(str(self.update({'a': 2})))
         <CumMovingAve({'a': 4.0})>
+
+    Example:
+        >>> from netharn.util.util_averages import *
+        >>> self = CumMovingAve(nan_method='ignore')
+        >>> print(str(self.update({'a': 10})))
+        >>> print(str(self.update({'a': 0})))
+        >>> print(str(self.update({'a': np.nan})))
     """
-    def __init__(self):
+    def __init__(self, nan_method='zero'):
         self.totals = ub.odict()
-        self.n = 0
+        self.nan_method = nan_method
+        self.weights = ub.odict()
+        if self.nan_method not in {'ignore', 'zero'}:
+            raise KeyError(self.nan_method)
 
     def average(self):
-        return {k: v / self.n for k, v in self.totals.items()}
+        return {k: v / self.weights[k] for k, v in self.totals.items()}
 
     def update(self, other):
-        self.n += 1
         for k, v in other.items():
             if pd.isnull(v):
-                v = 0
+                if self.nan_method == 'ignore':
+                    continue
+                elif self.nan_method == 'zero':
+                    v = 0.0
+                    w = 1.0
+                else:
+                    raise AssertionError
+            else:
+                w = 1.0
             if k not in self.totals:
-                self.totals[k] = 0
-            self.totals[k] += v
+                self.totals[k] = 0.0
+                self.weights[k] = 0.0
+            self.totals[k] += v  # should be v * w
+            self.weights[k] += w
         return self
 
 

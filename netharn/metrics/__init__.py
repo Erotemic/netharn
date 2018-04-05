@@ -12,5 +12,7 @@ if __DYNAMIC__:
 else:
     # <AUTOGEN_INIT>
     from netharn.metrics import detections
+    from netharn.metrics import sklearn_alts
     from netharn.metrics.detections import (ave_precisions, detection_confusions,
                                             iou_overlap,)
+    from netharn.metrics.sklearn_alts import (confusion_matrix,)

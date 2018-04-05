@@ -158,8 +158,9 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                 ),
                 # iaa.AddToHueAndSaturation((-20, 20)),
                 # iaa.ContrastNormalization((0.5, 2.0), per_channel=0.5),
-                iaa.AddToHueAndSaturation((-10, 10)),
-                iaa.ContrastNormalization((0.7, 1.5), per_channel=0.5),
+                iaa.AddToHueAndSaturation((-15, 15)),
+                iaa.ContrastNormalization((0.75, 1.5))
+                # iaa.ContrastNormalization((0.75, 1.5), per_channel=0.5),
             ]
             self.augmenter = iaa.Sequential(augmentors)
 
@@ -374,12 +375,12 @@ class YoloHarn(nh.FitHarn):
         harn.batch_confusions = []
         harn.aps = {}
 
-    def initialize(harn):
-        super().initialize()
-        harn.datasets['train']._augmenter = harn.datasets['train'].augmenter
-        if harn.epoch <= 0:
-            # disable augmenter for the first epoch
-            harn.datasets['train'].augmenter = None
+    # def initialize(harn):
+    #     super().initialize()
+    #     harn.datasets['train']._augmenter = harn.datasets['train'].augmenter
+    #     if harn.epoch <= 0:
+    #         # disable augmenter for the first epoch
+    #         harn.datasets['train'].augmenter = None
 
     @profiler.profile
     def prepare_batch(harn, raw_batch):
@@ -489,8 +490,8 @@ class YoloHarn(nh.FitHarn):
             >>> harn.on_epoch()
         """
         tag = harn.current_tag
-        if tag == 'train':
-            harn.datasets['train'].augmenter = harn.datasets['train']._augmenter
+        # if tag == 'train':
+        #     harn.datasets['train'].augmenter = harn.datasets['train']._augmenter
 
         loader = harn.loaders[tag]
         y = pd.concat(harn.batch_confusions)
