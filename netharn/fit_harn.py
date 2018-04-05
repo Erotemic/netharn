@@ -798,20 +798,19 @@ class CoreMixin:
                 harn.optimizer.step()
                 harn.optimizer.zero_grad()
 
-        loss_sum = float(loss.data.sum().cpu())
-
-        return outputs, loss_sum
+        return outputs, loss
 
     def _on_batch(harn, bx, batch, outputs, loss):
         """
         Overload Encouraged
         """
 
-        if not np.isfinite(loss):
+        loss_value = float(loss.data.sum().cpu())
+        if not np.isfinite(loss_value):
             harn.log("WARNING: received an inf loss, setting loss value to 1000")
-            loss = 1000
+            loss_value = 1000
 
-        if harn.current_tag == 'train' and loss > 100:
+        if harn.current_tag == 'train' and loss_value > 100:
             # if the loss is getting very larg, check that the weights are
             # still ok
             state = harn.model.module.state_dict()
@@ -820,7 +819,7 @@ class CoreMixin:
                 raise Exception('NON-FINITE WEIGHTS weights = {!r}'.format(weights))
 
         metrics_dict = {
-            'loss': loss,
+            'loss': loss_value,
         }
         custom_metrics = harn.on_batch(batch, outputs, loss)
         if custom_metrics:
