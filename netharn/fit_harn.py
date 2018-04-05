@@ -289,6 +289,8 @@ class InitializeMixin:
             if not harn.dry:
                 for group in harn.optimizer.param_groups:
                     group.setdefault('initial_lr', group['lr'])
+        else:
+            harn.log('Resuming from epoch={}'.format(harn.epoch))
 
         harn.log('Snapshots will save to harn.snapshot_dpath = {!r}'.format(harn.snapshot_dpath))
         harn._initialized = True
@@ -425,49 +427,26 @@ class SnapshotMixin:
     def load_snapshot(harn, load_path):
         """
         Sets the harness to its state just after an epoch finished
+
+        Args:
+            str: path to previously saved snapshot
         """
         harn.log('Loading previous state: {}'.format(load_path))
-        snapshot = harn.xpu.load(load_path)
-        # the snapshot holds the previous epoch, so add one to move to current
-        harn.epoch = snapshot['epoch'] + 1
-        harn.model.load_state_dict(snapshot['model_state_dict'])
-        harn.debug('loaded model_state_dict')
-
-        if 'monitor_state_dict' in snapshot:
-            # Dont override patience, use whatever the current val is
-            patience = harn.monitor.patience
-            harn.monitor.load_state_dict(snapshot['monitor_state_dict'])
-            harn.monitor.patience = patience
-            harn.debug('loaded monitor_state_dict')
-
-        if 'optimizer_state_dict' in snapshot:
-            harn.optimizer.load_state_dict(snapshot['optimizer_state_dict'])
-            harn.debug('loaded optimizer_state_dict')
-        harn.log('Resuming training...')
+        snapshot_state = harn.xpu.load(load_path)
+        harn.set_snapshot_state(snapshot_state)
+        harn.log('Previous snapshot loaded...')
 
     def save_snapshot(harn):
         # save snapshot
         ub.ensuredir(harn.snapshot_dpath)
-        save_path = join(harn.snapshot_dpath, '_epoch_{:08d}.pt'.format(harn.epoch))
+        save_path = join(harn.snapshot_dpath,
+                         '_epoch_{:08d}.pt'.format(harn.epoch))
+        harn.debug('Saving snapshot to {}'.format(save_path))
+        snapshot_state = harn.get_snapshot_state()
         if harn.dry:
-            harn.debug('Would save snapshot to {}'.format(save_path))
+            harn.debug('Dry run, not saving to {}'.format(save_path))
         else:
-            train = harn.datasets['train']
-            if hasattr(train, 'dataset_metadata'):
-                dataset_metadata = train.dataset_metadata()
-            else:
-                dataset_metadata = None
-
-            # TODO: should we split the optimizer state into a different file?
-            snapshot = {
-                'model_class_name': harn.model.__class__.__name__,
-                'dataset_metadata': dataset_metadata,
-                'epoch': harn.epoch,
-                'model_state_dict': harn.model.state_dict(),
-                'optimizer_state_dict': harn.optimizer.state_dict(),
-                'monitor_state_dict': harn.monitor.state_dict(),
-            }
-            torch.save(snapshot, save_path)
+            torch.save(snapshot_state, save_path)
             harn.debug('Snapshot saved to {}'.format(save_path))
             return save_path
 
@@ -895,6 +874,9 @@ class CoreCallback:
         custom callback typically used to compute batch evaluation measures
         or accumulate data.
 
+        If a dict is returned its items are added to batch measures, and
+        accumulated via moving averages into epoch measures.
+
         Overload Encouraged
         """
         pass
@@ -903,11 +885,59 @@ class CoreCallback:
         """
         custom callback typically used to compute epoch evaluation measures.
 
-        If a dict is returned they are added to epoch measures
+        If a dict is returned its items are added to epoch measures
 
         Overload Encouraged
         """
         pass
+
+    def get_snapshot_state(harn):
+        """
+        Returns a dictionary containing the base snapshot state.
+        This can be overrided for specific applications.
+
+        Returns:
+            dict
+        """
+        snapshot_state = {
+            'epoch': harn.epoch,
+            'model_class_name': harn.model.__class__.__name__,
+            'model_state_dict': harn.model.state_dict(),
+            'optimizer_state_dict': harn.optimizer.state_dict(),
+            'monitor_state_dict': harn.monitor.state_dict(),
+        }
+        return snapshot_state
+
+    def set_snapshot_state(harn, snapshot_state):
+        """
+        Sets harness state based on a previous snapshot.
+
+        This can be overrided for specific applications.  In this case,
+        it is the users responsibility to ensure that this handles all relevant
+        items returned by `harn.get_snapshot_state`.
+
+        Args:
+            snapshot_state (dict): information corresponding to
+        """
+        if 'epoch' in snapshot_state:
+            # the snapshot holds the previous epoch, so add one to move to
+            # current
+            harn.epoch = snapshot_state['epoch'] + 1
+
+        if 'model_state_dict' in snapshot_state:
+            harn.model.load_state_dict(snapshot_state['model_state_dict'])
+            harn.debug('loaded model_state_dict')
+
+        if 'monitor_state_dict' in snapshot_state:
+            # hack: dont override patience, use whatever the current val is
+            patience = harn.monitor.patience
+            harn.monitor.load_state_dict(snapshot_state['monitor_state_dict'])
+            harn.monitor.patience = patience
+            harn.debug('loaded monitor_state_dict')
+
+        if 'optimizer_state_dict' in snapshot_state:
+            harn.optimizer.load_state_dict(snapshot_state['optimizer_state_dict'])
+            harn.debug('loaded optimizer_state_dict')
 
 
 # Define the exposed class as a union of mixin classes
