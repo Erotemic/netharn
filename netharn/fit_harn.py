@@ -93,6 +93,7 @@ class ConstructorMixin:
 
         harn._initialized = False
         harn.flog = None
+        harn.tlog = None
 
         harn.dry = None
 
@@ -135,16 +136,26 @@ class ConstructorMixin:
 
 @register_mixin
 class ExtraMixins:
-    def _demo_batch(harn, index=0, tag='train'):
+    def _demo_batch(harn, index=0, tag='train', raw=False):
         """
-        returns a single batch for testing / demo purposes.
+        Returns a single batch for testing / demo purposes.
+
+        Additionally, sets harn.current_tag to `tag`.
+
+        Args:
+            index (int): get the `index`-th batch
+            tag (str): get batch from either train, vali, or test loader
+            raw (bool): if True, does not prepare the batch
         """
         loader = harn.loaders[tag]
         harn.current_tag = tag
         for bx, batch in enumerate(iter(loader)):
             if bx >= index:
                 break
-        return harn.prepare_batch(batch)
+        if raw:
+            return batch
+        else:
+            return harn.prepare_batch(batch)
 
 
 @register_mixin
@@ -202,7 +213,7 @@ class InitializeMixin:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
             harn.log('dont forget to start: tensorboard --logdir ' + train_base)
             harn.log('Initializing tensorboard')
-            harn.tlogger = tensorboard_logger.Logger(harn.train_dpath,
+            harn.tlog = tensorboard_logger.Logger(harn.train_dpath,
                                                      flush_secs=2)
 
         prev_states = harn.prev_snapshots()
@@ -360,17 +371,17 @@ class LogMixin:
             harn.flog.error(msg)
 
     def log_value(harn, key, value, n_iter):
-        if harn.tlogger:
-            harn.tlogger.log_value(key, value, n_iter)
+        if harn.tlog:
+            harn.tlog.log_value(key, value, n_iter)
         harn.debug('log_value({}, {}, {}'.format(key, value, n_iter))
 
     def log_histogram(harn, key, value, n_iter):
-        if harn.tlogger:
-            harn.tlogger.log_histogram(key, value, n_iter)
+        if harn.tlog:
+            harn.tlog.log_histogram(key, value, n_iter)
 
     def log_images(harn, key, value, n_iter):
-        if harn.tlogger:
-            harn.tlogger.log_images(key, value, n_iter)
+        if harn.tlog:
+            harn.tlog.log_images(key, value, n_iter)
 
 
 @register_mixin
@@ -691,7 +702,7 @@ class CoreMixin:
         # use exponentially weighted or windowed moving averages across epochs
         iter_moving_metrics = harn._run_metrics[tag]
         # use simple moving average within an epoch
-        epoch_moving_metrics = util.CumMovingAve()
+        epoch_moving_metrics = util.CumMovingAve(nan_method='ignore')
 
         # train batch
         if not harn.dry:
