@@ -150,7 +150,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                     # rotate=(-15, 15),
                     # shear=(-7, 7),
                     # order=[0, 1, 3],
-                    order=3,
+                    order=1,
                     # cval=(0, 255),
                     cval=127,
                     mode=ia.ALL,
