@@ -160,7 +160,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                 #     backend='cv2',
                 # ),
 
-                iaa.Crop(percent=(0, .2)),
+                iaa.CropAndPad(percent=(0, .2), pac_cval=127),
                 HSVShift(hue=0.1, sat=1.5, val=1.5),
 
                 # iaa.AddToHueAndSaturation((-20, 20)),
