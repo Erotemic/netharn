@@ -160,8 +160,11 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                 #     backend='cv2',
                 # ),
 
-                iaa.CropAndPad(percent=(0, .2), pac_cval=127),
+                # HSVShift(hue=0.1, sat=1.5, val=1.5),
                 HSVShift(hue=0.1, sat=1.5, val=1.5),
+                iaa.CropAndPad(percent=(0, .2), pad_cval=127),
+
+                # TODO: put letterbox transform afterwords.
 
                 # iaa.AddToHueAndSaturation((-20, 20)),
                 # iaa.ContrastNormalization((0.5, 2.0), per_channel=0.5),
@@ -178,6 +181,9 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             python ~/code/netharn/netharn/examples/yolo_voc.py YoloVOCDataset.__getitem__ --show
 
         Example:
+            >>> import sys, ubelt
+            >>> sys.path.append(ubelt.truepath('~/code/netharn/netharn/examples'))
+            >>> from yolo_voc import *
             >>> self = YoloVOCDataset(split='train')
             >>> index = 1
             >>> chw01, label = self[index]
@@ -869,6 +875,8 @@ if __name__ == '__main__':
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=check_lr1 --lr=0.0001 --decay=0.0005 --bstep=4
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=16 --nice=check_lr2 --lr=0.000015625 --decay=0.0000078125 --bstep=4
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=3 --batch_size=16 --nice=check_lr3 --lr=0.00002 --decay=0.00001 --bstep=4
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=letterboxed_copylr_moreaug2 --bstep=4 --lr=0.000015625 --decay=0.0000078125
 
         python ~/code/netharn/netharn/examples/yolo_voc.py all
     """

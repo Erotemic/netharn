@@ -103,11 +103,11 @@ class HSVShift(Augmenter2):
         # if img.dtype.kind == 'f':
         #     hue_bound = 360.0
         # elif img.dtype == np.uint8:
-        hue_bound = 255
-        sat_bound = 255
-        val_bound = 255
+        # hue_bound = 255
+        # sat_bound = 255
+        # val_bound = 255
 
-        dh = self.hue.draw_sample(random_state) * hue_bound
+        dh = self.hue.draw_sample(random_state)
         ds = self.sat.draw_sample(random_state)
         dv = self.val.draw_sample(random_state)
 
@@ -119,9 +119,11 @@ class HSVShift(Augmenter2):
         hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
 
         # add to hue and scale saturation and value
-        hsv[:, :, 0] = ((hsv[:, :, 0] + dh) % hue_bound).astype(hsv.dtype)
-        hsv[:, :, 1] = np.clip(ds * hsv[:, :, 1], 0, sat_bound).astype(hsv.dtype)
-        hsv[:, :, 2] = np.clip(dv * hsv[:, :, 2], 0, val_bound).astype(hsv.dtype)
+        hsv = hsv.astype(np.float32)
+        hsv[:, :, 0] = (hsv[:, :, 0] + (255 * dh)) % 256
+        hsv[:, :, 1] = np.clip(ds * hsv[:, :, 1], 0, 255)
+        hsv[:, :, 2] = np.clip(dv * hsv[:, :, 2], 0, 255)
+        hsv = hsv.astype(np.uint8)
 
         img = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
         return img
