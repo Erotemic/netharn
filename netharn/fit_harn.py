@@ -805,7 +805,7 @@ class CoreMixin:
         Overload Encouraged
         """
 
-        loss_value = float(loss.data.item().cpu())
+        loss_value = float(loss.data.cpu().item())
         if not np.isfinite(loss_value):
             harn.log("WARNING: received an inf loss, setting loss value to 1000")
             loss_value = 1000
