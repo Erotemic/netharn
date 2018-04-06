@@ -74,12 +74,12 @@ class HSVShift(Augmenter2):
         a1.to_deterministic().augment_image(img)
 
     """
-    def __init__(self, hue, saturation, value, input_colorspace='rgb'):
+    def __init__(self, hue, sat, val, input_colorspace='rgb'):
         super().__init__()
         self.input_colorspace = input_colorspace
         self.hue = Uniform(-hue, hue)
-        self.sat = Uniform(1, saturation)
-        self.val = Uniform(1, value)
+        self.sat = Uniform(1, sat)
+        self.val = Uniform(1, val)
 
         self.flip_val = Binomial(.5)
         self.flip_sat = Binomial(.5)
