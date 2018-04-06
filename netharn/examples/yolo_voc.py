@@ -734,7 +734,6 @@ def setup_harness(bsize=16, workers=0):
     nice = ub.argval('--nice', default='Yolo2Baseline')
 
     # We will divide the learning rate by the simulated batch size
-    simulated_bsize = bstep * batch_size
 
     datasets = {
         'train': YoloVOCDataset(split='trainval'),
@@ -747,9 +746,10 @@ def setup_harness(bsize=16, workers=0):
     }
     ovthresh = 0.5
 
-    decay = ub.argval('--decay', default=0.0005)
-    lr = ub.argval('--lr', default=0.001)
+    decay = float(ub.argval('--decay', default=0.0005))
+    lr = float(ub.argval('--lr', default=0.001))
 
+    # simulated_bsize = bstep * batch_size
     hyper = nh.HyperParams(**{
         'nice': nice,
         'workdir': ub.truepath('~/work/voc_yolo2'),
@@ -788,7 +788,7 @@ def setup_harness(bsize=16, workers=0):
         'optimizer': (torch.optim.SGD, {
             'lr': lr / 10,
             'momentum': 0.9,
-            'weight_decay': 0.0005 / simulated_bsize,
+            'weight_decay': decay,
         }),
 
         'scheduler': (nh.schedulers.ListedLR, {
