@@ -747,6 +747,9 @@ def setup_harness(bsize=16, workers=0):
     }
     ovthresh = 0.5
 
+    decay = ub.argval('--decay', default=0.0005)
+    lr = ub.argval('--lr', default=0.001)
+
     hyper = nh.HyperParams(**{
         'nice': nice,
         'workdir': ub.truepath('~/work/voc_yolo2'),
@@ -783,7 +786,7 @@ def setup_harness(bsize=16, workers=0):
         }),
 
         'optimizer': (torch.optim.SGD, {
-            'lr': .0001 / simulated_bsize,
+            'lr': lr / 10,
             'momentum': 0.9,
             'weight_decay': 0.0005 / simulated_bsize,
         }),
@@ -795,10 +798,11 @@ def setup_harness(bsize=16, workers=0):
                 # 5:  .01 / simulated_bsize,
                 # 60: .011 / simulated_bsize,
                 # 90: .001 / simulated_bsize,
-                0:  .0001 / simulated_bsize,
-                1:  .001 / simulated_bsize,
-                60: .00101 / simulated_bsize,
-                90: .00001 / simulated_bsize,
+                0:  lr / 10,
+                1:  lr,
+                39: lr * 1.02,
+                40: lr / 10,
+                60: lr / 100,
             },
             'interpolate': True
         }),
@@ -855,6 +859,10 @@ if __name__ == '__main__':
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=letterboxed_copylr --bstep=4
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=letterboxed_copylr_reworkaug --bstep=4
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=check_lr1 --lr=0.0001 --decay=0.0005 --bstep=4
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=16 --nice=check_lr2 --lr=0.000015625 --decay=0.0000078125 --bstep=4
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=3 --batch_size=16 --nice=check_lr3 --lr=0.00002 --decay=0.00001 --bstep=4
 
         python ~/code/netharn/netharn/examples/yolo_voc.py all
     """
