@@ -805,7 +805,7 @@ class CoreMixin:
         Overload Encouraged
         """
 
-        loss_value = float(loss.data.sum().cpu())
+        loss_value = float(loss.data.item().cpu())
         if not np.isfinite(loss_value):
             harn.log("WARNING: received an inf loss, setting loss value to 1000")
             loss_value = 1000
@@ -814,7 +814,7 @@ class CoreMixin:
             # if the loss is getting very larg, check that the weights are
             # still ok
             state = harn.model.module.state_dict()
-            weights = sum([v.sum() for v in state.values()])
+            weights = sum(v.sum() for v in state.values())
             if not np.isfinite(weights):
                 raise Exception('NON-FINITE WEIGHTS weights = {!r}'.format(weights))
 
