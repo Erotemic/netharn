@@ -399,7 +399,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         pred_tlbr = util.Boxes(pred_cxywh.data.cpu().numpy(), 'cxywh').toformat('tlbr').data
 
         gt_class = ground_truth[..., 0].data.cpu().numpy()
-        gt_cxywh = util.Boxes(ground_truth[..., 1:5].numpy().astype(np.float32), 'cxywh').scale([nW, nH])
+        gt_cxywh = util.Boxes(ground_truth[..., 1:5].data.cpu().numpy().astype(np.float32), 'cxywh').scale([nW, nH])
 
         gt_tlbr = gt_cxywh.to_tlbr().data
 
