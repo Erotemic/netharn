@@ -143,7 +143,6 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             import netharn.data.transforms  # NOQA
             from netharn.data.transforms import HSVShift
             augmentors = [
-                iaa.Fliplr(p=.5),
                 # iaa.Flipud(p=.5),
                 # iaa.Affine(
                 #     # scale={"x": (1.0, 1.01), "y": (1.0, 1.01)},
@@ -160,9 +159,13 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                 #     backend='cv2',
                 # ),
 
-                # HSVShift(hue=0.1, sat=1.5, val=1.5),
+                # Order used in lightnet is hsv, rc, rf, lb
+                # lb is applied externally to augmenters
                 HSVShift(hue=0.1, sat=1.5, val=1.5),
-                iaa.CropAndPad(percent=(0, .2), pad_cval=127),
+                iaa.Crop(percent=(0, .2)),
+                iaa.Fliplr(p=.5),
+
+                # iaa.CropAndPad(percent=(0, .2), pad_cval=127),
 
                 # TODO: put letterbox transform afterwords.
 
@@ -173,6 +176,10 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                 # iaa.ContrastNormalization((0.75, 1.5), per_channel=0.5),
             ]
             self.augmenter = iaa.Sequential(augmentors)
+
+        # Used to resize images to the appropriate inp_size without changing
+        # the aspect ratio.
+        self.letterbox = nh.data.transforms.LetterboxResize(None)
 
     @profiler.profile
     def __getitem__(self, index):
@@ -189,7 +196,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> chw01, label = self[index]
             >>> hwc01 = chw01.numpy().transpose(1, 2, 0)
             >>> print(hwc01.shape)
-            >>> norm_boxes = label[0][:, 1:5].numpy()
+            >>> norm_boxes = label[0].numpy().reshape(-1, 5)[:, 1:5]
             >>> inp_size = hwc01.shape[-2::-1]
             >>> # xdoc: +REQUIRES(--show)
             >>> from netharn.util import mplutil
@@ -237,50 +244,48 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
         image, tlbr, gt_classes, gt_weights = self._load_item(index)
         orig_size = np.array(image.shape[0:2][::-1])
-
-        bbs = ia.BoundingBoxesOnImage(
-            [ia.BoundingBox(x1, y1, x2, y2)
-             for x1, y1, x2, y2 in tlbr], shape=image.shape)
+        bbs = util.Boxes(tlbr, 'tlbr').as_imgaug(shape=image.shape)
 
         if self.augmenter:
             # Ensure the same augmentor is used for bboxes and iamges
             seq_det = self.augmenter.to_deterministic()
 
-            hwc255 = seq_det.augment_image(hwc255)
-
+            image = seq_det.augment_image(image)
             bbs = seq_det.augment_bounding_boxes([bbs])[0]
 
-            tlbr = np.array([[bb.x1, bb.y1, bb.x2, bb.y2]
-                             for bb in bbs.bounding_boxes])
-            tlbr = util.clip_boxes(tlbr, hwc255.shape[0:2])
+            # Clip any bounding boxes that went out of bounds
+            h, w = image.shape[0:2]
+            tlbr = util.Boxes.from_imgaug(bbs)
+            tlbr = tlbr.clip(0, 0, w - 1, h - 1, inplace=True)
 
-            # REMOVE ANY BOXES THAT ARE NOW OUT OF BOUNDS
-            tlbr = util.Boxes(tlbr, 'tlbr')
+            # Remove any boxes that are no longer visible or out of bounds
             flags = (tlbr.area > 0).ravel()
-            tlbr = tlbr.data[flags]
+            tlbr = tlbr.compress(flags, inplace=True)
             gt_classes = gt_classes[flags]
             gt_weights = gt_weights[flags]
 
-        # Remove boxes that are too small
-        # ONLY DO THIS FOR THE SMALL DEMO TASK
-        # if False:
-        #     tlbr = util.Boxes(tlbr, 'tlbr')
-        #     flags = (tlbr.area > 10).ravel()
-        #     tlbr = tlbr.data[flags]
-        #     gt_classes = gt_classes[flags]
-        #     gt_weights = gt_weights[flags]
+            bbs = tlbr.as_imgaug(shape=image.shape)
 
-        chw01 = torch.FloatTensor(hwc255.transpose(2, 0, 1) / 255.0)
+        # Apply letterbox resize transform to train and test
+        self.letterbox.target_size = inp_size
+        image = self.letterbox.augment_image(image)
+        bbs = self.letterbox.augment_bounding_boxes([bbs])[0]
+        tlbr_inp = util.Boxes.from_imgaug(bbs)
+
+        # Remove any boxes that are no longer visible or out of bounds
+        flags = (tlbr_inp.area > 0).ravel()
+        tlbr_inp = tlbr_inp.compress(flags, inplace=True)
+        gt_classes = gt_classes[flags]
+        gt_weights = gt_weights[flags]
+
+        chw01 = torch.FloatTensor(image.transpose(2, 0, 1) / 255.0)
 
         # Lightnet YOLO accepts truth tensors in the format:
         # [class_id, center_x, center_y, w, h]
         # where coordinates are noramlized between 0 and 1
-        tlbr_inp = util.Boxes(tlbr, 'tlbr')
         cxywh_norm = tlbr_inp.asformat('cxywh').scale(1 / inp_size)
-
-        datas = [gt_classes[:, None], cxywh_norm.data]
-        # [d.shape for d in datas]
-        target = np.concatenate(datas, axis=-1)
+        _target_parts = [gt_classes[:, None], cxywh_norm.data]
+        target = np.concatenate(_target_parts, axis=-1)
         target = torch.FloatTensor(target)
 
         # Return index information in the label as well
@@ -572,18 +577,22 @@ class YoloHarn(nh.FitHarn):
             true_tlbr = util.Boxes(true_cxywh, 'cxywh').as_tlbr()
             pred_tlbr = util.Boxes(pred_cxywh, 'cxywh').as_tlbr()
 
-            # use max because of letterbox transform
-            lettered_orig_size = orig_size.max()
-            true_boxes = true_tlbr.scale(lettered_orig_size).data
-            pred_boxes = pred_tlbr.scale(lettered_orig_size).data
+            if False:
+                # new letterbox transform makes this tricker, simply try and
+                # compare in 0-1 space for now.
 
-            # Clip predicted boxes to the letterbox
-            shift, embed_size = letterbox_transform(orig_size, inp_size)
-            orig_lefttop = (shift / inp_size) * orig_size.max()
-            orig_rightbot = lettered_orig_size - orig_lefttop
-            letterbox_tlbr = list(orig_lefttop) + list(orig_rightbot)
+                # use max because of letterbox transform
+                lettered_orig_size = orig_size.max()
+                true_boxes = true_tlbr.scale(lettered_orig_size).data
+                pred_boxes = pred_tlbr.scale(lettered_orig_size).data
 
-            pred_boxes = clip_boxes_to_letterbox(pred_boxes, letterbox_tlbr)
+                # Clip predicted boxes to the letterbox
+                shift, embed_size = letterbox_transform(orig_size, inp_size)
+                orig_lefttop = (shift / inp_size) * orig_size.max()
+                orig_rightbot = lettered_orig_size - orig_lefttop
+                letterbox_tlbr = list(orig_lefttop) + list(orig_rightbot)
+
+                pred_boxes = clip_boxes_to_letterbox(pred_boxes, letterbox_tlbr)
 
             y = nh.metrics.detection_confusions(
                 true_boxes=true_boxes,
