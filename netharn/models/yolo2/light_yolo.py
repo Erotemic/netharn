@@ -169,7 +169,7 @@ class Yolo(lnn.Darknet):
             >>> #sf = orig_sizes[0].numpy() / (np.array(inp_size) / 32)
             >>> sf = orig_sizes[0].numpy()
             >>> norm_cxywh = util.Boxes(out_boxes.numpy(), 'cxywh')
-            >>> xywh = norm_cxywh.asformat('xywh').scale(sf).data
+            >>> xywh = norm_cxywh.toformat('xywh').scale(sf).data
             >>> mplutil.imshow(rgb255, colorspace='rgb')
             >>> mplutil.draw_boxes(xywh)
             >>> mplutil.show_if_requested()

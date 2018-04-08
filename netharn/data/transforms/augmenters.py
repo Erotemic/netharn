@@ -150,10 +150,10 @@ class LetterboxResize(augmenter_base.ParamatarizedAugmenter):
 
     Example:
         >>> img = demodata_hsv_image()
-        >>> box = util.Boxes([[450, 50, 100, 50], [0.0, 0, 199, 199], [240, 50, 10, 50]], format='xywh').as_tlbr()
-        >>> bboi = box.as_imgaug(shape=img.shape)
+        >>> box = util.Boxes([[450, 50, 100, 50], [0.0, 0, 199, 199], [240, 50, 10, 50]], format='xywh').to_tlbr()
+        >>> bboi = box.to_imgaug(shape=img.shape)
         >>> imgT = np.ascontiguousarray(img.transpose(1, 0, 2))
-        >>> bboiT = box.transpose().as_imgaug(shape=imgT.shape)
+        >>> bboiT = box.transpose().to_imgaug(shape=imgT.shape)
         >>> self = LetterboxResize((40, 30))
         >>> self2 = LetterboxResize((1000, 1000))
         >>> # ---------------------------
@@ -234,7 +234,7 @@ class LetterboxResize(augmenter_base.ParamatarizedAugmenter):
             >>> import imgaug
             >>> tlbr = [[0, 0, 10, 10], [1, 2, 8, 9]]
             >>> shape = (20, 40, 3)
-            >>> bboi = util.Boxes(tlbr, 'tlbr').as_imgaug(shape)
+            >>> bboi = util.Boxes(tlbr, 'tlbr').to_imgaug(shape)
             >>> bounding_boxes_on_images = [bboi]
             >>> kps_ois = []
             >>> for bbs_oi in bounding_boxes_on_images:

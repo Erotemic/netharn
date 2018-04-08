@@ -204,7 +204,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
         image, tlbr, gt_classes, gt_weights = self._load_item(index)
         orig_size = np.array(image.shape[0:2][::-1])
-        bbs = util.Boxes(tlbr, 'tlbr').as_imgaug(shape=image.shape)
+        bbs = util.Boxes(tlbr, 'tlbr').to_imgaug(shape=image.shape)
 
         if self.augmenter:
             # Ensure the same augmentor is used for bboxes and iamges
@@ -224,7 +224,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             gt_classes = gt_classes[flags]
             gt_weights = gt_weights[flags]
 
-            bbs = tlbr.as_imgaug(shape=image.shape)
+            bbs = tlbr.to_imgaug(shape=image.shape)
 
         # Apply letterbox resize transform to train and test
         self.letterbox.target_size = inp_size
@@ -243,7 +243,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         # Lightnet YOLO accepts truth tensors in the format:
         # [class_id, center_x, center_y, w, h]
         # where coordinates are noramlized between 0 and 1
-        cxywh_norm = tlbr_inp.asformat('cxywh').scale(1 / inp_size)
+        cxywh_norm = tlbr_inp.toformat('cxywh').scale(1 / inp_size)
         _target_parts = [gt_classes[:, None], cxywh_norm.data]
         target = np.concatenate(_target_parts, axis=-1)
         target = torch.FloatTensor(target)
@@ -506,8 +506,8 @@ class YoloHarn(nh.FitHarn):
             pred_scores = sboxes[:, 4]
             pred_cxs = sboxes[:, 5].astype(np.int)
 
-            true_tlbr = util.Boxes(true_cxywh, 'cxywh').as_tlbr()
-            pred_tlbr = util.Boxes(pred_cxywh, 'cxywh').as_tlbr()
+            true_tlbr = util.Boxes(true_cxywh, 'cxywh').to_tlbr()
+            pred_tlbr = util.Boxes(pred_cxywh, 'cxywh').to_tlbr()
 
             true_boxes = true_tlbr.data
             pred_boxes = pred_tlbr.data
