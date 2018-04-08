@@ -752,9 +752,8 @@ def setup_harness(bsize=16, workers=0):
                 # 90: .001 / simulated_bsize,
                 0:  lr / 10,
                 1:  lr,
-                39: lr * 1.02,
-                40: lr / 10,
-                60: lr / 100,
+                60: lr / 10,
+                90: lr / 100,
             },
             'interpolate': True
         }),
