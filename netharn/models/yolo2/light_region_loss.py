@@ -58,6 +58,46 @@ def benchmark_region_loss():
     print('loss = {!r}'.format(loss))
 
 
+@profiler.profile
+def profile_loss_speed():
+    """
+    python ~/code/netharn/netharn/models/yolo2/light_region_loss.py profile_loss_speed --profile
+
+    Example:
+        >>> profile_loss_speed()
+    """
+    from netharn.models.yolo2.light_yolo import Yolo
+    import netharn.models.yolo2.light_region_loss
+    import lightnet.network
+    import netharn as nh
+
+    rng = util.ensure_rng(0)
+    torch.random.manual_seed(0)
+    network = Yolo(num_classes=2, conf_thresh=4e-2)
+
+    self1 = netharn.models.yolo2.light_region_loss.RegionLoss(
+        num_classes=network.num_classes, anchors=network.anchors)
+    self2 = lightnet.network.RegionLoss(network=network)
+
+    bsize = 8
+    # Make a random semi-realistic set of groundtruth items
+    n_targets = [rng.randint(0, 20) for _ in range(bsize)]
+    target_list = [torch.FloatTensor(
+        np.hstack([rng.randint(0, network.num_classes, nT)[:, None],
+                   util.Boxes.random(nT, scale=1.0, rng=rng).data]))
+        for nT in n_targets]
+    target = nh.data.collate.padded_collate(target_list)
+
+    Win, Hin = 416, 416
+    im_data = torch.randn(len(target), 3, Hin, Win)
+    output = network.forward(im_data)
+
+    loss1 = float(self1(output, target))
+    loss2 = float(self2(output, target))
+    print('loss1 = {!r}'.format(loss1))
+    print('loss2 = {!r}'.format(loss2))
+
+
 def compare_loss_speed():
     from netharn.models.yolo2.light_yolo import Yolo
     import netharn.models.yolo2.light_region_loss
@@ -118,6 +158,20 @@ def compare_loss_speed():
 
     im_data = torch.randn(len(target), 3, Hin, Win)
     output = network.forward(im_data)
+
+    self1.iou_mode = 'c'
+    for timer in ub.Timerit(100, bestof=10, label='cython_ious'):
+        with timer:
+            float(self1(output, target))
+
+    self1.iou_mode = 'py'
+    for timer in ub.Timerit(100, bestof=10, label='python_ious'):
+        with timer:
+            float(self1(output, target))
+
+    for timer in ub.Timerit(100, bestof=10, label='original'):
+        with timer:
+            float(self2(output, target))
 
 
 class RegionLoss(torch.nn.modules.loss._Loss):
