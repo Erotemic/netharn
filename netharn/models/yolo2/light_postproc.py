@@ -408,7 +408,6 @@ class GetBoundingBoxes(object):
             #     boxes = boxes.cuda()
             keep = _nms_torch(tlbr_tensor, scores, nms_thresh=self.nms_thresh)
             keep = sorted(keep)
-            print('keep0 = {!r}'.format(keep))
         elif mode == 1:
             # Dont group by classes, just NMS
             tlbr_np = tlbr_tensor.cpu().numpy().astype(np.float32)
@@ -416,7 +415,6 @@ class GetBoundingBoxes(object):
             keep = util.non_max_supression(tlbr_np, scores_np,
                                            self.nms_thresh)
             keep = sorted(keep)
-            print('keep1 = {!r}'.format(keep))
         elif mode == 2:
             # Group and use NMS
             tlbr_np = tlbr_tensor.cpu().numpy().astype(np.float32)
@@ -430,7 +428,6 @@ class GetBoundingBoxes(object):
                                                    self.nms_thresh)
                 keep.extend(list(ub.take(idxs, cls_keep)))
             keep = sorted(keep)
-            print('keep2 = {!r}'.format(keep))
         else:
             raise KeyError(mode)
         return boxes[torch.LongTensor(keep)]
