@@ -1,4 +1,5 @@
 import cv2
+import numpy as np  # NOQA
 
 
 def draw_boxes_on_image(img, boxes, color='blue', thickness=1,

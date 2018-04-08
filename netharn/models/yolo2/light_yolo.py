@@ -7,14 +7,97 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-import lightnet.network as lnn
-# import lightnet.data as lnd
-
 __all__ = ['Yolo']
 
 
-class Yolo(lnn.Darknet):
+class Conv2dBatchLeaky(nn.Module):
+    """ This convenience layer groups a 2D convolution, a batchnorm and a leaky ReLU.
+    They are executed in a sequential manner.
+
+    Args:
+        in_channels (int): Number of input channels
+        out_channels (int): Number of output channels
+        kernel_size (int or tuple): Size of the kernel of the convolution
+        stride (int or tuple): Stride of the convolution
+        padding (int or tuple): padding of the convolution
+        leaky_slope (number, optional): Controls the angle of the negative slope of the leaky ReLU; Default **0.1**
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, leaky_slope=0.1):
+        super(Conv2dBatchLeaky, self).__init__()
+
+        # Parameters
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.leaky_slope = leaky_slope
+
+        # Layer
+        self.layers = nn.Sequential(
+            nn.Conv2d(self.in_channels, self.out_channels, self.kernel_size, self.stride, self.padding, bias=False),
+            nn.BatchNorm2d(self.out_channels),
+            nn.LeakyReLU(self.leaky_slope, inplace=True)
+        )
+
+    def __repr__(self):
+        s = '{name} ({in_channels}, {out_channels}, kernel_size={kernel_size}, stride={stride}, padding={padding}, negative_slope={leaky_slope})'
+        return s.format(name=self.__class__.__name__, **self.__dict__)
+
+    def forward(self, x):
+        x = self.layers(x)
+        return x
+
+
+class Reorg(nn.Module):
+    """ This layer reorganizes a tensor according to a stride.
+    The dimensions 2,3 will be sliced by the stride and then stacked in dimension 1. (input must have 4 dimensions)
+
+    Args:
+        stride (int): stride to divide the input tensor
+    """
+    def __init__(self, stride=2):
+        super(Reorg, self).__init__()
+        if not isinstance(stride, int):
+            raise TypeError('stride is not an int [{}]'.format(type(stride)))
+        self.stride = stride
+        self.darknet = True
+
+    def __repr__(self):
+        return f'{self.__class__.__name__} (stride={self.stride}, darknet_compatible_mode={self.darknet})'
+
+    def forward(self, x):
+        assert(x.data.dim() == 4)
+        B = x.data.size(0)
+        C = x.data.size(1)
+        H = x.data.size(2)
+        W = x.data.size(3)
+
+        if H % self.stride != 0:
+            raise ValueError('Dimension mismatch: {} is not divisible by {}'.format(W, self.stride))
+        if W % self.stride != 0:
+            raise ValueError('Dimension mismatch: {} is not divisible by {}'.format(W, self.stride))
+
+        # darknet compatible version from: https://github.com/thtrieu/darkflow/issues/173#issuecomment-296048648
+        if self.darknet:
+            x = x.view(B, C // (self.stride ** 2), H, self.stride, W, self.stride).contiguous()
+            x = x.permute(0, 3, 5, 1, 2, 4).contiguous()
+            x = x.view(B, -1, H // self.stride, W // self.stride)
+        else:
+            ws, hs = self.stride, self.stride
+            x = x.view(B, C, H // hs, hs, W // ws, ws).transpose(3, 4).contiguous()
+            x = x.view(B, C, H // hs * W // ws, hs * ws).transpose(2, 3).contiguous()
+            x = x.view(B, C, hs * ws, H // hs, W // ws).transpose(1, 2).contiguous()
+            x = x.view(B, hs * ws * C, H // hs, W // ws)
+
+        return x
+
+
+class Yolo(nn.Module):
     """ `Yolo v2`_ implementation with pytorch.
+
+    Modified version original taken from lightnet
+
     This network uses :class:`~lightnet.network.RegionLoss` as its loss function
     and :class:`~lightnet.data.GetBoundingBoxes` as its default postprocessing function.
 
@@ -61,12 +144,12 @@ class Yolo(lnn.Darknet):
         super(Yolo, self).__init__()
 
         if anchors is None:
-            anchors = np.asarray([(1.08, 1.19), (3.42, 4.41), (6.63, 11.38),
-                                  (9.42, 5.11), (16.62, 10.52)],
-                                 dtype=np.float)
-            # anchors = dict(num=5, values=[1.3221, 1.73145, 3.19275, 4.00944,
-            #                               5.05587, 8.09892, 9.47112, 4.84053,
-            #                               11.2364, 10.0071])
+            anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
+                                (5.05587, 8.09892), (9.47112, 4.84053),
+                                (11.2364, 10.0071)], dtype=np.float)
+            # np.asarray([(1.08, 1.19), (3.42, 4.41), (6.63, 11.38),
+            #                       (9.42, 5.11), (16.62, 10.52)],
+            #                      dtype=np.float)
 
         # Parameters
         self.num_classes = num_classes
@@ -78,58 +161,59 @@ class Yolo(lnn.Darknet):
         layer_list = [
             # Sequence 0 : input = image tensor
             OrderedDict([
-                ('1_convbatch',     lnn.layer.Conv2dBatchLeaky(
+                ('1_convbatch',     Conv2dBatchLeaky(
                     input_channels, 32, 3, 1, 1)),
                 ('2_max',           nn.MaxPool2d(2, 2)),
-                ('3_convbatch',     lnn.layer.Conv2dBatchLeaky(32, 64, 3, 1, 1)),
+                ('3_convbatch',     Conv2dBatchLeaky(32, 64, 3, 1, 1)),
                 ('4_max',           nn.MaxPool2d(2, 2)),
-                ('5_convbatch',     lnn.layer.Conv2dBatchLeaky(64, 128, 3, 1, 1)),
-                ('6_convbatch',     lnn.layer.Conv2dBatchLeaky(128, 64, 1, 1, 0)),
-                ('7_convbatch',     lnn.layer.Conv2dBatchLeaky(64, 128, 3, 1, 1)),
+                ('5_convbatch',     Conv2dBatchLeaky(64, 128, 3, 1, 1)),
+                ('6_convbatch',     Conv2dBatchLeaky(128, 64, 1, 1, 0)),
+                ('7_convbatch',     Conv2dBatchLeaky(64, 128, 3, 1, 1)),
                 ('8_max',           nn.MaxPool2d(2, 2)),
-                ('9_convbatch',     lnn.layer.Conv2dBatchLeaky(128, 256, 3, 1, 1)),
-                ('10_convbatch',    lnn.layer.Conv2dBatchLeaky(256, 128, 1, 1, 0)),
-                ('11_convbatch',    lnn.layer.Conv2dBatchLeaky(128, 256, 3, 1, 1)),
+                ('9_convbatch',     Conv2dBatchLeaky(128, 256, 3, 1, 1)),
+                ('10_convbatch',    Conv2dBatchLeaky(256, 128, 1, 1, 0)),
+                ('11_convbatch',    Conv2dBatchLeaky(128, 256, 3, 1, 1)),
                 ('12_max',          nn.MaxPool2d(2, 2)),
-                ('13_convbatch',    lnn.layer.Conv2dBatchLeaky(256, 512, 3, 1, 1)),
-                ('14_convbatch',    lnn.layer.Conv2dBatchLeaky(512, 256, 1, 1, 0)),
-                ('15_convbatch',    lnn.layer.Conv2dBatchLeaky(256, 512, 3, 1, 1)),
-                ('16_convbatch',    lnn.layer.Conv2dBatchLeaky(512, 256, 1, 1, 0)),
-                ('17_convbatch',    lnn.layer.Conv2dBatchLeaky(256, 512, 3, 1, 1)),
+                ('13_convbatch',    Conv2dBatchLeaky(256, 512, 3, 1, 1)),
+                ('14_convbatch',    Conv2dBatchLeaky(512, 256, 1, 1, 0)),
+                ('15_convbatch',    Conv2dBatchLeaky(256, 512, 3, 1, 1)),
+                ('16_convbatch',    Conv2dBatchLeaky(512, 256, 1, 1, 0)),
+                ('17_convbatch',    Conv2dBatchLeaky(256, 512, 3, 1, 1)),
             ]),
 
             # Sequence 1 : input = sequence0
             OrderedDict([
                 ('18_max',          nn.MaxPool2d(2, 2)),
-                ('19_convbatch',    lnn.layer.Conv2dBatchLeaky(512, 1024, 3, 1, 1)),
-                ('20_convbatch',    lnn.layer.Conv2dBatchLeaky(1024, 512, 1, 1, 0)),
-                ('21_convbatch',    lnn.layer.Conv2dBatchLeaky(512, 1024, 3, 1, 1)),
-                ('22_convbatch',    lnn.layer.Conv2dBatchLeaky(1024, 512, 1, 1, 0)),
-                ('23_convbatch',    lnn.layer.Conv2dBatchLeaky(512, 1024, 3, 1, 1)),
-                ('24_convbatch',    lnn.layer.Conv2dBatchLeaky(1024, 1024, 3, 1, 1)),
-                ('25_convbatch',    lnn.layer.Conv2dBatchLeaky(1024, 1024, 3, 1, 1)),
+                ('19_convbatch',    Conv2dBatchLeaky(512, 1024, 3, 1, 1)),
+                ('20_convbatch',    Conv2dBatchLeaky(1024, 512, 1, 1, 0)),
+                ('21_convbatch',    Conv2dBatchLeaky(512, 1024, 3, 1, 1)),
+                ('22_convbatch',    Conv2dBatchLeaky(1024, 512, 1, 1, 0)),
+                ('23_convbatch',    Conv2dBatchLeaky(512, 1024, 3, 1, 1)),
+                ('24_convbatch',    Conv2dBatchLeaky(1024, 1024, 3, 1, 1)),
+                ('25_convbatch',    Conv2dBatchLeaky(1024, 1024, 3, 1, 1)),
             ]),
 
             # Sequence 2 : input = sequence0
             OrderedDict([
-                ('26_convbatch',    lnn.layer.Conv2dBatchLeaky(512, 64, 1, 1, 0)),
-                ('27_reorg',        lnn.layer.Reorg(2)),
+                ('26_convbatch',    Conv2dBatchLeaky(512, 64, 1, 1, 0)),
+                ('27_reorg',        Reorg(2)),
             ]),
 
             # Sequence 3 : input = sequence2 + sequence1
             OrderedDict([
-                ('28_convbatch',    lnn.layer.Conv2dBatchLeaky((4 * 64) + 1024, 1024, 3, 1, 1)),
-                ('29_conv',         nn.Conv2d(1024, self.num_anchors * (5 + self.num_classes), 1, 1, 0)),
+                ('28_convbatch',    Conv2dBatchLeaky((4 * 64) + 1024, 1024, 3, 1, 1)),
+                ('29_conv',         nn.Conv2d(1024, len(self.anchors) * (5 + self.num_classes), 1, 1, 0)),
             ])
         ]
         self.layers = nn.ModuleList(
             [nn.Sequential(layer_dict) for layer_dict in layer_list])
 
         self.load_weights(weights_file)
-        # self.loss = lnn.RegionLoss(self)
         from netharn.models.yolo2 import light_postproc
         self.postprocess = light_postproc.GetBoundingBoxes(
-            self, conf_thresh, nms_thresh)
+            self.num_classes, self.anchors, conf_thresh, nms_thresh)
+        # self.postprocess = light_postproc.GetBoundingBoxes(
+        #     self, conf_thresh, nms_thresh)
 
     def output_shape_for(self, input_shape):
         b, c, h, w = input_shape
@@ -244,8 +328,9 @@ def initial_imagenet_weights():
         'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='netharn')
     torch_fpath = weight_fpath + '.pt'
     if not os.path.exists(torch_fpath):
+        import lightnet.models
         # hack to transform initial state
-        model = Yolo(num_classes=1000)
+        model = lightnet.models.Yolo(num_classes=1000)
         model.load_weights(weight_fpath)
         torch.save(model.state_dict(), torch_fpath)
     return torch_fpath

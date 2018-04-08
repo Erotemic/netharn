@@ -15,7 +15,6 @@ import numpy as np  # NOQA
 from torch.autograd import Variable
 from netharn import util
 from netharn.util import profiler
-from lightnet.util import bbox_iou
 
 __all__ = ['RegionLoss']
 
@@ -99,57 +98,34 @@ def profile_loss_speed():
 
 
 def compare_loss_speed():
+    """
+    python ~/code/netharn/netharn/models/yolo2/light_region_loss.py compare_loss_speed
+
+    Example:
+        >>> compare_loss_speed()
+    """
     from netharn.models.yolo2.light_yolo import Yolo
     import netharn.models.yolo2.light_region_loss
     import lightnet.network
+    import ubelt as ub
     torch.random.manual_seed(0)
     network = Yolo(num_classes=2, conf_thresh=4e-2)
 
     self1 = netharn.models.yolo2.light_region_loss.RegionLoss(
         num_classes=network.num_classes, anchors=network.anchors)
-    self2 = lightnet.network.RegionLoss(network=network)
+    self2 = lightnet.network.RegionLoss(num_classes=network.num_classes,
+                                        anchors=network.anchors)
 
-    target = torch.FloatTensor([
-        # boxes for batch item 1
-        [[0, 0.50, 0.50, 1.00, 1.00],
-         [1, 0.32, 0.42, 0.22, 0.12]],
-        # boxes for batch item 2 (it has no objects, note the pad!)
-        [[-1, 0, 0, 0, 0],
-         [-1, 0, 0, 0, 0]],
-    ])
-
-    Win, Hin = 416, 416
-
-    im_data = torch.randn(len(target), 3, Hin, Win)
-    output = network.forward(im_data)
-
-    loss1 = float(self1(output, target))
-    loss2 = float(self2(output, target))
-    assert loss1 == loss2
-
-    import ubelt as ub
-
-    self1.iou_mode = 'c'
-    for timer in ub.Timerit(100, bestof=10, label='cython_ious'):
-        with timer:
-            float(self1(output, target))
-
-    self1.iou_mode = 'py'
-    for timer in ub.Timerit(100, bestof=10, label='python_ious'):
-        with timer:
-            float(self1(output, target))
-
-    for timer in ub.Timerit(100, bestof=10, label='original'):
-        with timer:
-            float(self2(output, target))
+    # Win, Hin = 416, 416
+    Win, Hin = 96, 96
 
     # ----- More targets -----
     rng = util.ensure_rng(0)
     import netharn as nh
 
-    bsize = 16
+    bsize = 4
     # Make a random semi-realistic set of groundtruth items
-    n_targets = [rng.randint(0, 20) for _ in range(bsize)]
+    n_targets = [rng.randint(0, 10) for _ in range(bsize)]
     target_list = [torch.FloatTensor(
         np.hstack([rng.randint(0, network.num_classes, nT)[:, None],
                    util.Boxes.random(nT, scale=1.0, rng=rng).data]))
@@ -162,16 +138,20 @@ def compare_loss_speed():
     self1.iou_mode = 'c'
     for timer in ub.Timerit(100, bestof=10, label='cython_ious'):
         with timer:
-            float(self1(output, target))
+            loss_cy = float(self1(output, target))
 
     self1.iou_mode = 'py'
     for timer in ub.Timerit(100, bestof=10, label='python_ious'):
         with timer:
-            float(self1(output, target))
+            loss_py = float(self1(output, target))
 
     for timer in ub.Timerit(100, bestof=10, label='original'):
         with timer:
-            float(self2(output, target))
+            loss_orig = float(self2(output, target))
+
+    print('loss_cy   = {!r}'.format(loss_cy))
+    print('loss_py   = {!r}'.format(loss_py))
+    print('loss_orig = {!r}'.format(loss_orig))
 
 
 class RegionLoss(torch.nn.modules.loss._Loss):
@@ -287,15 +267,12 @@ class RegionLoss(torch.nn.modules.loss._Loss):
 
         Args:
             output (torch.autograd.Variable): Output from the network
-            target (brambox.boxes.annotations.Annotation or torch.Tensor): Brambox annotations or tensor containing the annotation targets (see :class:`lightnet.data.BramboxToTensor`)
+            target (torch.Tensor): the shape should be [B, T, 5], where B is
+                the batch size, T is the maximum number of boxes in an item,
+                and the final dimension should correspond to [class_idx,
+                center_x, center_y, width, height]. Items with fewer than T
+                boxes should be padded with dummy boxes with class_idx=-1.
             seen (int): if specified, overrides the `seen` attribute read from `self.net` (default None)
-
-        Note:
-            If target is a tensor, the shape should be [B, T, 5], where B is
-            the batch size, T is the maximum number of boxes in an item, and
-            the final dimension should correspond to [class_idx, center_x,
-            center_y, width, height]. Items with fewer than T boxes should be
-            padded with dummy boxes with class_idx=-1.
         """
         # Parameters
         nB = output.data.size(0)
@@ -325,13 +302,9 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         pred_boxes[:, 3] = (coord[:, :, 3].data.exp() * self.anchor_h).view(-1)
         pred_boxes = pred_boxes.cpu()
 
-        # Create predicted confs
-        pred_confs = torch.FloatTensor(nB * nA * nH * nW)
-        pred_confs = conf.data.view(-1).cpu()
-
         # Get target values
         coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = self.build_targets(
-            pred_boxes, pred_confs, target, nH, nW, seen=seen)
+            pred_boxes, target, nH, nW, seen=seen)
         coord_mask = coord_mask.expand_as(tcoord)
         if nC > 1:
             tcls = tcls.view(-1)[cls_mask.view(-1)].long()
@@ -372,15 +345,12 @@ class RegionLoss(torch.nn.modules.loss._Loss):
 
         return loss_tot
 
-    def build_targets(self, pred_boxes, pred_confs, ground_truth, nH, nW, seen=0):
+    def build_targets(self, pred_boxes, ground_truth, nH, nW, seen=0):
         """ Compare prediction boxes and targets, convert targets to network output tensors """
-        if torch.is_tensor(ground_truth):
-            return self._build_targets_tensor(pred_boxes, pred_confs, ground_truth, nH, nW, seen=seen)
-        else:
-            return self._build_targets_brambox(pred_boxes, pred_confs, ground_truth, nH, nW, seen=seen)
+        return self._build_targets_tensor(pred_boxes, ground_truth, nH, nW, seen=seen)
 
     @profiler.profile
-    def _build_targets_tensor(self, pred_boxes, pred_confs, ground_truth, nH, nW, seen=0):
+    def _build_targets_tensor(self, pred_boxes, ground_truth, nH, nW, seen=0):
         """
         Compare prediction boxes and ground truths, convert ground truths to network output tensors
 
@@ -407,9 +377,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
             >>>      [1, 0.32, 0.42, 0.22, 0.12]],
             >>> ])
             >>> pred_boxes = torch.rand(90, 4)
-            >>> pred_confs = torch.rand(90)
             >>> seen = 0
-
         """
         # Parameters
         nB = ground_truth.size(0)
@@ -448,12 +416,11 @@ class RegionLoss(torch.nn.modules.loss._Loss):
 
         gt_isvalid = (gt_class >= 0)
 
-        batch_assigns = []
+        # Loop over ground_truths and construct tensors
         for bx in range(nB):
             # Get the actual groundtruth boxes for this batch item
             flags = gt_isvalid[bx]
             if not np.any(flags):
-                batch_assigns.append((None, None))
                 continue
 
             # Create gt anchor assignments
@@ -462,8 +429,6 @@ class RegionLoss(torch.nn.modules.loss._Loss):
                                         batch_rel_gt_tlbr, bias=0,
                                         mode=self.iou_mode)
             best_ns = np.argmax(anchor_ious, axis=0)
-            best_anchor_ious = anchor_ious.max(axis=0)
-            batch_assigns.append((best_ns, best_anchor_ious))
 
             # Setting confidence mask
             cur_pred_tlbr = pred_tlbr[bx * nAnchors:(bx + 1) * nAnchors]
@@ -474,12 +439,6 @@ class RegionLoss(torch.nn.modules.loss._Loss):
             cur_ious = torch.FloatTensor(ious.max(-1))
             conf_mask[bx].view(-1)[cur_ious > self.thresh] = 0
 
-        # Loop over ground_truths and construct tensors
-        for bx in range(nB):
-            best_ns, best_anchor_ious = batch_assigns[bx]
-            flags = gt_isvalid[bx]
-            if not np.any(flags):
-                continue
             for t in range(nT):
                 if not flags[t]:
                     break

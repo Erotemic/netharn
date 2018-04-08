@@ -16,27 +16,40 @@ def box_ious(boxes1, boxes2, bias=0, mode=None):
         bias (int): either 0 or 1, does tl=br have area of 0 or 1?
 
     Example:
-        >>> boxes1 = Boxes(random_boxes(3, scale=100.0).numpy(), 'tlbr').data
-        >>> boxes2 = Boxes(random_boxes(2, scale=100.0).numpy(), 'tlbr').data
-        >>> ious_c = bbox_ious_c(boxes1, boxes2, bias=0)
-        >>> ious_py1 = box_ious_py1(boxes1, boxes2, bias=0)
-        >>> ious_py2 = box_ious_py2(boxes1, boxes2)
-        >>> ious_py3 = box_ious_py3(boxes1, boxes2)
-        >>> assert np.all(np.isclose(ious_c, ious_py1))
-        >>> assert np.all(np.isclose(ious_c, ious_py2))
-        >>> assert np.all(np.isclose(ious_c, ious_py3))
+        >>> boxes1 = Boxes.random(5, scale=10.0, rng=0, format='tlbr').data
+        >>> boxes2 = Boxes.random(7, scale=10.0, rng=1, format='tlbr').data
+        >>> ious = box_ious(boxes1, boxes2)
+        >>> print(ub.repr2(ious.tolist(), precision=2))
+        [
+            [0.00, 0.00, 0.28, 0.00, 0.00, 0.20, 0.01],
+            [0.00, 0.00, 0.50, 0.00, 0.04, 0.06, 0.00],
+            [0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
+            [0.00, 0.00, 0.02, 0.00, 0.00, 0.00, 0.00],
+            [0.00, 0.00, 0.19, 0.03, 0.00, 0.00, 0.00],
+        ]
+
+    Example:
+        >>> boxes1 = Boxes.random(5, scale=10.0, rng=0, format='tlbr').data
+        >>> boxes2 = Boxes.random(7, scale=10.0, rng=1, format='tlbr').data
+        >>> ious_c = box_ious(boxes1, boxes2, bias=0, mode='c')
+        >>> ious_py = box_ious(boxes1, boxes2, bias=0, mode='py')
+        >>> assert np.all(np.isclose(ious_c, ious_py))
+        >>> ious_c = box_ious(boxes1, boxes2, bias=1, mode='c')
+        >>> ious_py = box_ious(boxes1, boxes2, bias=1, mode='py')
+        >>> assert np.all(np.isclose(ious_c, ious_py))
     """
     if mode is None:
         mode = 'py' if bbox_ious_c is None else 'c'
     if mode == 'c':
-        return bbox_ious_c(boxes1, boxes2, bias)
+        return bbox_ious_c(boxes1.astype(np.float32),
+                           boxes2.astype(np.float32), bias)
     elif mode == 'py':
-        return box_ious_py1(boxes1, boxes2, bias)
+        return box_ious_py(boxes1, boxes2, bias)
     else:
         raise KeyError(mode)
 
 
-def box_ious_py1(boxes1, boxes2, bias=1):
+def box_ious_py(boxes1, boxes2, bias=1):
     """
     This is the fastest python implementation of bbox_ious I found
     """
@@ -68,218 +81,16 @@ def box_ious_py1(boxes1, boxes2, bias=1):
     return ious
 
 
-def bboxes_iou_light(boxes1, boxes2):
-    import itertools as it
-    results = []
-    for box1, box2 in it.product(boxes1, boxes2):
-        result = bbox_iou_light(box1, box2)
-        results.append(result)
-    return results
-
-
-def bbox_iou_light(box1, box2):
-    """ Compute IOU between 2 bounding boxes
-        Box format: [xc, yc, w, h]
-
-    from netharn import util
-    boxes1_ = util.Boxes(boxes1, 'tlbr').to_cxywh().data
-    boxes2_ = util.Boxes(boxes2, 'tlbr').to_cxywh().data
-    bboxes_iou_light(boxes1_, boxes2_)
-
-    ious_c = bbox_ious_c(boxes1, boxes2, bias=0)
-
-    """
-    mx = min(box1[0]-box1[2]/2, box2[0]-box2[2]/2)
-    Mx = max(box1[0]+box1[2]/2, box2[0]+box2[2]/2)
-    my = min(box1[1]-box1[3]/2, box2[1]-box2[3]/2)
-    My = max(box1[1]+box1[3]/2, box2[1]+box2[3]/2)
-    w1 = box1[2]
-    h1 = box1[3]
-    w2 = box2[2]
-    h2 = box2[3]
-
-    uw = Mx - mx
-    uh = My - my
-    iw = w1 + w2 - uw
-    ih = h1 + h2 - uh
-    if iw <= 0 or ih <= 0:
-        return 0
-
-    area1 = w1 * h1
-    area2 = w2 * h2
-    iarea = iw * ih
-    uarea = area1 + area2 - iarea
-    return iarea/uarea
-
-
-def box_ious_py3(boxes1, boxes2):
-    N = boxes1.shape[0]
-    K = boxes2.shape[0]
-
-    # Preallocate output
-    intersec = np.zeros((N, K), dtype=np.float32)
-
-    inter_areas3 = np.zeros((N, K), dtype=np.float32)
-    union_areas3 = np.zeros((N, K), dtype=np.float32)
-    iws3 = np.zeros((N, K), dtype=np.float32)
-    ihs3 = np.zeros((N, K), dtype=np.float32)
-
-    for k in range(K):
-        qbox_area = (
-            (boxes2[k, 2] - boxes2[k, 0] + 1) *
-            (boxes2[k, 3] - boxes2[k, 1] + 1)
-        )
-        for n in range(N):
-            iw = (
-                min(boxes1[n, 2], boxes2[k, 2]) -
-                max(boxes1[n, 0], boxes2[k, 0]) + 1
-            )
-            iw = max(iw, 0)
-
-            # if iw > 0:
-            ih = (
-                min(boxes1[n, 3], boxes2[k, 3]) -
-                max(boxes1[n, 1], boxes2[k, 1]) + 1
-            )
-            ih = max(ih, 0)
-            # if ih > 0:
-            box_area = (
-                (boxes1[n, 2] - boxes1[n, 0] + 1) *
-                (boxes1[n, 3] - boxes1[n, 1] + 1)
-            )
-            inter_area = iw * ih
-            union_area = (qbox_area + box_area - inter_area)
-
-            ihs3[n, k] = ih
-            iws3[n, k] = iw
-            inter_areas3[n, k] = inter_area
-            union_areas3[n, k] = union_area
-
-            intersec[n, k] = inter_area / union_area
-    return intersec
-
-
-def box_ious_py2(boxes1, boxes2):
-    """
-    Implementation using 2d index based filtering.
-    It turns out that this is slower than the dense version.
-
-    for a 5x7:
-        %timeit box_ious_py2(boxes1, boxes2)
-        %timeit box_ious_py(boxes1, boxes2)
-        101 µs ± 1.47 µs per loop (mean ± std. dev. of 7 runs, 10000 loops each)
-        42.5 µs ± 298 ns per loop (mean ± std. dev. of 7 runs, 10000 loops each)
-
-    for a 45x7:
-        boxes1 = Boxes(random_boxes(100, scale=100.0).numpy(), 'tlbr').data
-        boxes2 = Boxes(random_boxes(80, scale=100.0).numpy(), 'tlbr').data
-        %timeit box_ious_py2(boxes1, boxes2)
-        %timeit box_ious_py(boxes1, boxes2)
-        %timeit bbox_ious_c(boxes1, boxes2)
-
-        116 µs ± 962 ns per loop (mean ± std. dev. of 7 runs, 10000 loops each)
-        49.2 µs ± 824 ns per loop (mean ± std. dev. of 7 runs, 10000 loops each)
-
-        from netharn import util
-        _ = util.profile_onthefly(box_ious_py2)(boxes1, boxes2)
-        _ = util.profile_onthefly(box_ious_py)(boxes1, boxes2)
-
-    Benchmark:
-        from netharn import util
-        boxes1 = Boxes(random_boxes(45, scale=100.0).numpy(), 'tlbr').data
-        boxes2 = Boxes(random_boxes(7, scale=100.0).numpy(), 'tlbr').data
-
-        import ubelt as ub
-        for timer in ub.Timerit(100, bestof=10, label='c'):
-            bbox_ious_c(boxes1, boxes2)
-
-        # from netharn.util.cython_boxes import bbox_ious_c_par
-        # import ubelt as ub
-        # for timer in ub.Timerit(100, bestof=10, label='c'):
-        #     bbox_ious_c_par(boxes1, boxes2)
-
-        for timer in ub.Timerit(100, bestof=10, label='py1'):
-            box_ious_py1(boxes1, boxes2)
-
-        for timer in ub.Timerit(100, bestof=10, label='py2'):
-            box_ious_py2(boxes1, boxes2)
-
-        for timer in ub.Timerit(100, bestof=10, label='py3'):
-            box_ious_py3(boxes1, boxes2)
-
-        boxes1_ = util.Boxes(boxes1, 'tlbr').to_cxywh().data
-        boxes2_ = util.Boxes(boxes2, 'tlbr').to_cxywh().data
-
-        for timer in ub.Timerit(100, bestof=10, label='py3'):
-            bboxes_iou_light(boxes1_, boxes2_)
-    """
-    N = len(boxes1)
-    K = len(boxes2)
-
-    ax1, ay1, ax2, ay2 = (boxes1.T)
-    bx1, by1, bx2, by2 = (boxes2.T)
-    aw, ah = (ax2 - ax1 + 1), (ay2 - ay1 + 1)
-    bw, bh = (bx2 - bx1 + 1), (by2 - by1 + 1)
-
-    areas1 = aw * ah
-    areas2 = bw * bh
-
-    # Create all pairs of boxes
-    ns = np.repeat(np.arange(N), K, axis=0)
-    ks = np.repeat(np.arange(K)[None, :], N, axis=0).ravel()
-
-    ex_ax1 = np.repeat(ax1, K, axis=0)
-    ex_ay1 = np.repeat(ay1, K, axis=0)
-    ex_ax2 = np.repeat(ax2, K, axis=0)
-    ex_ay2 = np.repeat(ay2, K, axis=0)
-
-    ex_bx1 = np.repeat(bx1[None, :], N, axis=0).ravel()
-    ex_by1 = np.repeat(by1[None, :], N, axis=0).ravel()
-    ex_bx2 = np.repeat(bx2[None, :], N, axis=0).ravel()
-    ex_by2 = np.repeat(by2[None, :], N, axis=0).ravel()
-
-    x_maxs = np.minimum(ex_ax2, ex_bx2)
-    x_mins = np.maximum(ex_ax1, ex_bx1)
-
-    iws = (x_maxs - x_mins + 1)
-
-    # Remove pairs of boxes that don't intersect in the x dimension
-    flags = iws > 0
-    ex_ay1 = ex_ay1.compress(flags, axis=0)
-    ex_ay2 = ex_ay2.compress(flags, axis=0)
-    ex_by1 = ex_by1.compress(flags, axis=0)
-    ex_by2 = ex_by2.compress(flags, axis=0)
-    ns = ns.compress(flags, axis=0)
-    ks = ks.compress(flags, axis=0)
-    iws = iws.compress(flags, axis=0)
-
-    y_maxs = np.minimum(ex_ay2, ex_by2)
-    y_mins = np.maximum(ex_ay1, ex_by1)
-
-    ihs = (y_maxs - y_mins + 1)
-
-    # Remove pairs of boxes that don't intersect in the x dimension
-    flags = ihs > 0
-    ns = ns.compress(flags, axis=0)
-    ks = ks.compress(flags, axis=0)
-    iws = iws.compress(flags, axis=0)
-    ihs = ihs.compress(flags, axis=0)
-
-    areas_sum = areas1[ns] + areas2[ks]
-
-    inter_areas = iws * ihs
-    union_areas = (areas_sum - inter_areas)
-    expanded_ious = inter_areas / union_areas
-
-    ious = np.zeros((N, K), dtype=np.float32)
-    ious[ns, ks] = expanded_ious
-    return ious
-
-
 class Boxes(ub.NiceRepr):
     """
     Converts boxes between different formats as long as the last dimension
     contains 4 coordinates and the format is specified.
+
+    This is a convinience class, and should not not store the data for very
+    long. The general idiom should be create class, convert data, and then get
+    the raw data and let the class be garbage collected. This will help ensure
+    that your code is portable and understandable if this class is not
+    available.
 
     Example:
         >>> Boxes([25, 30, 15, 10], 'xywh')
@@ -373,7 +184,7 @@ class Boxes(ub.NiceRepr):
         return Boxes(new_data, self.format)
 
     def scale(self, factor):
-        """
+        r"""
         works with tlbr, cxywh, xywh, xy, or wh formats
 
         Example:
@@ -381,7 +192,7 @@ class Boxes(ub.NiceRepr):
             array([ 2.,  2., 20., 20.])
             >>> Boxes(np.array([[1, 1, 10, 10]])).scale((2, .5)).data
             array([[ 2. ,  0.5, 20. ,  5. ]])
-            >>> Boxes(scale_boxes(np.array([[10, 10]])).scale(.5).data
+            >>> Boxes(np.array([[10, 10]])).scale(.5).data
             array([[5., 5.]])
         """
         boxes = self.data
@@ -517,8 +328,8 @@ class Boxes(ub.NiceRepr):
             shape (tuple): shape of image that boxes belong to
 
         Example:
-            >>> self = Boxes([25, 30, 15, 10], 'tlbr')
-            >>> bboi = self.to_imgaug()
+            >>> self = Boxes([[25, 30, 15, 10]], 'tlbr')
+            >>> bboi = self.to_imgaug((10, 10))
         """
         import imgaug
         if len(self.data.shape) != 2:
@@ -537,7 +348,7 @@ class Boxes(ub.NiceRepr):
             bboi (ia.BoundingBoxesOnImage):
 
         Example:
-            >>> orig = Boxes(random_boxes(5).numpy(), 'tlbr')
+            >>> orig = Boxes.random(5, format='tlbr')
             >>> bboi = orig.to_imgaug(shape=(500, 500))
             >>> self = Boxes.from_imgaug(bboi)
             >>> assert np.all(self.data == orig.data)
@@ -546,29 +357,6 @@ class Boxes(ub.NiceRepr):
                          for bb in bboi.bounding_boxes])
         tlbr = tlbr.reshape(-1, 4)
         return Boxes(tlbr, format='tlbr')
-
-    def to_brambox(self):
-        """
-        Notes:
-            pip install git+https://gitlab.com/EAVISE/brambox.git
-
-        Example:
-            >>> xywh = Boxes(random_boxes(5, scale=100.0).numpy(), 'xywh')
-            >>> xywh.to_brambox()
-        """
-        if len(self.data.shape) != 2:
-            raise ValueError('data must be 2d got {}d'.format(len(self.data.shape)))
-        from brambox.boxes.box import Box
-        xywh_boxes = self.to_xywh(copy=False).data
-        boxes = []
-        for x, y, w, h in xywh_boxes:
-            box = Box()
-            box.x_top_left = x
-            box.y_top_left = y
-            box.width = w
-            box.height = h
-            boxes.append(box)
-        return boxes
 
     def clip(self, x_min, y_min, x_max, y_max, inplace=False):
         """
@@ -619,56 +407,6 @@ class Boxes(ub.NiceRepr):
         self2 = self if inplace else self.copy()
         self2.data = self2.data.compress(flags, axis=axis)
         return self2
-
-
-def clip_boxes(boxes, im_shape):
-    """
-    Clip boxes to image boundaries inplace.
-
-    Args:
-        boxes (ndarray): multiple boxes in tlbr format
-        im_shape (tuple): (H, W) of original image
-
-    Example:
-        >>> boxes = np.array([[-10, -10, 120, 120], [1, -2, 30, 50]])
-        >>> im_shape = (100, 110)  # H, W
-        >>> clip_boxes(boxes, im_shape)
-        array([[  0,   0, 109,  99],
-               [  1,   0,  30,  50]])
-    """
-    if boxes.shape[0] == 0:
-        return boxes
-
-    if not isinstance(boxes, (np.ndarray, list)):
-        raise TypeError('got boxes={!r}'.format(boxes))
-
-    im_h, im_w = im_shape
-    x1, y1, x2, y2 = boxes.T
-    np.minimum(x1, im_w - 1, out=x1)  # x1 < im_shape[1]
-    np.minimum(y1, im_h - 1, out=y1)  # y1 < im_shape[0]
-    np.minimum(x2, im_w - 1, out=x2)  # x2 < im_shape[1]
-    np.minimum(y2, im_h - 1, out=y2)  # y2 < im_shape[0]
-    # y1 >= 0 and  x1 >= 0
-    boxes = np.maximum(boxes, 0, out=boxes)
-    return boxes
-
-
-def random_boxes(num, box_format='tlbr', scale=100):
-    if num:
-        xywh = (torch.rand(num, 4) * scale)
-        if isinstance(scale, int):
-            xywh = xywh.long()
-        if box_format == 'xywh':
-            return xywh
-        elif box_format == 'tlbr':
-            return Boxes(xywh, 'xywh').to_tlbr().data
-        else:
-            raise KeyError(box_format)
-    else:
-        if isinstance(scale, int):
-            return torch.LongTensor()
-        else:
-            return torch.FloatTensor()
 
 
 if __name__ == '__main__':

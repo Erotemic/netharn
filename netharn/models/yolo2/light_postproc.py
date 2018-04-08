@@ -26,20 +26,13 @@ class GetBoundingBoxes(object):
         The output tensor uses relative values for its coordinates.
     """
 
-    def __init__(self, network=None, conf_thresh=0.001, nms_thresh=0.4,
-                 anchors=None, num_classes=None):
+    def __init__(self, num_classes, anchors, conf_thresh=0.001, nms_thresh=0.4):
+        self.num_classes = num_classes
+        self.num_anchors = len(anchors)
+        self.anchor_step = len(anchors[0])
+        self.anchors = torch.Tensor(anchors)
         self.conf_thresh = conf_thresh
         self.nms_thresh = nms_thresh
-        if anchors is not None:
-            self.num_classes = num_classes
-            self.anchors = anchors.ravel()
-            self.num_anchors = int(len(anchors) // 2)
-            self.anchor_step = len(self.anchors) // self.num_anchors
-        else:
-            self.num_classes = network.num_classes
-            self.anchors = network.anchors
-            self.num_anchors = int(network.num_anchors)
-            self.anchor_step = len(self.anchors) // self.num_anchors
 
     @profiler.profile
     def __call__(self, network_output, mode=1):
@@ -50,8 +43,7 @@ class GetBoundingBoxes(object):
         Examples:
             >>> import torch
             >>> torch.random.manual_seed(0)
-            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> output = torch.randn(8, 125, 9, 9)
             >>> boxes = self(output)
@@ -65,8 +57,7 @@ class GetBoundingBoxes(object):
         Script:
             >>> import torch
             >>> torch.random.manual_seed(0)
-            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> import ubelt
             >>> output = torch.randn(16, 125, 9, 9)
@@ -79,8 +70,7 @@ class GetBoundingBoxes(object):
         Script:
             >>> import torch
             >>> torch.random.manual_seed(0)
-            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> import ubelt
             >>> output = torch.randn(16, 125, 9, 9)
@@ -93,8 +83,7 @@ class GetBoundingBoxes(object):
         Benchmark:
             >>> import torch
             >>> torch.random.manual_seed(0)
-            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> import ubelt
             >>> output = torch.randn(16, 125, 9, 9)
@@ -109,20 +98,17 @@ class GetBoundingBoxes(object):
             >>>     with timer:
             >>>         self(output_, mode=1)
             >>> #
-            >>> output = output.cuda()
-            >>> for timer in ubelt.Timerit(21, bestof=3, label='mode0+gpu'):
-            >>>     output_ = output.clone()
-            >>>     with timer:
-            >>>         self(output_, mode=0)
-            >>> #
-            >>> for timer in ubelt.Timerit(21, bestof=3, label='mode1+gpu'):
-            >>>     output_ = output.clone()
-            >>>     with timer:
-            >>>         self(output_, mode=1)
-            >>> #for timer in ubelt.Timerit(21, bestof=3, label='mode2+gpu'):
-            >>> #    output_ = output.clone()
-            >>> #    with timer:
-            >>> #        self(output_, mode=2)
+            >>> if torch.cuda.is_available():
+            >>>     output = output.cuda()
+            >>>     for timer in ubelt.Timerit(21, bestof=3, label='mode0+gpu'):
+            >>>         output_ = output.clone()
+            >>>         with timer:
+            >>>             self(output_, mode=0)
+            >>>     #
+            >>>     for timer in ubelt.Timerit(21, bestof=3, label='mode1+gpu'):
+            >>>         output_ = output.clone()
+            >>>         with timer:
+            >>>             self(output_, mode=1)
 
             %timeit self(output.data, mode=0)
             %timeit self(output.data, mode=1)
@@ -145,8 +131,7 @@ class GetBoundingBoxes(object):
         Example:
             >>> import torch
             >>> torch.random.manual_seed(0)
-            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> # Make random boxes for one item in a batch
             >>> box = torch.randn(7, 6)
@@ -181,7 +166,8 @@ class GetBoundingBoxes(object):
 
         trim_w1 = (0 - x1).clamp(0, None)
         trim_w2 = (x2 - 1).clamp(0, None)
-        # multiply by 2 because we are trimming from both sides
+        # multiply by 2 because we are trimming from both sides to ensure the
+        # center prediction stays the same.
         trim_w = torch.max(trim_w1, trim_w2) * 2
 
         trim_h1 = (0 - y1).clamp(0, None)
@@ -194,9 +180,8 @@ class GetBoundingBoxes(object):
         return new_box
 
     @classmethod
-    @profiler.profile
-    def apply(cls, network_output, network, conf_thresh, nms_thresh):
-        obj = cls(network, conf_thresh, nms_thresh)
+    def apply(cls, network_output, num_classes, anchors, conf_thresh, nms_thresh):
+        obj = cls(num_classes, anchors, conf_thresh, nms_thresh)
         return obj(network_output)
 
     @profiler.profile
@@ -207,12 +192,11 @@ class GetBoundingBoxes(object):
         Examples:
             >>> import torch
             >>> torch.random.manual_seed(0)
-            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> output = torch.randn(16, 125, 9, 9)
             >>> from netharn import XPU
-            >>> output = XPU.cast('gpu').move(output)
+            >>> output = XPU.cast('auto').move(output)
             >>> boxes = self._get_boxes(output.data)
             >>> assert len(boxes) == 16
             >>> assert all(len(b[0]) == 6 for b in boxes)
@@ -221,12 +205,11 @@ class GetBoundingBoxes(object):
             >>> from netharn.models.yolo2.light_postproc import *
             >>> import torch
             >>> torch.random.manual_seed(0)
-            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> output = torch.randn(16, 125, 9, 9)
             >>> from netharn import XPU
-            >>> output = XPU.cast('gpu').move(output)
+            >>> output = XPU.cast('auto').move(output)
             >>> for timer in ub.Timerit(100, bestof=10, label='mode 0'):
             >>>     output_ = output.clone()
             >>>     with timer:
@@ -237,11 +220,9 @@ class GetBoundingBoxes(object):
             >>>         boxes1 = self._get_boxes(output_.data, mode=1)
             >>> for b0, b1 in zip(boxes0, boxes1):
             >>>     assert np.all(b0.cpu() == b1.cpu())
-
             >>> from lightnet.data.postprocess import GetBoundingBoxes as GetBoundingBoxesOrig
-            >>> anchors_dict = dict(num=5, values=[1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                               8.09892,9.47112,4.84053,11.2364,10.0071])
-            >>> post = GetBoundingBoxesOrig(anchors=anchors_dict, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
+            >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
+            >>> post = GetBoundingBoxesOrig(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> for timer in ub.Timerit(100, bestof=10, label='original'):
             >>>     output_ = output.clone()
             >>>     with timer:
@@ -267,9 +248,8 @@ class GetBoundingBoxes(object):
         # Compute xc,yc, w,h, box_score on Tensor
         lin_x = torch.linspace(0, w - 1, w).repeat(h, 1).view(h * w)
         lin_y = torch.linspace(0, h - 1, h).repeat(w, 1).t().contiguous().view(h * w)
-        anchor_w = torch.Tensor(self.anchors[::2]).view(1, self.num_anchors, 1)
-        anchor_h = torch.Tensor(self.anchors[1::2]).view(
-            1, self.num_anchors, 1)
+        anchor_w = self.anchors[:, 0].contiguous().view(1, self.num_anchors, 1)
+        anchor_h = self.anchors[:, 1].contiguous().view(1, self.num_anchors, 1)
         if cuda:
             lin_x = lin_x.cuda()
             lin_y = lin_y.cuda()
@@ -376,20 +356,22 @@ class GetBoundingBoxes(object):
         Examples:
             >>> import torch
             >>> torch.random.manual_seed(0)
-            >>> anchors = np.array([1.3221,1.73145,3.19275,4.00944,5.05587,
-            >>>                     8.09892,9.47112,4.84053,11.2364,10.0071])
+            >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.01, nms_thresh=0.5)
             >>> output = torch.randn(8, 125, 9, 9)
             >>> boxes_ = self._get_boxes(output.data)
-            >>> from netharn import util
             >>> boxes = torch.Tensor(boxes_[0])
+            >>> ans0 = self._nms(boxes, mode=0)
+            >>> ans1 = self._nms(boxes, mode=1)
+            >>> ans2 = self._nms(boxes, mode=2)
+
+        Ignore:
+            >>> from netharn import util
             >>> scores = boxes[..., 4:5]
             >>> classes = boxes[..., 5:6]
             >>> cxywh = util.Boxes(boxes[..., 0:4], 'cxywh')
             >>> tlbr = cxywh.to_tlbr()
             >>> util.non_max_supression(tlbr.data.numpy(), scores.numpy().ravel(), self.nms_thresh)
-            >>> self._nms(boxes, mode=0)
-            >>> self._nms(boxes, mode=1)
 
         Benchmark:
             boxes = torch.Tensor(boxes_[0])
@@ -417,64 +399,82 @@ class GetBoundingBoxes(object):
 
         a = boxes[:, :2]
         b = boxes[:, 2:4]
-        bboxes = torch.cat([a - b / 2, a + b / 2], 1)
+        # convert to tlbr
+        tlbr_tensor = torch.cat([a - b / 2, a + b / 2], 1)
         scores = boxes[:, 4]
 
-        if mode == 1:
-            bboxes = bboxes.cpu().numpy().astype(np.float32)
-            scores = scores.cpu().numpy().astype(np.float32)
-            classes = boxes[..., 5].cpu().numpy().astype(np.int)
+        if mode == 0:
+            # if torch.cuda.is_available:
+            #     boxes = boxes.cuda()
+            keep = _nms_torch(tlbr_tensor, scores, nms_thresh=self.nms_thresh)
+            keep = sorted(keep)
+            print('keep0 = {!r}'.format(keep))
+        elif mode == 1:
+            # Dont group by classes, just NMS
+            tlbr_np = tlbr_tensor.cpu().numpy().astype(np.float32)
+            scores_np = scores.cpu().numpy().astype(np.float32)
+            keep = util.non_max_supression(tlbr_np, scores_np,
+                                           self.nms_thresh)
+            keep = sorted(keep)
+            print('keep1 = {!r}'.format(keep))
+        elif mode == 2:
+            # Group and use NMS
+            tlbr_np = tlbr_tensor.cpu().numpy().astype(np.float32)
+            scores_np = scores.cpu().numpy().astype(np.float32)
+            classes_np = boxes[..., 5].cpu().numpy().astype(np.int)
             keep = []
-            for idxs in ub.group_items(range(len(classes)), classes).values():
-                cls_boxes = bboxes.take(idxs, axis=0)
-                cls_scores = scores.take(idxs, axis=0)
-                cls_keep = util.non_max_supression(cls_boxes, cls_scores,
+            for idxs in ub.group_items(range(len(classes_np)), classes_np).values():
+                cls_tlbr_np = tlbr_np.take(idxs, axis=0)
+                cls_scores_np = scores_np.take(idxs, axis=0)
+                cls_keep = util.non_max_supression(cls_tlbr_np, cls_scores_np,
                                                    self.nms_thresh)
                 keep.extend(list(ub.take(idxs, cls_keep)))
             keep = sorted(keep)
-            return boxes[torch.LongTensor(keep)]
-        elif mode == 0 or mode == 2:
-            # if torch.cuda.is_available:
-            #     boxes = boxes.cuda()
+            print('keep2 = {!r}'.format(keep))
+        else:
+            raise KeyError(mode)
+        return boxes[torch.LongTensor(keep)]
 
-            x1 = bboxes[:, 0]
-            y1 = bboxes[:, 1]
-            x2 = bboxes[:, 2]
-            y2 = bboxes[:, 3]
 
-            areas = ((x2 - x1) * (y2 - y1))
-            _, order = scores.sort(0, descending=True)
+def _nms_torch(tlbr_tensor, scores, nms_thresh=.5):
+    x1 = tlbr_tensor[:, 0]
+    y1 = tlbr_tensor[:, 1]
+    x2 = tlbr_tensor[:, 2]
+    y2 = tlbr_tensor[:, 3]
 
-            keep = []
-            while order.numel() > 0:
-                if order.numel() == 1:
-                    if torch.__version__.startswith('0.3'):
-                        i = order[0]
-                    else:
-                        i = order.item()
-                    i = order.item()
-                    keep.append(i)
-                    break
+    areas = ((x2 - x1) * (y2 - y1))
+    _, order = scores.sort(0, descending=True)
 
+    keep = []
+    while order.numel() > 0:
+        if order.numel() == 1:
+            if torch.__version__.startswith('0.3'):
                 i = order[0]
-                keep.append(i)
+            else:
+                i = order.item()
+            i = order.item()
+            keep.append(i)
+            break
 
-                xx1 = x1[order[1:]].clamp(min=x1[i])
-                yy1 = y1[order[1:]].clamp(min=y1[i])
-                xx2 = x2[order[1:]].clamp(max=x2[i])
-                yy2 = y2[order[1:]].clamp(max=y2[i])
+        i = order[0].item()
+        keep.append(i)
 
-                w = (xx2 - xx1).clamp(min=0)
-                h = (yy2 - yy1).clamp(min=0)
-                inter = w * h
+        xx1 = x1[order[1:]].clamp(min=x1[i])
+        yy1 = y1[order[1:]].clamp(min=y1[i])
+        xx2 = x2[order[1:]].clamp(max=x2[i])
+        yy2 = y2[order[1:]].clamp(max=y2[i])
 
-                iou = inter / (areas[i] + areas[order[1:]] - inter)
+        w = (xx2 - xx1).clamp(min=0)
+        h = (yy2 - yy1).clamp(min=0)
+        inter = w * h
 
-                ids = (iou <= self.nms_thresh).nonzero().squeeze()
-                if ids.numel() == 0:
-                    break
-                order = order[ids + 1]
-            return boxes[torch.LongTensor(keep)]
+        iou = inter / (areas[i] + areas[order[1:]] - inter)
+
+        ids = (iou <= nms_thresh).nonzero().squeeze()
+        if ids.numel() == 0:
+            break
+        order = order[ids + 1]
+    return keep
 
 
 if __name__ == '__main__':
