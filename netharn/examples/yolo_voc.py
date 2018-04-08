@@ -235,8 +235,12 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             inp_size = self.base_wh
         inp_size = np.array(inp_size)
 
-        (hwc255, orig_size,
-         tlbr, gt_classes, gt_weights) = self._load_item(index, inp_size)
+        image, tlbr, gt_classes, gt_weights = self._load_item(index)
+        orig_size = np.array(image.shape[0:2][::-1])
+
+        bbs = ia.BoundingBoxesOnImage(
+            [ia.BoundingBox(x1, y1, x2, y2)
+             for x1, y1, x2, y2 in tlbr], shape=image.shape)
 
         if self.augmenter:
             # Ensure the same augmentor is used for bboxes and iamges
@@ -244,9 +248,6 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
             hwc255 = seq_det.augment_image(hwc255)
 
-            bbs = ia.BoundingBoxesOnImage(
-                [ia.BoundingBox(x1, y1, x2, y2)
-                 for x1, y1, x2, y2 in tlbr], shape=hwc255.shape)
             bbs = seq_det.augment_bounding_boxes([bbs])[0]
 
             tlbr = np.array([[bb.x1, bb.y1, bb.x2, bb.y2]
@@ -293,52 +294,47 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
         return chw01, label
 
-    def _load_sized_image(self, index, inp_size):
-        """
-        Example:
-            >>> self = YoloVOCDataset(split='test')
-            >>> index = 0
-            >>> target_size = inp_size = np.array((416, 416))
-            >>> hwc255 = self._load_sized_image(0, (inp_size))[0]
-            >>> # xdoc: +REQUIRES(--show)
-            >>> from netharn.util import mplutil
-            >>> mplutil.figure(doclf=True, fnum=1)
-            >>> mplutil.qtensure()  # xdoc: +SKIP
-            >>> mplutil.imshow(hwc255, colorspace='rgb')
-        """
-        # load the raw data from VOC
+    # def _load_sized_image(self, index, inp_size):
+    #     """
+    #     Example:
+    #         >>> self = YoloVOCDataset(split='test')
+    #         >>> index = 0
+    #         >>> target_size = inp_size = np.array((416, 416))
+    #         >>> hwc255 = self._load_sized_image(0, (inp_size))[0]
+    #         >>> # xdoc: +REQUIRES(--show)
+    #         >>> from netharn.util import mplutil
+    #         >>> mplutil.figure(doclf=True, fnum=1)
+    #         >>> mplutil.qtensure()  # xdoc: +SKIP
+    #         >>> mplutil.imshow(hwc255, colorspace='rgb')
+    #     """
+    #     # load the raw data from VOC
 
-        # cacher = ub.Cacher('voc_img', cfgstr=ub.repr2([index, inp_size]),
-        #                    appname='netharn', enabled=0)
-        # data = cacher.tryload()
-        # if data is None:
+    #     # cacher = ub.Cacher('voc_img', cfgstr=ub.repr2([index, inp_size]),
+    #     #                    appname='netharn', enabled=0)
+    #     # data = cacher.tryload()
+    #     # if data is None:
+    #     image = self._load_image(index)
+
+    #     orig_size = np.array(image.shape[0:2][::-1])
+
+    #     shift, embed_size = letterbox_transform(orig_size, inp_size)
+    #     hwc255 = apply_img_letterbox(image, embed_size, shift, inp_size)
+
+    #     scale = embed_size / orig_size
+
+    #     # cacher.save(data)
+    #     return hwc255, orig_size, scale, shift
+
+    def _load_item(self, index):
+        # load the raw data from VOC
         image = self._load_image(index)
-
-        orig_size = np.array(image.shape[0:2][::-1])
-
-        shift, embed_size = letterbox_transform(orig_size, inp_size)
-        hwc255 = apply_img_letterbox(image, embed_size, shift, inp_size)
-
-        scale = embed_size / orig_size
-
-        # cacher.save(data)
-        return hwc255, orig_size, scale, shift
-
-    def _load_item(self, index, inp_size):
-        # load the raw data from VOC
-        inp_size = np.array(inp_size)
-        hwc255, orig_size, scale, shift = self._load_sized_image(index, inp_size)
-
-        # VOC loads annotations in tlbr
         annot = self._load_annotation(index)
-        tlbr_orig = util.Boxes(annot['boxes'].astype(np.float), 'tlbr')
+        # VOC loads annotations in tlbr
+        tlbr = annot['boxes'].astype(np.float)
         gt_classes = annot['gt_classes']
         # Weight samples so we dont care about difficult cases
         gt_weights = 1.0 - annot['gt_ishard'].astype(np.float)
-        # squish the bounding box into network input coordinates
-        tlbr = tlbr_orig.scale(scale).shift(shift).data
-
-        return hwc255, orig_size, tlbr, gt_classes, gt_weights
+        return image, tlbr, gt_classes, gt_weights
 
     @ub.memoize_method  # remove this if RAM is a problem
     def _load_image(self, index):
