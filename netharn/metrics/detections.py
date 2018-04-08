@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import ubelt as ub
-
+from netharn import util
 from netharn.util import profiler
 
 
@@ -44,6 +44,7 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
         >>> y = detection_confusions(true_boxes, true_cxs, true_weights,
         >>>                          pred_boxes, pred_scores, pred_cxs,
         >>>                          bg_weight=bg_weight, ovthresh=.5)
+        >>> pd.DataFrame(y)
         >>> print(y)  # xdoc: +IGNORE_WANT
            cx  pred  score  true  weight
         0   1     1 0.5000     1       1.0
@@ -128,13 +129,14 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
                     y_weight.append(weight)
                     cxs.append(cx)
 
-    y = pd.DataFrame({
+    y = {
         'pred': y_pred,
         'true': y_true,
         'score': y_score,
         'weight': y_weight,
         'cx': cxs,
-    })
+    }
+    # y = pd.DataFrame()
     return y
 
 
@@ -144,40 +146,24 @@ def iou_overlap(true_boxes, pred_box):
     Return the index and score of the true box with maximum overlap.
     Boxes should be in tlbr format.
 
+    CommandLine:
+        python -m netharn.metrics.detections iou_overlap
+
     Example:
         >>> true_boxes = np.array([[ 0,  0, 10, 10],
         >>>                        [10,  0, 20, 10],
         >>>                        [20,  0, 30, 10]])
         >>> pred_box = np.array([6, 2, 20, 10, .9])
         >>> ovmax, ovidx = iou_overlap(true_boxes, pred_box)
-        >>> print('ovidx = {!r}'.format(ovidx))
-        ovidx = 1
+        >>> print('ovmax, ovidx = {:.2f}, {}'.format(ovmax, ovidx))
+        ovmax, ovidx = 0.63, 1
     """
-    if 0:
-        from netharn import util
-        # import yolo_utils
-        true_boxes = np.array(true_boxes)
-        pred_box = np.array(pred_box)
-        overlaps = util.bbox_ious(
-            true_boxes[:, 0:4].astype(np.float),
-            pred_box[None, :][:, 0:4].astype(np.float)).ravel()
-    else:
-        bb = pred_box
-        # intersection
-        ixmin = np.maximum(true_boxes[:, 0], bb[0])
-        iymin = np.maximum(true_boxes[:, 1], bb[1])
-        ixmax = np.minimum(true_boxes[:, 2], bb[2])
-        iymax = np.minimum(true_boxes[:, 3], bb[3])
-        iw = np.maximum(ixmax - ixmin + 1., 0.)
-        ih = np.maximum(iymax - iymin + 1., 0.)
-        inters = iw * ih
-
-        # union
-        uni = ((bb[2] - bb[0] + 1.) * (bb[3] - bb[1] + 1.) +
-               (true_boxes[:, 2] - true_boxes[:, 0] + 1.) *
-               (true_boxes[:, 3] - true_boxes[:, 1] + 1.) - inters)
-
-        overlaps = inters / uni
+    # import yolo_utils
+    true_boxes = np.array(true_boxes)
+    pred_box = np.array(pred_box)
+    overlaps = util.box_ious(
+        true_boxes[:, 0:4].astype(np.float),
+        pred_box[None, :][:, 0:4].astype(np.float), bias=1).ravel()
     ovidx = overlaps.argmax()
     ovmax = overlaps[ovidx]
     return ovmax, ovidx
