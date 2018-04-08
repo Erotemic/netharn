@@ -321,7 +321,7 @@ class RegionLoss(BaseLossWithCudaState):
             cls = output[:, :, 5:].contiguous().view(nB * nA, nC, nH * nW).transpose(1, 2).contiguous().view(-1, nC)
 
         # Create prediction boxes
-        with torch.no_grad:
+        with torch.no_grad():
             device = self.get_device()
             pred_boxes, lin_x, lin_y = self._init_pred_boxes(device, nB, nA, nH, nW)
 
