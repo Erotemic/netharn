@@ -199,22 +199,15 @@ class RegionLoss(torch.nn.modules.loss._Loss):
 
     """
 
-    def __init__(self, num_classes=None, anchors=None, coord_scale=1.0,
+    def __init__(self, num_classes, anchors, coord_scale=1.0,
                  noobject_scale=1.0, object_scale=5.0, class_scale=1.0,
                  thresh=0.6):
         super().__init__()
 
-        if num_classes is None:
-            raise ValueError('Must specify num_classes')
-        if anchors is None:
-            raise ValueError('Must specify anchors')
-
         self.num_classes = num_classes
-        self.num_anchors = anchors.size // 2
 
-        # Use 2d anchors instead
-        self.anchors = anchors.ravel()
-        self.anchors = self.anchors.reshape(-1, 2)
+        self.anchors = anchors
+        self.num_anchors = len(anchors)
 
         # self.anchor_step = len(self.anchors) // self.num_anchors
         self.reduction = 32             # input_dim/output_dim

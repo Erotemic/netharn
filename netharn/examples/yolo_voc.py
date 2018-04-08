@@ -425,7 +425,7 @@ class YoloHarn(nh.FitHarn):
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'test')
             >>> weights_fpath = light_yolo.demo_weights()
-            >>> state_dict = torch.load(weights_fpath)['weights']
+            >>> state_dict = harn.xpu.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn.run_batch(batch)
             >>> # run a few batches
@@ -552,7 +552,7 @@ class YoloHarn(nh.FitHarn):
 
         # Load up pretrained VOC weights
         weights_fpath = light_yolo.demo_weights()
-        state_dict = torch.load(weights_fpath)['weights']
+        state_dict = harn.xpu.load(weights_fpath)['weights']
         harn.model.module.load_state_dict(state_dict)
 
         harn.model.eval()
@@ -819,6 +819,7 @@ if __name__ == '__main__':
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=copy_aug --bstep=4 --lr=0.000015625 --decay=0.0000078125
 
         python ~/code/netharn/netharn/examples/yolo_voc.py all
+        python ~/code/netharn/netharn/examples/yolo_voc.py setup_harness
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

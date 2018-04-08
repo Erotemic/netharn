@@ -6,6 +6,7 @@ from collections import OrderedDict
 import numpy as np
 import torch
 import torch.nn as nn
+from netharn.models.yolo2 import light_postproc
 
 __all__ = ['Yolo']
 
@@ -123,7 +124,7 @@ class Yolo(nn.Module):
         >>> im_data = torch.randn(B, 3, Hin, Win)
         >>> # the _forward function produces raw YOLO output
         >>> network_output = self.forward(im_data)
-        >>> A = self.num_anchors
+        >>> A = len(self.anchors)
         >>> Wout, Hout = Win // 32, Hin // 32
         >>> assert list(network_output.shape) == [2, 125, 3, 3]
         >>> assert list(network_output.shape) == [B, A * (C + 5), Wout, Hout]
@@ -138,7 +139,7 @@ class Yolo(nn.Module):
          [ 0.48864678  0.50975     0.8462989   0.79987097  0.04938301 10.        ]]
     """
 
-    def __init__(self, num_classes=20, weights_file=None, conf_thresh=.25,
+    def __init__(self, num_classes=20, conf_thresh=.25,
                  nms_thresh=.4, input_channels=3, anchors=None):
         """ Network initialisation """
         super(Yolo, self).__init__()
@@ -153,8 +154,7 @@ class Yolo(nn.Module):
 
         # Parameters
         self.num_classes = num_classes
-        self.num_anchors = anchors.size // 2
-        self.anchors = anchors.ravel()
+        self.anchors = anchors
         self.reduction = 32             # input_dim/output_dim
 
         # Network
@@ -208,8 +208,6 @@ class Yolo(nn.Module):
         self.layers = nn.ModuleList(
             [nn.Sequential(layer_dict) for layer_dict in layer_list])
 
-        self.load_weights(weights_file)
-        from netharn.models.yolo2 import light_postproc
         self.postprocess = light_postproc.GetBoundingBoxes(
             self.num_classes, self.anchors, conf_thresh, nms_thresh)
         # self.postprocess = light_postproc.GetBoundingBoxes(
@@ -217,7 +215,7 @@ class Yolo(nn.Module):
 
     def output_shape_for(self, input_shape):
         b, c, h, w = input_shape
-        o = self.num_anchors * (5 + self.num_classes)
+        o = len(self.anchors) * (5 + self.num_classes)
         return (b, o, h // 32, w // 32)
 
     def forward(self, x):
