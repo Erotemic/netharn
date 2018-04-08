@@ -121,6 +121,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
 
         self.mse = nn.MSELoss(size_average=False)
 
+    @profiler.profile
     def forward(self, output, target, seen=0):
         """ Compute Region loss.
 

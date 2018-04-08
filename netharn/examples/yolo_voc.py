@@ -6,8 +6,6 @@ import numpy as np
 import pandas as pd
 import netharn as nh
 from netharn import util
-import cv2
-import imgaug as ia
 import imgaug.augmenters as iaa
 from netharn.util import profiler  # NOQA
 from netharn.data import collate
@@ -23,10 +21,6 @@ from netharn.models.yolo2 import light_yolo
 
 def asnumpy(tensor):
     return tensor.data.cpu().numpy()
-
-
-def asfloat(t):
-    return float(asnumpy(t))
 
 
 class YoloVOCDataset(nh.data.voc.VOCDataset):
@@ -392,7 +386,7 @@ class YoloHarn(nh.FitHarn):
         Example:
             >>> harn = setup_harness(bsize=1)
             >>> harn.initialize()
-            >>> batch = harn._demo_batch(0, 'train')
+            >>> batch = harn._demo_batch(0, 'test')
             >>> weights_fpath = light_yolo.demo_weights()
             >>> state_dict = harn.xpu.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
@@ -822,7 +816,7 @@ if __name__ == '__main__':
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=16 --nice=check_lr2 --lr=0.000015625 --decay=0.0000078125 --bstep=4
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=3 --batch_size=16 --nice=check_lr3 --lr=0.00002 --decay=0.00001 --bstep=4
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=letterboxed_copylr_moreaug2 --bstep=4 --lr=0.000015625 --decay=0.0000078125
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=copy_aug --bstep=4 --lr=0.000015625 --decay=0.0000078125
 
         python ~/code/netharn/netharn/examples/yolo_voc.py all
     """
