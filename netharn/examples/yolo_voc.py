@@ -98,17 +98,11 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                 #     mode=ia.ALL,
                 #     backend='cv2',
                 # ),
-
                 # Order used in lightnet is hsv, rc, rf, lb
                 # lb is applied externally to augmenters
                 HSVShift(hue=0.1, sat=1.5, val=1.5),
                 iaa.Crop(percent=(0, .2)),
                 iaa.Fliplr(p=.5),
-
-                # iaa.CropAndPad(percent=(0, .2), pad_cval=127),
-
-                # TODO: put letterbox transform afterwords.
-
                 # iaa.AddToHueAndSaturation((-20, 20)),
                 # iaa.ContrastNormalization((0.5, 2.0), per_channel=0.5),
                 # iaa.AddToHueAndSaturation((-15, 15)),
@@ -308,10 +302,11 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                                        collate_fn=collate.padded_collate,
                                        num_workers=num_workers,
                                        pin_memory=pin_memory)
-        try:
-            loader.batch_size = batch_size
-        except Exception:
-            pass
+        if loader.batch_size != batch_size:
+            try:
+                loader.batch_size = batch_size
+            except Exception:
+                pass
         return loader
 
 
@@ -509,6 +504,8 @@ class YoloHarn(nh.FitHarn):
             true_tlbr = util.Boxes(true_cxywh, 'cxywh').to_tlbr()
             pred_tlbr = util.Boxes(pred_cxywh, 'cxywh').to_tlbr()
 
+            # TODO: can we invert the letterbox transform here and clip for
+            # some extra mAP?
             true_boxes = true_tlbr.data
             pred_boxes = pred_tlbr.data
 
@@ -679,14 +676,15 @@ def setup_harness(bsize=16, workers=0):
 
     xpu = nh.XPU.cast('argv')
 
+    nice = ub.argval('--nice', default='Yolo2Baseline')
     batch_size = int(ub.argval('--batch_size', default=bsize))
     bstep = int(ub.argval('--bstep', 1))
     workers = int(ub.argval('--workers', default=workers))
-    # lr = float(ub.argval('--lr', default=0.001))
-    nice = ub.argval('--nice', default='Yolo2Baseline')
+    decay = float(ub.argval('--decay', default=0.0005))
+    lr = float(ub.argval('--lr', default=0.001))
+    ovthresh = 0.5
 
     # We will divide the learning rate by the simulated batch size
-
     datasets = {
         'train': YoloVOCDataset(split='trainval'),
         'test': YoloVOCDataset(split='test'),
@@ -696,10 +694,6 @@ def setup_harness(bsize=16, workers=0):
                               shuffle=(key == 'train'), pin_memory=True)
         for key, dset in datasets.items()
     }
-    ovthresh = 0.5
-
-    decay = float(ub.argval('--decay', default=0.0005))
-    lr = float(ub.argval('--lr', default=0.001))
 
     # simulated_bsize = bstep * batch_size
     hyper = nh.HyperParams(**{
@@ -752,6 +746,7 @@ def setup_harness(bsize=16, workers=0):
                 # 90: .001 / simulated_bsize,
                 0:  lr / 10,
                 1:  lr,
+                59: lr * 1.1,
                 60: lr / 10,
                 90: lr / 100,
             },
@@ -768,17 +763,20 @@ def setup_harness(bsize=16, workers=0):
         'augment': datasets['train'].augmenter,
 
         'dynamics': {
-            # currently a special param. TODO: incorporate more generally
+            # Controls how many batches to process before taking a step in the
+            # gradient direction. Effectively simulates a batch_size that is
+            # `bstep` times bigger.
             'batch_step': bstep,
         },
 
         'other': {
+            # Other params are not used internally, so you are free to set any
+            # extra params specific to your algorithm, and still have them
+            # logged in the hyperparam structure. For YOLO this is `ovthresh`.
             'batch_size': batch_size,
             'nice': nice,
             'ovthresh': ovthresh,  # used in mAP computation
             'input_range': 'norm01',
-            # 'anyway': 'you want it',
-            # 'thats the way': 'you need it',
         },
     })
     harn = YoloHarn(hyper=hyper)
