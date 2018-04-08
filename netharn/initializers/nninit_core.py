@@ -72,7 +72,12 @@ class Orthogonal(nninit_base._BaseInitializer):
         self.gain = gain
 
     def forward(self, model):
-        nninit_base.apply_initializer(model, torch.nn.init.orthogonal, self.__dict__)
+        try:
+            func = torch.nn.init.orthogonal_
+        except AttributeError:
+            func = torch.nn.init.orthogonal
+
+        nninit_base.apply_initializer(model, func, self.__dict__)
 
 
 class KaimingUniform(nninit_base._BaseInitializer):
@@ -93,8 +98,11 @@ class KaimingUniform(nninit_base._BaseInitializer):
         self.mode = mode
 
     def forward(self, model):
-        nninit_base.apply_initializer(model, torch.nn.init.kaiming_uniform,
-                                      self.__dict__)
+        try:
+            func = torch.nn.init.kaiming_uniform_
+        except AttributeError:
+            func = torch.nn.init.kaiming_uniform
+        nninit_base.apply_initializer(model, func, self.__dict__)
 
 
 class KaimingNormal(nninit_base._BaseInitializer):
@@ -115,8 +123,11 @@ class KaimingNormal(nninit_base._BaseInitializer):
         self.mode = mode
 
     def forward(self, model):
-        nninit_base.apply_initializer(model, torch.nn.init.kaiming_uniform,
-                                      self.__dict__)
+        try:
+            func = torch.nn.init.kaiming_normal_
+        except AttributeError:
+            func = torch.nn.init.kaiming_normal
+        nninit_base.apply_initializer(model, func, self.__dict__)
 
 
 if __name__ == '__main__':

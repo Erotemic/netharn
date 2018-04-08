@@ -197,9 +197,12 @@ class XPU(ub.NiceRepr):
         """
         Determines what a CPU/GPU device to use.
         """
-        n_available = torch.cuda.device_count()
-        gpu_num = find_unused_gpu(min_memory=min_memory)
-        if gpu_num is None or gpu_num >= n_available:
+        if torch.cuda.is_available():
+            n_available = torch.cuda.device_count()
+            gpu_num = find_unused_gpu(min_memory=min_memory)
+            if gpu_num is None or gpu_num >= n_available:
+                gpu_num = None
+        else:
             gpu_num = None
         xpu = XPU(gpu_num)
         return xpu
@@ -433,8 +436,9 @@ def find_unused_gpu(min_memory=0):
         python -c "from netharn import device; print(device.find_unused_gpu(300))"
 
     Example:
-        >>> item = find_unused_gpu()
-        >>> assert item is None or isinstance(item, int)
+        >>> if torch.cuda.is_available():
+        >>>     item = find_unused_gpu()
+        >>>     assert item is None or isinstance(item, int)
     """
     gpus = gpu_info()
     if not gpus:
