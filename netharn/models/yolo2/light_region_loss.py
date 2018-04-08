@@ -268,7 +268,7 @@ class RegionLoss(BaseLossWithCudaState):
 
         self.iou_mode = None
 
-    @functools.lru_cache(maxsize=10)
+    @functools.lru_cache(maxsize=32)
     @profiler.profile
     def _init_pred_boxes(self, device, nB, nA, nH, nW):
         # pred_dim = nB * nA * nH * nW
@@ -279,7 +279,6 @@ class RegionLoss(BaseLossWithCudaState):
         lin_x = torch.linspace(0, nW - 1, nW).repeat(nH, 1).view(nH * nW)
         lin_y = torch.linspace(0, nH - 1, nH).repeat(nW, 1).t().contiguous().view(nH * nW)
         if device is not None:
-            # pred_boxes = pred_boxes.cuda()
             lin_x = lin_x.cuda(device)
             lin_y = lin_y.cuda(device)
             self.anchor_w = self.anchor_w.cuda(device)
@@ -324,6 +323,10 @@ class RegionLoss(BaseLossWithCudaState):
         with torch.no_grad():
             device = self.get_device()
             pred_boxes, lin_x, lin_y = self._init_pred_boxes(device, nB, nA, nH, nW)
+            if device is not None:
+                pred_boxes = pred_boxes.cuda(device)
+                self.anchor_w = self.anchor_w.cuda(device)
+                self.anchor_h = self.anchor_h.cuda(device)
 
             pred_boxes[:, 0] = (coord[:, :, 0].data + lin_x).view(-1)
             pred_boxes[:, 1] = (coord[:, :, 1].data + lin_y).view(-1)
