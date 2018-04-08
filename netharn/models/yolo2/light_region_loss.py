@@ -28,7 +28,7 @@ def benchmark_region_loss():
     CommandLine:
         python ~/code/netharn/netharn/models/yolo2/light_region_loss.py benchmark_region_loss --profile
 
-    Example:
+    Benchmark:
         >>> benchmark_region_loss()
     """
     from netharn.models.yolo2.light_yolo import Yolo
@@ -62,7 +62,7 @@ def profile_loss_speed():
     """
     python ~/code/netharn/netharn/models/yolo2/light_region_loss.py profile_loss_speed --profile
 
-    Example:
+    Benchmark:
         >>> profile_loss_speed()
     """
     from netharn.models.yolo2.light_yolo import Yolo
@@ -76,7 +76,8 @@ def profile_loss_speed():
 
     self1 = netharn.models.yolo2.light_region_loss.RegionLoss(
         num_classes=network.num_classes, anchors=network.anchors)
-    self2 = lightnet.network.RegionLoss(network=network)
+    self2 = lightnet.network.RegionLoss(num_classes=network.num_classes,
+                                        anchors=network.anchors)
 
     bsize = 8
     # Make a random semi-realistic set of groundtruth items
@@ -195,7 +196,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         >>> print(f'output.sum() = {output.sum():.2f}')
         output.sum() = 2.15
         >>> print(f'loss = {loss:.2f}')
-        loss = 19.53
+        loss = 20.18
 
     """
 
@@ -467,7 +468,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
 if __name__ == '__main__':
     """
     CommandLine:
-        python -m netharn.models.yolo2.region_loss all
+        python -m netharn.models.yolo2.light_region_loss all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
