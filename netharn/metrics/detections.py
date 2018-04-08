@@ -2,7 +2,10 @@ import pandas as pd
 import numpy as np
 import ubelt as ub
 
+from netharn.util import profiler
 
+
+@profiler.profile
 def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
                          pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5,
                          bg_cls=-1):
