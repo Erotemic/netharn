@@ -812,9 +812,9 @@ if __name__ == '__main__':
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=letterboxed_copylr_reworkaug --bstep=4
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=check_lr1 --lr=0.0001 --decay=0.0005 --bstep=4
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=16 --nice=check_lr2 --lr=0.000015625 --decay=0.0000078125 --bstep=4
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=3 --batch_size=16 --nice=check_lr3 --lr=0.00002 --decay=0.00001 --bstep=4
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=better_lr1 --lr=0.0001 --decay=0.0005 --bstep=4 --workers=4
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=16 --nice=better_lr2 --lr=0.000015625 --decay=0.0000078125 --bstep=4 --workers=4
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=3 --batch_size=16 --nice=better_lr3 --lr=0.00002 --decay=0.00001 --bstep=4 --workers=4
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=copy_aug --bstep=4 --lr=0.000015625 --decay=0.0000078125
 
