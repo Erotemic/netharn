@@ -435,7 +435,7 @@ class YoloHarn(nh.FitHarn):
         #     harn.datasets['train'].augmenter = harn.datasets['train']._augmenter
 
         loader = harn.loaders[tag]
-        y = pd.concat(harn.batch_confusions)
+        y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
         # TODO: write out a few visualizations
         num_classes = len(loader.dataset.label_names)
         labels = list(range(num_classes))
@@ -490,7 +490,7 @@ class YoloHarn(nh.FitHarn):
             true_weight = true_weight[flags]
 
             # orig_size    = asnumpy(orig_sizes[bx])
-            gx           = int(asnumpy(indices[bx]))
+            # gx           = int(asnumpy(indices[bx]))
 
             # how much do we care about the background in this image?
             bg_weight = float(asnumpy(bg_weights[bx]))
@@ -537,8 +537,7 @@ class YoloHarn(nh.FitHarn):
                 bg_cls=-1,
                 ovthresh=harn.hyper.other['ovthresh']
             )
-
-            y['gx'] = gx
+            # y['gx'] = gx
             yield y
 
     @classmethod
