@@ -2241,6 +2241,11 @@ def draw_boxes(boxes, box_format='xywh', color='blue', labels=None,
     if ax is None:
         ax = plt.gca()
 
+    from netharn import util
+    if isinstance(boxes, util.Boxes):
+        box_format = boxes.format
+        boxes = boxes.data
+
     if not len(boxes):
         return
 

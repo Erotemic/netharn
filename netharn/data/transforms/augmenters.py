@@ -147,37 +147,95 @@ class LetterboxResize(augmenter_base.ParamatarizedAugmenter):
     Args:
         target_size (tuple): Scale images to this size (w, h) keeping the
         aspect ratio using a letterbox.
+
+    Example:
+        >>> img = demodata_hsv_image()
+        >>> box = util.Boxes([[450, 50, 100, 50], [0.0, 0, 199, 199], [240, 50, 10, 50]], format='xywh').as_tlbr()
+        >>> bboi = box.as_imgaug(shape=img.shape)
+        >>> imgT = np.ascontiguousarray(img.transpose(1, 0, 2))
+        >>> bboiT = box.transpose().as_imgaug(shape=imgT.shape)
+        >>> self = LetterboxResize((40, 30))
+        >>> self2 = LetterboxResize((1000, 1000))
+        >>> # ---------------------------
+        >>> aug1  = self.augment_image(img)
+        >>> bboi1 = self.augment_bounding_boxes([bboi])[0]
+        >>> aug2  = self.augment_image(imgT)
+        >>> bboi2 = self.augment_bounding_boxes([bboiT])[0]
+        >>> aug3  = self2.augment_image(img)
+        >>> bboi3 = self2.augment_bounding_boxes([bboi])[0]
+        >>> aug4  = self2.augment_image(imgT)
+        >>> bboi4 = self2.augment_bounding_boxes([bboiT])[0]
+        >>> # ---------------------------
+        >>> # xdoc: +REQUIRES(--show)
+        >>> from netharn import util
+        >>> from netharn.util import mplutil
+        >>> mplutil.qtensure()  # xdoc: +SKIP
+        >>> #mplutil.figure(doclf=True, fnum=1)
+        >>> #pnum_ = mplutil.PlotNums(3, 2)
+        >>> #mplutil.imshow(util.draw_boxes_on_image(img, util.Boxes.from_imgaug(bboi)), pnum=pnum_(), title='orig')
+        >>> #mplutil.imshow(util.draw_boxes_on_image(imgT, util.Boxes.from_imgaug(bboiT)), pnum=pnum_(), title='origT')
+        >>> #mplutil.imshow(util.draw_boxes_on_image(aug1, util.Boxes.from_imgaug(bboi1)), pnum=pnum_())
+        >>> #mplutil.imshow(util.draw_boxes_on_image(aug2, util.Boxes.from_imgaug(bboi2)), pnum=pnum_())
+        >>> #mplutil.imshow(util.draw_boxes_on_image(aug3, util.Boxes.from_imgaug(bboi3)), pnum=pnum_())
+        >>> #mplutil.imshow(util.draw_boxes_on_image(aug4, util.Boxes.from_imgaug(bboi4)), pnum=pnum_())
+        >>> mplutil.figure(doclf=True, fnum=1)
+        >>> pnum_ = mplutil.PlotNums(3, 2)
+        >>> mplutil.imshow(img, colorspace='rgb', pnum=pnum_(), title='orig')
+        >>> mplutil.draw_boxes(util.Boxes.from_imgaug(bboi))
+        >>> mplutil.imshow(imgT, colorspace='rgb', pnum=pnum_(), title='origT')
+        >>> mplutil.draw_boxes(util.Boxes.from_imgaug(bboiT))
+        >>> # ----
+        >>> mplutil.imshow(aug1, colorspace='rgb', pnum=pnum_())
+        >>> #mplutil.draw_boxes(util.Boxes.from_imgaug(bboi1))
+        >>> x = util.Boxes.from_imgaug(bboi1).shift((-0.5, -0.5))
+        >>> mplutil.draw_boxes(x)
+        >>> mplutil.imshow(aug2, colorspace='rgb', pnum=pnum_())
+        >>> x = util.Boxes.from_imgaug(bboi2).shift((-0.5, -0.5))
+        >>> mplutil.draw_boxes(x)
+        >>> #mplutil.draw_boxes(util.Boxes.from_imgaug(bboi2))
+        >>> # ----
+        >>> mplutil.imshow(aug3, colorspace='rgb', pnum=pnum_())
+        >>> mplutil.draw_boxes(util.Boxes.from_imgaug(bboi3))
+        >>> mplutil.imshow(aug4, colorspace='rgb', pnum=pnum_())
+        >>> mplutil.draw_boxes(util.Boxes.from_imgaug(bboi4))
+
+    Ignore:
+        image = img
+        target_size = np.array(self.target_size)
+        orig_size = np.array(img.shape[0:2][::-1])
+        shift, scale, embed_size = self._letterbox_transform(orig_size,
+                                                             target_size)
     """
     def __init__(self, target_size, fill_color=127):
         super().__init__()
-        self.target_size = np.array(target_size)
+        self.target_size = target_size
         self.fill_color = fill_color
 
     def _augment_images(self, images, random_state, parents, hooks):
         result = []
         nb_images = len(images)
+
+        target_size = np.array(self.target_size)
+
         for i in range(nb_images):
             img = images[i]
-            orig_size = img.shape[0:2][::-1]
-            shift, embed_size = self._letterbox_transform(
-                orig_size, self.target_size)
+            orig_size = np.array(img.shape[0:2][::-1])
+            shift, scale, embed_size = self._letterbox_transform(orig_size,
+                                                                 target_size)
             new_img = self._apply_img_letterbox(img, embed_size, shift,
-                                                self.target_size)
+                                                target_size)
             result.append(new_img)
         return result
 
     def _augment_keypoints(self, keypoints_on_images, random_state, parents,
                            hooks):
         """
-
         Example:
             >>> import imgaug
             >>> tlbr = [[0, 0, 10, 10], [1, 2, 8, 9]]
             >>> shape = (20, 40, 3)
-            >>> bbs = imgaug.BoundingBoxesOnImage(
-            >>>     [imgaug.BoundingBox(x1, y1, x2, y2)
-            >>>      for x1, y1, x2, y2 in tlbr], shape=shape)
-            >>> bounding_boxes_on_images = [bbs]
+            >>> bboi = util.Boxes(tlbr, 'tlbr').as_imgaug(shape)
+            >>> bounding_boxes_on_images = [bboi]
             >>> kps_ois = []
             >>> for bbs_oi in bounding_boxes_on_images:
             >>>     kps = []
@@ -186,71 +244,63 @@ class LetterboxResize(augmenter_base.ParamatarizedAugmenter):
             >>>     kps_ois.append(imgaug.KeypointsOnImage(kps, shape=bbs_oi.shape))
             >>> keypoints_on_images = kps_ois
             >>> self = LetterboxResize((400, 400))
-
         """
         result = []
+        target_size = np.array(self.target_size)
+        target_shape = target_size[::-1]
+        prev_size = None
         for i, keypoints_on_image in enumerate(keypoints_on_images):
-            height, width = keypoints_on_image.height, keypoints_on_image.width
+            orig_size = (keypoints_on_image.width, keypoints_on_image.height)
 
-            orig_size = np.array((width, height))
-            shift, embed_size = self._letterbox_transform(
-                orig_size, self.target_size)
-            scale = embed_size / orig_size
+            if prev_size != orig_size:
+                # Cache previously computed values
+                shift, scale, embed_size = self._letterbox_transform(
+                    np.array(orig_size), target_size)
+                prev_size = orig_size
 
-            coords = keypoints_on_image.get_coords_array()
-            coords_aug = (coords * scale) + shift
+            xy = keypoints_on_image.get_coords_array()
+            xy_aug = (xy * scale) + shift
 
-            result.append(imgaug.KeypointsOnImage.from_coords_array(
-                coords_aug, shape=keypoints_on_image.shape))
+            new_keypoint = imgaug.KeypointsOnImage.from_coords_array(
+                xy_aug, shape=target_shape)
+            result.append(new_keypoint)
         return result
 
     def _letterbox_transform(self, orig_size, target_size):
         """
         aspect ratio preserving scaling + extra padding to equal target size
-        """
-        ow, oh = orig_size
-        tw, th = target_size
 
-        factor = orig_size / target_size
-        fw, fh = factor
+        scale should be applied before the shift.
+        """
+        # determine if width or the height should be used as the scale factor.
+        fw, fh = np.array(orig_size) / np.array(target_size)
         sf = 1 / fw if fw >= fh else 1 / fh
 
+        # Whats the closest integer size we can resize to?
         embed_size = np.round(orig_size * sf).astype(np.int)
+        # Determine how much padding we need for the top left side
         shift = np.round((target_size - embed_size) / 2).astype(np.int)
-        return shift, embed_size
 
-    def _apply_img_letterbox(self, image, embed_size, shift, target_size):
-        """
-        Example:
-            >>> #image = np.ones((100, 50), dtype=np.uint8) * 255
-            >>> image = np.ones((100, 100), dtype=np.uint8) * 255
-            >>> target_size = np.array((100, 120))
-            >>> orig_size = np.array(image.shape[0:2][::-1])
-            >>> shift, embed_size = letterbox_transform(orig_size, target_size)
-            >>> hwc255 = _apply_img_letterbox(image, embed_size, shift, target_size)
-            >>> # xdoc: +REQUIRES(--show)
-            >>> from netharn.util import mplutil
-            >>> mplutil.figure(doclf=True, fnum=1)
-            >>> mplutil.qtensure()  # xdoc: +SKIP
-            >>> mplutil.imshow(hwc255, colorspace='gray')
-            >>> mplutil.show_if_requested()
-        """
+        scale = embed_size / orig_size
+        return shift, scale, embed_size
 
+    def _apply_img_letterbox(self, img, embed_size, shift, target_size):
         pad_lefttop = shift
         pad_rightbot = target_size - (embed_size + shift)
 
         left, top = pad_lefttop
         right, bot = pad_rightbot
 
-        fill_color = 127
-        channels = util.get_num_channels(image)
+        orig_size = np.array(img.shape[0:2][::-1])
+        channels = util.get_num_channels(img)
 
-        # NO DONT SQUISH: squish the image into network input coordinates
-        # USE LETTERBOX TO MAINTAIN ASPECT RATIO
-        interpolation = cv2.INTER_AREA
-        scaled = cv2.resize(image, tuple(embed_size),
-                            interpolation=interpolation)
+        sf = embed_size / orig_size
+        dsize = tuple(embed_size)
+        # Choose INTER_AREA if we are shrinking the image
+        interpolation = cv2.INTER_AREA if sf.sum() < 2 else cv2.INTER_CUBIC
+        scaled = cv2.resize(img, dsize, interpolation=interpolation)
 
+        fill_color = self.fill_color
         hwc255 = cv2.copyMakeBorder(scaled, top, bot, left, right,
                                     cv2.BORDER_CONSTANT,
                                     value=(fill_color,) * channels)

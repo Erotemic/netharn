@@ -148,15 +148,16 @@ class Boxes(ub.NiceRepr):
         else:
             raise KeyError(self.format)
 
-    def _cat(self, datas):
+    @classmethod
+    def _cat(cls, datas):
         if torch.is_tensor(datas[0]):
             return torch.cat(datas, dim=-1)
         else:
             return np.concatenate(datas, axis=-1)
 
-    def as_xywh(self):
+    def as_xywh(self, copy=True):
         if self.format == 'xywh':
-            return self.copy()
+            return self.copy() if copy else self
         elif self.format == 'tlbr':
             x1, y1, x2, y2 = self.components
             w = x2 - x1
@@ -170,9 +171,9 @@ class Boxes(ub.NiceRepr):
         xywh = self._cat([x1, y1, w, h])
         return Boxes(xywh, 'xywh')
 
-    def as_cxywh(self):
+    def as_cxywh(self, copy=True):
         if self.format == 'cxywh':
-            return self.copy()
+            return self.copy() if copy else self
         elif self.format == 'tlbr':
             x1, y1, x2, y2 = self.components
             w = x2 - x1
@@ -188,9 +189,9 @@ class Boxes(ub.NiceRepr):
         cxywh = self._cat([cx, cy, w, h])
         return Boxes(cxywh, 'cxywh')
 
-    def as_tlbr(self):
+    def as_tlbr(self, copy=True):
         if self.format == 'tlbr':
-            return self.copy()
+            return self.copy() if copy else self
         elif self.format == 'cxywh':
             cx, cy, w, h = self.components
             half_w = (w / 2)
@@ -207,6 +208,115 @@ class Boxes(ub.NiceRepr):
             raise KeyError(self.format)
         tlbr = self._cat([x1, y1, x2, y2])
         return Boxes(tlbr, 'tlbr')
+
+    def as_imgaug(self, shape):
+        """
+        Args:
+            shape (tuple): shape of image that boxes belong to
+
+        Example:
+            >>> self = Boxes([25, 30, 15, 10], 'tlbr')
+            >>> bboi = self.as_imgaug()
+        """
+        import imgaug
+        if len(self.data.shape) != 2:
+            raise ValueError('data must be 2d got {}d'.format(len(self.data.shape)))
+
+        tlbr = self.as_tlbr(copy=False).data
+        bboi = imgaug.BoundingBoxesOnImage(
+            [imgaug.BoundingBox(x1, y1, x2, y2)
+             for x1, y1, x2, y2 in tlbr], shape=shape)
+        return bboi
+
+    @classmethod
+    def from_imgaug(Boxes, bboi):
+        """
+        Args:
+            bboi (ia.BoundingBoxesOnImage):
+
+        Example:
+            >>> orig = Boxes(random_boxes(5).numpy(), 'tlbr')
+            >>> bboi = orig.as_imgaug(shape=(500, 500))
+            >>> self = Boxes.from_imgaug(bboi)
+            >>> assert np.all(self.data == orig.data)
+        """
+        tlbr = np.array([[bb.x1, bb.y1, bb.x2, bb.y2]
+                         for bb in bboi.bounding_boxes])
+        tlbr = tlbr.reshape(-1, 4)
+        return Boxes(tlbr, format='tlbr')
+
+    def as_brambox(self):
+        """
+        Notes:
+            pip install git+https://gitlab.com/EAVISE/brambox.git
+
+        Example:
+            >>> xywh = Boxes(random_boxes(5).numpy(), 'xywh')
+            >>> xywh.as_brambox()
+        """
+        if len(self.data.shape) != 2:
+            raise ValueError('data must be 2d got {}d'.format(len(self.data.shape)))
+        from brambox.boxes.box import Box
+        xywh_boxes = self.as_xywh(copy=False).data
+        boxes = []
+        for x, y, w, h in xywh_boxes:
+            box = Box()
+            box.x_top_left = x
+            box.y_top_left = y
+            box.width = w
+            box.height = h
+            boxes.append(box)
+        return boxes
+
+    def clip(self, x_min, y_min, x_max, y_max, inplace=False):
+        """
+        Clip boxes to image boundaries.  If box is in tlbr format, inplace
+        operation is an option.
+
+        Example:
+            >>> boxes = Boxes(np.array([[-10, -10, 120, 120], [1, -2, 30, 50]]), 'tlbr')
+            >>> clipped = boxes.clip(0, 0, 110, 100, inplace=False)
+            >>> assert np.any(boxes.data != clipped.data)
+            >>> clipped2 = boxes.clip(0, 0, 110, 100, inplace=True)
+            >>> assert clipped2.data is boxes.data
+            >>> assert np.all(clipped2.data == clipped.data)
+            >>> print(clipped)
+            <Boxes(tlbr,
+                array([[  0,   0, 110, 100],
+                       [  1,   0,  30,  50]]))>
+        """
+        if inplace:
+            if self.format != 'tlbr':
+                raise ValueError('Must be in tlbr format to operate inplace')
+            self2 = self
+        else:
+            self2 = self.as_tlbr(copy=True)
+        x1, y1, x2, y2 = self2.data.T
+        np.clip(x1, x_min, x_max, out=x1)
+        np.clip(y1, y_min, y_max, out=y1)
+        np.clip(x2, x_min, x_max, out=x2)
+        np.clip(y2, y_min, y_max, out=y2)
+        return self2
+
+    def transpose(self):
+        x, y, w, h = self.as_xywh().components
+        self2 = self.__class__(self._cat([y, x, h, w]), format='xywh')
+        self2 = self2.asformat(self.format)
+        return self2
+
+    def compress(self, flags, axis=0, inplace=False):
+        """
+        Filters boxes based on a boolean criterion
+
+        Example:
+            >>> self = Boxes([[25, 30, 15, 10]], 'tlbr')
+            >>> flags = [False]
+        """
+        if len(self.data.shape) != 2:
+            raise ValueError('data must be 2d got {}d'.format(len(self.data.shape)))
+        self2 = self if inplace else self.copy()
+        self2.data = self2.data.compress(flags, axis=axis)
+        return self2
 
 
 def clip_boxes(boxes, im_shape):
