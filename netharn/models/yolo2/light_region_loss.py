@@ -268,8 +268,8 @@ class RegionLoss(BaseLossWithCudaState):
 
         self.iou_mode = None
 
-    @profiler.profile
     @functools.lru_cache(maxsize=10)
+    @profiler.profile
     def _init_pred_boxes(self, device, nB, nA, nH, nW):
         # pred_dim = nB * nA * nH * nW
         # if pred_dim == self._prev_pred_dim:
