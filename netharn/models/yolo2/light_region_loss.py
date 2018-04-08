@@ -12,6 +12,7 @@ import math
 import torch
 import torch.nn as nn
 import numpy as np  # NOQA
+import functools
 from torch.autograd import Variable
 from netharn import util
 from netharn.util import profiler
@@ -155,7 +156,34 @@ def compare_loss_speed():
     print('loss_orig = {!r}'.format(loss_orig))
 
 
-class RegionLoss(torch.nn.modules.loss._Loss):
+class BaseLossWithCudaState(torch.nn.modules.loss._Loss):
+    """
+    Keep track of if the module is in cpu or gpu mode
+    """
+    def __init__(self):
+        super(BaseLossWithCudaState, self).__init__()
+        self._iscuda = False
+        self._device_num = None
+
+    def cuda(self, device_num=None, **kwargs):
+        self._iscuda = True
+        self._device_num = device_num
+        return super(BaseLossWithCudaState, self).cuda(device_num, **kwargs)
+
+    def cpu(self):
+        self._iscuda = False
+        self._device_num = None
+        return super(BaseLossWithCudaState, self).cpu()
+
+    @property
+    def is_cuda(self):
+        return self._iscuda
+
+    def get_device(self):
+        return self._device_num
+
+
+class RegionLoss(BaseLossWithCudaState):
     """ Computes region loss from darknet network output and target annotation.
 
     Args:
@@ -225,6 +253,8 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         self.loss_tot = None
 
         self.mse = nn.MSELoss(size_average=False)
+        self.mse = nn.MSELoss(size_average=False)
+        self.cls_critrion = nn.CrossEntropyLoss(size_average=False)
 
         nA = self.num_anchors
         self.anchor_w = torch.Tensor(self.anchors.T[0]).view(nA, 1)
@@ -238,22 +268,25 @@ class RegionLoss(torch.nn.modules.loss._Loss):
 
         self.iou_mode = None
 
-    def _init_pred_boxes(self, cuda, nB, nA, nH, nW):
-        pred_dim = nB * nA * nH * nW
-        if pred_dim == self._prev_pred_dim:
-            pred_boxes, lin_x, lin_y = self._prev_pred_init
-        else:
-            pred_boxes = torch.FloatTensor(nB * nA * nH * nW, 4)
-            lin_x = torch.linspace(0, nW - 1, nW).repeat(nH, 1).view(nH * nW)
-            lin_y = torch.linspace(0, nH - 1, nH).repeat(nW, 1).t().contiguous().view(nH * nW)
-            if cuda:
-                # pred_boxes = pred_boxes.cuda()
-                lin_x = lin_x.cuda()
-                lin_y = lin_y.cuda()
-                self.anchor_w = self.anchor_w.cuda()
-                self.anchor_h = self.anchor_h.cuda()
-            self._prev_pred_init = pred_boxes, lin_x, lin_y
+    @profiler.profile
+    @functools.lru_cache(maxsize=10)
+    def _init_pred_boxes(self, device, nB, nA, nH, nW):
+        # pred_dim = nB * nA * nH * nW
+        # if pred_dim == self._prev_pred_dim:
+        #     pred_boxes, lin_x, lin_y = self._prev_pred_init
+        # else:
+        pred_boxes = torch.FloatTensor(nB * nA * nH * nW, 4)
+        lin_x = torch.linspace(0, nW - 1, nW).repeat(nH, 1).view(nH * nW)
+        lin_y = torch.linspace(0, nH - 1, nH).repeat(nW, 1).t().contiguous().view(nH * nW)
+        if device is not None:
+            # pred_boxes = pred_boxes.cuda()
+            lin_x = lin_x.cuda(device)
+            lin_y = lin_y.cuda(device)
+            self.anchor_w = self.anchor_w.cuda(device)
+            self.anchor_h = self.anchor_h.cuda(device)
         return pred_boxes, lin_x, lin_y
+        # self._prev_pred_init = pred_boxes, lin_x, lin_y
+        # return pred_boxes, lin_x, lin_y
 
     @profiler.profile
     def forward(self, output, target, seen=0):
@@ -274,7 +307,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         nC = self.num_classes
         nH = output.data.size(2)
         nW = output.data.size(3)
-        cuda = output.is_cuda
+
         if isinstance(target, Variable):
             target = target.data
 
@@ -288,30 +321,32 @@ class RegionLoss(torch.nn.modules.loss._Loss):
             cls = output[:, :, 5:].contiguous().view(nB * nA, nC, nH * nW).transpose(1, 2).contiguous().view(-1, nC)
 
         # Create prediction boxes
-        pred_boxes, lin_x, lin_y = self._init_pred_boxes(cuda, nB, nA, nH, nW)
+        with torch.no_grad:
+            device = self.get_device()
+            pred_boxes, lin_x, lin_y = self._init_pred_boxes(device, nB, nA, nH, nW)
 
-        pred_boxes[:, 0] = (coord[:, :, 0].data + lin_x).view(-1)
-        pred_boxes[:, 1] = (coord[:, :, 1].data + lin_y).view(-1)
-        pred_boxes[:, 2] = (coord[:, :, 2].data.exp() * self.anchor_w).view(-1)
-        pred_boxes[:, 3] = (coord[:, :, 3].data.exp() * self.anchor_h).view(-1)
-        pred_boxes = pred_boxes.cpu()
+            pred_boxes[:, 0] = (coord[:, :, 0].data + lin_x).view(-1)
+            pred_boxes[:, 1] = (coord[:, :, 1].data + lin_y).view(-1)
+            pred_boxes[:, 2] = (coord[:, :, 2].data.exp() * self.anchor_w).view(-1)
+            pred_boxes[:, 3] = (coord[:, :, 3].data.exp() * self.anchor_h).view(-1)
+            pred_boxes = pred_boxes.cpu()
 
-        # Get target values
-        coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = self.build_targets(
-            pred_boxes, target, nH, nW, seen=seen)
-        coord_mask = coord_mask.expand_as(tcoord)
-        if nC > 1:
-            tcls = tcls.view(-1)[cls_mask.view(-1)].long()
-            cls_mask = cls_mask.view(-1, 1).repeat(1, nC)
-
-        if cuda:
-            tcoord = tcoord.cuda()
-            tconf = tconf.cuda()
-            coord_mask = coord_mask.cuda()
-            conf_mask = conf_mask.cuda()
+            # Get target values
+            coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = self.build_targets(
+                pred_boxes, target, nH, nW, seen=seen)
+            coord_mask = coord_mask.expand_as(tcoord)
             if nC > 1:
-                tcls = tcls.cuda()
-                cls_mask = cls_mask.cuda()
+                tcls = tcls.view(-1)[cls_mask.view(-1)].long()
+                cls_mask = cls_mask.view(-1, 1).repeat(1, nC)
+
+            if device is not None:
+                tcoord = tcoord.cuda(device)
+                tconf = tconf.cuda(device)
+                coord_mask = coord_mask.cuda(device)
+                conf_mask = conf_mask.cuda(device)
+                if nC > 1:
+                    tcls = tcls.cuda(device)
+                    cls_mask = cls_mask.cuda(device)
 
         tcoord = Variable(tcoord, requires_grad=False)
         tconf = Variable(tconf, requires_grad=False)
@@ -326,7 +361,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         loss_coord = self.coord_scale * self.mse(coord * coord_mask, tcoord * coord_mask) / nB
         loss_conf = self.mse(conf * conf_mask, tconf * conf_mask) / nB
         if nC > 1:
-            loss_cls = self.class_scale * 2 * nn.CrossEntropyLoss(size_average=False)(cls, tcls) / nB
+            loss_cls = self.class_scale * 2 * self.cls_critrion(cls, tcls) / nB
             loss_tot = loss_coord + loss_conf + loss_cls
             self.loss_cls = float(loss_cls.data.cpu().numpy())
         else:
