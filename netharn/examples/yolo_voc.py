@@ -29,60 +29,6 @@ def asfloat(t):
     return float(asnumpy(t))
 
 
-def letterbox_transform(orig_size, target_size):
-    """
-    aspect ratio preserving scaling + extra padding to equal target size
-    """
-    ow, oh = orig_size
-    tw, th = target_size
-
-    factor = orig_size / target_size
-    fw, fh = factor
-    sf = 1 / fw if fw >= fh else 1 / fh
-
-    embed_size = np.round(orig_size * sf).astype(np.int)
-    shift = np.round((target_size - embed_size) / 2).astype(np.int)
-    return shift, embed_size
-
-
-def apply_img_letterbox(image, embed_size, shift, target_size):
-    """
-    Example:
-        >>> #image = np.ones((100, 50), dtype=np.uint8) * 255
-        >>> image = np.ones((100, 100), dtype=np.uint8) * 255
-        >>> target_size = np.array((100, 120))
-        >>> orig_size = np.array(image.shape[0:2][::-1])
-        >>> shift, embed_size = letterbox_transform(orig_size, target_size)
-        >>> hwc255 = apply_img_letterbox(image, embed_size, shift, target_size)
-        >>> # xdoc: +REQUIRES(--show)
-        >>> from netharn.util import mplutil
-        >>> mplutil.figure(doclf=True, fnum=1)
-        >>> mplutil.qtensure()  # xdoc: +SKIP
-        >>> mplutil.imshow(hwc255, colorspace='gray')
-        >>> mplutil.show_if_requested()
-    """
-
-    pad_lefttop = shift
-    pad_rightbot = target_size - (embed_size + shift)
-
-    left, top = pad_lefttop
-    right, bot = pad_rightbot
-
-    fill_color = 127
-    channels = nh.util.get_num_channels(image)
-
-    # NO DONT SQUISH: squish the image into network input coordinates
-    # USE LETTERBOX TO MAINTAIN ASPECT RATIO
-    interpolation = cv2.INTER_AREA
-    scaled = cv2.resize(image, tuple(embed_size),
-                        interpolation=interpolation)
-
-    hwc255 = cv2.copyMakeBorder(scaled, top, bot, left, right,
-                                cv2.BORDER_CONSTANT,
-                                value=(fill_color,) * channels)
-    return hwc255
-
-
 class YoloVOCDataset(nh.data.voc.VOCDataset):
     """
     Extends VOC localization dataset (which simply loads the images in VOC2008
@@ -207,6 +153,26 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> mplutil.draw_boxes(inp_boxes, box_format='cxywh')
             >>> mplutil.show_if_requested()
 
+        Example:
+            >>> import sys, ubelt
+            >>> sys.path.append(ubelt.truepath('~/code/netharn/netharn/examples'))
+            >>> from yolo_voc import *
+            >>> self = YoloVOCDataset(split='test')
+            >>> index = 0
+            >>> chw01, label = self[index]
+            >>> hwc01 = chw01.numpy().transpose(1, 2, 0)
+            >>> print(hwc01.shape)
+            >>> norm_boxes = label[0].numpy().reshape(-1, 5)[:, 1:5]
+            >>> inp_size = hwc01.shape[-2::-1]
+            >>> # xdoc: +REQUIRES(--show)
+            >>> from netharn.util import mplutil
+            >>> mplutil.figure(doclf=True, fnum=1)
+            >>> mplutil.qtensure()  # xdoc: +SKIP
+            >>> mplutil.imshow(hwc01, colorspace='rgb')
+            >>> inp_boxes = util.Boxes(norm_boxes, 'cxywh').scale(inp_size).data
+            >>> mplutil.draw_boxes(inp_boxes, box_format='cxywh')
+            >>> mplutil.show_if_requested()
+
         Ignore:
             >>> self = YoloVOCDataset(split='train')
 
@@ -299,37 +265,6 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
         return chw01, label
 
-    # def _load_sized_image(self, index, inp_size):
-    #     """
-    #     Example:
-    #         >>> self = YoloVOCDataset(split='test')
-    #         >>> index = 0
-    #         >>> target_size = inp_size = np.array((416, 416))
-    #         >>> hwc255 = self._load_sized_image(0, (inp_size))[0]
-    #         >>> # xdoc: +REQUIRES(--show)
-    #         >>> from netharn.util import mplutil
-    #         >>> mplutil.figure(doclf=True, fnum=1)
-    #         >>> mplutil.qtensure()  # xdoc: +SKIP
-    #         >>> mplutil.imshow(hwc255, colorspace='rgb')
-    #     """
-    #     # load the raw data from VOC
-
-    #     # cacher = ub.Cacher('voc_img', cfgstr=ub.repr2([index, inp_size]),
-    #     #                    appname='netharn', enabled=0)
-    #     # data = cacher.tryload()
-    #     # if data is None:
-    #     image = self._load_image(index)
-
-    #     orig_size = np.array(image.shape[0:2][::-1])
-
-    #     shift, embed_size = letterbox_transform(orig_size, inp_size)
-    #     hwc255 = apply_img_letterbox(image, embed_size, shift, inp_size)
-
-    #     scale = embed_size / orig_size
-
-    #     # cacher.save(data)
-    #     return hwc255, orig_size, scale, shift
-
     def _load_item(self, index):
         # load the raw data from VOC
         image = self._load_image(index)
@@ -379,7 +314,10 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                                        collate_fn=collate.padded_collate,
                                        num_workers=num_workers,
                                        pin_memory=pin_memory)
-        loader.batch_size = batch_size
+        try:
+            loader.batch_size = batch_size
+        except Exception:
+            pass
         return loader
 
 
@@ -425,7 +363,7 @@ class YoloHarn(nh.FitHarn):
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'test')
             >>> weights_fpath = light_yolo.demo_weights()
-            >>> state_dict = torch.load(weights_fpath)['weights']
+            >>> state_dict = harn.xpu.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn.run_batch(batch)
         """
@@ -452,11 +390,11 @@ class YoloHarn(nh.FitHarn):
             python ~/code/netharn/netharn/examples/yolo_voc.py YoloHarn.on_batch --gpu=0 --show
 
         Example:
-            >>> harn = setup_harness(bsize=3)
+            >>> harn = setup_harness(bsize=1)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'train')
             >>> weights_fpath = light_yolo.demo_weights()
-            >>> state_dict = torch.load(weights_fpath)['weights']
+            >>> state_dict = harn.xpu.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn.run_batch(batch)
             >>> harn.on_batch(batch, outputs, loss)
@@ -530,23 +468,23 @@ class YoloHarn(nh.FitHarn):
     def _measure_confusion(harn, postout, labels, inp_size):
         targets, gt_weights, orig_sizes, indices, bg_weights = labels
 
-        def clip_boxes_to_letterbox(boxes, letterbox_tlbr):
-            if boxes.shape[0] == 0:
-                return boxes
+        # def clip_boxes_to_letterbox(boxes, letterbox_tlbr):
+        #     if boxes.shape[0] == 0:
+        #         return boxes
 
-            boxes = boxes.copy()
-            left, top, right, bot = letterbox_tlbr
-            x1, y1, x2, y2 = boxes.T
-            np.minimum(x1, right, out=x1)
-            np.minimum(y1, bot, out=y1)
-            np.minimum(x2, right, out=x2)
-            np.minimum(y2, bot, out=y2)
+        #     boxes = boxes.copy()
+        #     left, top, right, bot = letterbox_tlbr
+        #     x1, y1, x2, y2 = boxes.T
+        #     np.minimum(x1, right, out=x1)
+        #     np.minimum(y1, bot, out=y1)
+        #     np.minimum(x2, right, out=x2)
+        #     np.minimum(y2, bot, out=y2)
 
-            np.maximum(x1, left, out=x1)
-            np.maximum(y1, top, out=y1)
-            np.maximum(x2, left, out=x2)
-            np.maximum(y2, top, out=y2)
-            return boxes
+        #     np.maximum(x1, left, out=x1)
+        #     np.maximum(y1, top, out=y1)
+        #     np.maximum(x2, left, out=x2)
+        #     np.maximum(y2, top, out=y2)
+        #     return boxes
 
         bsize = len(labels[0])
         for bx in range(bsize):
@@ -562,7 +500,7 @@ class YoloHarn(nh.FitHarn):
             true_cxs    = true_cxs[flags]
             true_weight = true_weight[flags]
 
-            orig_size    = asnumpy(orig_sizes[bx])
+            # orig_size    = asnumpy(orig_sizes[bx])
             gx           = int(asnumpy(indices[bx]))
 
             # how much do we care about the background in this image?
@@ -577,22 +515,25 @@ class YoloHarn(nh.FitHarn):
             true_tlbr = util.Boxes(true_cxywh, 'cxywh').as_tlbr()
             pred_tlbr = util.Boxes(pred_cxywh, 'cxywh').as_tlbr()
 
-            if False:
-                # new letterbox transform makes this tricker, simply try and
-                # compare in 0-1 space for now.
+            true_boxes = true_tlbr.data
+            pred_boxes = pred_tlbr.data
 
-                # use max because of letterbox transform
-                lettered_orig_size = orig_size.max()
-                true_boxes = true_tlbr.scale(lettered_orig_size).data
-                pred_boxes = pred_tlbr.scale(lettered_orig_size).data
+            # if False:
+            #     # new letterbox transform makes this tricker, simply try and
+            #     # compare in 0-1 space for now.
 
-                # Clip predicted boxes to the letterbox
-                shift, embed_size = letterbox_transform(orig_size, inp_size)
-                orig_lefttop = (shift / inp_size) * orig_size.max()
-                orig_rightbot = lettered_orig_size - orig_lefttop
-                letterbox_tlbr = list(orig_lefttop) + list(orig_rightbot)
+            #     # use max because of letterbox transform
+            #     lettered_orig_size = orig_size.max()
+            #     true_boxes = true_tlbr.scale(lettered_orig_size).data
+            #     pred_boxes = pred_tlbr.scale(lettered_orig_size).data
 
-                pred_boxes = clip_boxes_to_letterbox(pred_boxes, letterbox_tlbr)
+            #     # Clip predicted boxes to the letterbox
+            #     shift, embed_size = letterbox_transform(orig_size, inp_size)
+            #     orig_lefttop = (shift / inp_size) * orig_size.max()
+            #     orig_rightbot = lettered_orig_size - orig_lefttop
+            #     letterbox_tlbr = list(orig_lefttop) + list(orig_rightbot)
+
+            #     pred_boxes = clip_boxes_to_letterbox(pred_boxes, letterbox_tlbr)
 
             y = nh.metrics.detection_confusions(
                 true_boxes=true_boxes,

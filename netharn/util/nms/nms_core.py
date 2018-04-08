@@ -12,9 +12,10 @@ try:
 except Exception:
     pass
 try:
-    from netharn.util.nms import gpu_nms
-    _impls['gpu'] = gpu_nms.gpu_nms
-    _automode = 'gpu'
+    if torch.cuda.is_available():
+        from netharn.util.nms import gpu_nms
+        _impls['gpu'] = gpu_nms.gpu_nms
+        _automode = 'gpu'
 except Exception:
     pass
 
