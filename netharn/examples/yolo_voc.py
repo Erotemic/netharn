@@ -398,12 +398,14 @@ class YoloHarn(nh.FitHarn):
             >>> harn.visualize_prediction(batch, outputs, postout, idx=0, thresh=0.01)
             >>> mplutil.show_if_requested()
         """
-        inputs, labels = batch
-        postout = harn.model.module.postprocess(outputs)
-        inp_size = np.array(inputs.shape[-2:][::-1])
+        if harn.current_tag != 'train':
+            # Dont worry about computing mAP on the training set for now
+            inputs, labels = batch
+            postout = harn.model.module.postprocess(outputs)
+            inp_size = np.array(inputs.shape[-2:][::-1])
 
-        for y in harn._measure_confusion(postout, labels, inp_size):
-            harn.batch_confusions.append(y)
+            for y in harn._measure_confusion(postout, labels, inp_size):
+                harn.batch_confusions.append(y)
 
         metrics_dict = ub.odict()
         metrics_dict['L_bbox'] = float(harn.criterion.loss_coord)
@@ -435,25 +437,23 @@ class YoloHarn(nh.FitHarn):
             >>> harn.on_epoch()
         """
         tag = harn.current_tag
-        # if tag == 'train':
-        #     harn.datasets['train'].augmenter = harn.datasets['train']._augmenter
-
-        loader = harn.loaders[tag]
-        y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
-        # TODO: write out a few visualizations
-        num_classes = len(loader.dataset.label_names)
-        labels = list(range(num_classes))
-        aps = nh.metrics.ave_precisions(y, labels, use_07_metric=True)
-        harn.aps[tag] = aps
-        mean_ap = np.nanmean(aps['ap'])
-        max_ap = np.nanmax(aps['ap'])
-        harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
-        harn.log_value(tag + ' epoch max-AP', max_ap, harn.epoch)
-        harn.batch_confusions.clear()
-        metrics_dict = ub.odict()
-        metrics_dict['max-AP'] = max_ap
-        metrics_dict['mAP'] = mean_ap
-        return metrics_dict
+        if harn.batch_confusions:
+            y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
+            # TODO: write out a few visualizations
+            loader = harn.loaders[tag]
+            num_classes = len(loader.dataset.label_names)
+            labels = list(range(num_classes))
+            aps = nh.metrics.ave_precisions(y, labels, use_07_metric=True)
+            harn.aps[tag] = aps
+            mean_ap = np.nanmean(aps['ap'])
+            max_ap = np.nanmax(aps['ap'])
+            harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
+            harn.log_value(tag + ' epoch max-AP', max_ap, harn.epoch)
+            harn.batch_confusions.clear()
+            metrics_dict = ub.odict()
+            metrics_dict['max-AP'] = max_ap
+            metrics_dict['mAP'] = mean_ap
+            return metrics_dict
 
     # Non-standard problem-specific custom methods
 
