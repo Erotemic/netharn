@@ -26,13 +26,46 @@ def box_ious(boxes1, boxes2, bias=0, mode=None):
         >>> assert np.all(np.isclose(ious_c, ious_py2))
         >>> assert np.all(np.isclose(ious_c, ious_py3))
     """
-    mode = 'py' if mode is None and bbox_ious_c is None else 'c'
+    if mode is None:
+        mode = 'py' if bbox_ious_c is None else 'c'
     if mode == 'c':
         return bbox_ious_c(boxes1, boxes2, bias)
-    elif mode == 'c':
+    elif mode == 'py':
         return box_ious_py1(boxes1, boxes2, bias)
     else:
         raise KeyError(mode)
+
+
+def box_ious_py1(boxes1, boxes2, bias=1):
+    """
+    This is the fastest python implementation of bbox_ious I found
+    """
+    w1 = boxes1[:, 2] - boxes1[:, 0] + bias
+    h1 = boxes1[:, 3] - boxes1[:, 1] + bias
+    w2 = boxes2[:, 2] - boxes2[:, 0] + bias
+    h2 = boxes2[:, 3] - boxes2[:, 1] + bias
+
+    areas1 = w1 * h1
+    areas2 = w2 * h2
+
+    x_maxs = np.minimum(boxes1[:, 2][:, None], boxes2[:, 2])
+    x_mins = np.maximum(boxes1[:, 0][:, None], boxes2[:, 0])
+
+    iws = np.maximum(x_maxs - x_mins + bias, 0)
+    # note: it would be possible to significantly reduce the computation by
+    # filtering any box pairs where iws <= 0. Not sure how to do with numpy.
+
+    y_maxs = np.minimum(boxes1[:, 3][:, None], boxes2[:, 3])
+    y_mins = np.maximum(boxes1[:, 1][:, None], boxes2[:, 1])
+
+    ihs = np.maximum(y_maxs - y_mins + bias, 0)
+
+    areas_sum = (areas1[:, None] + areas2)
+
+    inter_areas = iws * ihs
+    union_areas = (areas_sum - inter_areas)
+    ious = inter_areas / union_areas
+    return ious
 
 
 def bboxes_iou_light(boxes1, boxes2):
@@ -42,6 +75,7 @@ def bboxes_iou_light(boxes1, boxes2):
         result = bbox_iou_light(box1, box2)
         results.append(result)
     return results
+
 
 def bbox_iou_light(box1, box2):
     """ Compute IOU between 2 bounding boxes
@@ -76,38 +110,6 @@ def bbox_iou_light(box1, box2):
     iarea = iw * ih
     uarea = area1 + area2 - iarea
     return iarea/uarea
-
-
-def box_ious_py1(boxes1, boxes2, bias=1):
-    """
-    This is the fastest python implementation of bbox_ious I found
-    """
-    w1 = boxes1[:, 2] - boxes1[:, 0] + bias
-    h1 = boxes1[:, 3] - boxes1[:, 1] + bias
-    w2 = boxes2[:, 2] - boxes2[:, 0] + bias
-    h2 = boxes2[:, 3] - boxes2[:, 1] + bias
-
-    areas1 = w1 * h1
-    areas2 = w2 * h2
-
-    x_maxs = np.minimum(boxes1[:, 2][:, None], boxes2[:, 2])
-    x_mins = np.maximum(boxes1[:, 0][:, None], boxes2[:, 0])
-
-    iws = np.maximum(x_maxs - x_mins + bias, 0)
-    # note: it would be possible to significantly reduce the computation by
-    # filtering any box pairs where iws <= 0. Not sure how to do with numpy.
-
-    y_maxs = np.minimum(boxes1[:, 3][:, None], boxes2[:, 3])
-    y_mins = np.maximum(boxes1[:, 1][:, None], boxes2[:, 1])
-
-    ihs = np.maximum(y_maxs - y_mins + bias, 0)
-
-    areas_sum = (areas1[:, None] + areas2)
-
-    inter_areas = iws * ihs
-    union_areas = (areas_sum - inter_areas)
-    ious = inter_areas / union_areas
-    return ious
 
 
 def box_ious_py3(boxes1, boxes2):
