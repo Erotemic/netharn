@@ -312,26 +312,44 @@ class RegionLoss(BaseLossWithCudaState):
 
         # Get x,y,w,h,conf,cls
         output = output.view(nB, nA, -1, nH * nW)
+        torch.cuda.synchronize()
+
         coord = torch.zeros_like(output[:, :, :4])
+        torch.cuda.synchronize()
+
         coord[:, :, 0:2] = output[:, :, 0:2].sigmoid()  # tx,ty
+        torch.cuda.synchronize()
+
         coord[:, :, 2:4] = output[:, :, 2:4]            # tw,th
+        torch.cuda.synchronize()
+
         conf = output[:, :, 4].sigmoid()
+        torch.cuda.synchronize()
         if nC > 1:
             cls = output[:, :, 5:].contiguous().view(nB * nA, nC, nH * nW).transpose(1, 2).contiguous().view(-1, nC)
+            torch.cuda.synchronize()
 
         # Create prediction boxes
         with torch.no_grad():
             device = self.get_device()
             pred_boxes, lin_x, lin_y = self._init_pred_boxes(device, nB, nA, nH, nW)
+            torch.cuda.synchronize()
             if device is not None:
                 pred_boxes = pred_boxes.cuda(device)
+                torch.cuda.synchronize()
                 self.anchor_w = self.anchor_w.cuda(device)
+                torch.cuda.synchronize()
                 self.anchor_h = self.anchor_h.cuda(device)
+                torch.cuda.synchronize()
 
             pred_boxes[:, 0] = (coord[:, :, 0].data + lin_x).view(-1)
+            torch.cuda.synchronize()
             pred_boxes[:, 1] = (coord[:, :, 1].data + lin_y).view(-1)
+            torch.cuda.synchronize()
             pred_boxes[:, 2] = (coord[:, :, 2].data.exp() * self.anchor_w).view(-1)
+            torch.cuda.synchronize()
             pred_boxes[:, 3] = (coord[:, :, 3].data.exp() * self.anchor_h).view(-1)
+            torch.cuda.synchronize()
             pred_boxes = pred_boxes.cpu()
 
             # Get target values
@@ -347,6 +365,7 @@ class RegionLoss(BaseLossWithCudaState):
                 tconf = tconf.cuda(device)
                 coord_mask = coord_mask.cuda(device)
                 conf_mask = conf_mask.cuda(device)
+
                 if nC > 1:
                     tcls = tcls.cuda(device)
                     cls_mask = cls_mask.cuda(device)
