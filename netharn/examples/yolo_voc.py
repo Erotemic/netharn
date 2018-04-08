@@ -365,13 +365,10 @@ class YoloHarn(nh.FitHarn):
 
         inputs, labels = batch
         outputs = harn.model(inputs)
-        torch.cuda.synchronize()
-
+        # torch.cuda.synchronize()
         target, gt_weights, orig_sizes, indices, bg_weights = labels
-
         loss = harn.criterion(outputs, target, seen=n_seen)
-        torch.cuda.synchronize()
-
+        # torch.cuda.synchronize()
         return outputs, loss
 
     @profiler.profile
