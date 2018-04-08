@@ -271,6 +271,8 @@ class RegionLoss(BaseLossWithCudaState):
     @functools.lru_cache(maxsize=32)
     @profiler.profile
     def _init_pred_boxes(self, device, nB, nA, nH, nW):
+        # NOTE: this might not actually be a bottleneck
+        # I haven't tested.
         # pred_dim = nB * nA * nH * nW
         # if pred_dim == self._prev_pred_dim:
         #     pred_boxes, lin_x, lin_y = self._prev_pred_init
