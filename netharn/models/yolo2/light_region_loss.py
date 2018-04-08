@@ -2,20 +2,122 @@
 #   Loss modules
 #   Copyright EAVISE
 #
+"""
+Speedups
+    [ ] - Preinitialize anchor tensors
+
+"""
 
 import math
 import torch
 import torch.nn as nn
 import numpy as np  # NOQA
 from torch.autograd import Variable
-from lightnet.util import bbox_iou, bbox_multi_ious
+from netharn import util
 from netharn.util import profiler
+from lightnet.util import bbox_iou
 
 __all__ = ['RegionLoss']
 
 
 # def math.log(x):
 #     return math.log(max(x, np.finfo(np.float).eps))
+
+@profiler.profile
+def benchmark_region_loss():
+    """
+    CommandLine:
+        python ~/code/netharn/netharn/models/yolo2/light_region_loss.py benchmark_region_loss --profile
+
+    Example:
+        >>> benchmark_region_loss()
+    """
+    from netharn.models.yolo2.light_yolo import Yolo
+    torch.random.manual_seed(0)
+    network = Yolo(num_classes=2, conf_thresh=4e-2)
+    self = RegionLoss(num_classes=network.num_classes, anchors=network.anchors)
+    Win, Hin = 96, 96
+    # true boxes for each item in the batch
+    # each box encodes class, center, width, and height
+    # coordinates are normalized in the range 0 to 1
+    # items in each batch are padded with dummy boxes with class_id=-1
+    target = torch.FloatTensor([
+        # boxes for batch item 1
+        [[0, 0.50, 0.50, 1.00, 1.00],
+         [1, 0.32, 0.42, 0.22, 0.12]],
+        # boxes for batch item 2 (it has no objects, note the pad!)
+        [[-1, 0, 0, 0, 0],
+         [-1, 0, 0, 0, 0]],
+    ])
+    im_data = torch.randn(len(target), 3, Hin, Win)
+    output = network.forward(im_data)
+    import ubelt
+    for timer in ubelt.Timerit(250, bestof=10, label='time'):
+        with timer:
+            loss = float(self.forward(output, target))
+    print('loss = {!r}'.format(loss))
+
+
+def compare_loss_speed():
+    from netharn.models.yolo2.light_yolo import Yolo
+    import netharn.models.yolo2.light_region_loss
+    import lightnet.network
+    torch.random.manual_seed(0)
+    network = Yolo(num_classes=2, conf_thresh=4e-2)
+
+    self1 = netharn.models.yolo2.light_region_loss.RegionLoss(
+        num_classes=network.num_classes, anchors=network.anchors)
+    self2 = lightnet.network.RegionLoss(network=network)
+
+    target = torch.FloatTensor([
+        # boxes for batch item 1
+        [[0, 0.50, 0.50, 1.00, 1.00],
+         [1, 0.32, 0.42, 0.22, 0.12]],
+        # boxes for batch item 2 (it has no objects, note the pad!)
+        [[-1, 0, 0, 0, 0],
+         [-1, 0, 0, 0, 0]],
+    ])
+
+    Win, Hin = 416, 416
+
+    im_data = torch.randn(len(target), 3, Hin, Win)
+    output = network.forward(im_data)
+
+    loss1 = float(self1(output, target))
+    loss2 = float(self2(output, target))
+    assert loss1 == loss2
+
+    import ubelt as ub
+
+    self1.iou_mode = 'c'
+    for timer in ub.Timerit(100, bestof=10, label='cython_ious'):
+        with timer:
+            float(self1(output, target))
+
+    self1.iou_mode = 'py'
+    for timer in ub.Timerit(100, bestof=10, label='python_ious'):
+        with timer:
+            float(self1(output, target))
+
+    for timer in ub.Timerit(100, bestof=10, label='original'):
+        with timer:
+            float(self2(output, target))
+
+    # ----- More targets -----
+    rng = util.ensure_rng(0)
+    import netharn as nh
+
+    bsize = 16
+    # Make a random semi-realistic set of groundtruth items
+    n_targets = [rng.randint(0, 20) for _ in range(bsize)]
+    target_list = [torch.FloatTensor(
+        np.hstack([rng.randint(0, network.num_classes, nT)[:, None],
+                   util.Boxes.random(nT, scale=1.0, rng=rng).data]))
+        for nT in n_targets]
+    target = nh.data.collate.padded_collate(target_list)
+
+    im_data = torch.randn(len(target), 3, Hin, Win)
+    output = network.forward(im_data)
 
 
 class RegionLoss(torch.nn.modules.loss._Loss):
@@ -33,36 +135,6 @@ class RegionLoss(torch.nn.modules.loss._Loss):
 
     CommandLine:
         python ~/code/netharn/netharn/models/yolo2/light_region_loss.py RegionLoss
-
-    Example:
-        >>> from netharn.models.yolo2.light_yolo import Yolo
-        >>> from brambox.boxes.annotations import Annotation
-        >>> torch.random.manual_seed(0)
-        >>> def as_anno(class_id, x_center, y_center, w, h, Win, Hin):
-        >>>     anno = Annotation()
-        >>>     anno.class_id = class_id
-        >>>     anno.x_top_left = (x_center - w / 2) * Win
-        >>>     anno.y_top_left = (y_center - h / 2) * Hin
-        >>>     anno.width, anno.height = w * Win, h * Hin
-        >>>     return anno
-        >>> network = Yolo(num_classes=2, conf_thresh=4e-2)
-        >>> self = RegionLoss(num_classes=network.num_classes, anchors=network.anchors)
-        >>> Win, Hin = 96, 96
-        >>> # Annotation coordinates are specified wrt the input image size
-        >>> target = [
-        >>>     # boxes for batch item 1
-        >>>     [as_anno(0, 0.50, 0.50, 1.00, 1.00, Win, Hin),
-        >>>      as_anno(1, 0.32, 0.42, 0.22, 0.12, Win, Hin)],
-        >>>     # boxes for batch item 2 (it has no objects!)
-        >>>     []
-        >>> ]
-        >>> im_data = torch.randn(len(target), 3, Hin, Win)
-        >>> output = network.forward(im_data)
-        >>> loss = float(self.forward(output, target))
-        >>> print(f'output.sum() = {output.sum():.2f}')
-        output.sum() = 2.15
-        >>> print(f'loss = {loss:.2f}')
-        loss = 19.53
 
     Example:
         >>> from netharn.models.yolo2.light_yolo import Yolo
@@ -90,6 +162,7 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         output.sum() = 2.15
         >>> print(f'loss = {loss:.2f}')
         loss = 19.53
+
     """
 
     def __init__(self, num_classes=None, anchors=None, coord_scale=1.0,
@@ -104,8 +177,12 @@ class RegionLoss(torch.nn.modules.loss._Loss):
 
         self.num_classes = num_classes
         self.num_anchors = anchors.size // 2
+
+        # Use 2d anchors instead
         self.anchors = anchors.ravel()
-        self.anchor_step = len(self.anchors) // self.num_anchors
+        self.anchors = self.anchors.reshape(-1, 2)
+
+        # self.anchor_step = len(self.anchors) // self.num_anchors
         self.reduction = 32             # input_dim/output_dim
 
         self.coord_scale = coord_scale
@@ -120,6 +197,35 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         self.loss_tot = None
 
         self.mse = nn.MSELoss(size_average=False)
+
+        nA = self.num_anchors
+        self.anchor_w = torch.Tensor(self.anchors.T[0]).view(nA, 1)
+        self.anchor_h = torch.Tensor(self.anchors.T[1]).view(nA, 1)
+
+        rel_anchors_cxywh = util.Boxes(np.hstack([self.anchors * 0, self.anchors]).astype(np.float32), 'cxywh')
+        self.rel_anchors_tlbr = rel_anchors_cxywh.toformat('tlbr').data
+
+        self._prev_pred_init = None
+        self._prev_pred_dim = None
+
+        self.iou_mode = None
+
+    def _init_pred_boxes(self, cuda, nB, nA, nH, nW):
+        pred_dim = nB * nA * nH * nW
+        if pred_dim == self._prev_pred_dim:
+            pred_boxes, lin_x, lin_y = self._prev_pred_init
+        else:
+            pred_boxes = torch.FloatTensor(nB * nA * nH * nW, 4)
+            lin_x = torch.linspace(0, nW - 1, nW).repeat(nH, 1).view(nH * nW)
+            lin_y = torch.linspace(0, nH - 1, nH).repeat(nW, 1).t().contiguous().view(nH * nW)
+            if cuda:
+                # pred_boxes = pred_boxes.cuda()
+                lin_x = lin_x.cuda()
+                lin_y = lin_y.cuda()
+                self.anchor_w = self.anchor_w.cuda()
+                self.anchor_h = self.anchor_h.cuda()
+            self._prev_pred_init = pred_boxes, lin_x, lin_y
+        return pred_boxes, lin_x, lin_y
 
     @profiler.profile
     def forward(self, output, target, seen=0):
@@ -148,35 +254,25 @@ class RegionLoss(torch.nn.modules.loss._Loss):
             target = target.data
 
         # Get x,y,w,h,conf,cls
-        output = output.view(nB, nA, -1, nH*nW)
+        output = output.view(nB, nA, -1, nH * nW)
         coord = torch.zeros_like(output[:, :, :4])
         coord[:, :, 0:2] = output[:, :, 0:2].sigmoid()  # tx,ty
         coord[:, :, 2:4] = output[:, :, 2:4]            # tw,th
         conf = output[:, :, 4].sigmoid()
         if nC > 1:
-            cls = output[:, :, 5:].contiguous().view(nB*nA, nC, nH*nW).transpose(1, 2).contiguous().view(-1, nC)
+            cls = output[:, :, 5:].contiguous().view(nB * nA, nC, nH * nW).transpose(1, 2).contiguous().view(-1, nC)
 
         # Create prediction boxes
-        pred_boxes = torch.FloatTensor(nB*nA*nH*nW, 4)
-        lin_x = torch.linspace(0, nW-1, nW).repeat(nH, 1).view(nH*nW)
-        lin_y = torch.linspace(0, nH-1, nH).repeat(nW, 1).t().contiguous().view(nH*nW)
-        anchor_w = torch.Tensor(self.anchors[::self.anchor_step]).view(nA, 1)
-        anchor_h = torch.Tensor(self.anchors[1::self.anchor_step]).view(nA, 1)
-        if cuda:
-            pred_boxes = pred_boxes.cuda()
-            lin_x = lin_x.cuda()
-            lin_y = lin_y.cuda()
-            anchor_w = anchor_w.cuda()
-            anchor_h = anchor_h.cuda()
+        pred_boxes, lin_x, lin_y = self._init_pred_boxes(cuda, nB, nA, nH, nW)
 
         pred_boxes[:, 0] = (coord[:, :, 0].data + lin_x).view(-1)
         pred_boxes[:, 1] = (coord[:, :, 1].data + lin_y).view(-1)
-        pred_boxes[:, 2] = (coord[:, :, 2].data.exp() * anchor_w).view(-1)
-        pred_boxes[:, 3] = (coord[:, :, 3].data.exp() * anchor_h).view(-1)
+        pred_boxes[:, 2] = (coord[:, :, 2].data.exp() * self.anchor_w).view(-1)
+        pred_boxes[:, 3] = (coord[:, :, 3].data.exp() * self.anchor_h).view(-1)
         pred_boxes = pred_boxes.cpu()
 
         # Create predicted confs
-        pred_confs = torch.FloatTensor(nB*nA*nH*nW)
+        pred_confs = torch.FloatTensor(nB * nA * nH * nW)
         pred_confs = conf.data.view(-1).cpu()
 
         # Get target values
@@ -231,7 +327,36 @@ class RegionLoss(torch.nn.modules.loss._Loss):
 
     @profiler.profile
     def _build_targets_tensor(self, pred_boxes, pred_confs, ground_truth, nH, nW, seen=0):
-        """ Compare prediction boxes and ground truths, convert ground truths to network output tensors """
+        """
+        Compare prediction boxes and ground truths, convert ground truths to network output tensors
+
+        Example:
+            >>> from netharn.models.yolo2.light_yolo import Yolo
+            >>> from netharn.models.yolo2.light_region_loss import RegionLoss
+            >>> torch.random.manual_seed(0)
+            >>> network = Yolo(num_classes=2, conf_thresh=4e-2)
+            >>> self = RegionLoss(num_classes=network.num_classes, anchors=network.anchors)
+            >>> Win, Hin = 96, 96
+            >>> nW, nH = 3, 3
+            >>> # true boxes for each item in the batch
+            >>> # each box encodes class, center, width, and height
+            >>> # coordinates are normalized in the range 0 to 1
+            >>> # items in each batch are padded with dummy boxes with class_id=-1
+            >>> ground_truth = torch.FloatTensor([
+            >>>     # boxes for batch item 0 (it has no objects, note the pad!)
+            >>>     [[-1, 0, 0, 0, 0],
+            >>>      [-1, 0, 0, 0, 0],
+            >>>      [-1, 0, 0, 0, 0]],
+            >>>     # boxes for batch item 1
+            >>>     [[0, 0.50, 0.50, 1.00, 1.00],
+            >>>      [1, 0.34, 0.32, 0.12, 0.32],
+            >>>      [1, 0.32, 0.42, 0.22, 0.12]],
+            >>> ])
+            >>> pred_boxes = torch.rand(90, 4)
+            >>> pred_confs = torch.rand(90)
+            >>> seen = 0
+
+        """
         # Parameters
         nB = ground_truth.size(0)
         nT = ground_truth.size(1)
@@ -242,179 +367,93 @@ class RegionLoss(torch.nn.modules.loss._Loss):
         seen = seen + nB
 
         # Tensors
-        conf_mask = torch.ones(nB, nA, nH*nW) * self.noobject_scale
-        coord_mask = torch.zeros(nB, nA, 1, nH*nW)
-        cls_mask = torch.zeros(nB, nA, nH*nW).byte()
-        tcoord = torch.zeros(nB, nA, 4, nH*nW)
-        tconf = torch.zeros(nB, nA, nH*nW)
-        tcls = torch.zeros(nB, nA, nH*nW)
+        conf_mask = torch.ones(nB, nA, nPixels) * self.noobject_scale
+        coord_mask = torch.zeros(nB, nA, 1, nPixels)
+        cls_mask = torch.zeros(nB, nA, nPixels).byte()
+        tcoord = torch.zeros(nB, nA, 4, nPixels)
+        tconf = torch.zeros(nB, nA, nPixels)
+        tcls = torch.zeros(nB, nA, nPixels)
 
         if seen < 12800:
             coord_mask.fill_(1)
-            if self.anchor_step == 4:
-                tcoord[:, :, 0] = torch.Tensor(self.anchors[2::self.anchor_step]).view(1, nA, 1, 1).repeat(nB, 1, 1, nH * nW)
-                tcoord[:, :, 1] = torch.Tensor(self.anchors[3::self.anchor_step]).view(1, nA, 1, 1).repeat(nB, 1, 1, nH * nW)
-            else:
-                tcoord[:, :, 0].fill_(0.5)
-                tcoord[:, :, 1].fill_(0.5)
+            tcoord[:, :, 0].fill_(0.5)
+            tcoord[:, :, 1].fill_(0.5)
 
-        # Setting confidence mask
-        for b in range(nB):
-            cur_pred_boxes = pred_boxes[b*nAnchors:(b+1)*nAnchors]
-            # cur_pred_confs = pred_confs[b*nAnchors:(b+1)*nAnchors]
-            cur_ious = torch.zeros(nAnchors)
-            for t in range(nT):
-                if ground_truth[b][t][0] < 0:
-                    break
-                gx = ground_truth[b][t][1] * nW
-                gy = ground_truth[b][t][2] * nH
-                gw = ground_truth[b][t][3] * nW
-                gh = ground_truth[b][t][4] * nH
-                cur_gt_boxes = torch.FloatTensor([gx, gy, gw, gh]).repeat(nAnchors, 1)
-                cur_ious = torch.max(cur_ious, bbox_multi_ious(cur_pred_boxes, cur_gt_boxes))
-            conf_mask[b].view(-1)[cur_ious > self.thresh] = 0
+        pred_cxywh = pred_boxes
+        pred_tlbr = util.Boxes(pred_cxywh.data.cpu().numpy(), 'cxywh').toformat('tlbr').data
+
+        gt_class = ground_truth[..., 0].data.cpu().numpy()
+        gt_cxywh = util.Boxes(ground_truth[..., 1:5].numpy().astype(np.float32), 'cxywh').scale([nW, nH])
+
+        gt_tlbr = gt_cxywh.to_tlbr().data
+
+        rel_gt_cxywh = gt_cxywh.copy()
+        rel_gt_cxywh.data.T[0:2] = 0
+
+        rel_gt_tlbr = rel_gt_cxywh.toformat('tlbr').data
+
+        gt_isvalid = (gt_class >= 0)
+
+        batch_assigns = []
+        for bx in range(nB):
+            # Get the actual groundtruth boxes for this batch item
+            flags = gt_isvalid[bx]
+            if not np.any(flags):
+                batch_assigns.append((None, None))
+                continue
+
+            # Create gt anchor assignments
+            batch_rel_gt_tlbr = rel_gt_tlbr[bx][flags]
+            anchor_ious = util.box_ious(self.rel_anchors_tlbr,
+                                        batch_rel_gt_tlbr, bias=0,
+                                        mode=self.iou_mode)
+            best_ns = np.argmax(anchor_ious, axis=0)
+            best_anchor_ious = anchor_ious.max(axis=0)
+            batch_assigns.append((best_ns, best_anchor_ious))
+
+            # Setting confidence mask
+            cur_pred_tlbr = pred_tlbr[bx * nAnchors:(bx + 1) * nAnchors]
+            cur_gt_tlbr = gt_tlbr[bx][flags]
+
+            ious = util.box_ious(cur_pred_tlbr, cur_gt_tlbr, bias=0,
+                                 mode=self.iou_mode)
+            cur_ious = torch.FloatTensor(ious.max(-1))
+            conf_mask[bx].view(-1)[cur_ious > self.thresh] = 0
 
         # Loop over ground_truths and construct tensors
-        for b in range(nB):
+        for bx in range(nB):
+            best_ns, best_anchor_ious = batch_assigns[bx]
+            flags = gt_isvalid[bx]
+            if not np.any(flags):
+                continue
             for t in range(nT):
-                if ground_truth[b][t][0] < 0:
+                if not flags[t]:
                     break
-                best_iou = 0.0
-                best_n = -1
-                min_dist = 10000
-                gx = ground_truth[b][t][1] * nW
-                gy = ground_truth[b][t][2] * nH
-                gw = ground_truth[b][t][3] * nW
-                gh = ground_truth[b][t][4] * nH
+                gx, gy, gw, gh = gt_cxywh.data[bx][t]
                 gi = min(nW - 1, max(0, int(gx)))
                 gj = min(nH - 1, max(0, int(gy)))
-                gt_box = [0, 0, gw, gh]
-                for n in range(nA):
-                    aw = self.anchors[self.anchor_step*n]
-                    ah = self.anchors[self.anchor_step*n+1]
-                    anchor_box = [0, 0, aw, ah]
-                    iou = bbox_iou(anchor_box, gt_box)
-                    if self.anchor_step == 4:
-                        ax = self.anchors[self.anchor_step*n+2]
-                        ay = self.anchors[self.anchor_step*n+3]
-                        dist = pow(((gi+ax) - gx), 2) + pow(((gj+ay) - gy), 2)
-                    if iou > best_iou:
-                        best_iou = iou
-                        best_n = n
-                    elif self.anchor_step == 4 and iou == best_iou and dist < min_dist:
-                        best_iou = iou
-                        best_n = n
-                        min_dist = dist
 
-                gt_box = [gx, gy, gw, gh]
-                pred_box = pred_boxes[b*nAnchors+best_n*nPixels+gj*nW+gi]
-                pred_conf = pred_confs[b*nAnchors+best_n*nPixels+gj*nW+gi]
-                iou = bbox_iou(gt_box, pred_box)
+                best_n = best_ns[t]
 
-                coord_mask[b][best_n][0][gj*nW+gi] = 1
-                cls_mask[b][best_n][gj*nW+gi] = 1
-                conf_mask[b][best_n][gj*nW+gi] = self.object_scale
-                tcoord[b][best_n][0][gj*nW+gi] = gx - gi
-                tcoord[b][best_n][1][gj*nW+gi] = gy - gj
-                tcoord[b][best_n][2][gj*nW+gi] = math.log(gw/self.anchors[self.anchor_step*best_n])
-                tcoord[b][best_n][3][gj*nW+gi] = math.log(gh/self.anchors[self.anchor_step*best_n+1])
-                tconf[b][best_n][gj*nW+gi] = iou
-                tcls[b][best_n][gj*nW+gi] = ground_truth[b][t][0]
+                gt_box_ = gt_tlbr[bx][t]
+                pred_box_ = pred_tlbr[bx * nAnchors + best_n * nPixels + gj * nW + gi]
 
-        return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
+                iou = float(util.box_ious(gt_box_[None, :], pred_box_[None, :],
+                                          bias=0, mode=self.iou_mode)[0, 0])
 
-    def _build_targets_brambox(self, pred_boxes, pred_confs, ground_truth, nH, nW, seen=0):
-        """ Compare prediction boxes and ground truths, convert ground truths to network output tensors """
-        # Parameters
-        nB = len(ground_truth)
-        nA = self.num_anchors
-        nAnchors = nA*nH*nW
-        nPixels = nH*nW
+                best_anchor = self.anchors[best_n]
+                best_aw, best_ah = best_anchor
 
-        seen = seen + nB
+                coord_mask[bx, best_n, 0, gj * nW + gi] = 1
+                cls_mask[bx, best_n, gj * nW + gi] = 1
+                conf_mask[bx, best_n, gj * nW + gi] = self.object_scale
 
-        # Tensors
-        conf_mask = torch.ones(nB, nA, nH*nW) * self.noobject_scale
-        coord_mask = torch.zeros(nB, nA, 1, nH*nW)
-        cls_mask = torch.zeros(nB, nA, nH*nW).byte()
-        tcoord = torch.zeros(nB, nA, 4, nH*nW)
-        tconf = torch.zeros(nB, nA, nH*nW)
-        tcls = torch.zeros(nB, nA, nH*nW)
-
-        if seen < 12800:
-            coord_mask.fill_(1)
-            if self.anchor_step == 4:
-                tcoord[:, :, 0] = torch.Tensor(self.anchors[2::self.anchor_step]).view(
-                    1, nA, 1, 1).repeat(nB, 1, 1, nH*nW)
-                tcoord[:, :, 1] = torch.Tensor(self.anchors[3::self.anchor_step]).view(
-                    1, nA, 1, 1).repeat(nB, 1, 1, nH*nW)
-            else:
-                tcoord[:, :, 0].fill_(0.5)
-                tcoord[:, :, 1].fill_(0.5)
-
-        # Setting confidence mask
-        for b in range(nB):
-            cur_pred_boxes = pred_boxes[b*nAnchors:(b+1)*nAnchors]
-            cur_pred_confs = pred_confs[b*nAnchors:(b+1)*nAnchors]
-            cur_ious = torch.zeros(nAnchors)
-            for anno in ground_truth[b]:
-                gx = (anno.x_top_left + anno.width/2) / self.reduction
-                gy = (anno.y_top_left + anno.height/2) / self.reduction
-                gw = anno.width / self.reduction
-                gh = anno.height / self.reduction
-                cur_gt_boxes = torch.FloatTensor(
-                    [gx, gy, gw, gh]).expand(nAnchors, -1)
-                cur_ious = torch.max(cur_ious, bbox_multi_ious(
-                    cur_pred_boxes, cur_gt_boxes))
-            conf_mask[b].view(-1)[cur_ious > self.thresh] = 0
-
-        # Loop over ground_truths and construct tensors
-        for b in range(nB):
-            for anno in ground_truth[b]:
-                best_iou = 0.0
-                best_n = -1
-                min_dist = 10000
-                gx = (anno.x_top_left + anno.width/2) / self.reduction
-                gy = (anno.y_top_left + anno.height/2) / self.reduction
-                gw = anno.width / self.reduction
-                gh = anno.height / self.reduction
-                gi = min(nW-1, max(0, int(gx)))
-                gj = min(nH-1, max(0, int(gy)))
-                gt_box = [0, 0, gw, gh]
-                for n in range(nA):
-                    aw = self.anchors[self.anchor_step*n]
-                    ah = self.anchors[self.anchor_step*n+1]
-                    anchor_box = [0, 0, aw, ah]
-                    iou = bbox_iou(anchor_box, gt_box)
-                    if self.anchor_step == 4:
-                        ax = self.anchors[self.anchor_step*n+2]
-                        ay = self.anchors[self.anchor_step*n+3]
-                        dist = pow(((gi+ax) - gx), 2) + pow(((gj+ay) - gy), 2)
-                    if iou > best_iou:
-                        best_iou = iou
-                        best_n = n
-                    elif self.anchor_step == 4 and iou == best_iou and dist < min_dist:
-                        best_iou = iou
-                        best_n = n
-                        min_dist = dist
-
-                gt_box = [gx, gy, gw, gh]
-                pred_box = pred_boxes[b*nAnchors+best_n*nPixels+gj*nW+gi]
-                pred_conf = pred_confs[b*nAnchors+best_n*nPixels+gj*nW+gi]
-                iou = bbox_iou(gt_box, pred_box)
-
-                if anno.ignore:
-                    conf_mask[b][best_n][gj*nW+gi] = 0
-                else:
-                    coord_mask[b][best_n][0][gj*nW+gi] = 1
-                    cls_mask[b][best_n][gj*nW+gi] = 1
-                    conf_mask[b][best_n][gj*nW+gi] = self.object_scale
-                    tcoord[b][best_n][0][gj*nW+gi] = gx - gi
-                    tcoord[b][best_n][1][gj*nW+gi] = gy - gj
-                    tcoord[b][best_n][2][gj*nW + gi] = math.log(gw/self.anchors[self.anchor_step*best_n])
-                    tcoord[b][best_n][3][gj*nW + gi] = math.log(gh/self.anchors[self.anchor_step*best_n+1])
-                    tconf[b][best_n][gj*nW+gi] = iou
-                    tcls[b][best_n][gj*nW+gi] = anno.class_id
+                tcoord[bx, best_n, 0, gj * nW + gi] = gx - gi
+                tcoord[bx, best_n, 1, gj * nW + gi] = gy - gj
+                tcoord[bx, best_n, 2, gj * nW + gi] = math.log(gw / best_aw)
+                tcoord[bx, best_n, 3, gj * nW + gi] = math.log(gh / best_ah)
+                tconf[bx, best_n, gj * nW + gi] = iou
+                tcls[bx, best_n, gj * nW + gi] = ground_truth[bx, t, 0]
 
         return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
 

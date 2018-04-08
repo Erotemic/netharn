@@ -25,7 +25,7 @@ def draw_boxes_on_image(img, boxes, color='blue', thickness=1,
         boxes = util.Boxes(boxes, box_format)
 
     color = tuple(util.Color(color).as255('bgr'))
-    tlbr = boxes.as_tlbr().data
+    tlbr = boxes.to_tlbr().data
     img2 = img.copy()
     for x1, y1, x2, y2 in tlbr:
         # pt1 = (int(round(x1)), int(round(y1)))

@@ -154,8 +154,8 @@ class GetBoundingBoxes(object):
             >>> box[:, 1].sigmoid_()
             >>> box.abs_()
             >>> new_box = self._clip_boxes(box)
-            >>> box_tlbr = util.Boxes(box.cpu().numpy()[:, 0:4], 'cxywh').as_tlbr().data
-            >>> new_tlbr = util.Boxes(new_box.cpu().numpy()[:, 0:4], 'cxywh').as_tlbr().data
+            >>> box_tlbr = util.Boxes(box.cpu().numpy()[:, 0:4], 'cxywh').to_tlbr().data
+            >>> new_tlbr = util.Boxes(new_box.cpu().numpy()[:, 0:4], 'cxywh').to_tlbr().data
             >>> #
             >>> print('old')
             >>> print(box_tlbr)
@@ -386,7 +386,7 @@ class GetBoundingBoxes(object):
             >>> scores = boxes[..., 4:5]
             >>> classes = boxes[..., 5:6]
             >>> cxywh = util.Boxes(boxes[..., 0:4], 'cxywh')
-            >>> tlbr = cxywh.as_tlbr()
+            >>> tlbr = cxywh.to_tlbr()
             >>> util.non_max_supression(tlbr.data.numpy(), scores.numpy().ravel(), self.nms_thresh)
             >>> self._nms(boxes, mode=0)
             >>> self._nms(boxes, mode=1)
