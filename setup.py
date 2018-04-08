@@ -178,17 +178,20 @@ def clean():
         if exists(d) and d not in toremove:
             toremove.append(d)
 
-    enqueue(join(repodir, 'netharn/models/yolo2/utils/cython_yolo.c') )
-    enqueue(join(repodir, 'netharn/models/yolo2/utils/cython_bbox.c') )
-    enqueue(join(repodir, 'netharn/utils/nms/cpu_nms.c') )
-    enqueue(join(repodir, 'netharn/utils/nms/cpu_nms.c') )
-    enqueue(join(repodir, 'netharn/utils/nms/cpu_nms.cpp') )
+    enqueue(join(repodir, 'netharn/util/nms/cpu_nms.c') )
+    enqueue(join(repodir, 'netharn/util/nms/cpu_nms.c') )
+    enqueue(join(repodir, 'netharn/util/nms/cpu_nms.cpp') )
+    enqueue(join(repodir, 'netharn/util/nms/cython_boxes.c') )
+    enqueue(join(repodir, 'netharn/util/nms/cython_boxes.html') )
 
     enqueue(join(repodir, 'netharn/layers/roi_pooling/_ext') )
     enqueue(join(repodir, 'netharn/layers/reorg/_ext') )
     import glob
 
-    for d in glob.glob(join(repodir, 'netharn/utils/nms/*_nms.*so')):
+    for d in glob.glob(join(repodir, 'netharn/util/nms/*_nms.*so')):
+        enqueue(d)
+
+    for d in glob.glob(join(repodir, 'netharn/util/nms/cython_boxes*.*so')):
         enqueue(d)
 
     for dpath in toremove:
@@ -225,12 +228,12 @@ util_m = 'netharn.util.'
 util_p = util_m.replace('.', os.path.sep)
 
 ext_modules += [
-    # Extension(
-    #     util_m + "cython_bbox",
-    #     [join(util_p, "cython_bbox.pyx")],
-    #     extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
-    #     include_dirs=[numpy_include]
-    # ),
+    Extension(
+        util_m + "cython_boxes",
+        [join(util_p, "cython_boxes.pyx")],
+        extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
+        include_dirs=[numpy_include]
+    ),
     # Extension(
     #     util_m + "cython_yolo",
     #     [join(util_p, "cython_yolo.pyx")],
