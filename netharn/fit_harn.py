@@ -60,78 +60,25 @@ from netharn import hyperparams
 from netharn import util
 from netharn.util import profiler
 
+try:
+    import tensorboard_logger
+except ImportError:
+    tensorboard_logger = None
+
+
 __all__ = ['FitHarn']
 
 
 MIXINS = []
 
 
+class StopTraining(StopIteration):
+    pass
+
+
 def register_mixin(cls):
     MIXINS.append(cls)
     return cls
-
-
-@register_mixin
-class ConstructorMixin:
-    def __init__(harn, hyper):
-        if isinstance(hyper, dict):
-            hyper = hyperparams.HyperParams(**hyper)
-        harn.hyper = hyper
-
-        harn._main_prog = None
-
-        harn.datasets = None
-        harn.loaders = None
-
-        harn.model = None
-        harn.optimizer = None
-        harn.scheduler = None
-        harn.monitor = None
-        harn.criterion = None
-
-        harn.paths = None
-
-        harn._initialized = False
-        harn.flog = None
-        harn.tlog = None
-
-        harn.dry = None
-
-        harn.intervals = {
-            'display_train': 1,
-            'display_vali': 1,
-            'display_test': 1,
-
-            'log_iter_train': None,
-            'log_iter_test': None,
-            'log_iter_vali': None,
-
-            'vali': 1,
-            'test': 1,
-
-            'snapshot': 1,
-            'cleanup': 1,
-        }
-        harn.config = {
-            'show_prog': True,
-            'use_tqdm': True,
-        }
-        harn.epoch = 0
-        harn.bxs = {
-            'train': 0,
-            'vali': 0,
-            'test': 0,
-        }
-        harn.current_tag = None
-
-    def check_interval(harn, tag, idx):
-        """
-        check if its time to do something that happens every few iterations
-        """
-        n = harn.intervals[tag]
-        if n is None:
-            return False
-        return (idx + 1) % n == 0
 
 
 @register_mixin
@@ -146,6 +93,9 @@ class ExtraMixins:
             index (int): get the `index`-th batch
             tag (str): get batch from either train, vali, or test loader
             raw (bool): if True, does not prepare the batch
+
+        Returns:
+            object: output of the data loader
         """
         loader = harn.loaders[tag]
         harn.current_tag = tag
@@ -208,13 +158,14 @@ class InitializeMixin:
         harn.debug('harn.xpu = {!r}'.format(harn.xpu))
         harn.xpu.set_as_default()
 
-        import tensorboard_logger
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
             harn.log('dont forget to start: tensorboard --logdir ' + train_base)
             harn.log('Initializing tensorboard')
             harn.tlog = tensorboard_logger.Logger(harn.train_dpath,
                                                      flush_secs=2)
+        else:
+            harn.log('Tensorboard is not available')
 
         prev_states = harn.prev_snapshots()
 
@@ -278,8 +229,9 @@ class InitializeMixin:
                     break
             for i, group in enumerate(harn.optimizer.param_groups):
                 if 'initial_lr' not in group:
-                    raise KeyError("param 'initial_lr' is not specified "
-                                   "in param_groups[{}] when resuming an optimizer".format(i))
+                    raise KeyError(
+                        'param "initial_lr" is not specified '
+                        'in param_groups[{}] when resuming an optimizer'.format(i))
 
         if needs_init:
             harn.log('Initializing new model')
@@ -303,9 +255,10 @@ class InitializeMixin:
         else:
             harn.log('Resuming from epoch={}'.format(harn.epoch))
 
-        print('harn.train_dpath = {!r}'.format(harn.train_dpath))
-        print('harn.nice_dpath = {!r}'.format(harn.nice_dpath))
-        harn.log('Snapshots will save to harn.snapshot_dpath = {!r}'.format(harn.snapshot_dpath))
+        harn.log('harn.train_dpath = {!r}'.format(harn.train_dpath))
+        harn.log('harn.nice_dpath = {!r}'.format(harn.nice_dpath))
+        harn.log('Snapshots will save to harn.snapshot_dpath = {!r}'.format(
+            harn.snapshot_dpath))
         harn._initialized = True
 
 
@@ -468,6 +421,9 @@ class SnapshotMixin:
 class ScheduleMixin:
 
     def _current_lrs(harn):
+        """
+        Get the of distinct learning rates (usually only 1) currently in use
+        """
         if harn.scheduler is None:
             if harn.optimizer is None:
                 assert harn.dry
@@ -479,7 +435,7 @@ class ScheduleMixin:
         elif hasattr(harn.scheduler, 'get_lr'):
             lrs = set(harn.scheduler.get_lr())
         else:
-            # workaround for reducelronplateau
+            # workaround for ReduceLROnPlateau
             lrs = {group['lr'] for group in harn.scheduler.optimizer.param_groups}
         return lrs
 
@@ -515,7 +471,7 @@ class ScheduleMixin:
         """
         if harn.scheduler is None:
             pass
-        elif harn.scheduler.__class__.__name__ == 'reducelronplateau':
+        elif harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
             assert improved is not None, 'must validate for ReduceLROnPlateau schedule'
             # assert vali_metrics is not None, (
             #     'must validate for ReduceLROnPlateau schedule')
@@ -595,11 +551,11 @@ class CoreMixin:
         test_loader  = harn.loaders.get('test', None)
 
         if not vali_loader:
-            if not harn.scheduler:
-                if harn.monitor:
-                    raise ValueError('need a validataion dataset to use early monitor')
-                if harn.scheduler.__class__.__name__ == 'reducelronplateau':
-                    raise ValueError('need a validataion dataset to use reducelronplateau')
+            # if harn.monitor:
+            #     harn.warn('Need a validation set to use nh.Monitor')
+            if harn.scheduler:
+                if harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
+                    raise ValueError('need a validataion dataset to use ReduceLROnPlateau')
 
         # keep track of moving metric averages across epochs
         harn._run_metrics = {
@@ -611,17 +567,13 @@ class CoreMixin:
         #     # prestep scheduler?
         #     if getattr(harn.scheduler, 'last_epoch', 0) == -1:
         #         harn.scheduler.step()
+
+        # Clear any existing gradients before starting
         harn.optimizer.zero_grad()
 
         try:
-            # harn.debug('=== previous epoch {} ==='.format(harn.epoch))
-            # print('harn.epoch = {!r}'.format(harn.epoch))
-            # print('lrs = {}'.format(harn._current_lrs()))
-
             for harn.epoch in it.count(harn.epoch):
                 harn.debug('=== start epoch {} ==='.format(harn.epoch))
-                # print('harn.epoch = {!r}'.format(harn.epoch))
-                # print('lrs = {}'.format(harn._current_lrs()))
 
                 harn.log_value('epoch lr', np.mean(list(harn._current_lrs())),
                                harn.epoch)
@@ -665,13 +617,13 @@ class CoreMixin:
 
                 # check for termination
                 if harn._check_termination():
-                    raise StopIteration()
+                    raise StopTraining()
 
                 # change learning rate (modified optimizer inplace)
                 harn._step_scheduler(improved)
 
                 harn._update_prog_desc()
-        except StopIteration:
+        except StopTraining:
             pass
         except Exception as ex:
             harn.error(
@@ -686,9 +638,7 @@ class CoreMixin:
         harn.log('\n\n\n')
         harn.log('training completed')
         harn.log('current lrs: {}'.format(harn._current_lrs()))
-        # harn.log('best epochs / loss: {}'.format(
-        #     ub.repr2(list(harn.monitor.memory), nl=1)))
-        harn.log('exiting harness.')
+        harn.log('exiting fit harness.')
 
     @profiler.profile
     def _run_epoch(harn, loader, tag, learn=False):
@@ -727,10 +677,10 @@ class CoreMixin:
         with util.grad_context(learn):
             batch_iter = iter(loader)
             for bx in range(len(loader)):
-                batch = next(batch_iter)
+                raw_batch = next(batch_iter)
 
                 harn.bxs[tag] = bx
-                batch = harn.prepare_batch(batch)
+                batch = harn.prepare_batch(raw_batch)
 
                 # core learning / backprop
                 outputs, loss = harn._run_batch(bx, batch, learn=learn)
@@ -809,12 +759,11 @@ class CoreMixin:
 
         loss_value = float(loss.data.cpu().item())
         if not np.isfinite(loss_value):
-            harn.log("WARNING: received an inf loss, setting loss value to 1000")
-            loss_value = 1000
+            harn.log('WARNING: received an inf loss, setting loss to a large value')
+            loss_value = harn.config['large_loss'] * 10
 
-        if harn.current_tag == 'train' and loss_value > 100:
-            # if the loss is getting very larg, check that the weights are
-            # still ok
+        if harn.current_tag == 'train' and loss_value > harn.config['large_loss']:
+            # if the loss is getting large, check if the weights are ok
             state = harn.model.module.state_dict()
             weights = sum(v.sum() for v in state.values())
             if not np.isfinite(weights):
@@ -874,6 +823,9 @@ class CoreCallback:
         Basic connection inputs -> model -> outputs -> criterion -> loss
 
         Overload Encouraged, but not always necessary
+
+        Returns:
+            tuple: (outputs, loss)
         """
         # Simple forward prop and loss computation
         inputs, labels = batch
@@ -890,6 +842,9 @@ class CoreCallback:
         accumulated via moving averages into epoch measures.
 
         Overload Encouraged
+
+        Returns:
+            dict or None: dictionary of scalar batch measures
         """
         pass
 
@@ -900,6 +855,9 @@ class CoreCallback:
         If a dict is returned its items are added to epoch measures
 
         Overload Encouraged
+
+        Returns:
+            dict or None: dictionary of scalar epoch measures
         """
         pass
 
@@ -909,7 +867,7 @@ class CoreCallback:
         This can be overrided for specific applications.
 
         Returns:
-            dict
+            dict: snapshot_state
         """
         snapshot_state = {
             'epoch': harn.epoch,
@@ -963,6 +921,68 @@ class FitHarn(*MIXINS):
             Because it is serializable it also has an easy to use dict
             representation.
     """
+    def __init__(harn, hyper):
+        if isinstance(hyper, dict):
+            hyper = hyperparams.HyperParams(**hyper)
+        harn.hyper = hyper
+
+        harn._main_prog = None
+
+        harn.datasets = None
+        harn.loaders = None
+
+        harn.model = None
+        harn.optimizer = None
+        harn.scheduler = None
+        harn.monitor = None
+        harn.criterion = None
+
+        harn.paths = None
+
+        harn._initialized = False
+        harn.flog = None
+        harn.tlog = None
+
+        harn.dry = None
+
+        harn.intervals = {
+            'display_train': 1,
+            'display_vali': 1,
+            'display_test': 1,
+
+            'log_iter_train': None,
+            'log_iter_test': None,
+            'log_iter_vali': None,
+
+            'vali': 1,
+            'test': 1,
+
+            'snapshot': 1,
+            'cleanup': 1,
+        }
+        harn.config = {
+            'show_prog': True,
+            'use_tqdm': True,
+            # A loss that would be considered large
+            'large_loss': 100,
+        }
+        harn.epoch = 0
+        harn.bxs = {
+            'train': 0,
+            'vali': 0,
+            'test': 0,
+        }
+        harn.current_tag = None
+
+    def check_interval(harn, tag, idx):
+        """
+        check if its time to do something that happens every few iterations
+        """
+        n = harn.intervals[tag]
+        if n is None:
+            return False
+        return (idx + 1) % n == 0
+
 
 if __name__ == '__main__':
     """
