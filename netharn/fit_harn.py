@@ -303,6 +303,8 @@ class InitializeMixin:
         else:
             harn.log('Resuming from epoch={}'.format(harn.epoch))
 
+        print('harn.train_dpath = {!r}'.format(harn.train_dpath))
+        print('harn.nice_dpath = {!r}'.format(harn.nice_dpath))
         harn.log('Snapshots will save to harn.snapshot_dpath = {!r}'.format(harn.snapshot_dpath))
         harn._initialized = True
 
