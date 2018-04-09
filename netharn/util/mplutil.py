@@ -2337,6 +2337,73 @@ def draw_line_segments(pts1, pts2, ax=None, **kwargs):
     ax.add_collection(line_group)
 
 
+def make_heatmask(probs, cmap='plasma', with_alpha=True):
+    """
+    Colorizes a single-channel intensity mask (with an alpha channel)
+    """
+    import matplotlib as mpl
+    from clab.util import imutil
+    assert len(probs.shape) == 2
+    cmap_ = mpl.cm.get_cmap(cmap)
+    probs = imutil.ensure_float01(probs)
+    heatmask = cmap_(probs)
+    if with_alpha:
+        heatmask[:, :, 0:3] = heatmask[:, :, 0:3][:, :, ::-1]
+        heatmask[:, :, 3] = probs
+    return heatmask
+
+
+def colorbar_image(domain, cmap='plasma', dpi=96, shape=(200, 20), transparent=False):
+    """
+    Notes:
+        shape is approximate
+
+
+
+    Ignore:
+        domain = np.linspace(-30, 200)
+        cmap='plasma'
+        dpi = 80
+        dsize = (20, 200)
+
+        util.imwrite('foo.png', util.colorbar_image(np.arange(0, 1)), shape=(400, 80))
+
+        import plottool as pt
+        pt.qtensure()
+
+        from clab import util
+        import matplotlib as mpl
+        mpl.style.use('ggplot')
+        util.imwrite('foo.png', util.colorbar_image(np.linspace(0, 1, 100), dpi=200, shape=(1000, 40), transparent=1))
+        ub.startfile('foo.png')
+    """
+    import matplotlib as mpl
+    from clab.util import mplutil
+    mpl.use('agg', force=False, warn=False)
+    from matplotlib import pyplot as plt
+
+    fig = plt.figure(dpi=dpi)
+
+    w, h = shape[1] / dpi, shape[0] / dpi
+    # w, h = 1, 10
+    fig.set_size_inches(w, h)
+
+    ax = fig.add_subplot('111')
+
+    sm = plt.cm.ScalarMappable(cmap=plt.get_cmap(cmap))
+    sm.set_array(domain)
+
+    plt.colorbar(sm, cax=ax)
+
+    cb_img = mplutil.render_figure_to_image(fig, dpi=dpi, transparent=transparent)
+
+    plt.close(fig)
+
+    return cb_img
+    # from clab import util
+    # util.imwrite('foo.png', cb_img)
+
+
 class Color(ub.NiceRepr):
     """
     move to colorutil?
@@ -2488,6 +2555,25 @@ class Color(ub.NiceRepr):
         from matplotlib import colors as mcolors
         names = sorted(list(mcolors.BASE_COLORS.keys()) + list(mcolors.CSS4_COLORS.keys()))
         return names
+
+    @classmethod
+    def distinct(cls, num, space='bgr'):
+        """
+        Make multiple distinct colors
+        """
+        import matplotlib as mpl
+        import matplotlib._cm  as _cm
+        cm = mpl.colors.LinearSegmentedColormap.from_list(
+            'gist_rainbow', _cm.datad['gist_rainbow'],
+            mpl.rcParams['image.lut'])
+        distinct_colors = [
+            np.array(cm(i / num)).tolist()[0:3][::-1]
+            for i in range(num)
+        ]
+        if space == 'bgr':
+            return [Color(c, 'bgr').as01(space=space) for c in distinct_colors]
+        else:
+            return distinct_colors
 
 if __name__ == '__main__':
     r"""

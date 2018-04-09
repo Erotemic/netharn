@@ -3,6 +3,9 @@
 CommandLine:
     python ~/code/netharn/netharn/fit_harn.py __doc__
 
+Notes:
+    when profiling ensure CUDA_LAUNCH_BLOCKING=1
+
 Example:
     >>> import netharn as nh
     >>> datasets = {
