@@ -936,7 +936,7 @@ class FitHarn(*MIXINS):
             hyper = hyperparams.HyperParams(**hyper)
         harn.hyper = hyper
 
-        harn._main_prog = None
+        harn.main_prog = None
 
         harn.datasets = None
         harn.loaders = None
