@@ -4,8 +4,20 @@ http://blog.dlib.net/2018/02/automatic-learning-rate-scheduling-that.html
 
 """
 from netharn import util
+import itertools as it
 import numpy as np
 import ubelt as ub
+
+
+def demodata_monitor():
+    rng = np.random.RandomState(0)
+    n = 300
+    losses = (sorted(rng.randint(10, n, size=n)) + rng.randint(0, 20, size=n) - 10)[::-1]
+    mious = (sorted(rng.randint(10, n, size=n)) + rng.randint(0, 20, size=n) - 10)
+    monitor = Monitor(minimize=['loss'], maximize=['miou'], smoothing=.6)
+    for epoch, (loss, miou) in enumerate(zip(losses, mious)):
+        monitor.update(epoch, {'loss': loss, 'miou': miou})
+    return monitor
 
 
 class Monitor(object):
@@ -186,34 +198,60 @@ class Monitor(object):
             message = ub.color_text(message, 'yellow')
         return message
 
-    def best_epochs(monitor):
-        rankings = {}
+    def best_epochs(monitor, num=None, smooth=True):
+        """
+        Returns the best `num` epochs for every metric.
 
-        def _rank(key, metrics, type='min'):
-            values = [m[key] for m in metrics]
-            sortx = np.argsort(values)
-            if type == 'max':
-                sortx = np.argsort(values)[::-1]
-            elif type == 'min':
-                sortx = np.argsort(values)
-            else:
-                raise KeyError(type)
-            ranked_epochs = np.array(monitor.epochs)[sortx]
-            return ranked_epochs
+        Example:
+            >>> monitor = demodata_monitor()
+            >>> monitor.best_epochs(5)
+            {'loss': array([297, 299, 298, 296, 295]),
+             'miou': array([299, 298, 297, 296, 295])}
 
-        for key in monitor.minimize:
-            rankings[key + '_raw'] = _rank(key, monitor.raw_metrics, 'min')
-            rankings[key + '_smooth'] = _rank(key, monitor.smooth_metrics, 'min')
+        """
+        metric_ranks = {}
+        for key in it.chain(monitor.minimize, monitor.maximize):
+            metric_ranks[key] = monitor._rank(key, smooth=True)[:num]
+        return metric_ranks
 
-        for key in monitor.maximize:
-            rankings[key + '_raw'] = _rank(key, monitor.raw_metrics, 'max')
-            rankings[key + '_smooth'] = _rank(key, monitor.smooth_metrics, 'max')
+    def _rank(monitor, key, smooth=True):
+        """
+        Example:
+            >>> monitor = demodata_monitor()
+            >>> ranked_epochs = monitor._rank('loss', smooth=False)
+            >>> ranked_epochs = monitor._rank('miou', smooth=True)
+        """
+        if smooth:
+            metrics = monitor.smooth_metrics
+        else:
+            metrics = monitor.raw_metrics
 
-        for key in monitor.maximize:
-            values = [m[key] for m in monitor.raw_metrics]
+        values = [m[key] for m in metrics]
+        sortx = np.argsort(values)
+        if key in monitor.maximize:
             sortx = np.argsort(values)[::-1]
-            ranked_epochs = np.array(monitor.epochs)[sortx]
-            rankings[key] = ranked_epochs
+        elif key in monitor.minimize:
+            sortx = np.argsort(values)
+        else:
+            raise KeyError(type)
+        ranked_epochs = np.array(monitor.epochs)[sortx]
+        return ranked_epochs
+
+    def rank_epochs(monitor):
+        """
+        FIXME:
+            broken - implement better rank aggregation with custom weights
+
+        Example:
+            >>> monitor = demodata_monitor()
+            >>> monitor.rank_epochs()
+        """
+        rankings = {}
+        for key, value in monitor.best_epochs(smooth=False).items():
+            rankings[key + '_raw'] = value
+
+        for key, value in monitor.best_epochs(smooth=True).items():
+            rankings[key + '_smooth'] = value
 
         # borda-like weighted rank aggregation.
         # probably could do something better.
