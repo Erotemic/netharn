@@ -352,39 +352,46 @@ class SnapshotMixin:
     def cleanup_snapshots(harn):
         """
         remove old snapshots
+
+        TODO:
+            [ ] - keep the top epochs for every metric
         """
         snapshots = harn.prev_snapshots()
-        epochs = [parse.parse('{}_epoch_{num:d}.pt', path).named['num']
-                  for path in snapshots]
+        existing_epochs = sorted([
+            int(parse.parse('{}_epoch_{num:d}.pt', path).named['num'])
+            for path in snapshots
+        ])
 
-        def _epochs_to_remove(epochs):
+        num_keep = harn.config['num_keep']
+
+        def _epochs_to_remove(existing_epochs, num_keep):
             """
             doctest:
-                >>> harn = FitHarn()
+                >>> import netharn as nh
+                >>> harn = FitHarn({})
                 >>> rng = np.random.RandomState(0)
+                >>> harn.monitor = nh.Monitor(minimize=['loss'], maximize=['miou'])
                 >>> for epoch in range(200):
                 >>>     harn.monitor.update(epoch, {'loss': rng.rand(),
                 >>>                                 'miou': rng.rand()})
-                >>> epochs = list(range(0, 200, 4))
+                >>> existing_epochs = list(range(0, 200, 4))
+                >>> num_keep = 10
             """
-            num_keep_recent = 10
-            num_keep_best = 10
-
             keep = set()
 
-            recent = epochs[-num_keep_recent:]
+            recent = existing_epochs[-num_keep:]
             keep.update(recent)
 
             if harn.monitor:
-                best_epochs = harn.monitor.best_epochs()
-                best = ub.oset(best_epochs).intersection(epochs)
-                keep.update(best[-num_keep_best:])
+                for best_epochs in harn.monitor.best_epochs().values():
+                    best = ub.oset(best_epochs).intersection(existing_epochs)
+                keep.update(best[:num_keep])
 
-            to_remove = set(epochs) - keep
+            to_remove = set(existing_epochs) - keep
             return to_remove
 
-        epoch_to_fpath = dict(zip(epochs, snapshots))
-        to_remove = _epochs_to_remove(epochs)
+        epoch_to_fpath = dict(zip(existing_epochs, snapshots))
+        to_remove = _epochs_to_remove(existing_epochs, num_keep)
         for fpath in ub.take(epoch_to_fpath, to_remove):
             ub.delete(fpath)
 
@@ -960,14 +967,21 @@ class FitHarn(*MIXINS):
             'vali': 1,
             'test': 1,
 
+            # how often to take a snapshot
             'snapshot': 1,
-            'cleanup': 1,
+
+            # how often to remove old snapshots
+            'cleanup': 10,
         }
         harn.config = {
             'show_prog': True,
             'use_tqdm': True,
+
             # A loss that would be considered large
             'large_loss': 100,
+
+            # number of recent / best snapshots to keep
+            'num_keep': 10
         }
         harn.epoch = 0
         harn.bxs = {
