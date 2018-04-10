@@ -31,7 +31,7 @@ from netharn.hyperparams import (HyperParams,)
 
 
 
-from netharn.monitor import (Monitor,)
+from netharn.monitor import (Monitor, demodata_monitor,)
 
 from netharn.output_shape_for import (OutputShapeFor,
                                       REGISTERED_OUTPUT_SHAPE_TYPES,
