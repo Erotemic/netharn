@@ -49,6 +49,84 @@ def box_ious(boxes1, boxes2, bias=0, mode=None):
         raise KeyError(mode)
 
 
+def box_ious_torch(boxes1, boxes2, bias=1):
+    """
+    Example:
+        >>> boxes1 = Boxes.random(5, scale=10.0, rng=0, format='tlbr', tensor=True).data
+        >>> boxes2 = Boxes.random(7, scale=10.0, rng=1, format='tlbr', tensor=True).data
+        >>> bias = 1
+        >>> ious = box_ious_torch(boxes1, boxes2, bias)
+        >>> ious_np = box_ious_py(boxes1.numpy(), boxes2.numpy(), bias)
+        >>> assert np.all(ious_np == ious.numpy())
+
+    Benchmark:
+
+        import ubelt
+        import netharn as nh
+
+        N = 100
+
+        ydata = ub.ddict(list)
+        xdata = [10, 20, 40, 80, 100, 200, 300, 400, 500, 600, 700]
+
+        for num in xdata:
+            boxes1 = nh.util.Boxes.random(num, scale=10.0, rng=0, format='tlbr', tensor=True).data
+            boxes2 = nh.util.Boxes.random(num + 1, scale=10.0, rng=1, format='tlbr', tensor=True).data
+            t1 = ubelt.Timerit(N, bestof=10, label='time-torch-cpu')
+            for timer in t1:
+                with timer:
+                    box_ious_torch(boxes1, boxes2, bias)
+            ydata['cpu'].append(t1.ave_secs)
+
+            boxes1 = boxes1.cuda()
+            boxes2 = boxes2.cuda()
+            t2 = ubelt.Timerit(N, bestof=10, label='time-torch-gpu')
+            for timer in t2:
+                with timer:
+                    box_ious_torch(boxes1, boxes2, bias)
+                    torch.cuda.synchronize()
+            ydata['gpu'].append(t2.ave_secs)
+
+            boxes1 = boxes1.cpu().numpy()
+            boxes2 = boxes2.cpu().numpy()
+            t3 = ubelt.Timerit(N, bestof=10, label='time-numpy')
+            for timer in t3:
+                with timer:
+                    box_ious_py(boxes1, boxes2, bias)
+            ydata['numpy'].append(t3.ave_secs)
+
+        nh.util.mplutil.qtensure()
+        nh.util.mplutil.multi_plot(xdata, ydata, xlabel='num boxes', ylabel='seconds')
+
+
+
+    """
+    w1 = boxes1[:, 2] - boxes1[:, 0] + bias
+    h1 = boxes1[:, 3] - boxes1[:, 1] + bias
+    w2 = boxes2[:, 2] - boxes2[:, 0] + bias
+    h2 = boxes2[:, 3] - boxes2[:, 1] + bias
+
+    areas1 = w1 * h1
+    areas2 = w2 * h2
+
+    x_maxs = torch.min(boxes1[:, 2][:, None], boxes2[:, 2])
+    x_mins = torch.max(boxes1[:, 0][:, None], boxes2[:, 0])
+
+    iws = (x_maxs - x_mins + bias).clamp(0, None)
+
+    y_maxs = torch.min(boxes1[:, 3][:, None], boxes2[:, 3])
+    y_mins = torch.max(boxes1[:, 1][:, None], boxes2[:, 1])
+
+    ihs = (y_maxs - y_mins + bias).clamp(0, None)
+
+    areas_sum = (areas1[:, None] + areas2)
+
+    inter_areas = iws * ihs
+    union_areas = (areas_sum - inter_areas)
+    ious = inter_areas / union_areas
+    return ious
+
+
 def box_ious_py(boxes1, boxes2, bias=1):
     """
     This is the fastest python implementation of bbox_ious I found
