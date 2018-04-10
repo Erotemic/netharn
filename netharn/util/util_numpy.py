@@ -73,7 +73,7 @@ def isect_flags(arr, other):
     return flags
 
 
-def atleast_nd(arr, n, tofront=False):
+def atleast_nd(arr, n, front=False):
     r"""
     View inputs as arrays with at least n dimensions.
     TODO: Submit as a PR to numpy
@@ -86,7 +86,8 @@ def atleast_nd(arr, n, tofront=False):
         tofront (bool): if True new dimensions are added to the front of the
             array.  otherwise they are added to the back.
 
-    Returns:
+    Returns
+    -------
         ndarray :
             An array with ``a.ndim >= n``.  Copies are avoided where possible,
             and views with three or more dimensions are returned.  For example,
@@ -94,10 +95,12 @@ def atleast_nd(arr, n, tofront=False):
             ``(1, N, 1)``, and a 2-D array of shape ``(M, N)`` becomes a view
             of shape ``(M, N, 1)``.
 
-    See Also:
+    See Also
+    ---------
         ensure_shape, np.atleast_1d, np.atleast_2d, np.atleast_3d
 
-    Example:
+    Example
+    -------
         >>> n = 2
         >>> arr = np.array([1, 1, 1])
         >>> arr_ = atleast_nd(arr, n)
@@ -105,7 +108,9 @@ def atleast_nd(arr, n, tofront=False):
         >>> print(result)
         [[1], [1], [1]]
 
-    Example:
+    Example
+    -------
+
         >>> n = 4
         >>> arr1 = [1, 1, 1]
         >>> arr2 = np.array(0)
@@ -126,17 +131,37 @@ def atleast_nd(arr, n, tofront=False):
         # Hmm, mine is actually faster
         %timeit atleast_nd(arr, 3)
         %timeit np.atleast_3d(arr)
+
+    Benchmark:
+
+        import ubelt
+        N = 100
+
+        t1 = ubelt.Timerit(N, label='mine')
+        for timer in t1:
+            arr = np.empty((10, 10))
+            with timer:
+                atleast_nd(arr, 3)
+
+        t2 = ubelt.Timerit(N, label='baseline')
+        for timer in t2:
+            arr = np.empty((10, 10))
+            with timer:
+                np.atleast_3d(arr)
+
     """
     arr_ = np.asanyarray(arr)
     ndims = len(arr_.shape)
     if n is not None and ndims <  n:
         # append the required number of dimensions to the front or back
-        if tofront:
+        if front:
             expander = (None,) * (n - ndims) + (Ellipsis,)
         else:
             expander = (Ellipsis,) + (None,) * (n - ndims)
         arr_ = arr_[expander]
     return arr_
+
+np.atleast_nd = atleast_nd
 
 
 def apply_grouping(items, groupxs, axis=0):
