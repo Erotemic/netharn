@@ -35,3 +35,38 @@ def draw_boxes_on_image(img, boxes, color='blue', thickness=1,
         pt2 = (int(x2), int(y2))
         img2 = cv2.rectangle(img2, pt1, pt2, color, thickness=thickness)
     return img2
+
+
+def draw_text_on_image(img, text, org, **kwargs):
+    """
+    Draws multiline text on an image using opencv
+
+    TODO:
+        [ ] - add a test
+
+    References:
+        https://stackoverflow.com/questions/27647424/
+
+    Example:
+        stacked = putMultiLineText(stacked, text, org=center1,
+                                   fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                                   fontScale=1.5, color=accepted_color,
+                                   thickness=2, lineType=cv2.LINE_AA)
+    """
+    getsize_kw = {
+        k: kwargs[k]
+        for k in ['fontFace', 'fontScale', 'thickness']
+        if k in kwargs
+    }
+    x0, y0 = org
+    ypad = kwargs.get('thickness', 2) + 4
+    y = y0
+    for i, line in enumerate(text.split('\n')):
+        (w, h), text_sz = cv2.getTextSize(text, **getsize_kw)
+        img = cv2.putText(img, line, (x0, y), **kwargs)
+        y += (h + ypad)
+    return img
+
+
+def putMultiLineText(*args, **kw):
+    return draw_text_on_image(*args, **kw)

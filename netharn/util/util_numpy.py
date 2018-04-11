@@ -161,8 +161,6 @@ def atleast_nd(arr, n, front=False):
         arr_ = arr_[expander]
     return arr_
 
-np.atleast_nd = atleast_nd
-
 
 def apply_grouping(items, groupxs, axis=0):
     """
