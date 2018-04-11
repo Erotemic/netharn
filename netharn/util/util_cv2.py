@@ -53,6 +53,18 @@ def draw_text_on_image(img, text, org, **kwargs):
                                    fontScale=1.5, color=accepted_color,
                                    thickness=2, lineType=cv2.LINE_AA)
     """
+    if 'color' not in kwargs:
+        kwargs['color'] = (255, 0, 0)
+
+    if 'thickness' not in kwargs:
+        kwargs['thickness'] = 1.0
+
+    if 'fontFace' not in kwargs:
+        kwargs['fontFace'] = cv2.FONT_HERSHEY_SIMPLEX
+
+    if 'fontScale' not in kwargs:
+        kwargs['fontScale'] = 1.0
+
     getsize_kw = {
         k: kwargs[k]
         for k in ['fontFace', 'fontScale', 'thickness']
