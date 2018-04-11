@@ -57,7 +57,7 @@ def draw_text_on_image(img, text, org, **kwargs):
         kwargs['color'] = (255, 0, 0)
 
     if 'thickness' not in kwargs:
-        kwargs['thickness'] = 1.0
+        kwargs['thickness'] = 2
 
     if 'fontFace' not in kwargs:
         kwargs['fontFace'] = cv2.FONT_HERSHEY_SIMPLEX
