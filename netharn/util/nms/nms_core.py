@@ -64,17 +64,20 @@ def non_max_supression(tlbr, scores, thresh, impl='auto'):
         >>> print('solutions = {}'.format(ub.repr2(solutions, nl=1)))
         >>> assert ub.allsame(solutions.values())
     """
-    dets = np.hstack((tlbr, scores[:, np.newaxis])).astype(np.float32)
-    if dets.shape[0] == 0:
+    if tlbr.shape[0] == 0:
         return []
     if impl == 'auto':
         impl = _automode
-    nms = _impls[impl]
-    if impl == 'gpu':
-        device = torch.cuda.current_device()
-        keep = nms(dets, thresh, device_id=device)
+    if impl == 'py':
+        keep = py_nms.py_nms(tlbr, scores, thresh)
     else:
-        keep = nms(dets, thresh)
+        nms = _impls[impl]
+        dets = np.hstack((tlbr, scores[:, np.newaxis])).astype(np.float32)
+        if impl == 'gpu':
+            device = torch.cuda.current_device()
+            keep = nms(dets, thresh, device_id=device)
+        else:
+            keep = nms(dets, thresh)
     return keep
 
 
