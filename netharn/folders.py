@@ -56,8 +56,8 @@ class Folders(object):
         hyper = self.hyper
 
         if hyper.model_cls is None:
-            import utool
-            utool.embed()
+            # import utool
+            # utool.embed()
             raise ValueError('model_cls is None')
 
         arch = hyper.model_cls.__name__
