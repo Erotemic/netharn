@@ -1,6 +1,6 @@
 """
 This module can be used as both a script and an importable module.
-Run `python train_ibeis_siam.py --help` for more details.
+Run `python siam_ibeis.py --help` for more details.
 See docstring in fit for more details on the importable module.
 
 
@@ -10,6 +10,7 @@ conda install pytorch torchvision -c pytorch
 TestMe:
     xdoctest ~/code/netharn/netharn/examples/siam_ibeis.py all
 """
+import os
 import ubelt as ub
 import numpy as np
 import netharn as nh
@@ -24,8 +25,6 @@ __all__ = [
     'randomized_ibeis_dset',
     'setup_harness',
     'fit',
-    'main',
-
 ]
 
 
@@ -86,17 +85,16 @@ class RandomBalancedIBEISSample(torch.utils.data.Dataset):
 
         if augment:
             import imgaug.augmenters as iaa
-            self.augmenter = iaa.Sequential([
-                nh.data.transforms.HSVShift(hue=0.1, sat=1.5, val=1.5),
-                iaa.Crop(percent=(0, .2)),
-                iaa.Fliplr(p=.5),
-            ])
+            # NOTE: we are only using `self.augmenter` to make a hyper hashid
+            # in __getitem__ we invoke transform explicitly for fine control
             self.hue = nh.data.transforms.HSVShift(hue=0.1, sat=1.5, val=1.5)
             self.crop = iaa.Crop(percent=(0, .2))
             self.flip = iaa.Fliplr(p=.5)
+            self.augmenter = iaa.Sequential([self.hue, self.crop, self.flip])
         else:
             self.augmenter = None
-        self.letterbox = nh.data.transforms.Resize(target_size=(dim, dim), mode='letterbox')
+        self.letterbox = nh.data.transforms.Resize(target_size=(dim, dim),
+                                                   mode='letterbox')
         # self.colorspace = 'RGB'
         # self.center_inputs = None
 
@@ -147,7 +145,7 @@ class RandomBalancedIBEISSample(torch.utils.data.Dataset):
             if infr.incomp_graph.has_edge(u, v):
                 return False
             elif infr.pos_graph.has_edge(u, v):
-                # Only override if the evidence says its positive
+                # Only override if the evidence in the graph says its positive
                 # otherwise guess
                 ed = infr.get_edge_data((u, v)).get('evidence_decision', UNREV)
                 if ed == POSTV:
@@ -200,23 +198,18 @@ class RandomBalancedIBEISSample(torch.utils.data.Dataset):
         assert img1 is not None and img2 is not None
 
         if self.augmenter is not None:
-            if True:
-                # Augment hue and crop independently
-                img1 = self.hue.forward(img1, self.rng)
-                img2 = self.hue.forward(img2, self.rng)
-                img1 = self.crop.augment_image(img1)
-                img2 = self.crop.augment_image(img2)
+            # Augment hue and crop independently
+            img1 = self.hue.forward(img1, self.rng)
+            img2 = self.hue.forward(img2, self.rng)
+            img1 = self.crop.augment_image(img1)
+            img2 = self.crop.augment_image(img2)
 
-                # Do the same flip for both images
-                flip_det = self.flip.to_deterministic()
-                img1 = flip_det.augment_image(img1)
-                img2 = flip_det.augment_image(img2)
-            else:
-                # FIXME
-                seq_det = self.augmenter.to_deterministic()
-                img1 = seq_det.augment_image(img1)
-                img2 = seq_det.augment_image(img2)
+            # Do the same flip for both images
+            flip_det = self.flip.to_deterministic()
+            img1 = flip_det.augment_image(img1)
+            img2 = flip_det.augment_image(img2)
 
+        # Always embed images in a letterbox to preserve aspect ratio
         img1 = self.letterbox.forward(img1)
         img2 = self.letterbox.forward(img2)
 
@@ -242,14 +235,15 @@ class RandomBalancedIBEISSample(torch.utils.data.Dataset):
 def randomized_ibeis_dset(dbname, dim=224):
     """
     CommandLine:
-        xdoctest ~/code/netharn/netharn/examples/siam_ibeis.py randomized_ibeis_dset
+        xdoctest ~/code/netharn/netharn/examples/siam_ibeis.py randomized_ibeis_dset --show
 
     Example:
-        >>> # SCRIPT
         >>> datasets = randomized_ibeis_dset('PZ_MTEST')
+        >>> # xdoctest: +REQUIRES(--show)
         >>> nh.util.qtensure()
         >>> self = datasets['train']
         >>> self.show_sample()
+        >>> nh.util.show_if_requested()
     """
     import math
     from ibeis.algo.verif import vsone
@@ -439,40 +433,43 @@ class SiamHarness(nh.FitHarn):
         pass
 
 
-def setup_harness(dbname='PZ_MTEST'):
+def setup_harness(**kwargs):
     """
     CommandLine:
         python ~/code/netharn/netharn/examples/siam_ibeis.py setup_harness
 
     Example:
-        >>> dbname = 'PZ_MTEST'
-        >>> harn = setup_harness(dbname)
+        >>> harn = setup_harness(dbname='PZ_MTEST')
         >>> harn.initialize()
     """
-    # TODO: setup as python function args and move to argparse
-    nice = ub.argval('--nice', default='untitled_siam_ibeis')
-    batch_size = int(ub.argval('--batch_size', default=6))
-    bstep = int(ub.argval('--bstep', 4))
-    workers = int(ub.argval('--workers', default=0))
-    decay = float(ub.argval('--decay', default=0.0005))
-    lr = float(ub.argval('--lr', default=0.001))
-    dim = int(ub.argval('--dim', default=416))
-    dbname = ub.argval('--db', default=dbname)
+    nice = kwargs.get('nice', 'untitled')
+    bsize = int(kwargs.get('bsize', 6))
+    bstep = int(kwargs.get('bstep', 4))
+    workers = int(kwargs.get('workers', 0))
+    decay = float(kwargs.get('decay', 0.0005))
+    lr = float(kwargs.get('lr', 0.001))
+    dim = int(kwargs.get('dim', 416))
+    dbname = kwargs.get('db', 'PZ_MTEST')
+    xpu = kwargs.get('xpu', 'cpu')
+    workdir = kwargs.get('workdir', None)
 
     datasets = randomized_ibeis_dset(dbname, dim=dim)
-    workdir = ub.ensuredir(ub.truepath('~/work/siam-ibeis2/' + dbname))
+    if workdir is None:
+        workdir = ub.truepath(os.path.join('~/work/siam-ibeis2', dbname))
+    ub.ensuredir(workdir)
 
     for k, v in datasets.items():
         print('* len({}) = {}'.format(k, len(v)))
 
     loaders = {
         key:  torch.utils.data.DataLoader(
-            dset, batch_size=batch_size, num_workers=workers,
+            dset, batch_size=bsize, num_workers=workers,
             shuffle=(key == 'train'), pin_memory=True)
         for key, dset in datasets.items()
     }
 
-    xpu = nh.XPU.from_argv()
+    xpu = nh.XPU.cast(xpu)
+
     hyper = nh.HyperParams(**{
         'nice': nice,
         'workdir': workdir,
@@ -502,7 +499,6 @@ def setup_harness(dbname='PZ_MTEST'):
 
         'scheduler': (nh.schedulers.ListedLR, {
             'points': {
-                # dividing by batch size was one of those unpublished details
                 0:  lr / 10,
                 1:  lr,
                 59: lr * 1.1,
@@ -541,31 +537,90 @@ def setup_harness(dbname='PZ_MTEST'):
     return harn
 
 
-def fit():
-    r"""
-    CommandLine:
-        python examples/siam_ibeis.py fit --db PZ_MTEST --workers=0 --dim=32
+def _auto_argparse(func):
+    """
+    Transform a function with a Google Style Docstring into an
+    `argparse.ArgumentParser`.  Custom utility. Not sure where it goes yet.
+    """
+    from xdoctest import docscrape_google as scrape
+    import argparse
+    import inspect
 
-        python examples/siam_ibeis.py fit --db PZ_Master1
-        python examples/siam_ibeis.py fit --db PZ_MTEST --dry
-        python examples/siam_ibeis.py fit --db RotanTurtles
-        python examples/siam_ibeis.py fit --db humpbacks_fb
+    # Parse default values from the function dynamically
+    spec = inspect.getargspec(func)
+    kwdefaults = dict(zip(spec.args[-len(spec.defaults):], spec.defaults))
 
-    Script:
-        >>> # SCRIPT
-        >>> fit()
+    # Parse help and description information from a google-style docstring
+    docstr = func.__doc__
+    description = scrape.split_google_docblocks(docstr)[0][1][0].strip()
+    google_args = {argdict['name']: argdict
+                   for argdict in scrape.parse_google_args(docstr)}
+
+    # Create the argument parser and register each argument
+    parser = argparse.ArgumentParser(
+        description=description,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    for arg in spec.args:
+        argkw = {}
+        if arg in kwdefaults:
+            argkw['default'] = kwdefaults[arg]
+        if arg in google_args:
+            garg = google_args[arg]
+            argkw['help'] = garg['desc']
+            try:
+                argkw['type'] = eval(garg['type'], {})
+            except Exception:
+                pass
+        parser.add_argument('--' + arg, **argkw)
+    return parser
+
+
+def fit(dbname='PZ_MTEST', nice='untitled', dim=416, bsize=6, bstep=4,
+        lr=0.001, decay=0.0005, workers=0, xpu='cpu'):
+    """
+    Train a siamese chip descriptor for animal identification.
+
+    Args:
+        dbname (str): Name of IBEIS database to use
+        nice (str): Custom tag for this run
+        dim (int): Width and height of the network input
+        bsize (int): Base batch size. Number of examples in GPU at any time.
+        bstep (int): Multiply by bsize to simulate a larger batches.
+        lr (float): Base learning rate
+        decay (float): Weight decay (L2 regularization)
+        workers (int): Number of parallel data loader workers
+        xpu (str): Device to train on. Can be either `'cpu'`, `'gpu'`, a number
+            indicating a GPU (e.g. `0`), or a list of numbers (e.g. `[0,1,2]`)
+            indicating multiple GPUs
     """
     harn = setup_harness()
     harn.run()
 
 
 def main():
-    import argparse
-    description = ub.codeblock(
-        '''
-        Train the IBEIS siamese matcher
-        ''')
-    parser = argparse.ArgumentParser(prog='python examples/train_ibeis_siam.py', description=description)
+    """
+    CommandLine:
+        python examples/siam_ibeis.py --help
+
+        # Test Runs:
+            # use a very small input dimension to test things out
+            python examples/siam_ibeis.py --db PZ_MTEST --workers=0 --dim=32 --xpu=cpu
+
+            # test that GPU works
+            python examples/siam_ibeis.py --db PZ_MTEST --workers=0 --dim=32 --xpu=gpu1
+
+        # Real Run:
+        python examples/siam_ibeis.py --db PZ_MTEST --workers=0 --dim=416 --xpu=gpu1
+
+    Notes:
+        # Some database names
+        PZ_Master1
+        GZ_Master1
+        RotanTurtles
+        humpbacks_fb
+    """
+    parser = _auto_argparse(fit)
     args, unknown = parser.parse_known_args()
     ns = args.__dict__.copy()
     fit(**ns)
@@ -574,6 +629,6 @@ def main():
 if __name__ == '__main__':
     """
     CommandLine:
-        python ~/code/netharn/netharn/examples/train_ibeis_siam.py
+        python ~/code/netharn/netharn/examples/siam_ibeis.py --help
     """
     main()
