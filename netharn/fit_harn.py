@@ -766,8 +766,10 @@ class CoreMixin:
         """
         Overload Encouraged
         """
-
-        loss_value = float(loss.data.cpu().item())
+        if torch.__version__.startswith('0.3'):
+            loss_value = float(loss.data.cpu().sum())
+        else:
+            loss_value = float(loss.data.cpu().item())
         if not np.isfinite(loss_value):
             harn.log('WARNING: received an inf loss, setting loss to a large value')
             loss_value = harn.config['large_loss'] * 10

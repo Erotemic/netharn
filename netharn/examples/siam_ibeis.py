@@ -372,10 +372,10 @@ class SiamHarness(nh.FitHarn):
         """
         ensure batch is in a standardized structure
         """
-        batch_inputs, batch_labels = raw_batch
-        inputs = harn.xpu.variable(batch_inputs)
-        labels = [harn.xpu.variable(d) for d in batch_labels]
-        batch = (inputs, labels)
+        img1, img2, label = raw_batch
+        inputs = harn.xpu.variables(img1, img2)
+        label = harn.xpu.variable(label)
+        batch = (inputs, label)
         return batch
 
     def run_batch(harn, batch):
@@ -385,29 +385,15 @@ class SiamHarness(nh.FitHarn):
         Args:
             batch: item returned by the loader
         """
-        # Compute how many images have been seen before
-        bsize = harn.loaders['train'].batch_sampler.batch_size
-        nitems = len(harn.datasets['train'])
-        bx = harn.bxs['train']
-        n_seen = (bx * bsize) + (nitems * harn.epoch)
+        inputs, label = batch
+        output = harn.model(*inputs)
+        loss = harn.criterion(output, label).sum()
+        return output, loss
 
-        inputs, labels = batch
-        outputs = harn.model(inputs)
-        # torch.cuda.synchronize()
-        target, gt_weights, orig_sizes, indices, bg_weights = labels
-        loss = harn.criterion(outputs, target, seen=n_seen)
-        # torch.cuda.synchronize()
-        return outputs, loss
-
-    def on_batch(harn, batch, outputs, loss):
+    def on_batch(harn, batch, output, loss):
         """ custom callback """
-        # from clab import metrics
-        # metrics_dict = metrics._siamese_metrics(outputs, loss,
-        #                                          margin=harn.criterion.margin)
-        # metrics_dict = {}
-        # return metrics_dict
         label = batch[-1]
-        l2_dist_tensor = torch.squeeze(outputs.data.cpu())
+        l2_dist_tensor = torch.squeeze(output.data.cpu())
         label_tensor = torch.squeeze(label.data.cpu())
 
         # Distance
@@ -445,14 +431,19 @@ class SiamHarness(nh.FitHarn):
 
 def setup_harness(dbname='PZ_MTEST'):
     """
+    CommandLine:
+        python ~/code/netharn/netharn/examples/siam_ibeis.py setup_harness
+
     Example:
-        >>> harn = setup_harness('PZ_MTEST')
+        >>> dbname = 'PZ_MTEST'
+        >>> harn = setup_harness(dbname)
+        >>> harn.initialize()
     """
     # TODO: setup as python function args
     nice = ub.argval('--nice', default='untitled_siam_ibeis')
     batch_size = int(ub.argval('--batch_size', default=6))
     bstep = int(ub.argval('--bstep', 4))
-    workers = int(ub.argval('--workers', default=2))
+    workers = int(ub.argval('--workers', default=0))
     decay = float(ub.argval('--decay', default=0.0005))
     lr = float(ub.argval('--lr', default=0.001))
     dim = int(ub.argval('--dim', default=416))
@@ -472,7 +463,7 @@ def setup_harness(dbname='PZ_MTEST'):
     }
 
     xpu = nh.XPU.from_argv()
-    hyper = nh.HyperParams({
+    hyper = nh.HyperParams(**{
         'nice': nice,
         'workdir': workdir,
         'datasets': datasets,
@@ -480,10 +471,10 @@ def setup_harness(dbname='PZ_MTEST'):
 
         'xpu': xpu,
 
-        'model': (SiameseLP, dict(
-            p=2,
-            input_shape=(1, 3, dim, dim)
-        )),
+        'model': (SiameseLP, {
+            'p': 2,
+            'input_shape': (1, 3, dim, dim),
+        }),
 
         'criterion': (nh.criterions.ContrastiveLoss, {
             'margin': 4,
@@ -491,6 +482,7 @@ def setup_harness(dbname='PZ_MTEST'):
         }),
 
         'optimizer': (torch.optim.SGD, {
+            'lr': lr / 10,
             'weight_decay': decay,
             'momentum': 0.9,
             'nesterov': True,
@@ -542,11 +534,12 @@ def setup_harness(dbname='PZ_MTEST'):
 def fit():
     r"""
     CommandLine:
-        python siam_ibeis.py fit --db PZ_Master1
-        python siam_ibeis.py fit --db PZ_MTEST --dry
-        python siam_ibeis.py fit --db PZ_MTEST
-        python siam_ibeis.py fit --db RotanTurtles
-        python siam_ibeis.py fit --db humpbacks_fb
+        python examples/siam_ibeis.py fit --db PZ_MTEST --workers=0 --dim=32
+
+        python examples/siam_ibeis.py fit --db PZ_Master1
+        python examples/siam_ibeis.py fit --db PZ_MTEST --dry
+        python examples/siam_ibeis.py fit --db RotanTurtles
+        python examples/siam_ibeis.py fit --db humpbacks_fb
 
     Script:
         >>> # SCRIPT
