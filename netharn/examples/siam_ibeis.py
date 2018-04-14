@@ -278,7 +278,7 @@ def randomized_ibeis_dset(dbname, dim=224):
         'vali': vali_dataset,
         'test': test_dataset,
     }
-    datasets.pop('vali', None)  # dont validate for now (speed consideration)
+    datasets.pop('test', None)  # dont test for now (speed consideration)
     return datasets
 
 
