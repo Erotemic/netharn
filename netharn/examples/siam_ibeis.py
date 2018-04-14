@@ -594,7 +594,11 @@ def fit(dbname='PZ_MTEST', nice='untitled', dim=416, bsize=6, bstep=4,
             indicating a GPU (e.g. `0`), or a list of numbers (e.g. `[0,1,2]`)
             indicating multiple GPUs
     """
-    harn = setup_harness()
+    # There has to be a good way to use argparse and specify params only once.
+    # Pass all args down to setup_harness
+    import inspect
+    kw = ub.dict_subset(locals(), inspect.getargspec(fit).args)
+    harn = setup_harness(**kw)
     harn.run()
 
 
@@ -609,6 +613,9 @@ def main():
 
             # test that GPU works
             python examples/siam_ibeis.py --db PZ_MTEST --workers=0 --dim=32 --xpu=gpu1
+
+            # test that running at full size works
+            python examples/siam_ibeis.py --db PZ_MTEST --workers=2 --dim=416 --xpu=gpu1
 
         # Real Run:
         python examples/siam_ibeis.py --db PZ_MTEST --workers=0 --dim=416 --xpu=gpu1
