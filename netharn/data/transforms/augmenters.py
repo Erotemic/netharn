@@ -86,19 +86,14 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         self.flip_sat = Binomial(.5)
 
     def _augment_images(self, images, random_state, parents, hooks):
-        result = []
-        nb_images = len(images)
-        for i in range(nb_images):
-            new_img = self.apply(images[i], random_state)
-            result.append(new_img)
-        return result
+        return [self.forward(img, random_state) for img in images]
 
     def _augment_keypoints(self, keypoints_on_images, random_state, parents,
                            hooks):
         return keypoints_on_images
 
     @profiler.profile
-    def apply(self, img, random_state):
+    def forward(self, img, random_state=None):
         assert self.input_colorspace == 'rgb'
         assert img.dtype.kind == 'u' and img.dtype.itemsize == 1
 
@@ -140,7 +135,7 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         return img255
 
 
-class LetterboxResize(augmenter_base.ParamatarizedAugmenter):
+class Resize(augmenter_base.ParamatarizedAugmenter):
     """
     Transform images and annotations to the right network dimensions.
 
@@ -206,26 +201,24 @@ class LetterboxResize(augmenter_base.ParamatarizedAugmenter):
         shift, scale, embed_size = self._letterbox_transform(orig_size,
                                                              target_size)
     """
-    def __init__(self, target_size, fill_color=127):
+    def __init__(self, target_size, fill_color=127, mode='letterbox'):
         super().__init__()
-        self.target_size = target_size
+        self.target_size = None if target_size is None else np.array(target_size)
         self.fill_color = fill_color
+        self.mode = mode
+        assert self.mode == 'letterbox', 'thats all folks'
+
+    def forward(self, img):
+        orig_size = np.array(img.shape[0:2][::-1])
+        shift, scale, embed_size = self._letterbox_transform(orig_size,
+                                                             self.target_size)
+        new_img = self._apply_img_letterbox(img, embed_size, shift,
+                                            self.target_size)
+        return new_img
 
     def _augment_images(self, images, random_state, parents, hooks):
-        result = []
-        nb_images = len(images)
-
-        target_size = np.array(self.target_size)
-
-        for i in range(nb_images):
-            img = images[i]
-            orig_size = np.array(img.shape[0:2][::-1])
-            shift, scale, embed_size = self._letterbox_transform(orig_size,
-                                                                 target_size)
-            new_img = self._apply_img_letterbox(img, embed_size, shift,
-                                                target_size)
-            result.append(new_img)
-        return result
+        self.target_size = None if self.target_size is None else np.array(self.target_size)
+        return [self.forward(img, random_state) for img in images]
 
     def _augment_keypoints(self, keypoints_on_images, random_state, parents,
                            hooks):
@@ -305,6 +298,9 @@ class LetterboxResize(augmenter_base.ParamatarizedAugmenter):
                                     cv2.BORDER_CONSTANT,
                                     value=(fill_color,) * channels)
         return hwc255
+
+
+LetterboxResize = Resize
 
 if __name__ == '__main__':
     """

@@ -58,7 +58,11 @@ def torch_nms(bboxes, scores, classes=None, thresh=.5):
     keep.scatter_(0, order, ordered_keep)  # Unsort, so keep is aligned with input boxes
     return keep
 
-    # bboxes[keep]
+    aaa = torch.LongTensor(np.arange(len(boxes))).reshape(-1, 1)
+
+    sorted(aaa[order][keep1[:, None].expand_as(aaa)].cpu().numpy().ravel()) == sorted(aaa[keep].cpu().numpy().ravel())
+
+    bboxes[keep]
     # keep1 = (conflicting.sum(0) == 0)    # Unlike numpy, pytorch cannot perform any() along a certain axis
     # bboxes[order][keep1[:, None].expand_as(bboxes)].view(-1, 4).contiguous()
 
@@ -71,12 +75,13 @@ def _benchmark():
     from netharn.util.nms.torch_nms import torch_nms
     from netharn.util import non_max_supression
     import ubelt as ub
+    import itertools as it
 
     N = 100
     bestof = 10
 
     ydata = ub.ddict(list)
-    xdata = [10, 20, 40, 80, 100, 200, 300, 400, 500, 600, 700]
+    xdata = [10, 20, 40, 80, 100, 200, 300, 400, 500, 600, 700, 1000, 1500, 2000]
 
     rng = nh.util.ensure_rng(0)
 
@@ -99,13 +104,13 @@ def _benchmark():
 
         if torch.cuda.is_available():
             # Move boxes to the GPU
-            boxes = boxes.cuda()
-            scores = scores.cuda()
+            gpu_boxes = boxes.cuda()
+            gpu_scores = scores.cuda()
 
             t1 = ubelt.Timerit(N, bestof=bestof, label='torch(gpu)')
             for timer in t1:
                 with timer:
-                    keep = torch_nms(boxes, scores, thresh=thresh)
+                    keep = torch_nms(gpu_boxes, gpu_scores, thresh=thresh)
                     torch.cuda.synchronize()
             ydata[t1.label].append(t1.min())
             outputs[t1.label] = np.where(keep.cpu().numpy())[0]
@@ -144,7 +149,6 @@ def _benchmark():
                 print('{} produced a bad result with max_iou={}'.format(key, max_iou))
 
         # Check result consistency:
-        import itertools as it
         print('Result consistency:')
         for k1, k2 in it.combinations(outputs.keys(), 2):
             idxs1 = set(outputs[k1])
