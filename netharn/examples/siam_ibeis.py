@@ -17,6 +17,17 @@ import torch
 import torchvision
 import itertools as it
 
+__all__ = [
+    'RandomBalancedIBEISSample',
+    'SiameseLP',
+    'SiamHarness',
+    'randomized_ibeis_dset',
+    'setup_harness',
+    'fit',
+    'main',
+
+]
+
 
 class RandomBalancedIBEISSample(torch.utils.data.Dataset):
     """
@@ -253,9 +264,8 @@ def randomized_ibeis_dset(dbname, dim=224):
     vali_pccs = []
     test_pccs = []
 
-    # vali_frac = .1
+    vali_frac = .1
     test_frac = .1
-    vali_frac = 0
 
     for i, group in freq_grouped.items():
         group = nh.util.shuffle(group, rng=432232 + i)
@@ -439,7 +449,7 @@ def setup_harness(dbname='PZ_MTEST'):
         >>> harn = setup_harness(dbname)
         >>> harn.initialize()
     """
-    # TODO: setup as python function args
+    # TODO: setup as python function args and move to argparse
     nice = ub.argval('--nice', default='untitled_siam_ibeis')
     batch_size = int(ub.argval('--batch_size', default=6))
     bstep = int(ub.argval('--bstep', 4))
@@ -503,8 +513,8 @@ def setup_harness(dbname='PZ_MTEST'):
         }),
 
         'monitor': (nh.Monitor, {
-            'minimize': ['loss'],
-            'maximize': ['mAP'],
+            'minimize': ['loss', 'pos_dist'],
+            'maximize': ['accuracy', 'neg_dist'],
             'patience': 160,
             'max_epoch': 160,
         }),
@@ -523,7 +533,7 @@ def setup_harness(dbname='PZ_MTEST'):
         },
     })
     harn = SiamHarness(hyper=hyper)
-    harn.config['use_tqdm'] = False
+    harn.config['prog_backend'] = 'progiter'
     harn.intervals['log_iter_train'] = 1
     harn.intervals['log_iter_test'] = None
     harn.intervals['log_iter_vali'] = None
