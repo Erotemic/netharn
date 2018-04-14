@@ -268,6 +268,10 @@ class InitializeMixin:
 @register_mixin
 class ProgMixin:
     def _make_prog(harn, **kw):
+        if harn.config['use_tqdm'] is None:
+            harn.config['use_tqdm'] = harn.config['prog_backend'] == 'tqdm'
+            if harn.config['prog_backend'] not in {'tqdm', 'progiter'}:
+                raise KeyError(harn.config['prog_backend'])
         if harn.config['use_tqdm']:
             import tqdm
             Prog = tqdm.tqdm
@@ -977,7 +981,8 @@ class FitHarn(*MIXINS):
         }
         harn.config = {
             'show_prog': True,
-            'use_tqdm': True,
+            'use_tqdm': None,
+            'prog_backend': 'tqdm',
 
             # A loss that would be considered large
             'large_loss': 100,
