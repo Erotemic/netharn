@@ -1,11 +1,12 @@
 cffi
-imgaug
 psutil
+
+ubelt
+xdoctest
 
 pygtrie
 numpy
-ubelt
-xdoctest
+
 sortedcontainers
 tqdm
 h5py
@@ -20,6 +21,8 @@ matplotlib
 six
 protobuf
 
+
+# imgaug
 -e git+https://github.com/aleju/imgaug.git@master#egg=imgaug
 
 # line_profiler
