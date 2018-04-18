@@ -28,6 +28,90 @@ __all__ = [
 ]
 
 
+class SiameseLP(torch.nn.Module):
+    """
+    Siamese pairwise distance
+
+    Example:
+        >>> self = SiameseLP()
+    """
+
+    def __init__(self, p=2, branch=None, input_shape=(1, 3, 224, 224)):
+        super(SiameseLP, self).__init__()
+        if branch is None:
+            self.branch = torchvision.models.resnet50(pretrained=True)
+        else:
+            self.branch = branch
+        assert isinstance(self.branch, torchvision.models.ResNet)
+        prepool_shape = self.resnet_prepool_output_shape(input_shape)
+        # replace the last layer of resnet with a linear embedding to learn the
+        # LP distance between pairs of images.
+        # Also need to replace the pooling layer in case the input has a
+        # different size.
+        self.prepool_shape = prepool_shape
+        pool_channels = prepool_shape[1]
+        pool_kernel = prepool_shape[2:4]
+        self.branch.avgpool = torch.nn.AvgPool2d(pool_kernel, stride=1)
+        self.branch.fc = torch.nn.Linear(pool_channels, 500)
+
+        self.pdist = torch.nn.PairwiseDistance(p=p)
+
+    def resnet_prepool_output_shape(self, input_shape):
+        """
+        self = SiameseLP(input_shape=input_shape)
+        input_shape = (1, 3, 224, 224)
+        self.resnet_prepool_output_shape(input_shape)
+        self = SiameseLP(input_shape=input_shape)
+        input_shape = (1, 3, 416, 416)
+        self.resnet_prepool_output_shape(input_shape)
+        """
+        # Figure out how big the output will be and redo the average pool layer
+        # to account for it
+        branch = self.branch
+        shape = input_shape
+        shape = nh.OutputShapeFor(branch.conv1)(shape)
+        shape = nh.OutputShapeFor(branch.bn1)(shape)
+        shape = nh.OutputShapeFor(branch.relu)(shape)
+        shape = nh.OutputShapeFor(branch.maxpool)(shape)
+
+        shape = nh.OutputShapeFor(branch.layer1)(shape)
+        shape = nh.OutputShapeFor(branch.layer2)(shape)
+        shape = nh.OutputShapeFor(branch.layer3)(shape)
+        shape = nh.OutputShapeFor(branch.layer4)(shape)
+        prepool_shape = shape
+        return prepool_shape
+
+    def forward(self, input1, input2):
+        """
+        Compute a resnet50 vector for each input and look at the LP-distance
+        between the vectors.
+
+        Example:
+            >>> input1 = nh.XPU(None).variable(torch.rand(4, 3, 224, 224))
+            >>> input2 = nh.XPU(None).variable(torch.rand(4, 3, 224, 224))
+            >>> self = SiameseLP(input_shape=input2.shape[1:])
+            >>> output = self(input1, input2)
+
+        Ignore:
+            >>> input1 = nh.XPU(None).variable(torch.rand(1, 3, 416, 416))
+            >>> input2 = nh.XPU(None).variable(torch.rand(1, 3, 416, 416))
+            >>> input_shape1 = input1.shape
+            >>> self = SiameseLP(input_shape=input2.shape[1:])
+            >>> self(input1, input2)
+        """
+        output1 = self.branch(input1)
+        output2 = self.branch(input2)
+        output = self.pdist(output1, output2)
+        return output
+
+    def output_shape_for(self, input_shape1, input_shape2):
+        shape1 = nh.OutputShapeFor(self.branch)(input_shape1)
+        shape2 = nh.OutputShapeFor(self.branch)(input_shape2)
+        assert shape1 == shape2
+        output_shape = (shape1[0], 1)
+        return output_shape
+
+
 class RandomBalancedIBEISSample(torch.utils.data.Dataset):
     """
     Construct a pairwise image training dataset.
@@ -286,91 +370,11 @@ def randomized_ibeis_dset(dbname, dim=224):
     return datasets
 
 
-class SiameseLP(torch.nn.Module):
-    """
-    Siamese pairwise distance
-
-    Example:
-        >>> self = SiameseLP()
-    """
-
-    def __init__(self, p=2, branch=None, input_shape=(1, 3, 224, 224)):
-        super(SiameseLP, self).__init__()
-        if branch is None:
-            self.branch = torchvision.models.resnet50(pretrained=True)
-        else:
-            self.branch = branch
-        assert isinstance(self.branch, torchvision.models.ResNet)
-        prepool_shape = self.resnet_prepool_output_shape(input_shape)
-        # replace the last layer of resnet with a linear embedding to learn the
-        # LP distance between pairs of images.
-        # Also need to replace the pooling layer in case the input has a
-        # different size.
-        self.prepool_shape = prepool_shape
-        pool_channels = prepool_shape[1]
-        pool_kernel = prepool_shape[2:4]
-        self.branch.avgpool = torch.nn.AvgPool2d(pool_kernel, stride=1)
-        self.branch.fc = torch.nn.Linear(pool_channels, 500)
-
-        self.pdist = torch.nn.PairwiseDistance(p=p)
-
-    def resnet_prepool_output_shape(self, input_shape):
-        """
-        self = SiameseLP(input_shape=input_shape)
-        input_shape = (1, 3, 224, 224)
-        self.resnet_prepool_output_shape(input_shape)
-        self = SiameseLP(input_shape=input_shape)
-        input_shape = (1, 3, 416, 416)
-        self.resnet_prepool_output_shape(input_shape)
-        """
-        # Figure out how big the output will be and redo the average pool layer
-        # to account for it
-        branch = self.branch
-        shape = input_shape
-        shape = nh.OutputShapeFor(branch.conv1)(shape)
-        shape = nh.OutputShapeFor(branch.bn1)(shape)
-        shape = nh.OutputShapeFor(branch.relu)(shape)
-        shape = nh.OutputShapeFor(branch.maxpool)(shape)
-
-        shape = nh.OutputShapeFor(branch.layer1)(shape)
-        shape = nh.OutputShapeFor(branch.layer2)(shape)
-        shape = nh.OutputShapeFor(branch.layer3)(shape)
-        shape = nh.OutputShapeFor(branch.layer4)(shape)
-        prepool_shape = shape
-        return prepool_shape
-
-    def forward(self, input1, input2):
-        """
-        Compute a resnet50 vector for each input and look at the LP-distance
-        between the vectors.
-
-        Example:
-            >>> input1 = nh.XPU(None).variable(torch.rand(4, 3, 224, 224))
-            >>> input2 = nh.XPU(None).variable(torch.rand(4, 3, 224, 224))
-            >>> self = SiameseLP(input_shape=input2.shape[1:])
-            >>> output = self(input1, input2)
-
-        Ignore:
-            >>> input1 = nh.XPU(None).variable(torch.rand(1, 3, 416, 416))
-            >>> input2 = nh.XPU(None).variable(torch.rand(1, 3, 416, 416))
-            >>> input_shape1 = input1.shape
-            >>> self = SiameseLP(input_shape=input2.shape[1:])
-            >>> self(input1, input2)
-        """
-        output1 = self.branch(input1)
-        output2 = self.branch(input2)
-        output = self.pdist(output1, output2)
-        return output
-
-    def output_shape_for(self, input_shape1, input_shape2):
-        shape1 = nh.OutputShapeFor(self.branch)(input_shape1)
-        shape2 = nh.OutputShapeFor(self.branch)(input_shape2)
-        assert shape1 == shape2
-        output_shape = (shape1[0], 1)
-        return output_shape
-
-
 class SiamHarness(nh.FitHarn):
+    """
+    Define how to process a batch, compute loss, and evaluate validation
+    metrics.
+    """
 
     def prepare_batch(harn, raw_batch):
         """
@@ -612,13 +616,13 @@ def main():
             python examples/siam_ibeis.py --db PZ_MTEST --workers=0 --dim=32 --xpu=cpu
 
             # test that GPU works
-            python examples/siam_ibeis.py --db PZ_MTEST --workers=0 --dim=32 --xpu=gpu1
+            python examples/siam_ibeis.py --db PZ_MTEST --workers=0 --dim=32 --xpu=gpu0
 
-            # test that running at full size works
-            python examples/siam_ibeis.py --db PZ_MTEST --workers=2 --dim=416 --xpu=gpu1
+            # test that running at a large size works
+            python examples/siam_ibeis.py --db PZ_MTEST --workers=2 --dim=512 --xpu=gpu0
 
         # Real Run:
-        python examples/siam_ibeis.py --db PZ_MTEST --workers=0 --dim=416 --xpu=gpu1
+        python examples/siam_ibeis.py --db GZ_Master1 --workers=2 --dim=512 --xpu=gpu0
 
     Notes:
         # Some database names
