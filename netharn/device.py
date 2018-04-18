@@ -155,7 +155,9 @@ class XPU(ub.NiceRepr):
         Args:
             item : special string, int, list, or None
         """
-        if isinstance(item, XPU):
+        if item is None:
+            return XPU(item)
+        elif isinstance(item, XPU):
             return item
         elif isinstance(item, _TENSOR_TYPES):
             return XPU.from_data(item)

@@ -37,7 +37,7 @@ class Monitor(object):
     """
 
     def __init__(monitor, minimize=['loss'], maximize=[], smoothing=.6,
-                 patience=40, max_epoch=1000):
+                 patience=None, max_epoch=1000):
         monitor.ewma = util.ExpMovingAve(alpha=1 - smoothing)
         monitor.raw_metrics = []
         monitor.smooth_metrics = []
@@ -66,7 +66,7 @@ class Monitor(object):
         import matplotlib.pyplot as plt
         from netharn.util import mplutil
         import pandas as pd
-        mplutil.qtensure()
+        # mplutil.qtensure()
         smooth_ydatas = pd.DataFrame.from_dict(monitor.smooth_metrics).to_dict('list')
         raw_ydatas = pd.DataFrame.from_dict(monitor.raw_metrics).to_dict('list')
         keys = monitor.minimize + monitor.maximize
@@ -166,23 +166,17 @@ class Monitor(object):
         improved_flags = (sign1 * current) < (rel_epsilon * sign2 * best)
         # * rel_epsilon
 
-        # print('\n\n\n')
-        # print('current = {!r}'.format(current))
-        # print('best    = {!r}'.format(best))
         improved_keys = list(ub.compress(keys, improved_flags))
-        # print('improved_flags = {!r}'.format(improved_flags))
-        # print('improved_keys = {!r}'.format(improved_keys))
-        # print('\n\n\n')
         return improved_keys
 
     def is_done(monitor):
+        if monitor.patience is None:
+            return False
         return monitor.n_bad_epochs >= monitor.patience
 
     def message(monitor):
         if not monitor.epochs:
             return ub.color_text('vloss is unevaluated', 'blue')
-        # if monitor.is_improved():
-            # message = 'vloss: {:.4f} (new_best)'.format(monitor.best_loss)
 
         prev_loss = monitor.smooth_metrics[-1]['loss']
         best_loss = monitor.best_smooth_metrics['loss']
@@ -190,9 +184,13 @@ class Monitor(object):
         message = 'vloss: {:.4f} (n_bad_epochs={:2d}, best={:.4f})'.format(
             prev_loss, monitor.n_bad_epochs, best_loss,
         )
-        if monitor.n_bad_epochs <= int(monitor.patience * .25):
+        if monitor.patience is None:
+            patience = monitor.max_epoch
+        else:
+            patience = monitor.patience
+        if monitor.n_bad_epochs <= int(patience * .25):
             message = ub.color_text(message, 'green')
-        elif monitor.n_bad_epochs >= int(monitor.patience * .75):
+        elif monitor.n_bad_epochs >= int(patience * .75):
             message = ub.color_text(message, 'red')
         else:
             message = ub.color_text(message, 'yellow')
