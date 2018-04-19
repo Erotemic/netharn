@@ -290,7 +290,7 @@ class RegionLoss(BaseLossWithCudaState):
         # return pred_boxes, lin_x, lin_y
 
     @profiler.profile
-    def forward(self, output, target, seen=0):
+    def forward(self, output, target, seen=0, gt_weights=None):
         """ Compute Region loss.
 
         Args:
@@ -341,7 +341,7 @@ class RegionLoss(BaseLossWithCudaState):
 
             # Get target values
             coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = self.build_targets(
-                pred_boxes, target, nH, nW, seen=seen)
+                pred_boxes, target, nH, nW, seen=seen, gt_weights=gt_weights)
             coord_mask = coord_mask.expand_as(tcoord)
             if nC > 1:
                 tcls = tcls.view(-1)[cls_mask.view(-1)].long()
@@ -383,12 +383,12 @@ class RegionLoss(BaseLossWithCudaState):
 
         return loss_tot
 
-    def build_targets(self, pred_boxes, ground_truth, nH, nW, seen=0):
+    def build_targets(self, pred_boxes, ground_truth, nH, nW, seen=0, gt_weights=None):
         """ Compare prediction boxes and targets, convert targets to network output tensors """
-        return self._build_targets_tensor(pred_boxes, ground_truth, nH, nW, seen=seen)
+        return self._build_targets_tensor(pred_boxes, ground_truth, nH, nW, seen=seen, gt_weights=gt_weights)
 
     @profiler.profile
-    def _build_targets_tensor(self, pred_boxes, ground_truth, nH, nW, seen=0):
+    def _build_targets_tensor(self, pred_boxes, ground_truth, nH, nW, seen=0, gt_weights=None):
         """
         Compare prediction boxes and ground truths, convert ground truths to network output tensors
 
@@ -414,6 +414,7 @@ class RegionLoss(BaseLossWithCudaState):
             >>>      [1, 0.34, 0.32, 0.12, 0.32],
             >>>      [1, 0.32, 0.42, 0.22, 0.12]],
             >>> ])
+            >>> gt_weights = torch.FloatTensor([[-1, -1, -1], [1, 1, 0]])
             >>> pred_boxes = torch.rand(90, 4)
             >>> seen = 0
         """
@@ -480,6 +481,12 @@ class RegionLoss(BaseLossWithCudaState):
             for t in range(nT):
                 if not flags[t]:
                     break
+
+                if gt_weights is None:
+                    weight = 1
+                else:
+                    weight = gt_weights[bx][t]
+
                 gx, gy, gw, gh = gt_cxywh.data[bx][t]
                 gi = min(nW - 1, max(0, int(gx)))
                 gj = min(nH - 1, max(0, int(gy)))
@@ -495,16 +502,23 @@ class RegionLoss(BaseLossWithCudaState):
                 best_anchor = self.anchors[best_n]
                 best_aw, best_ah = best_anchor
 
-                coord_mask[bx, best_n, 0, gj * nW + gi] = 1
-                cls_mask[bx, best_n, gj * nW + gi] = 1
-                conf_mask[bx, best_n, gj * nW + gi] = self.object_scale
+                if weight == 0:
+                    # HACK: Only allow weight == 0 and weight == 1 for now
+                    # TODO:
+                    #    - [ ] Allow for continuous weights
+                    #    - [ ] Allow for per-image background weight
+                    conf_mask[bx, best_n, gj * nW + gi] = 0
+                else:
+                    coord_mask[bx, best_n, 0, gj * nW + gi] = 1
+                    cls_mask[bx, best_n, gj * nW + gi] = 1
+                    conf_mask[bx, best_n, gj * nW + gi] = self.object_scale
 
-                tcoord[bx, best_n, 0, gj * nW + gi] = gx - gi
-                tcoord[bx, best_n, 1, gj * nW + gi] = gy - gj
-                tcoord[bx, best_n, 2, gj * nW + gi] = math.log(gw / best_aw)
-                tcoord[bx, best_n, 3, gj * nW + gi] = math.log(gh / best_ah)
-                tconf[bx, best_n, gj * nW + gi] = iou
-                tcls[bx, best_n, gj * nW + gi] = ground_truth[bx, t, 0]
+                    tcoord[bx, best_n, 0, gj * nW + gi] = gx - gi
+                    tcoord[bx, best_n, 1, gj * nW + gi] = gy - gj
+                    tcoord[bx, best_n, 2, gj * nW + gi] = math.log(gw / best_aw)
+                    tcoord[bx, best_n, 3, gj * nW + gi] = math.log(gh / best_ah)
+                    tconf[bx, best_n, gj * nW + gi] = iou
+                    tcls[bx, best_n, gj * nW + gi] = ground_truth[bx, t, 0]
 
         return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
 

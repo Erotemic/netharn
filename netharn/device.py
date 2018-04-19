@@ -336,6 +336,8 @@ class XPU(ub.NiceRepr):
             >>> data = torch.FloatTensor([0])
             >>> vari = xpu.variable(data)
             >>> assert isinstance(vari, torch.autograd.Variable)
+            >>> # Ensure this function is idempotent
+            >>> vari2 = xpu.variable(vari)
         """
         assert 'volatile' not in kw, 'volatile is removed'
         cukw = {}
@@ -343,6 +345,9 @@ class XPU(ub.NiceRepr):
             cukw['non_blocking'] = kw.pop('async')
         if 'non_blocking' in kw:
             cukw['non_blocking'] = kw.pop('non_blocking')
+        if torch.__version__.startswith('0.3'):
+            # Unwrap the data and make a new variable
+            item = item.data
         item = xpu.move(item, **cukw)
         item = torch.autograd.Variable(item, **kw)
         return item
