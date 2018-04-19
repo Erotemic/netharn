@@ -14,14 +14,6 @@ from netharn.models.yolo2 import multiscale_batch_sampler
 from netharn.models.yolo2 import light_region_loss
 from netharn.models.yolo2 import light_yolo
 
-# def s(d):
-#     """ sorts a dict, returns as an OrderedDict """
-#     return ub.odict(sorted(d.items()))
-
-
-def asnumpy(tensor):
-    return tensor.data.cpu().numpy()
-
 
 class YoloVOCDataset(nh.data.voc.VOCDataset):
     """
@@ -225,7 +217,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         # Apply letterbox resize transform to train and test
         self.letterbox.target_size = inp_size
         image = self.letterbox.augment_image(image)
-        # bbs = self.letterbox.augment_bounding_boxes([bbs])[0]  # ignore this for now to avoid the float64 error, it does nothing anyway
+        bbs = self.letterbox.augment_bounding_boxes([bbs])[0]
         tlbr_inp = util.Boxes.from_imgaug(bbs)
 
         # Remove any boxes that are no longer visible or out of bounds
@@ -478,6 +470,9 @@ class YoloHarn(nh.FitHarn):
         #     np.maximum(y2, top, out=y2)
         #     return boxes
 
+        def asnumpy(tensor):
+            return tensor.data.cpu().numpy()
+
         bsize = len(labels[0])
         for bx in range(bsize):
             postitem = asnumpy(postout[bx])
@@ -595,6 +590,60 @@ class YoloHarn(nh.FitHarn):
         # mplutil.show_if_requested()
 
 
+def compare_loss():
+    harn = setup_harness(bsize=2)
+    harn.hyper.xpu = nh.XPU(0)
+    harn.initialize()
+
+    weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
+    state_dict = harn.xpu.load(weights_fpath)['weights']
+    harn.model.module.load_state_dict(state_dict)
+
+    ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
+    TESTFILE = ub.truepath('~/code/lightnet/examples/yolo-voc/data/test.pkl')
+
+    import lightnet as ln
+    net = ln.models.Yolo(ln_test.CLASSES, weights_fpath, ln_test.CONF_THRESH, ln_test.NMS_THRESH)
+    net = harn.xpu.move(net)
+
+    import os
+    os.chdir(ub.truepath('~/code/lightnet/examples/yolo-voc/'))
+    ln_dset = ln_test.CustomDataset(TESTFILE, net)
+
+    ln_img, ln_label = ln_dset[0]
+    my_img, my_label = harn.datasets['test'][0]
+    my_targets = my_label[0][None, :]
+    ln_targets = [ln_label]
+
+    # Test model forward is the same for my image
+    ln_outputs = net._forward(harn.xpu.move(my_img[None, :]))
+    my_outputs = harn.model(harn.xpu.move(my_img[None, :]))
+
+    seen = net.loss.seen = 99999999
+    ln_loss = net.loss(ln_outputs, my_targets)
+    my_loss = harn.criterion(ln_outputs, my_targets, seen=seen)
+    print('my_loss = {!r}'.format(my_loss))
+    print('ln_loss = {!r}'.format(ln_loss))
+
+    ln_brambox_loss = net.loss(ln_outputs, ln_targets)
+    print('ln_brambox_loss = {!r}'.format(ln_brambox_loss))
+
+    inp_size = tuple(my_img.shape[-2:][::-1])
+
+    ln_tf_targets = []
+    for anno in ln_targets[0]:
+        anno.class_label = anno.class_id
+        tf = ln.data.preprocess.BramboxToTensor._tf_anno(anno, inp_size, None)
+        ln_tf_targets.append(tf)
+
+    ln_boxes = nh.util.Boxes(np.array(ln_tf_targets)[:, 1:], 'cxywh').scale(inp_size)
+    my_boxes = nh.util.Boxes(np.array(my_targets[0])[:, 1:], 'cxywh').scale(inp_size)
+
+    nh.util.imshow(ln_img.numpy(), colorspace='rgb', fnum=1)
+    nh.util.draw_boxes(ln_boxes, color='blue')
+    nh.util.draw_boxes(my_boxes, color='red')
+
+
 def _run_quick_test():
     harn = setup_harness(bsize=2)
     harn.hyper.xpu = nh.XPU(0)
@@ -626,8 +675,7 @@ def _run_quick_test():
             - [ ] why is the loss different?
                 - [X] network input size is 416 in both
                 - [x] networks output the same data given the same input
-                - [!] loss outputs the same data given the same input
-                     No, they do not!
+                - [x] loss outputs the same data given the same input (they do if seen is the same)
 
                      [ ] -
                          * Using my inputs and targets get
