@@ -39,10 +39,15 @@ Pypi:
 from setuptools import setup, find_packages
 import os
 import sys
-import numpy as np
 from os.path import dirname, join, exists
 from distutils.extension import Extension
-from Cython.Distutils import build_ext
+
+try:
+    import numpy as np
+    from Cython.Distutils import build_ext
+except ImportError:
+    print('Numpy and Cython must be installed before you run setup.py. '
+          'Please send a PR if you know how to fix this')
 import gpu_setup
 
 
