@@ -32,4 +32,4 @@ protobuf
 # onnx
 # tensorboard
 # opencv_python # CAREFUL, dont clobber ones that we installed
-# pytorch # causing docker issues, comment out, ideally we will build this from source ourselves
+# torch
