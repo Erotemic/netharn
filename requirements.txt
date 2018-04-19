@@ -21,6 +21,11 @@ matplotlib
 six
 protobuf
 
+pytest
+pytest-cov
+coverage >= 4.3.4
+tqdm
+
 
 # imgaug
 -e git+https://github.com/aleju/imgaug.git@master#egg=imgaug
