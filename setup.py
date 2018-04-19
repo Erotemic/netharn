@@ -46,8 +46,13 @@ try:
     import numpy as np
     from Cython.Distutils import build_ext
 except ImportError:
-    print('Numpy and Cython must be installed before you run setup.py. '
-          'Please send a PR if you know how to fix this')
+    print('''
+          Please Run:
+              pip install numpy Cython
+          ''')
+    raise ImportError(
+        'Numpy and Cython must be installed before you run setup.py. '
+        'Please send a PR if you know how to fix this.')
 import gpu_setup
 
 
@@ -332,7 +337,7 @@ if __name__ == '__main__':
     requirements = parse_requirements('requirements.txt')
     requirements += list(conditional_requirements([
         ('opencv_python', 'cv2'),
-        ('pytorch', 'torch'),
+        ('torch', 'torch'),
     ]))
 
     if 'clean' in sys.argv:

@@ -13,5 +13,5 @@ else:
     from netharn.data.transforms import augmenters
     from netharn.data.transforms.augmenter_base import (ParamatarizedAugmenter,)
     from netharn.data.transforms.augmenters import (HSVShift, LetterboxResize,
-                                                    demodata_hsv_image,)
+                                                    Resize, demodata_hsv_image,)
     # </AUTOGEN_INIT>

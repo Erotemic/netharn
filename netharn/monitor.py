@@ -8,6 +8,8 @@ import itertools as it
 import numpy as np
 import ubelt as ub
 
+__all__ = ['Monitor']
+
 
 def demodata_monitor():
     rng = np.random.RandomState(0)
