@@ -630,13 +630,13 @@ def compare_loss():
 
     inp_size = tuple(my_img.shape[-2:][::-1])
 
-    ln_tf_targets = []
+    ln_tf_target = []
     for anno in ln_targets[0]:
         anno.class_label = anno.class_id
         tf = ln.data.preprocess.BramboxToTensor._tf_anno(anno, inp_size, None)
-        ln_tf_targets.append(tf)
+        ln_tf_target.append(tf)
 
-    ln_boxes = nh.util.Boxes(np.array(ln_tf_targets)[:, 1:], 'cxywh').scale(inp_size)
+    ln_boxes = nh.util.Boxes(np.array(ln_tf_target)[:, 1:], 'cxywh').scale(inp_size)
     my_boxes = nh.util.Boxes(np.array(my_targets[0])[:, 1:], 'cxywh').scale(inp_size)
 
     nh.util.imshow(ln_img.numpy(), colorspace='rgb', fnum=1)
@@ -649,7 +649,7 @@ def _run_quick_test():
     harn.hyper.xpu = nh.XPU(0)
     harn.initialize()
 
-    if 1:
+    if 0:
         # Load up pretrained VOC weights
         weights_fpath = light_yolo.demo_weights()
         state_dict = harn.xpu.load(weights_fpath)['weights']
@@ -660,14 +660,8 @@ def _run_quick_test():
         TEST 30000 mAP:74.18% Loss:3.16839 (Coord:0.38 Conf:1.61 Cls:1.17)
 
         BUT I GET:
-            average_losses {
-                'cls': 5.620899201931977,
-                'conf': 6.214269233575641,
-                'coord': 2.520588392524202,
-                'loss': 14.355756822112882,
-            }
-
-            mAP ~= 60ish
+            {cls: 2.26, conf: 2.05, coord: 0.69, loss: 5.00}
+            pass
 
         USING THE SAME WEIGHTS! I must be doing something wrong.
 
@@ -676,15 +670,6 @@ def _run_quick_test():
                 - [X] network input size is 416 in both
                 - [x] networks output the same data given the same input
                 - [x] loss outputs the same data given the same input (they do if seen is the same)
-
-                     [ ] -
-                         * Using my inputs and targets get
-                         * Get prediction for both networks (my and ln)
-                         * Then using my targets use my region loss and ln region loss
-                         * While they are still different
-                         * Step through each loss and determine what is causing
-                           them to be different. And why is mine much worse?!
-                     [ ] - ENSURE THEY PRODUCE THE SAME RESULTS
 
                 - [ ] is the data read and formated properly / letterbox done correctly?
                 - [ ] does the brambox version of loss work differently?
@@ -698,58 +683,6 @@ def _run_quick_test():
         state_dict = harn.xpu.load(weights_fpath)['weights']
         harn.model.module.load_state_dict(state_dict)
 
-    def lightnet_explicit_test():
-            import lightnet as ln
-            net = ln.models.Yolo(ln_test.CLASSES, weights_fpath, ln_test.CONF_THRESH, ln_test.NMS_THRESH)
-            net.eval()
-
-            net = harn.xpu.move(net)
-            ln_outputs = net._forward(inputs)
-            my_outputs = harn.model(inputs)
-            # Ok, the networks output the same
-            assert (my_outputs - ln_outputs).max()  == 0
-
-            ln_loss = net.loss(ln_outputs, target)
-            my_loss = harn.criterion(my_outputs, target)
-            # NO, the loss is much different
-            assert ln_loss == my_loss
-
-            ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
-            TESTFILE = ub.truepath('~/code/lightnet/examples/yolo-voc/data/test.pkl')
-
-            import sys
-            sys.modules.pop('test', None)
-            sys.path.insert(0, ub.truepath('~/code/lightnet/examples/yolo-voc/'))
-            import test as ln_test
-            import os
-            os.chdir(ub.truepath('~/code/lightnet/examples/yolo-voc/'))
-            ln_dset = ln_test.CustomDataset(TESTFILE, net)
-
-            my_img, my_label = harn.datasets['test'][0]
-            ln_img, ln_label = ln_dset[0]
-
-            ln_outputs2 = net._forward(harn.xpu.move(ln_img[None, :]))
-            my_outputs2 = harn.model(harn.xpu.move(my_img[None, :]))
-
-            my_target = my_label[0]
-
-            net.loss(ln_outputs2, [ln_label])
-
-            net.loss(ln_outputs2, my_target[None, :])  # A MUCH LARGER LOSS !!!
-            harn.criterion(ln_outputs2, my_target[None, :])  # EVEN WORSE LOSS !!!
-
-            # slight differences, not too big a deal
-            diff = np.abs((my_img - ln_img).data.numpy())
-            diff.mean()
-            diff.std()
-
-            nh.util.imshow(ln_img.data.numpy(), colorspace='rgb', fnum=1)
-            nh.util.imshow(my_img.data.numpy(), colorspace='rgb', fnum=2)
-
-
-            ROOT = 'data'
-            ub.import_
-
     harn.model.eval()
 
     with torch.no_grad():
@@ -758,13 +691,11 @@ def _run_quick_test():
         # postprocess.nms_thresh = 0.5
 
         batch_confusions = []
-        # batch_labels = []
-        # batch_output = []
         loader = harn.loaders['test']
 
         moving_ave = nh.util.util_averages.CumMovingAve()
 
-        prog = ub.ProgIter(iter(loader))
+        prog = ub.ProgIter(iter(loader), desc='')
         for batch in prog:
             inputs, labels = harn.prepare_batch(batch)
             inp_size = np.array(inputs.shape[-2:][::-1])
@@ -772,12 +703,16 @@ def _run_quick_test():
 
             target, gt_weights, orig_sizes, indices, bg_weights = labels
             loss = harn.criterion(outputs, target, seen=1000000000)
-            moving_ave.update({
-                'loss': float(loss.sum()),
-                'cls': harn.criterion.loss_cls,
-                'conf': harn.criterion.loss_conf,
-                'coord': harn.criterion.loss_coord,
-            })
+            moving_ave.update(ub.odict([
+                ('loss', float(loss.sum())),
+                ('coord', harn.criterion.loss_coord),
+                ('conf', harn.criterion.loss_conf),
+                ('cls', harn.criterion.loss_cls),
+            ]))
+
+            average_losses = moving_ave.average()
+            desc = ub.repr2(average_losses, nl=0, precision=2, si=True)
+            prog.set_description(desc, refresh=False)
 
             postout = postprocess(outputs)
             for y in harn._measure_confusion(postout, labels, inp_size):
