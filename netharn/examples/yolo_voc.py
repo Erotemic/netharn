@@ -644,6 +644,101 @@ def compare_loss():
     nh.util.draw_boxes(my_boxes, color='red')
 
 
+def _test_with_lnstyle_data():
+    """
+    Uses pretrained lightnet weights, and the lightnet data loader.
+
+    Uses my critrion and net implementations.
+    (already verified to produce the same outputs)
+
+    Checks to see if my loss and map calcluations are the same as lightnet
+    """
+    harn = setup_harness(bsize=2)
+    harn.hyper.xpu = nh.XPU(0)
+    harn.initialize()
+
+    weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
+    state_dict = harn.xpu.load(weights_fpath)['weights']
+    harn.model.module.load_state_dict(state_dict)
+
+    ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
+    TESTFILE = ub.truepath('~/code/lightnet/examples/yolo-voc/data/test.pkl')
+
+    import lightnet as ln
+    net = ln.models.Yolo(ln_test.CLASSES, weights_fpath, ln_test.CONF_THRESH, ln_test.NMS_THRESH)
+    net = harn.xpu.move(net)
+
+    import os
+    os.chdir(ub.truepath('~/code/lightnet/examples/yolo-voc/'))
+    ln_dset = ln_test.CustomDataset(TESTFILE, net)
+
+    ln_loader = torch.utils.data.DataLoader(
+        ln_dset, batch_size=2, shuffle=False, drop_last=False, num_workers=0,
+        pin_memory=True, collate_fn=ln.data.list_collate,
+    )
+    my_loader = harn.loaders['test']
+
+    harn.model.eval()
+
+    # class_label_map = ub.invert_dict(dict(enumerate(harn.datasets['train'].label_names)))
+    class_label_map = harn.datasets['train'].label_names
+
+    with torch.no_grad():
+        postprocess = harn.model.module.postprocess
+        # postprocess.conf_thresh = 0.001
+        # postprocess.nms_thresh = 0.5
+        batch_confusions = []
+        moving_ave = nh.util.util_averages.CumMovingAve()
+
+        prog = ub.ProgIter(zip(ln_loader, my_loader), desc='')
+        for ln_batch, my_batch in prog:
+            ln_inputs, ln_labels = ln_batch
+            my_inputs, my_labels = my_batch
+
+            inp_size = tuple(ln_inputs.shape[-2:][::-1])
+            max_anno = max(map(len, ln_labels))
+            ln_targets = [
+                ln.data.preprocess.BramboxToTensor.apply(
+                    annos, inp_size, max_anno=max_anno, class_label_map=class_label_map)
+                for annos in ln_labels]
+            ln_targets = torch.stack(ln_targets)
+            my_targets = my_labels[0]
+            gt_weights = my_labels[1]
+
+            ln_inputs = harn.xpu.variable(ln_inputs)
+            ln_targets = harn.xpu.variable(ln_targets)
+
+            ln_outputs = harn.model(ln_inputs)
+            ln_loss_ten1 = harn.criterion(ln_outputs, ln_targets, seen=1000000000)
+            ln_loss_ten2 = net.loss(ln_outputs, ln_targets)
+            ln_loss_bram = net.loss(ln_outputs, ln_labels)
+
+            my_loss_ten1 = net.loss(ln_outputs, my_targets, gt_weights=gt_weights)
+
+            moving_ave.update(ub.odict([
+                ('loss_ten1', float(ln_loss_ten1.sum())),
+                ('loss_ten2', float(ln_loss_ten2.sum())),
+                ('loss_mine', float(my_loss_ten1.sum())),
+                ('loss_bram', float(ln_loss_bram.sum())),
+                # ('coord', harn.criterion.loss_coord),
+                # ('conf', harn.criterion.loss_conf),
+                # ('cls', harn.criterion.loss_cls),
+            ]))
+
+            average_losses = moving_ave.average()
+            desc = ub.repr2(average_losses, nl=0, precision=2, si=True)
+            prog.set_description(desc, refresh=False)
+
+            # TODO: check that my postprocess of ln outputs gives good map
+            ln_postout = postprocess(ln_outputs)
+            targets, gt_weights, orig_sizes, indices, bg_weights = my_labels
+            for y in harn._measure_confusion(ln_postout, my_labels, inp_size):
+                batch_confusions.append(y)
+
+            # batch_output.append((outputs.cpu().data.numpy().copy(), inp_size))
+            # batch_labels.append([x.cpu().data.numpy().copy() for x in labels])
+
+
 def _run_quick_test():
     harn = setup_harness(bsize=2)
     harn.hyper.xpu = nh.XPU(0)
@@ -656,14 +751,27 @@ def _run_quick_test():
         harn.model.module.load_state_dict(state_dict)
     else:
         """
-        Final results for lightnet test on lightnet trained weights
-        TEST 30000 mAP:74.18% Loss:3.16839 (Coord:0.38 Conf:1.61 Cls:1.17)
+        Using LighNet Trained Weights:
 
-        BUT I GET:
-            {cls: 2.26, conf: 2.05, coord: 0.69, loss: 5.00}
-            pass
+            LightNet Results:
+                TEST 30000 mAP:74.18% Loss:3.16839 (Coord:0.38 Conf:1.61 Cls:1.17)
+
+            My Results:
+                # Worse losses (due to different image loading)
+                loss: 5.00 {coord: 0.69, conf: 2.05, cls: 2.26}
+                mAP = 0.6227
+                The MAP is quite a bit worse... Why is that?
 
         USING THE SAME WEIGHTS! I must be doing something wrong.
+
+            Results using the same Data Loader:
+                {cls: 2.22, conf: 2.05, coord: 0.65, loss: 4.91}
+
+                # Checking with extra info
+                {loss_bram: 3.17, loss_ten1: 4.91, loss_ten2: 4.91}
+
+            OH!, Is is just that BramBox has an ignore function?
+                - [ ] Add ignore / weight to tensor version to see if its the same
 
         TO CHECK:
             - [ ] why is the loss different?
@@ -689,12 +797,9 @@ def _run_quick_test():
         postprocess = harn.model.module.postprocess
         # postprocess.conf_thresh = 0.001
         # postprocess.nms_thresh = 0.5
-
         batch_confusions = []
-        loader = harn.loaders['test']
-
         moving_ave = nh.util.util_averages.CumMovingAve()
-
+        loader = harn.loaders['test']
         prog = ub.ProgIter(iter(loader), desc='')
         for batch in prog:
             inputs, labels = harn.prepare_batch(batch)
