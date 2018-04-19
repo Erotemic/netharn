@@ -10,7 +10,8 @@ class ToyNet1d(torch.nn.Module):
         >>> self = ToyNet1d()
         >>> loader = self.demodata().make_loader(batch_size=16, shuffle=True)
         >>> inputs, labels = next(iter(loader))
-        >>> prob = self(inputs)
+        >>> import netharn as nh
+        >>> prob = self(nh.XPU().variable(inputs))
         >>> conf, pred = prob.max(dim=1)
     """
     def __init__(self, input_channels=2, num_classes=2):
@@ -47,7 +48,8 @@ class ToyNet2d(torch.nn.Module):
         >>> self = ToyNet2d()
         >>> loader = self.demodata().make_loader(batch_size=16, shuffle=True)
         >>> inputs, labels = next(iter(loader))
-        >>> prob = self(inputs)
+        >>> import netharn as nh
+        >>> prob = self(nh.XPU().variable(inputs))
         >>> conf, pred = prob.max(dim=1)
     """
     def __init__(self, input_channels=1, num_classes=2):
