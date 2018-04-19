@@ -149,8 +149,8 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         >>> bboi = box.to_imgaug(shape=img.shape)
         >>> imgT = np.ascontiguousarray(img.transpose(1, 0, 2))
         >>> bboiT = box.transpose().to_imgaug(shape=imgT.shape)
-        >>> self = LetterboxResize((40, 30))
-        >>> self2 = LetterboxResize((1000, 1000))
+        >>> self = Resize((40, 30))
+        >>> self2 = Resize((1000, 1000))
         >>> # ---------------------------
         >>> aug1  = self.augment_image(img)
         >>> bboi1 = self.augment_bounding_boxes([bboi])[0]
@@ -208,7 +208,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         self.mode = mode
         assert self.mode == 'letterbox', 'thats all folks'
 
-    def forward(self, img):
+    def forward(self, img, random_state=None):
         orig_size = np.array(img.shape[0:2][::-1])
         shift, scale, embed_size = self._letterbox_transform(orig_size,
                                                              self.target_size)

@@ -1627,6 +1627,14 @@ def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
             plt_imshow_kwargs['vmax'] = 255
     if heatmap:
         cmap = 'hot'
+
+    # Handle tensor chw format in most cases
+    if img.ndim == 3:
+        if img.shape[0] == 3 or img.shape[0] == 1:
+            if img.shape[2] > 4:
+                # probably in chw format
+                img = img.transpose(1, 2, 0)
+
     try:
         if len(img.shape) == 3 and (img.shape[2] == 3 or img.shape[2] == 4):
             # img is in a color format

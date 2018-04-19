@@ -68,11 +68,13 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             self.base_wh + (self.factor * i) for i in range(*scales)])
         self.multi_scale_out_size = self.multi_scale_inp_size // self.factor
 
+        # Original YOLO Anchors
         # self.anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
         #                            (6.63, 11.38), (9.42, 5.11),
         #                            (16.62, 10.52)],
         #                           dtype=np.float)
 
+        # Lightnet Anchors
         self.anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
                                  (5.05587, 8.09892), (9.47112, 4.84053),
                                  (11.2364, 10.0071)])
@@ -113,7 +115,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
         # Used to resize images to the appropriate inp_size without changing
         # the aspect ratio.
-        self.letterbox = nh.data.transforms.LetterboxResize(None)
+        self.letterbox = nh.data.transforms.Resize(None, mode='letterbox')
 
     @profiler.profile
     def __getitem__(self, index):
@@ -223,7 +225,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         # Apply letterbox resize transform to train and test
         self.letterbox.target_size = inp_size
         image = self.letterbox.augment_image(image)
-        bbs = self.letterbox.augment_bounding_boxes([bbs])[0]
+        # bbs = self.letterbox.augment_bounding_boxes([bbs])[0]  # ignore this for now to avoid the float64 error, it does nothing anyway
         tlbr_inp = util.Boxes.from_imgaug(bbs)
 
         # Remove any boxes that are no longer visible or out of bounds
@@ -541,77 +543,6 @@ class YoloHarn(nh.FitHarn):
             # y['gx'] = gx
             yield y
 
-    @classmethod
-    def _run_quick_test(cls):
-        harn = setup_harness(bsize=2)
-        harn.hyper.xpu = nh.XPU(0)
-        harn.initialize()
-
-        # Load up pretrained VOC weights
-        weights_fpath = light_yolo.demo_weights()
-        state_dict = harn.xpu.load(weights_fpath)['weights']
-        harn.model.module.load_state_dict(state_dict)
-
-        harn.model.eval()
-
-        postprocess = harn.model.module.postprocess
-        # postprocess.conf_thresh = 0.001
-        # postprocess.nms_thresh = 0.5
-
-        batch_confusions = []
-        # batch_labels = []
-        # batch_output = []
-        loader = harn.loaders['test']
-        for batch in ub.ProgIter(loader):
-            inputs, labels = harn.prepare_batch(batch)
-            inp_size = np.array(inputs.shape[-2:][::-1])
-            outputs = harn.model(inputs)
-
-            postout = postprocess(outputs)
-            for y in harn._measure_confusion(postout, labels, inp_size):
-                batch_confusions.append(y)
-
-            # batch_output.append((outputs.cpu().data.numpy().copy(), inp_size))
-            # batch_labels.append([x.cpu().data.numpy().copy() for x in labels])
-
-        # batch_confusions = []
-        # for (outputs, inp_size), labels in ub.ProgIter(zip(batch_output, batch_labels), total=len(batch_labels)):
-        #     labels = [torch.Tensor(x) for x in labels]
-        #     outputs = torch.Tensor(outputs)
-        #     postout = postprocess(outputs)
-        #     for y in harn._measure_confusion(postout, labels, inp_size):
-        #         batch_confusions.append(y)
-
-        if False:
-            from netharn.util import mplutil
-            mplutil.qtensure()  # xdoc: +SKIP
-            harn.visualize_prediction(batch, outputs, postout, thresh=.1)
-
-        y = pd.concat(batch_confusions)
-        # TODO: write out a few visualizations
-        num_classes = len(loader.dataset.label_names)
-        cls_labels = list(range(num_classes))
-
-        aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
-        aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
-        mean_ap = np.nanmean(aps['ap'])
-        max_ap = np.nanmax(aps['ap'])
-        print(aps)
-        print('mean_ap = {!r}'.format(mean_ap))
-        print('max_ap = {!r}'.format(max_ap))
-
-        aps = nh.metrics.ave_precisions(y[y.score > .01], cls_labels, use_07_metric=True)
-        aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
-        mean_ap = np.nanmean(aps['ap'])
-        max_ap = np.nanmax(aps['ap'])
-        print(aps)
-        print('mean_ap = {!r}'.format(mean_ap))
-        print('max_ap = {!r}'.format(max_ap))
-
-        # import sklearn.metrics
-        # sklearn.metrics.accuracy_score(y.true, y.pred)
-        # sklearn.metrics.precision_score(y.true, y.pred, average='weighted')
-
     def visualize_prediction(harn, batch, outputs, postout, idx=0, thresh=None):
         """
         Returns:
@@ -662,6 +593,191 @@ class YoloHarn(nh.FitHarn):
         mplutil.draw_boxes(pred_boxes_, color='blue', box_format='cxywh', labels=pred_labels)
 
         # mplutil.show_if_requested()
+
+
+def _run_quick_test():
+    harn = setup_harness(bsize=2)
+    harn.hyper.xpu = nh.XPU(0)
+    harn.initialize()
+
+    if 1:
+        # Load up pretrained VOC weights
+        weights_fpath = light_yolo.demo_weights()
+        state_dict = harn.xpu.load(weights_fpath)['weights']
+        harn.model.module.load_state_dict(state_dict)
+    else:
+        """
+        Final results for lightnet test on lightnet trained weights
+        TEST 30000 mAP:74.18% Loss:3.16839 (Coord:0.38 Conf:1.61 Cls:1.17)
+
+        BUT I GET:
+            average_losses {
+                'cls': 5.620899201931977,
+                'conf': 6.214269233575641,
+                'coord': 2.520588392524202,
+                'loss': 14.355756822112882,
+            }
+
+            mAP ~= 60ish
+
+        USING THE SAME WEIGHTS! I must be doing something wrong.
+
+        TO CHECK:
+            - [ ] why is the loss different?
+                - [X] network input size is 416 in both
+                - [x] networks output the same data given the same input
+                - [!] loss outputs the same data given the same input
+                     No, they do not!
+
+                     [ ] -
+                         * Using my inputs and targets get
+                         * Get prediction for both networks (my and ln)
+                         * Then using my targets use my region loss and ln region loss
+                         * While they are still different
+                         * Step through each loss and determine what is causing
+                           them to be different. And why is mine much worse?!
+                     [ ] - ENSURE THEY PRODUCE THE SAME RESULTS
+
+                - [ ] is the data read and formated properly / letterbox done correctly?
+                - [ ] does the brambox version of loss work differently?
+                - [ ] check that we each format the first item in the test set the same
+
+            - [ ] why is the mAP different?
+                - [ ] does brambox compute AP differently?
+
+        """
+        weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
+        state_dict = harn.xpu.load(weights_fpath)['weights']
+        harn.model.module.load_state_dict(state_dict)
+
+    def lightnet_explicit_test():
+            import lightnet as ln
+            net = ln.models.Yolo(ln_test.CLASSES, weights_fpath, ln_test.CONF_THRESH, ln_test.NMS_THRESH)
+            net.eval()
+
+            net = harn.xpu.move(net)
+            ln_outputs = net._forward(inputs)
+            my_outputs = harn.model(inputs)
+            # Ok, the networks output the same
+            assert (my_outputs - ln_outputs).max()  == 0
+
+            ln_loss = net.loss(ln_outputs, target)
+            my_loss = harn.criterion(my_outputs, target)
+            # NO, the loss is much different
+            assert ln_loss == my_loss
+
+            ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
+            TESTFILE = ub.truepath('~/code/lightnet/examples/yolo-voc/data/test.pkl')
+
+            import sys
+            sys.modules.pop('test', None)
+            sys.path.insert(0, ub.truepath('~/code/lightnet/examples/yolo-voc/'))
+            import test as ln_test
+            import os
+            os.chdir(ub.truepath('~/code/lightnet/examples/yolo-voc/'))
+            ln_dset = ln_test.CustomDataset(TESTFILE, net)
+
+            my_img, my_label = harn.datasets['test'][0]
+            ln_img, ln_label = ln_dset[0]
+
+            ln_outputs2 = net._forward(harn.xpu.move(ln_img[None, :]))
+            my_outputs2 = harn.model(harn.xpu.move(my_img[None, :]))
+
+            my_target = my_label[0]
+
+            net.loss(ln_outputs2, [ln_label])
+
+            net.loss(ln_outputs2, my_target[None, :])  # A MUCH LARGER LOSS !!!
+            harn.criterion(ln_outputs2, my_target[None, :])  # EVEN WORSE LOSS !!!
+
+            # slight differences, not too big a deal
+            diff = np.abs((my_img - ln_img).data.numpy())
+            diff.mean()
+            diff.std()
+
+            nh.util.imshow(ln_img.data.numpy(), colorspace='rgb', fnum=1)
+            nh.util.imshow(my_img.data.numpy(), colorspace='rgb', fnum=2)
+
+
+            ROOT = 'data'
+            ub.import_
+
+    harn.model.eval()
+
+    with torch.no_grad():
+        postprocess = harn.model.module.postprocess
+        # postprocess.conf_thresh = 0.001
+        # postprocess.nms_thresh = 0.5
+
+        batch_confusions = []
+        # batch_labels = []
+        # batch_output = []
+        loader = harn.loaders['test']
+
+        moving_ave = nh.util.util_averages.CumMovingAve()
+
+        prog = ub.ProgIter(iter(loader))
+        for batch in prog:
+            inputs, labels = harn.prepare_batch(batch)
+            inp_size = np.array(inputs.shape[-2:][::-1])
+            outputs = harn.model(inputs)
+
+            target, gt_weights, orig_sizes, indices, bg_weights = labels
+            loss = harn.criterion(outputs, target, seen=1000000000)
+            moving_ave.update({
+                'loss': float(loss.sum()),
+                'cls': harn.criterion.loss_cls,
+                'conf': harn.criterion.loss_conf,
+                'coord': harn.criterion.loss_coord,
+            })
+
+            postout = postprocess(outputs)
+            for y in harn._measure_confusion(postout, labels, inp_size):
+                batch_confusions.append(y)
+
+            # batch_output.append((outputs.cpu().data.numpy().copy(), inp_size))
+            # batch_labels.append([x.cpu().data.numpy().copy() for x in labels])
+
+        average_losses = moving_ave.average()
+        print('average_losses {}'.format(ub.repr2(average_losses)))
+
+    # batch_confusions = []
+    # for (outputs, inp_size), labels in ub.ProgIter(zip(batch_output, batch_labels), total=len(batch_labels)):
+    #     labels = [torch.Tensor(x) for x in labels]
+    #     outputs = torch.Tensor(outputs)
+    #     postout = postprocess(outputs)
+    #     for y in harn._measure_confusion(postout, labels, inp_size):
+    #         batch_confusions.append(y)
+
+    if False:
+        from netharn.util import mplutil
+        mplutil.qtensure()  # xdoc: +SKIP
+        harn.visualize_prediction(batch, outputs, postout, thresh=.1)
+
+    y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
+    # TODO: write out a few visualizations
+    num_classes = len(loader.dataset.label_names)
+    cls_labels = list(range(num_classes))
+
+    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+    aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
+    mean_ap = np.nanmean(aps['ap'])
+    max_ap = np.nanmax(aps['ap'])
+    print(aps)
+    print('mean_ap = {!r}'.format(mean_ap))
+    print('max_ap = {!r}'.format(max_ap))
+
+    aps = nh.metrics.ave_precisions(y[y.score > .01], cls_labels, use_07_metric=True)
+    aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
+    mean_ap = np.nanmean(aps['ap'])
+    max_ap = np.nanmax(aps['ap'])
+    print(aps)
+    print('mean_ap = {!r}'.format(mean_ap))
+    print('max_ap = {!r}'.format(max_ap))
+
+    # import sklearn.metrics
+    # sklearn.metrics.accuracy_score(y.true, y.pred)
+    # sklearn.metrics.precision_score(y.true, y.pred, average='weighted')
 
 
 def setup_harness(bsize=16, workers=0):
