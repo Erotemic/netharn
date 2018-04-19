@@ -713,7 +713,7 @@ def _test_with_lnstyle_data():
             ln_loss_ten2 = net.loss(ln_outputs, ln_targets)
             ln_loss_bram = net.loss(ln_outputs, ln_labels)
 
-            my_loss_ten1 = net.loss(ln_outputs, my_targets, gt_weights=gt_weights)
+            my_loss_ten1 = harn.criterion(ln_outputs, my_targets, gt_weights=gt_weights)
 
             moving_ave.update(ub.odict([
                 ('loss_ten1', float(ln_loss_ten1.sum())),
