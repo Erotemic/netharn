@@ -1,3 +1,6 @@
+"""
+FIXME 0 dimension tensors
+"""
 import torch.utils.data as torch_data
 import torch
 import ubelt as ub
@@ -19,7 +22,7 @@ def list_collate(inbatch):
         >>> for _ in range(bsize):
         >>>     # add an image and some dummy bboxes to the batch
         >>>     img = torch.rand(3, 8, 8)  # dummy 8x8 image
-        >>>     boxes = torch.rand(rng.randint(0, 4), 4)
+        >>>     boxes = torch.FloatTensor()
         >>>     item = (img, [boxes])
         >>>     inbatch.append(item)
         >>> out_batch = list_collate(inbatch)
@@ -35,7 +38,7 @@ def list_collate(inbatch):
         >>> for _ in range(bsize):
         >>>     # add an image and some dummy bboxes to the batch
         >>>     img = torch.rand(3, 8, 8)  # dummy 8x8 image
-        >>>     boxes = torch.empty(0, 4)
+        >>>     boxes = torch.FloatTensor()
         >>>     item = (img, [boxes])
         >>>     inbatch.append(item)
         >>> out_batch = list_collate(inbatch)
@@ -58,8 +61,6 @@ def list_collate(inbatch):
             batch = [list_collate(item) for item in list(map(list, zip(*inbatch)))]
     except Exception as ex:
         print('Failed to collate inbatch={}'.format(inbatch))
-        import utool
-        utool.embed()
         raise
     return batch
     # else:
@@ -114,14 +115,15 @@ def padded_collate(inbatch, fill_value=-1):
         >>> for _ in range(bsize):
         >>>     # add an image and some dummy bboxes to the batch
         >>>     img = torch.rand(3, 8, 8)  # dummy 8x8 image
-        >>>     boxes = torch.empty(0, 4)
+        >>>     #boxes = torch.empty(0, 4)
+        >>>     boxes = torch.FloatTensor()
         >>>     item = (img, [boxes])
         >>>     inbatch.append(item)
         >>> out_batch = padded_collate(inbatch)
         >>> assert len(out_batch) == 2
         >>> assert list(out_batch[0].shape) == [bsize, 3, 8, 8]
         >>> #assert list(out_batch[1][0].shape) == [bsize, 0, 4]
-        >>> assert list(out_batch[1][0].shape) == [0]
+        >>> assert list(out_batch[1][0].shape) in [[0], []]  # torch .3 a .4
 
     Example:
         >>> inbatch = [torch.rand(4, 4), torch.rand(8, 4),
@@ -135,9 +137,11 @@ def padded_collate(inbatch, fill_value=-1):
             num_items = [len(item) for item in inbatch]
             if ub.allsame(num_items):
                 if len(num_items) == 0:
-                    batch = torch.empty(0)
+                    # batch = torch.empty(0)
+                    batch = torch.FloatTensor()
                 elif num_items[0] == 0:
-                    batch = torch.empty(0)
+                    # batch = torch.empty(0)
+                    batch = torch.FloatTensor()
                     # batch = torch.Tensor(inbatch)
                 else:
                     batch = default_collate(inbatch)
@@ -156,8 +160,11 @@ def padded_collate(inbatch, fill_value=-1):
                     n_extra = max_size - len(item)
                     if n_extra > 0:
                         shape = (n_extra,) + tuple(real_tail_shape)
-                        extra = torch.full(shape, fill_value=fill_value,
-                                           dtype=item.dtype)
+                        if torch.__version__.startswith('0.3'):
+                            extra = torch.Tensor(np.full(shape, fill_value=fill_value))
+                        else:
+                            extra = torch.full(shape, fill_value=fill_value,
+                                               dtype=item.dtype)
                         padded_item = torch.cat([item, extra], dim=0)
                         padded_inbatch.append(padded_item)
                     else:
@@ -168,8 +175,6 @@ def padded_collate(inbatch, fill_value=-1):
             batch = [padded_collate(item) for item in list(map(list, zip(*inbatch)))]
     except Exception as ex:
         print('Failed to collate inbatch={}'.format(inbatch))
-        import utool
-        utool.embed()
         raise
     return batch
 

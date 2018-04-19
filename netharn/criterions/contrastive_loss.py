@@ -26,7 +26,8 @@ class ContrastiveLoss(nn.Module):
         python -m clab.criterions ContrastiveLoss --show
 
 
-    Example:
+    DisableExample:
+        >>> # DISABLE_DOCTEST
         >>> from clab.criterions import *
         >>> import utool as ut
         >>> import numpy as np
@@ -52,6 +53,7 @@ class ContrastiveLoss(nn.Module):
         >>> ut.show_if_requested()
 
     Example:
+        >>> # DISABLE_DOCTEST
         >>> import torch
         >>> import netharn as nh
         >>> xpu = nh.XPU(None)

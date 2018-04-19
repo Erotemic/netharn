@@ -1,8 +1,12 @@
+# import torch
+# import numpy as np
 
 
 def torch_nms(bboxes, scores, classes=None, thresh=.5):
     """
     Non maximum suppression implemented with pytorch tensors
+
+    CURRENTLY NOT WORKING
 
     Args:
         bboxes (Tensor): Bounding boxes of one image in the format (x1, y1, x2, y2)
@@ -14,6 +18,7 @@ def torch_nms(bboxes, scores, classes=None, thresh=.5):
         ByteTensor: keep: boolean array indicating which boxes were not pruned.
 
     Example:
+        >>> # DISABLE_DOCTEST
         >>> import torch
         >>> import numpy as np
         >>> bboxes = torch.FloatTensor(np.array([
@@ -25,7 +30,7 @@ def torch_nms(bboxes, scores, classes=None, thresh=.5):
         >>> scores = torch.FloatTensor(np.array([.1, .5, .9, .1]))
         >>> classes = torch.FloatTensor(np.array([0, 0, 0, 0]))
         >>> thresh = .5
-        >>> keep = nms(bboxes, scores, classes, thresh)
+        >>> keep = torch_nms(bboxes, scores, classes, thresh)
         >>> bboxes[keep]
     """
     if bboxes.numel() == 0:
@@ -58,11 +63,11 @@ def torch_nms(bboxes, scores, classes=None, thresh=.5):
     keep.scatter_(0, order, ordered_keep)  # Unsort, so keep is aligned with input boxes
     return keep
 
-    aaa = torch.LongTensor(np.arange(len(boxes))).reshape(-1, 1)
+    # aaa = torch.LongTensor(np.arange(len(boxes))).reshape(-1, 1)
 
-    sorted(aaa[order][keep1[:, None].expand_as(aaa)].cpu().numpy().ravel()) == sorted(aaa[keep].cpu().numpy().ravel())
+    # sorted(aaa[order][keep1[:, None].expand_as(aaa)].cpu().numpy().ravel()) == sorted(aaa[keep].cpu().numpy().ravel())
 
-    bboxes[keep]
+    # bboxes[keep]
     # keep1 = (conflicting.sum(0) == 0)    # Unlike numpy, pytorch cannot perform any() along a certain axis
     # bboxes[order][keep1[:, None].expand_as(bboxes)].view(-1, 4).contiguous()
 
