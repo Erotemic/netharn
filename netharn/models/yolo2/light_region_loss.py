@@ -12,7 +12,7 @@ import math
 import torch
 import torch.nn as nn
 import numpy as np  # NOQA
-import functools
+# import functools
 from torch.autograd import Variable
 from netharn import util
 from netharn.util import profiler
