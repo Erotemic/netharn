@@ -50,10 +50,6 @@ def argsubmaxima(hist, centers=None, maxima_thresh=None, _debug=False):
     Returns:
         tuple: (submaxima_x, submaxima_y)
 
-    CommandLine:
-        python -m vtool.histogram argsubmaxima
-        python -m vtool.histogram argsubmaxima --show
-
     Example:
         >>> maxima_thresh = .8
         >>> hist = np.array([6.73, 8.69, 0.00, 0.00, 34.62, 29.16, 0.00, 0.00, 6.73, 8.69])
@@ -97,12 +93,8 @@ def _hist_argmaxima(hist, centers=None, maxima_thresh=None):
     """
     must take positive only values
 
-    CommandLine:
-        python -m vtool.histogram _hist_argmaxima
-
     Example:
         >>> # ENABLE_DOCTEST
-        >>> from vtool.histogram import *  # NOQA
         >>> maxima_thresh = .8
         >>> hist = np.array([    6.73, 8.69, 0.00, 0.00, 34.62, 29.16, 0.00, 0.00, 6.73, 8.69])
         >>> centers = np.array([-0.39, 0.39, 1.18, 1.96,  2.75,  3.53, 4.32, 5.11, 5.89, 6.68])
@@ -137,12 +129,8 @@ def _interpolate_submaxima(argmaxima, hist_, centers=None):
     FIXME:
         what happens when argmaxima[i] == len(hist_)
 
-    CommandLine:
-        python -m vtool.histogram --test-_interpolate_submaxima --show
-
     Ignore:
         >>> # ENABLE_DOCTEST
-        >>> from vtool.histogram import *  # NOQA
         >>> argmaxima = np.array([1, 4, 7])
         >>> hist_ = np.array([    6.73, 8.69, 0.00, 0.00, 34.62, 29.16, 0.00, 0.00, 6.73, 8.69])
         >>> centers = np.array([-0.39, 0.39, 1.18, 1.96,  2.75,  3.53, 4.32, 5.11, 5.89, 6.68])
