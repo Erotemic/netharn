@@ -509,6 +509,7 @@ class RegionLoss(BaseLossWithCudaState):
                     #    - [ ] Allow for per-image background weight
                     conf_mask[bx, best_n, gj * nW + gi] = 0
                 else:
+                    assert weight == 1, 'can only have weight in {0, 1} for now'
                     coord_mask[bx, best_n, 0, gj * nW + gi] = 1
                     cls_mask[bx, best_n, gj * nW + gi] = 1
                     conf_mask[bx, best_n, gj * nW + gi] = self.object_scale
