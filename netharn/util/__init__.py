@@ -22,6 +22,8 @@ else:
     from netharn.util import util_demodata
     from netharn.util import util_fname
     from netharn.util import util_idstr
+    from netharn.util import util_io
+    from netharn.util import util_iter
     from netharn.util import util_json
     from netharn.util import util_numpy
     from netharn.util import util_random
@@ -35,8 +37,7 @@ else:
                                      imscale, imwrite, load_image_paths,
                                      make_channels_comparable,
                                      overlay_alpha_images, overlay_colorized,
-                                     putMultiLineText, run_length_encoding,
-                                     wide_strides_1d,)
+                                     run_length_encoding, wide_strides_1d,)
     from netharn.util.mplutil import (Color, PlotNums, adjust_subplots,
                                       axes_extent, colorbar, colorbar_image,
                                       copy_figure_to_clipboard,
@@ -63,19 +64,24 @@ else:
                                             absdev,)
     from netharn.util.util_boxes import (Boxes, bbox_ious_c, box_ious, box_ious_py,
                                          box_ious_torch,)
-    from netharn.util.util_cv2 import (draw_boxes_on_image,)
+    from netharn.util.util_cv2 import (draw_boxes_on_image, draw_text_on_image,
+                                       putMultiLineText,)
     from netharn.util.util_demodata import (grab_test_image,)
     from netharn.util.util_fname import (align_paths, check_aligned, dumpsafe,
                                          shortest_unique_prefixes,
                                          shortest_unique_suffixes,)
     from netharn.util.util_idstr import (compact_idstr, make_idstr,
                                          make_short_idstr,)
+    from netharn.util.util_io import (read_arr, read_h5arr, write_arr,
+                                      write_h5arr,)
+    from netharn.util.util_iter import (roundrobin,)
     from netharn.util.util_json import (JSONEncoder, NumpyAwareJSONEncoder,
                                         NumpyEncoder, read_json, walk_json,
                                         write_json,)
     from netharn.util.util_numpy import (apply_grouping, atleast_nd, group_indices,
                                          group_items, isect_flags,
                                          iter_reduce_ufunc,)
-    from netharn.util.util_random import (ensure_rng,)
+    from netharn.util.util_random import (ensure_rng, random_combinations,
+                                          random_product, shuffle,)
     from netharn.util.util_resources import (ensure_ulimit,)
     from netharn.util.util_subextreme import (argsubmax, argsubmaxima,)

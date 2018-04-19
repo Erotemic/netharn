@@ -1,5 +1,5 @@
 # flake8: noqa
-__version__ = '0.0.1.dev0'
+__version__ = '0.0.2.dev0'
 """
 python -c "import ubelt._internal as a; a.autogen_init('netharn', attrs=True)"
 """
@@ -31,7 +31,7 @@ from netharn.hyperparams import (HyperParams,)
 
 
 
-from netharn.monitor import (Monitor, demodata_monitor,)
+from netharn.monitor import (Monitor,)
 
 from netharn.output_shape_for import (OutputShapeFor,
                                       REGISTERED_OUTPUT_SHAPE_TYPES,
