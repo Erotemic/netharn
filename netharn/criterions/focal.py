@@ -35,7 +35,7 @@ def one_hot_embedding(labels, num_classes, cpu=True):
          0  0  0  0  1
          0  0  1  0  0
          0  0  0  1  0
-        [torch.FloatTensor of size (6,5)]
+        [torch.FloatTensor of size ...
     """
     # y = torch.eye(num_classes)  # [D,D]
     # if labels.is_cuda:

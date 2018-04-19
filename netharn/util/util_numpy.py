@@ -179,6 +179,7 @@ def apply_grouping(items, groupxs, axis=0):
         invert_apply_grouping
 
     Example:
+        >>> # xdoctest: +IGNORE_WHITESPACE
         >>> idx2_groupid = np.array([2, 1, 2, 1, 2, 1, 2, 3, 3, 3, 3])
         >>> items        = np.array([1, 8, 5, 5, 8, 6, 7, 5, 3, 0, 9])
         >>> (keys, groupxs) = group_indices(idx2_groupid)
@@ -203,6 +204,7 @@ def group_indices(idx2_groupid, assume_sorted=False):
         tuple (ndarray, list of ndarrays): (keys, groupxs)
 
     Example0:
+        >>> # xdoctest: +IGNORE_WHITESPACE
         >>> idx2_groupid = np.array([2, 1, 2, 1, 2, 1, 2, 3, 3, 3, 3])
         >>> (keys, groupxs) = group_indices(idx2_groupid)
         >>> result = ub.repr2((keys, groupxs), nobr=True, with_dtype=True)
@@ -211,10 +213,10 @@ def group_indices(idx2_groupid, assume_sorted=False):
         [
             np.array([1, 3, 5], dtype=np.int64),
             np.array([0, 2, 4, 6], dtype=np.int64),
-            np.array([ 7,  8,  9, 10], dtype=np.int64),
-        ],
+            np.array([ 7,  8,  9, 10], dtype=np.int64)...
 
     Example1:
+        >>> # xdoctest: +IGNORE_WHITESPACE
         >>> idx2_groupid = np.array([[  24], [ 129], [ 659], [ 659], [ 24],
         ...       [659], [ 659], [ 822], [ 659], [ 659], [24]])
         >>> # 2d arrays must be flattened before coming into this function so
@@ -227,19 +229,18 @@ def group_indices(idx2_groupid, assume_sorted=False):
             np.array([ 0,  4, 10], dtype=np.int64),
             np.array([1], dtype=np.int64),
             np.array([2, 3, 5, 6, 8, 9], dtype=np.int64),
-            np.array([7], dtype=np.int64),
-        ],
+            np.array([7], dtype=np.int64)...
 
     Example2:
+        >>> # xdoctest: +IGNORE_WHITESPACE
         >>> idx2_groupid = np.array([True, True, False, True, False, False, True])
         >>> (keys, groupxs) = group_indices(idx2_groupid)
         >>> result = ub.repr2((keys, groupxs), nobr=True, with_dtype=True)
         >>> print(result)
-        np.array([False,  True], dtype=bool),
+        np.array([False,  True], dtype=np.bool),
         [
             np.array([2, 4, 5], dtype=np.int64),
-            np.array([0, 1, 3, 6], dtype=np.int64),
-        ],
+            np.array([0, 1, 3, 6], dtype=np.int64)...
 
     Timeit:
         import numba

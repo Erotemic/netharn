@@ -276,6 +276,7 @@ def absdev(x, ave=np.mean, central=np.median, axis=None):
         https://en.wikipedia.org/wiki/Average_absolute_deviation
 
     Example:
+        >>> # xdoctest: +IGNORE_WHITESPACE
         >>> x = np.array([[[0, 1], [3, 4]],
         >>>               [[0, 0], [0, 0]]])
         >>> axis = (0, 1)

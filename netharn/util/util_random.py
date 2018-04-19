@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import itertools as it
+import ubelt as ub  # NOQA
 
 _SEED_MAX = (2 ** 32 - 1)
 
@@ -42,9 +43,6 @@ def random_combinations(items, size, num=None, rng=None):
     Yields:
         tuple: combo
 
-    CommandLine:
-        python -m utool.util_iter random_combinations
-
     Example:
         >>> items = list(range(10))
         >>> size = 3
@@ -65,7 +63,7 @@ def random_combinations(items, size, num=None, rng=None):
     """
     import scipy.misc
     import numpy as np
-    rng = ensure_rng(rng, backend='python')
+    rng = ensure_rng(rng, api='python')
     num_ = np.inf if num is None else num
     # Ensure we dont request more than is possible
     n_max = int(scipy.misc.comb(len(items), size))
@@ -126,6 +124,7 @@ def random_product(items, num=None, rng=None):
                 prod = tuple(g[x] for g, x in zip(items, idxs))
                 yield prod
 
+
 def _npstate_to_pystate(npstate):
     """
     Convert state of a NumPy RandomState object to a state
@@ -135,9 +134,6 @@ def _npstate_to_pystate(npstate):
         https://stackoverflow.com/questions/44313620/converting-randomstate
 
     Example:
-        >>> # ENABLE_DOCTEST
-        >>> from utool.util_numpy import *  # NOQA
-        >>> from utool.util_numpy import _npstate_to_pystate
         >>> py_rng = random.Random(0)
         >>> np_rng = np.random.RandomState(seed=0)
         >>> npstate = np_rng.get_state()
@@ -162,9 +158,6 @@ def _pystate_to_npstate(pystate):
         https://stackoverflow.com/questions/44313620/converting-randomstate
 
     Example:
-        >>> # ENABLE_DOCTEST
-        >>> from utool.util_numpy import *  # NOQA
-        >>> from utool.util_numpy import _pystate_to_npstate
         >>> py_rng = random.Random(0)
         >>> np_rng = np.random.RandomState(seed=0)
         >>> pystate = py_rng.getstate()
@@ -198,17 +191,13 @@ def ensure_rng(rng, api='numpy'):
         37
 
     Example:
-        >>> # ENABLE_DOCTEST
-        >>> from utool.util_numpy import *  # NOQA
-        >>> import utool as ut
-        >>> import numpy as np
         >>> num = 4
         >>> print('--- Python as PYTHON ---')
         >>> py_rng = random.Random(0)
         >>> pp_nums = [py_rng.random() for _ in range(num)]
         >>> print(pp_nums)
         >>> print('--- Numpy as PYTHON ---')
-        >>> np_rng = ut.ensure_rng(random.Random(0), api='numpy')
+        >>> np_rng = ensure_rng(random.Random(0), api='numpy')
         >>> np_nums = [np_rng.rand() for _ in range(num)]
         >>> print(np_nums)
         >>> print('--- Numpy as NUMPY---')
@@ -216,7 +205,7 @@ def ensure_rng(rng, api='numpy'):
         >>> nn_nums = [np_rng.rand() for _ in range(num)]
         >>> print(nn_nums)
         >>> print('--- Python as NUMPY---')
-        >>> py_rng = ut.ensure_rng(np.random.RandomState(seed=0), api='python')
+        >>> py_rng = ensure_rng(np.random.RandomState(seed=0), api='python')
         >>> pn_nums = [py_rng.random() for _ in range(num)]
         >>> print(pn_nums)
         >>> assert np_nums == pp_nums

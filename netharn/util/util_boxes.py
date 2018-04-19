@@ -16,6 +16,7 @@ def box_ious(boxes1, boxes2, bias=0, mode=None):
         bias (int): either 0 or 1, does tl=br have area of 0 or 1?
 
     Example:
+        >>> # xdoctest: +IGNORE_WHITESPACE
         >>> boxes1 = Boxes.random(5, scale=10.0, rng=0, format='tlbr').data
         >>> boxes2 = Boxes.random(7, scale=10.0, rng=1, format='tlbr').data
         >>> ious = box_ious(boxes1, boxes2)
@@ -112,12 +113,12 @@ def box_ious_torch(boxes1, boxes2, bias=1):
     x_maxs = torch.min(boxes1[:, 2][:, None], boxes2[:, 2])
     x_mins = torch.max(boxes1[:, 0][:, None], boxes2[:, 0])
 
-    iws = (x_maxs - x_mins + bias).clamp(0, None)
+    iws = (x_maxs - x_mins + bias).clamp(0, float('inf'))
 
     y_maxs = torch.min(boxes1[:, 3][:, None], boxes2[:, 3])
     y_mins = torch.max(boxes1[:, 1][:, None], boxes2[:, 1])
 
-    ihs = (y_maxs - y_mins + bias).clamp(0, None)
+    ihs = (y_maxs - y_mins + bias).clamp(0, float('inf'))
 
     areas_sum = (areas1[:, None] + areas2)
 
@@ -171,6 +172,7 @@ class Boxes(ub.NiceRepr):
     available.
 
     Example:
+        >>> # xdoctest: +IGNORE_WHITESPACE
         >>> Boxes([25, 30, 15, 10], 'xywh')
         <Boxes(xywh, array([25, 30, 15, 10]))>
         >>> Boxes([25, 30, 15, 10], 'xywh').to_xywh()
@@ -184,8 +186,7 @@ class Boxes(ub.NiceRepr):
         >>> Boxes(torch.FloatTensor([[25, 30, 15, 20]]), 'xywh').scale(.1).to_tlbr()
         <Boxes(tlbr,
              2.5000  3.0000  4.0000  5.0000
-            [torch.FloatTensor of size (1,4)]
-            )>
+            [torch.FloatTensor of size ...
 
     Example:
         >>> datas = [
@@ -226,6 +227,7 @@ class Boxes(ub.NiceRepr):
         Makes random boxes
 
         Example:
+            >>> # xdoctest: +IGNORE_WHITESPACE
             >>> Boxes.random(3, rng=0, scale=100)
             <Boxes(xywh,
                 array([[27, 35, 30, 27],
@@ -236,8 +238,7 @@ class Boxes(ub.NiceRepr):
                  27  35  30  27
                  21  32  21  44
                  48  19  39  26
-                [torch.LongTensor of size (3,4)]
-                )>
+                [torch.LongTensor of size ...
         """
         from netharn import util
         rng = util.ensure_rng(rng)
@@ -266,6 +267,7 @@ class Boxes(ub.NiceRepr):
         works with tlbr, cxywh, xywh, xy, or wh formats
 
         Example:
+            >>> # xdoctest: +IGNORE_WHITESPACE
             >>> Boxes(np.array([1, 1, 10, 10])).scale(2).data
             array([ 2.,  2., 20., 20.])
             >>> Boxes(np.array([[1, 1, 10, 10]])).scale((2, .5)).data
@@ -289,6 +291,7 @@ class Boxes(ub.NiceRepr):
     def shift(self, amount):
         """
         Example:
+            >>> # xdoctest: +IGNORE_WHITESPACE
             >>> Boxes([25, 30, 15, 10], 'xywh').shift(10)
             <Boxes(xywh, array([35., 40., 15., 10.]))>
             >>> Boxes([25, 30, 15, 10], 'xywh').shift((10, 0))
@@ -442,6 +445,7 @@ class Boxes(ub.NiceRepr):
         operation is an option.
 
         Example:
+            >>> # xdoctest: +IGNORE_WHITESPACE
             >>> boxes = Boxes(np.array([[-10, -10, 120, 120], [1, -2, 30, 50]]), 'tlbr')
             >>> clipped = boxes.clip(0, 0, 110, 100, inplace=False)
             >>> assert np.any(boxes.data != clipped.data)
