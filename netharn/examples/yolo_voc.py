@@ -450,7 +450,11 @@ class YoloHarn(nh.FitHarn):
 
     @profiler.profile
     def _measure_confusion(harn, postout, labels, inp_size):
-        targets, gt_weights, orig_sizes, indices, bg_weights = labels
+        targets = labels[0]
+        gt_weights = labels[1]
+        orig_sizes = labels[2]
+        indices = labels[3]
+        bg_weights = labels[4]
 
         # def clip_boxes_to_letterbox(boxes, letterbox_tlbr):
         #     if boxes.shape[0] == 0:
@@ -652,6 +656,8 @@ def _test_with_lnstyle_data():
     (already verified to produce the same outputs)
 
     Checks to see if my loss and map calcluations are the same as lightnet
+    CommandLine:
+        python ~/code/netharn/netharn/examples/yolo_voc.py _test_with_lnstyle_data
     """
     harn = setup_harness(bsize=2)
     harn.hyper.xpu = nh.XPU(0)
@@ -683,6 +689,23 @@ def _test_with_lnstyle_data():
     # class_label_map = ub.invert_dict(dict(enumerate(harn.datasets['train'].label_names)))
     class_label_map = harn.datasets['train'].label_names
 
+    def brambox_to_labels(ln_bramboxes, inp_size):
+        max_anno = max(map(len, ln_bramboxes))
+        ln_targets = [
+            ln.data.preprocess.BramboxToTensor.apply(
+                annos, inp_size, max_anno=max_anno, class_label_map=class_label_map)
+            for annos in ln_bramboxes]
+        ln_targets = torch.stack(ln_targets)
+
+        gt_weights = -np.ones((len(ln_bramboxes), max_anno), dtype=np.float32)
+        for i, annos in enumerate(ln_bramboxes):
+            weights = 1.0 - np.array([anno.ignore for anno in annos], dtype=np.float32)
+            gt_weights[i, 0:len(annos)] = weights
+        gt_weights = torch.Tensor(gt_weights)
+
+        ln_labels = ln_targets, gt_weights, orig_sizes, indices, bg_weights
+        return ln_labels
+
     with torch.no_grad():
         postprocess = harn.model.module.postprocess
         # postprocess.conf_thresh = 0.001
@@ -692,33 +715,32 @@ def _test_with_lnstyle_data():
 
         prog = ub.ProgIter(zip(ln_loader, my_loader), desc='')
         for ln_batch, my_batch in prog:
-            ln_inputs, ln_labels = ln_batch
-            my_inputs, my_labels = my_batch
-
+            ln_inputs, ln_bramboxes = ln_batch
             inp_size = tuple(ln_inputs.shape[-2:][::-1])
-            max_anno = max(map(len, ln_labels))
-            ln_targets = [
-                ln.data.preprocess.BramboxToTensor.apply(
-                    annos, inp_size, max_anno=max_anno, class_label_map=class_label_map)
-                for annos in ln_labels]
-            ln_targets = torch.stack(ln_targets)
-            my_targets = my_labels[0]
-            gt_weights = my_labels[1]
+            # my_inputs, my_labels = my_batch
+
+            ln_labels = brambox_to_labels(ln_bramboxes, inp_size)
+            # my_targets = my_labels[0]
+            # gt_weights = my_labels[1]
 
             ln_inputs = harn.xpu.variable(ln_inputs)
-            ln_targets = harn.xpu.variable(ln_targets)
+            ln_targets = harn.xpu.variable(ln_labels[0])
+            gt_weights = harn.xpu.variable(ln_labels[1])
 
+            net.loss.seen = 1000000
             ln_outputs = harn.model(ln_inputs)
-            ln_loss_ten1 = harn.criterion(ln_outputs, ln_targets, seen=1000000000)
-            ln_loss_ten2 = net.loss(ln_outputs, ln_targets)
-            ln_loss_bram = net.loss(ln_outputs, ln_labels)
+            # ln_loss_ten1 = harn.criterion(ln_outputs, ln_targets, seen=net.loss.seen)
+            # ln_loss_ten2 = net.loss(ln_outputs, ln_targets)
+            ln_loss_bram = net.loss(ln_outputs, ln_bramboxes)
 
-            my_loss_ten1 = harn.criterion(ln_outputs, my_targets, gt_weights=gt_weights)
+            # my_loss_weighted = harn.criterion(ln_outputs, my_targets, gt_weights=gt_weights, seen=seen)
+            # my_loss_unweighted = harn.criterion(ln_outputs, my_targets, seen=seen)
 
             moving_ave.update(ub.odict([
-                ('loss_ten1', float(ln_loss_ten1.sum())),
-                ('loss_ten2', float(ln_loss_ten2.sum())),
-                ('loss_mine', float(my_loss_ten1.sum())),
+                # ('loss_ten1', float(ln_loss_ten1.sum())),
+                # ('loss_ten2', float(ln_loss_ten2.sum())),
+                # ('my_weighted', float(my_loss_weighted.sum())),
+                # ('my_unweighted', float(my_loss_unweighted.sum())),
                 ('loss_bram', float(ln_loss_bram.sum())),
                 # ('coord', harn.criterion.loss_coord),
                 # ('conf', harn.criterion.loss_conf),
@@ -731,12 +753,26 @@ def _test_with_lnstyle_data():
 
             # TODO: check that my postprocess of ln outputs gives good map
             ln_postout = postprocess(ln_outputs)
-            targets, gt_weights, orig_sizes, indices, bg_weights = my_labels
-            for y in harn._measure_confusion(ln_postout, my_labels, inp_size):
-                batch_confusions.append(y)
+            bg_weights = torch.FloatTensor(np.ones(len(ln_targets)))
+            indices = None
+            orig_sizes = None
 
-            # batch_output.append((outputs.cpu().data.numpy().copy(), inp_size))
-            # batch_labels.append([x.cpu().data.numpy().copy() for x in labels])
+            ln_labels = ln_targets, gt_weights, orig_sizes, indices, bg_weights
+            batch_confusions.extend(list(harn._measure_confusion(ln_postout, ln_labels, inp_size)))
+
+    y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
+    # TODO: write out a few visualizations
+    loader = harn.loaders['test']
+    num_classes = len(loader.dataset.label_names)
+    cls_labels = list(range(num_classes))
+
+    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+    aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
+    mean_ap = np.nanmean(aps['ap'])
+    max_ap = np.nanmax(aps['ap'])
+    print(aps)
+    print('mean_ap = {!r}'.format(mean_ap))
+    print('max_ap = {!r}'.format(max_ap))
 
 
 def _run_quick_test():
@@ -771,7 +807,8 @@ def _run_quick_test():
                 {loss_bram: 3.17, loss_ten1: 4.91, loss_ten2: 4.91}
 
             OH!, Is is just that BramBox has an ignore function?
-                - [ ] Add ignore / weight to tensor version to see if its the same
+                - [X] Add ignore / weight to tensor version to see if its the same
+                YUP! {loss_bram: 3.17, loss_ten1: 4.91, loss_ten2: 4.91, my_unweighted: 4.92, my_weighted: 3.16}
 
         TO CHECK:
             - [ ] why is the loss different?
