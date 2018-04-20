@@ -2350,7 +2350,7 @@ def make_heatmask(probs, cmap='plasma', with_alpha=True):
     Colorizes a single-channel intensity mask (with an alpha channel)
     """
     import matplotlib as mpl
-    from clab.util import imutil
+    from netharn.util import imutil
     assert len(probs.shape) == 2
     cmap_ = mpl.cm.get_cmap(cmap)
     probs = imutil.ensure_float01(probs)
@@ -2379,14 +2379,12 @@ def colorbar_image(domain, cmap='plasma', dpi=96, shape=(200, 20), transparent=F
         import plottool as pt
         pt.qtensure()
 
-        from clab import util
         import matplotlib as mpl
         mpl.style.use('ggplot')
         util.imwrite('foo.png', util.colorbar_image(np.linspace(0, 1, 100), dpi=200, shape=(1000, 40), transparent=1))
         ub.startfile('foo.png')
     """
     import matplotlib as mpl
-    from clab.util import mplutil
     mpl.use('agg', force=False, warn=False)
     from matplotlib import pyplot as plt
 
@@ -2403,13 +2401,11 @@ def colorbar_image(domain, cmap='plasma', dpi=96, shape=(200, 20), transparent=F
 
     plt.colorbar(sm, cax=ax)
 
-    cb_img = mplutil.render_figure_to_image(fig, dpi=dpi, transparent=transparent)
+    cb_img = render_figure_to_image(fig, dpi=dpi, transparent=transparent)
 
     plt.close(fig)
 
     return cb_img
-    # from clab import util
-    # util.imwrite('foo.png', cb_img)
 
 
 class Color(ub.NiceRepr):
