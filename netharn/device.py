@@ -347,7 +347,8 @@ class XPU(ub.NiceRepr):
             cukw['non_blocking'] = kw.pop('non_blocking')
         if torch.__version__.startswith('0.3'):
             # Unwrap the data and make a new variable
-            item = item.data
+            if isinstance(item, torch.autograd.Variable):
+                item = item.data
         item = xpu.move(item, **cukw)
         item = torch.autograd.Variable(item, **kw)
         return item

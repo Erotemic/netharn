@@ -455,7 +455,7 @@ def setup_harness(**kwargs):
     dim = int(kwargs.get('dim', 416))
     xpu = kwargs.get('xpu', 'cpu')
     workdir = kwargs.get('workdir', None)
-    dbname = kwargs.get('db', kwargs.get('dbname', 'PZ_MTEST'))
+    dbname = kwargs.get('dbname', 'PZ_MTEST')
 
     datasets = randomized_ibeis_dset(dbname, dim=dim)
     if workdir is None:
@@ -613,16 +613,16 @@ def main():
 
         # Test Runs:
             # use a very small input dimension to test things out
-            python examples/siam_ibeis.py --db PZ_MTEST --workers=0 --dim=32 --xpu=cpu
+            python examples/siam_ibeis.py --dbname PZ_MTEST --workers=0 --dim=32 --xpu=cpu
 
             # test that GPU works
-            python examples/siam_ibeis.py --db PZ_MTEST --workers=0 --dim=32 --xpu=gpu0
+            python examples/siam_ibeis.py --dbname PZ_MTEST --workers=0 --dim=32 --xpu=gpu0
 
             # test that running at a large size works
-            python examples/siam_ibeis.py --db PZ_MTEST --workers=2 --dim=512 --xpu=gpu0
+            python examples/siam_ibeis.py --dbname PZ_MTEST --workers=2 --dim=512 --xpu=gpu0
 
         # Real Run:
-        python examples/siam_ibeis.py --db GZ_Master1 --workers=2 --dim=512 --xpu=gpu0
+        python examples/siam_ibeis.py --dbname GZ_Master1 --workers=2 --dim=512 --xpu=gpu0
 
     Notes:
         # Some database names
