@@ -5,7 +5,7 @@ python -m netharn
 # flake8: noqa
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-__DYNAMIC__ = True
+__DYNAMIC__ = False
 if __DYNAMIC__:
     from ubelt._internal import dynamic_import
     exec(dynamic_import(__name__))
