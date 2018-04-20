@@ -2118,7 +2118,7 @@ class PlotNums(object):
         return total_plots
 
     @classmethod
-    def _get_num_rc(cls, nSubplots=None, nRows=None, nCols=None):
+    def _get_num_rc(PlotNums, nSubplots=None, nRows=None, nCols=None):
         r"""
         Gets a constrained row column plot grid
 
@@ -2561,7 +2561,7 @@ class Color(ub.NiceRepr):
         return names
 
     @classmethod
-    def distinct(cls, num, space='bgr'):
+    def distinct(Color, num, space='rgb'):
         """
         Make multiple distinct colors
         """
@@ -2571,13 +2571,13 @@ class Color(ub.NiceRepr):
             'gist_rainbow', _cm.datad['gist_rainbow'],
             mpl.rcParams['image.lut'])
         distinct_colors = [
-            np.array(cm(i / num)).tolist()[0:3][::-1]
+            np.array(cm(i / num)).tolist()[0:3]
             for i in range(num)
         ]
-        if space == 'bgr':
-            return [Color(c, 'bgr').as01(space=space) for c in distinct_colors]
-        else:
+        if space == 'rgb':
             return distinct_colors
+        else:
+            return [Color(c, space='rgb').as01(space=space) for c in distinct_colors]
 
 if __name__ == '__main__':
     r"""
