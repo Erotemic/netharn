@@ -453,9 +453,9 @@ def setup_harness(**kwargs):
     decay = float(kwargs.get('decay', 0.0005))
     lr = float(kwargs.get('lr', 0.001))
     dim = int(kwargs.get('dim', 416))
-    dbname = kwargs.get('db', 'PZ_MTEST')
     xpu = kwargs.get('xpu', 'cpu')
     workdir = kwargs.get('workdir', None)
+    dbname = kwargs.get('db', kwargs.get('dbname', 'PZ_MTEST'))
 
     datasets = randomized_ibeis_dset(dbname, dim=dim)
     if workdir is None:
