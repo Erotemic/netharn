@@ -659,6 +659,44 @@ def _test_with_lnstyle_data():
     CommandLine:
         python ~/code/netharn/netharn/examples/yolo_voc.py _test_with_lnstyle_data
     """
+    """
+    Using LighNet Trained Weights:
+
+        LightNet Results:
+            TEST 30000 mAP:74.18% Loss:3.16839 (Coord:0.38 Conf:1.61 Cls:1.17)
+
+        My Results:
+            # Worse losses (due to different image loading)
+            loss: 5.00 {coord: 0.69, conf: 2.05, cls: 2.26}
+            mAP = 0.6227
+            The MAP is quite a bit worse... Why is that?
+
+    USING THE SAME WEIGHTS! I must be doing something wrong.
+
+        Results using the same Data Loader:
+            {cls: 2.22, conf: 2.05, coord: 0.65, loss: 4.91}
+
+            # Checking with extra info
+            {loss_bram: 3.17, loss_ten1: 4.91, loss_ten2: 4.91}
+
+        OH!, Is is just that BramBox has an ignore function?
+            - [X] Add ignore / weight to tensor version to see if its the same
+            YUP! {loss_bram: 3.17, loss_ten1: 4.91, loss_ten2: 4.91, my_unweighted: 4.92, my_weighted: 3.16}
+
+    TO CHECK:
+        - [ ] why is the loss different?
+            - [X] network input size is 416 in both
+            - [x] networks output the same data given the same input
+            - [x] loss outputs the same data given the same input (they do if seen is the same)
+
+            - [ ] is the data read and formated properly / letterbox done correctly?
+            - [ ] does the brambox version of loss work differently?
+            - [ ] check that we each format the first item in the test set the same
+
+        - [ ] why is the mAP different?
+            - [ ] does brambox compute AP differently?
+
+    """
     harn = setup_harness(bsize=2)
     harn.hyper.xpu = nh.XPU(0)
     harn.initialize()
@@ -786,44 +824,6 @@ def _run_quick_test():
         state_dict = harn.xpu.load(weights_fpath)['weights']
         harn.model.module.load_state_dict(state_dict)
     else:
-        """
-        Using LighNet Trained Weights:
-
-            LightNet Results:
-                TEST 30000 mAP:74.18% Loss:3.16839 (Coord:0.38 Conf:1.61 Cls:1.17)
-
-            My Results:
-                # Worse losses (due to different image loading)
-                loss: 5.00 {coord: 0.69, conf: 2.05, cls: 2.26}
-                mAP = 0.6227
-                The MAP is quite a bit worse... Why is that?
-
-        USING THE SAME WEIGHTS! I must be doing something wrong.
-
-            Results using the same Data Loader:
-                {cls: 2.22, conf: 2.05, coord: 0.65, loss: 4.91}
-
-                # Checking with extra info
-                {loss_bram: 3.17, loss_ten1: 4.91, loss_ten2: 4.91}
-
-            OH!, Is is just that BramBox has an ignore function?
-                - [X] Add ignore / weight to tensor version to see if its the same
-                YUP! {loss_bram: 3.17, loss_ten1: 4.91, loss_ten2: 4.91, my_unweighted: 4.92, my_weighted: 3.16}
-
-        TO CHECK:
-            - [ ] why is the loss different?
-                - [X] network input size is 416 in both
-                - [x] networks output the same data given the same input
-                - [x] loss outputs the same data given the same input (they do if seen is the same)
-
-                - [ ] is the data read and formated properly / letterbox done correctly?
-                - [ ] does the brambox version of loss work differently?
-                - [ ] check that we each format the first item in the test set the same
-
-            - [ ] why is the mAP different?
-                - [ ] does brambox compute AP differently?
-
-        """
         weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
         state_dict = harn.xpu.load(weights_fpath)['weights']
         harn.model.module.load_state_dict(state_dict)
@@ -844,7 +844,7 @@ def _run_quick_test():
             outputs = harn.model(inputs)
 
             target, gt_weights, orig_sizes, indices, bg_weights = labels
-            loss = harn.criterion(outputs, target, seen=1000000000)
+            loss = harn.criterion(outputs, target, gt_weights=gt_weights, seen=1000000000)
             moving_ave.update(ub.odict([
                 ('loss', float(loss.sum())),
                 ('coord', harn.criterion.loss_coord),
