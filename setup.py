@@ -209,78 +209,77 @@ def clean():
         ub.delete(dpath, verbose=1)
 
 
-gpu_setup.locate_cuda()
-
-# Obtain the numpy include directory.  This logic works across numpy versions.
 try:
-    numpy_include = np.get_include()
-except AttributeError:
-    numpy_include = np.get_numpy_include()
+    gpu_setup.locate_cuda()
+    DO_COMPILE = True
+except EnvironmentError:
+    print('Cant locate cuda. Skipping GPU build')
+    # probably dont need to skip EVERYTHING
+    DO_COMPILE = False
 
 
-# run the customize_compiler
-class custom_build_ext(build_ext):
-    def build_extensions(self):
-        gpu_setup.customize_compiler_for_nvcc(self.compiler)
-        build_ext.build_extensions(self)
-
-
-# --------------------------------------------------------
-# Some code was derived from Fast R-CNN
-# Copyright (c) 2015 Microsoft
-# Licensed under The MIT License [see LICENSE for details]
-# Written by Ross Girshick
-# --------------------------------------------------------
 ext_modules = []
+if DO_COMPILE:
+    # Obtain the numpy include directory.  This logic works across numpy versions.
+    try:
+        numpy_include = np.get_include()
+    except AttributeError:
+        numpy_include = np.get_numpy_include()
+
+    # --------------------------------------------------------
+    # Some code was derived from Fast R-CNN
+    # Copyright (c) 2015 Microsoft
+    # Licensed under The MIT License [see LICENSE for details]
+    # Written by Ross Girshick
+    # --------------------------------------------------------
+
+    util_m = 'netharn.util.'
+    util_p = util_m.replace('.', os.path.sep)
+
+    ext_modules += [
+        Extension(
+            util_m + "cython_boxes",
+            [join(util_p, "cython_boxes.pyx")],
+            extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
+            include_dirs=[numpy_include]
+        ),
+        # Extension(
+        #     util_m + "cython_yolo",
+        #     [join(util_p, "cython_yolo.pyx")],
+        #     extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
+        #     include_dirs=[numpy_include]
+        # ),
+        Extension(
+            util_m + "nms.cpu_nms",
+            [join(util_p, "nms/cpu_nms.pyx")],
+            extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
+            include_dirs=[numpy_include]
+        ),
+    ]
 
 
-util_m = 'netharn.util.'
-util_p = util_m.replace('.', os.path.sep)
-
-ext_modules += [
-    Extension(
-        util_m + "cython_boxes",
-        [join(util_p, "cython_boxes.pyx")],
-        extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
-        include_dirs=[numpy_include]
-    ),
-    # Extension(
-    #     util_m + "cython_yolo",
-    #     [join(util_p, "cython_yolo.pyx")],
-    #     extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
-    #     include_dirs=[numpy_include]
-    # ),
-    Extension(
-        util_m + "nms.cpu_nms",
-        [join(util_p, "nms/cpu_nms.pyx")],
-        extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
-        include_dirs=[numpy_include]
-    ),
-]
-
-
-ext_modules += [
-    Extension(util_m + 'nms.gpu_nms',
-              [join(util_p, 'nms/nms_kernel.cu'),
-               join(util_p, 'nms/gpu_nms.pyx')],
-              library_dirs=[gpu_setup.CUDACONFIG['lib64']],
-              libraries=['cudart'],
-              language='c++',
-              runtime_library_dirs=[gpu_setup.CUDACONFIG['lib64']],
-              # this syntax is specific to this build system
-              # we're only going to use certain compiler args with
-              # nvcc and not with gcc
-              # the implementation of this trick is in
-              # customize_compiler() below
-              extra_compile_args={'gcc': ["-Wno-unused-function"],
-                                  'nvcc': ['-arch=sm_35',
-                                           '--ptxas-options=-v',
-                                           '-c',
-                                           '--compiler-options',
-                                           "'-fPIC'"]},
-              include_dirs=[numpy_include, gpu_setup.CUDACONFIG['include']]
-              ),
-]
+    ext_modules += [
+        Extension(util_m + 'nms.gpu_nms',
+                  [join(util_p, 'nms/nms_kernel.cu'),
+                   join(util_p, 'nms/gpu_nms.pyx')],
+                  library_dirs=[gpu_setup.CUDACONFIG['lib64']],
+                  libraries=['cudart'],
+                  language='c++',
+                  runtime_library_dirs=[gpu_setup.CUDACONFIG['lib64']],
+                  # this syntax is specific to this build system
+                  # we're only going to use certain compiler args with
+                  # nvcc and not with gcc
+                  # the implementation of this trick is in
+                  # customize_compiler() below
+                  extra_compile_args={'gcc': ["-Wno-unused-function"],
+                                      'nvcc': ['-arch=sm_35',
+                                               '--ptxas-options=-v',
+                                               '-c',
+                                               '--compiler-options',
+                                               "'-fPIC'"]},
+                  include_dirs=[numpy_include, gpu_setup.CUDACONFIG['include']]
+                  ),
+    ]
 
 # layers_m = 'netharn.layers.'
 # layers_p = layers_m.replace('.', os.path.sep)
@@ -331,6 +330,19 @@ ext_modules += [
 
 # torch_ffi_ext_modules = [reorg_ext]
 
+if DO_COMPILE:
+    # run the customize_compiler
+    class custom_build_ext(build_ext):
+        def build_extensions(self):
+            gpu_setup.customize_compiler_for_nvcc(self.compiler)
+            build_ext.build_extensions(self)
+    compile_setup_kw = dict(
+        cmdclass={'build_ext': custom_build_ext},
+        ext_modules=ext_modules,
+    )
+else:
+    compile_setup_kw = {}
+
 
 if __name__ == '__main__':
 
@@ -366,8 +378,6 @@ if __name__ == '__main__':
         packages=find_packages(),
 
         # inject our custom nvcc trigger
-        cmdclass={'build_ext': custom_build_ext},
-        ext_modules=ext_modules,
 
         classifiers=[
             # List of classifiers available at:
@@ -382,4 +392,5 @@ if __name__ == '__main__':
             # Supported Python versions
             'Programming Language :: Python :: 3.6',
         ],
+        **compile_setup_kw,
     )
