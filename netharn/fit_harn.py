@@ -762,6 +762,7 @@ class CoreMixin:
                                leave=True, dynamic_ncols=True)
         harn._update_prog_postfix(prog)
 
+        prog.begin()
         with util.grad_context(learn):
             batch_iter = iter(loader)
             for bx in range(len(loader)):
