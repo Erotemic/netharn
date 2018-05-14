@@ -332,6 +332,13 @@ class Boxes(ub.NiceRepr):
         d = self.data[..., 3:4]
         return [a, b, c, d]
 
+    @classmethod
+    def _cat(cls, datas):
+        if torch.is_tensor(datas[0]):
+            return torch.cat(datas, dim=-1)
+        else:
+            return np.concatenate(datas, axis=-1)
+
     def toformat(self, format, copy=True):
         if format == 'xywh':
             return self.to_xywh(copy=copy)
@@ -339,15 +346,20 @@ class Boxes(ub.NiceRepr):
             return self.to_tlbr(copy=copy)
         elif format == 'cxywh':
             return self.to_cxywh(copy=copy)
+        elif format == 'extent':
+            return self.to_extent(copy=copy)
         else:
-            raise KeyError(self.format)
+            raise KeyError('Cannot convert {} to {}'.format(self.format, format))
 
-    @classmethod
-    def _cat(cls, datas):
-        if torch.is_tensor(datas[0]):
-            return torch.cat(datas, dim=-1)
+    def to_extent(self, copy=True):
+        if self.format == 'extent':
+            return self.copy() if copy else self
         else:
-            return np.concatenate(datas, axis=-1)
+            # Only difference between tlbr and extent is the column order
+            # extent is x1, x2, y1, y2
+            tlbr = self.to_tlbr().data
+            extent = tlbr[..., [0, 2, 1, 3]]
+        return Boxes(extent, 'extent')
 
     def to_xywh(self, copy=True):
         if self.format == 'xywh':
