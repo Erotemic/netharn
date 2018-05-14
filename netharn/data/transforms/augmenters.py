@@ -7,7 +7,7 @@ from netharn import util
 import imgaug
 
 
-def demodata_hsv_image():
+def demodata_hsv_image(w=200, h=200):
     """
     Example:
         >>> rgb255 = demodata_hsv_image()
@@ -18,7 +18,6 @@ def demodata_hsv_image():
         >>> mplutil.show_if_requested()
     """
 
-    w, h = 200, 200
     hsv = np.zeros((h, w, 3), dtype=np.float32)
 
     hue = np.linspace(0, 360, num=w)
@@ -218,9 +217,10 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
 
     def forward(self, img, random_state=None):
         orig_size = np.array(img.shape[0:2][::-1])
+        assert self.mode == 'letterbox', 'thats all folks'
         shift, scale, embed_size = self._letterbox_transform(orig_size,
                                                              self.target_size)
-        new_img = self._apply_img_letterbox(img, embed_size, shift,
+        new_img = self._img_letterbox_apply(img, embed_size, shift,
                                             self.target_size)
         return new_img
 
@@ -256,7 +256,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             if prev_size != orig_size:
                 # Cache previously computed values
                 shift, scale, embed_size = self._letterbox_transform(
-                    np.array(orig_size), target_size)
+                    orig_size, target_size)
                 prev_size = orig_size
 
             xy = keypoints_on_image.get_coords_array()
@@ -267,14 +267,85 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             result.append(new_keypoint)
         return result
 
+    def _img_letterbox_invert(self, img, orig_size, target_size):
+        """
+        Args:
+            img : the image to scale back up
+            orig_size : original wh of the image
+            target_size : network input wh
+
+        Example:
+            >>> orig_img = demodata_hsv_image(w=100, h=200)
+            >>> orig_size = np.array(orig_img.shape[0:2][::-1])
+            >>> target_size = (416, 416)
+            >>> self = Resize(target_size)
+            >>> img = self.forward(orig_img)
+            >>> inverted_img = self._img_letterbox_invert(img, orig_size, target_size)
+            >>> assert inverted_img.shape == orig_img.shape
+            >>> # xdoc: +REQUIRES(--show)
+            >>> util.imshow(orig_img, fnum=1, pnum=(1, 3, 1))
+            >>> util.imshow(img, fnum=1, pnum=(1, 3, 2))
+            >>> util.imshow(inverted_img, fnum=1, pnum=(1, 3, 3))
+        """
+        shift, scale, embed_size = self._letterbox_transform(orig_size, target_size)
+        top, bot, left, right = self._padding(embed_size, shift, target_size)
+
+        # Undo padding
+        h, w = img.shape[0:2]
+        unpadded_img = img[top:h - bot, left:w - right]
+
+        sf = orig_size / embed_size
+        dsize = tuple(orig_size)
+        # Choose INTER_AREA if we are shrinking the image
+        interpolation = cv2.INTER_AREA if sf.sum() < 2 else cv2.INTER_CUBIC
+        inverted_img = cv2.resize(unpadded_img, dsize, interpolation=interpolation)
+        return inverted_img
+
+    def _boxes_letterbox_apply(self, boxes, orig_size, target_size):
+        """
+        Apply the letterbox transform to these bounding boxes
+
+        """
+        shift, scale, embed_size = self._letterbox_transform(orig_size, target_size)
+        new_boxes = boxes.scale(scale).shift(shift)
+        return new_boxes
+
+    def _boxes_letterbox_invert(self, boxes, orig_size, target_size):
+        """
+        Undo the letterbox transform for these bounding boxes
+
+        Args:
+            boxes (util.Boxes) : boxes to rework
+            orig_size : original wh of the image
+            target_size : network input wh
+
+        Example:
+            >>> target_size = (416, 416)
+            >>> orig_size = (1000, 400)
+            >>> cxywh_norm = util.Boxes(np.array([[.5, .5, .2, .2]]), 'cxywh')
+            >>> self = Resize(target_size)
+            >>> cxywh = self._boxes_letterbox_invert(cxywh_norm, orig_size, target_size)
+            >>> cxywh_norm2 = self._boxes_letterbox_apply(cxywh, orig_size, target_size)
+            >>> assert np.allclose(cxywh_norm2.data, cxywh_norm.data)
+        """
+        shift, scale, embed_size = self._letterbox_transform(orig_size, target_size)
+        new_boxes = boxes.shift(-shift).scale(1.0 / scale)
+        return new_boxes
+
     def _letterbox_transform(self, orig_size, target_size):
         """
         aspect ratio preserving scaling + extra padding to equal target size
 
         scale should be applied before the shift.
+
+        Args:
+            inp_size : network input wh
+            orig_size : original wh of the image
         """
         # determine if width or the height should be used as the scale factor.
-        fw, fh = np.array(orig_size) / np.array(target_size)
+        orig_size = np.array(orig_size)
+        target_size = np.array(target_size)
+        fw, fh = orig_size / target_size
         sf = 1 / fw if fw >= fh else 1 / fh
 
         # Whats the closest integer size we can resize to?
@@ -285,12 +356,17 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         scale = embed_size / orig_size
         return shift, scale, embed_size
 
-    def _apply_img_letterbox(self, img, embed_size, shift, target_size):
+    @staticmethod
+    def _padding(embed_size, shift, target_size):
         pad_lefttop = shift
         pad_rightbot = target_size - (embed_size + shift)
 
         left, top = pad_lefttop
         right, bot = pad_rightbot
+        return top, bot, left, right
+
+    def _img_letterbox_apply(self, img, embed_size, shift, target_size):
+        top, bot, left, right = self._padding(embed_size, shift, target_size)
 
         orig_size = np.array(img.shape[0:2][::-1])
         channels = util.get_num_channels(img)
