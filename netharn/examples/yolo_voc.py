@@ -392,8 +392,9 @@ class YoloHarn(nh.FitHarn):
         if harn.current_tag != 'train':
             # Dont worry about computing mAP on the training set for now
             inputs, labels = batch
-            postout = harn.model.module.postprocess(outputs)
             inp_size = np.array(inputs.shape[-2:][::-1])
+
+            postout = harn.model.module.postprocess(outputs)
 
             for y in harn._measure_confusion(postout, labels, inp_size):
                 harn.batch_confusions.append(y)
@@ -406,6 +407,77 @@ class YoloHarn(nh.FitHarn):
             if not np.isfinite(v):
                 raise ValueError('{}={} is not finite'.format(k, v))
         return metrics_dict
+
+    def _postout_to_coco(harn, postout, labels, inp_size):
+        """
+        -[ ] TODO: dump predictions for the test set to disk and score using
+             someone elses code.
+        """
+        targets = labels[0]
+        gt_weights = labels[1]
+        orig_sizes = labels[2]
+        indices = labels[3]
+        # bg_weights = labels[4]
+
+        def asnumpy(tensor):
+            return tensor.data.cpu().numpy()
+
+        def undo_letterbox(cxywh):
+            boxes = util.Boxes(cxywh, 'cxywh')
+            letterbox = harn.datasets['train'].letterbox
+            return letterbox._boxes_letterbox_invert(boxes, orig_size, inp_size)
+
+        predictions = []
+        truth = []
+
+        bsize = len(labels[0])
+        for bx in range(bsize):
+            postitem = asnumpy(postout[bx])
+            target = asnumpy(targets[bx]).reshape(-1, 5)
+            true_cxywh   = target[:, 1:5]
+            true_cxs     = target[:, 0]
+            true_weight  = asnumpy(gt_weights[bx])
+
+            # Remove padded truth
+            flags = true_cxs != -1
+            true_cxywh  = true_cxywh[flags]
+            true_cxs    = true_cxs[flags]
+            true_weight = true_weight[flags]
+
+            orig_size = asnumpy(orig_sizes[bx])
+            gx        = int(asnumpy(indices[bx]))
+
+            # how much do we care about the background in this image?
+            # bg_weight = float(asnumpy(bg_weights[bx]))
+
+            # Unpack postprocessed predictions
+            sboxes = postitem.reshape(-1, 6)
+            pred_cxywh = sboxes[:, 0:4]
+            pred_scores = sboxes[:, 4]
+            pred_cxs = sboxes[:, 5].astype(np.int)
+
+            true_xywh = undo_letterbox(true_cxywh).toformat('xywh').data
+            pred_xywh = undo_letterbox(pred_cxywh).toformat('xywh').data
+
+            for xywh, cx, score in zip(pred_xywh, pred_cxs, pred_scores):
+                pred = {
+                    'image_id': gx,
+                    'category_id': cx,
+                    'bbox': list(xywh),
+                    'score': score,
+                }
+                predictions.append(pred)
+
+            for xywh, cx, weight in zip(true_xywh, true_cxs, gt_weights):
+                true = {
+                    'image_id': gx,
+                    'category_id': cx,
+                    'bbox': list(xywh),
+                    'weight': weight,
+                }
+                truth.append(true)
+
+        return predictions, truth
 
     @profiler.profile
     def on_epoch(harn):
@@ -449,11 +521,11 @@ class YoloHarn(nh.FitHarn):
     # Non-standard problem-specific custom methods
 
     @profiler.profile
-    def _measure_confusion(harn, postout, labels, inp_size):
+    def _measure_confusion(harn, postout, labels, inp_size, **kw):
         targets = labels[0]
         gt_weights = labels[1]
-        orig_sizes = labels[2]
-        indices = labels[3]
+        # orig_sizes = labels[2]
+        # indices = labels[3]
         bg_weights = labels[4]
 
         # def clip_boxes_to_letterbox(boxes, letterbox_tlbr):
@@ -506,27 +578,13 @@ class YoloHarn(nh.FitHarn):
             true_tlbr = util.Boxes(true_cxywh, 'cxywh').to_tlbr()
             pred_tlbr = util.Boxes(pred_cxywh, 'cxywh').to_tlbr()
 
+            true_tlbr = true_tlbr.scale(inp_size)
+            pred_tlbr = pred_tlbr.scale(inp_size)
+
             # TODO: can we invert the letterbox transform here and clip for
             # some extra mAP?
             true_boxes = true_tlbr.data
             pred_boxes = pred_tlbr.data
-
-            # if False:
-            #     # new letterbox transform makes this tricker, simply try and
-            #     # compare in 0-1 space for now.
-
-            #     # use max because of letterbox transform
-            #     lettered_orig_size = orig_size.max()
-            #     true_boxes = true_tlbr.scale(lettered_orig_size).data
-            #     pred_boxes = pred_tlbr.scale(lettered_orig_size).data
-
-            #     # Clip predicted boxes to the letterbox
-            #     shift, embed_size = letterbox_transform(orig_size, inp_size)
-            #     orig_lefttop = (shift / inp_size) * orig_size.max()
-            #     orig_rightbot = lettered_orig_size - orig_lefttop
-            #     letterbox_tlbr = list(orig_lefttop) + list(orig_rightbot)
-
-            #     pred_boxes = clip_boxes_to_letterbox(pred_boxes, letterbox_tlbr)
 
             y = nh.metrics.detection_confusions(
                 true_boxes=true_boxes,
@@ -537,7 +595,8 @@ class YoloHarn(nh.FitHarn):
                 pred_cxs=pred_cxs,
                 bg_weight=bg_weight,
                 bg_cls=-1,
-                ovthresh=harn.hyper.other['ovthresh']
+                ovthresh=harn.hyper.other['ovthresh'],
+                **kw
             )
             # y['gx'] = gx
             yield y
@@ -553,23 +612,24 @@ class YoloHarn(nh.FitHarn):
         chw01 = inputs[idx]
         target = targets[idx]
         postitem = postout[idx]
+        orig_size = orig_sizes[idx].cpu().numpy()
         # ---
         hwc01 = chw01.cpu().numpy().transpose(1, 2, 0)
         # TRUE
         true_cxs = target[:, 0].long()
-        true_boxes = target[:, 1:5]
+        true_cxywh = target[:, 1:5]
         flags = true_cxs != -1
-        true_boxes = true_boxes[flags]
+        true_cxywh = true_cxywh[flags]
         true_cxs = true_cxs[flags]
         # PRED
-        pred_boxes = postitem[:, 0:4]
+        pred_cxywh = postitem[:, 0:4]
         pred_scores = postitem[:, 4]
         pred_cxs = postitem[:, 5]
 
         if thresh is not None:
             flags = pred_scores > thresh
             pred_cxs = pred_cxs[flags]
-            pred_boxes = pred_boxes[flags]
+            pred_cxywh = pred_cxywh[flags]
             pred_scores = pred_scores[flags]
 
         pred_clsnms = list(ub.take(harn.datasets['train'].label_names,
@@ -579,17 +639,26 @@ class YoloHarn(nh.FitHarn):
 
         true_labels = list(ub.take(harn.datasets['train'].label_names,
                                    true_cxs.long().cpu().numpy()))
-
         # ---
         inp_size = np.array(hwc01.shape[0:2][::-1])
-        true_boxes_ = util.Boxes(true_boxes.cpu().numpy(), 'cxywh').scale(inp_size).data
-        pred_boxes_ = util.Boxes(pred_boxes.cpu().numpy(), 'cxywh').scale(inp_size).data
+        target_size = inp_size
+
+        true_boxes_ = util.Boxes(true_cxywh.cpu().numpy(), 'cxywh').scale(inp_size)
+        pred_boxes_ = util.Boxes(pred_cxywh.cpu().numpy(), 'cxywh').scale(inp_size)
+
+        letterbox = harn.datasets['train'].letterbox
+        img = letterbox._img_letterbox_invert(hwc01, orig_size, target_size)
+        img = np.clip(img, 0, 1)
+        true_cxywh_ = letterbox._boxes_letterbox_invert(true_boxes_, orig_size, target_size)
+        pred_cxywh_ = letterbox._boxes_letterbox_invert(pred_boxes_, orig_size, target_size)
+
         from netharn.util import mplutil
+        shift, scale, embed_size = letterbox._letterbox_transform(orig_size, target_size)
 
         mplutil.figure(doclf=True, fnum=1)
-        mplutil.imshow(hwc01, colorspace='rgb')
-        mplutil.draw_boxes(true_boxes_, color='green', box_format='cxywh', labels=true_labels)
-        mplutil.draw_boxes(pred_boxes_, color='blue', box_format='cxywh', labels=pred_labels)
+        mplutil.imshow(img, colorspace='rgb')
+        mplutil.draw_boxes(true_cxywh_.data, color='green', box_format='cxywh', labels=true_labels)
+        mplutil.draw_boxes(pred_cxywh_.data, color='blue', box_format='cxywh', labels=pred_labels)
 
         # mplutil.show_if_requested()
 
@@ -600,39 +669,41 @@ def compare_loss():
     harn.initialize()
 
     weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
+
+    # Load weights into a lightnet model
+    import lightnet as ln
+    import os
+    ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
+    ln_net = ln.models.Yolo(ln_test.CLASSES, weights_fpath,
+                            ln_test.CONF_THRESH, ln_test.NMS_THRESH)
+    ln_net = harn.xpu.move(ln_net)
+    os.chdir(ub.truepath('~/code/lightnet/examples/yolo-voc/'))
+    TESTFILE = ub.truepath('~/code/lightnet/examples/yolo-voc/data/test.pkl')
+    ln_dset = ln_test.CustomDataset(TESTFILE, ln_net)
+
+    # Load weights into a netharn model
     state_dict = harn.xpu.load(weights_fpath)['weights']
     harn.model.module.load_state_dict(state_dict)
 
-    ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
-    TESTFILE = ub.truepath('~/code/lightnet/examples/yolo-voc/data/test.pkl')
-
-    import lightnet as ln
-    net = ln.models.Yolo(ln_test.CLASSES, weights_fpath, ln_test.CONF_THRESH, ln_test.NMS_THRESH)
-    net = harn.xpu.move(net)
-
-    import os
-    os.chdir(ub.truepath('~/code/lightnet/examples/yolo-voc/'))
-    ln_dset = ln_test.CustomDataset(TESTFILE, net)
-
     ln_img, ln_label = ln_dset[0]
-    my_img, my_label = harn.datasets['test'][0]
-    my_targets = my_label[0][None, :]
+    nh_img, nh_label = harn.datasets['test'][0]
+    nh_targets = nh_label[0][None, :]
     ln_targets = [ln_label]
 
     # Test model forward is the same for my image
-    ln_outputs = net._forward(harn.xpu.move(my_img[None, :]))
-    my_outputs = harn.model(harn.xpu.move(my_img[None, :]))
+    ln_outputs = ln_net._forward(harn.xpu.move(nh_img[None, :]))
+    nh_outputs = harn.model(harn.xpu.move(nh_img[None, :]))
 
-    seen = net.loss.seen = 99999999
-    ln_loss = net.loss(ln_outputs, my_targets)
-    my_loss = harn.criterion(ln_outputs, my_targets, seen=seen)
-    print('my_loss = {!r}'.format(my_loss))
+    seen = ln_net.loss.seen = 99999999
+    ln_loss = ln_net.loss(ln_outputs, nh_targets)
+    nh_loss = harn.criterion(ln_outputs, nh_targets, seen=seen)
+    print('nh_loss = {!r}'.format(nh_loss))
     print('ln_loss = {!r}'.format(ln_loss))
 
-    ln_brambox_loss = net.loss(ln_outputs, ln_targets)
+    ln_brambox_loss = ln_net.loss(ln_outputs, ln_targets)
     print('ln_brambox_loss = {!r}'.format(ln_brambox_loss))
 
-    inp_size = tuple(my_img.shape[-2:][::-1])
+    inp_size = tuple(nh_img.shape[-2:][::-1])
 
     ln_tf_target = []
     for anno in ln_targets[0]:
@@ -641,11 +712,11 @@ def compare_loss():
         ln_tf_target.append(tf)
 
     ln_boxes = nh.util.Boxes(np.array(ln_tf_target)[:, 1:], 'cxywh').scale(inp_size)
-    my_boxes = nh.util.Boxes(np.array(my_targets[0])[:, 1:], 'cxywh').scale(inp_size)
+    nh_boxes = nh.util.Boxes(np.array(nh_targets[0])[:, 1:], 'cxywh').scale(inp_size)
 
     nh.util.imshow(ln_img.numpy(), colorspace='rgb', fnum=1)
     nh.util.draw_boxes(ln_boxes, color='blue')
-    nh.util.draw_boxes(my_boxes, color='red')
+    nh.util.draw_boxes(nh_boxes, color='red')
 
 
 def _test_with_lnstyle_data():
@@ -658,8 +729,7 @@ def _test_with_lnstyle_data():
     Checks to see if my loss and map calcluations are the same as lightnet
     CommandLine:
         python ~/code/netharn/netharn/examples/yolo_voc.py _test_with_lnstyle_data
-    """
-    """
+
     Using LighNet Trained Weights:
 
         LightNet Results:
@@ -681,57 +751,93 @@ def _test_with_lnstyle_data():
 
         OH!, Is is just that BramBox has an ignore function?
             - [X] Add ignore / weight to tensor version to see if its the same
-            YUP! {loss_bram: 3.17, loss_ten1: 4.91, loss_ten2: 4.91, my_unweighted: 4.92, my_weighted: 3.16}
+            YUP! {loss_bram: 3.17, loss_ten1: 4.91, loss_ten2: 4.91, nh_unweighted: 4.92, nh_weighted: 3.16}
 
     TO CHECK:
         - [ ] why is the loss different?
             - [X] network input size is 416 in both
             - [x] networks output the same data given the same input
             - [x] loss outputs the same data given the same input (they do if seen is the same)
+            - [x] CONCLUSION: The loss is not actually different
 
-            - [ ] is the data read and formated properly / letterbox done correctly?
-            - [ ] does the brambox version of loss work differently?
-            - [ ] check that we each format the first item in the test set the same
 
         - [ ] why is the mAP different?
-            - [ ] does brambox compute AP differently?
+            - [x] does brambox compute AP differently?
+                ... YES
+            CONCLUSION: several factors are at play
+                * brambox has a different AP computation
+                * netharn and lightnet non-max supressions are different
+                * The NMS seems to have the most significant impact
 
-    """
+    # """
+    import brambox.boxes as bbb
+    CHECK_SANITY = False
+
+    # Path to weights that we will be testing
+    # (These were trained using the lightnet harness and achived a good mAP)
+    weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
+
+    # Load weights into a netharn model
     harn = setup_harness(bsize=2)
     harn.hyper.xpu = nh.XPU(0)
     harn.initialize()
-
-    weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
     state_dict = harn.xpu.load(weights_fpath)['weights']
     harn.model.module.load_state_dict(state_dict)
+    harn.model.eval()
+    nh_net = harn.model.module
 
-    ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
-    TESTFILE = ub.truepath('~/code/lightnet/examples/yolo-voc/data/test.pkl')
-
-    import lightnet as ln
-    net = ln.models.Yolo(ln_test.CLASSES, weights_fpath, ln_test.CONF_THRESH, ln_test.NMS_THRESH)
-    net = harn.xpu.move(net)
-
+    # Load weights into a lightnet model
     import os
-    os.chdir(ub.truepath('~/code/lightnet/examples/yolo-voc/'))
-    ln_dset = ln_test.CustomDataset(TESTFILE, net)
+    import lightnet as ln
+    ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
+    ln_net = ln.models.Yolo(ln_test.CLASSES, weights_fpath,
+                            ln_test.CONF_THRESH, ln_test.NMS_THRESH)
+    ln_net = harn.xpu.move(ln_net)
+    ln_net.eval()
 
+    # Sanity check, the weights should be the same
+    if CHECK_SANITY:
+        state1 = nh_net.state_dict()
+        state2 = ln_net.state_dict()
+        assert state1.keys() == state2.keys()
+        for k in state1.keys():
+            v1 = state1[k]
+            v2 = state2[k]
+            assert np.all(v1 == v2)
+
+    # Create a lightnet dataset loader
+    TESTFILE = ub.truepath('~/code/lightnet/examples/yolo-voc/data/test.pkl')
+    os.chdir(ub.truepath('~/code/lightnet/examples/yolo-voc/'))
+    ln_dset = ln_test.CustomDataset(TESTFILE, ln_net)
     ln_loader = torch.utils.data.DataLoader(
         ln_dset, batch_size=2, shuffle=False, drop_last=False, num_workers=0,
         pin_memory=True, collate_fn=ln.data.list_collate,
     )
-    my_loader = harn.loaders['test']
 
-    harn.model.eval()
+    # Create a netharn dataset loader
+    nh_loader = harn.loaders['test']
 
-    # class_label_map = ub.invert_dict(dict(enumerate(harn.datasets['train'].label_names)))
-    class_label_map = harn.datasets['train'].label_names
+    # ----------------------
+    # Postprocessing to transform yolo outputs into detections
+    # Basic difference here is the implementation of NMS
+    ln_postprocess = ln_net.postprocess
+    nh_postprocess = harn.model.module.postprocess
+
+    # ----------------------
+    # Define helper functions to deal with bramboxes
+    LABELS = ['aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car',
+              'cat', 'chair', 'cow', 'diningtable', 'dog', 'horse',
+              'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train',
+              'tvmonitor']
+    NETWORK_SIZE = (416, 416)
+    detection_to_brambox = ln.data.TensorToBrambox(NETWORK_SIZE, LABELS)
 
     def brambox_to_labels(ln_bramboxes, inp_size):
+        """ convert brambox to netharn style labels """
         max_anno = max(map(len, ln_bramboxes))
         ln_targets = [
             ln.data.preprocess.BramboxToTensor.apply(
-                annos, inp_size, max_anno=max_anno, class_label_map=class_label_map)
+                annos, inp_size, max_anno=max_anno, class_label_map=LABELS)
             for annos in ln_bramboxes]
         ln_targets = torch.stack(ln_targets)
 
@@ -741,76 +847,223 @@ def _test_with_lnstyle_data():
             gt_weights[i, 0:len(annos)] = weights
         gt_weights = torch.Tensor(gt_weights)
 
+        bg_weights = torch.FloatTensor(np.ones(len(ln_targets)))
+        indices = None
+        orig_sizes = None
         ln_labels = ln_targets, gt_weights, orig_sizes, indices, bg_weights
         return ln_labels
 
+    # ----------------------
+    CHECK_LOSS = False
+
     with torch.no_grad():
-        postprocess = harn.model.module.postprocess
-        # postprocess.conf_thresh = 0.001
-        # postprocess.nms_thresh = 0.5
-        batch_confusions = []
+
+        # Track netharn and lightnet results that will be scored
+        ln_batch_confusions = []
+        nh_batch_confusions = []
+        nh_batch_confusions0 = []
+
+        ln_results = []
+        nh_results = []
+        nh_results0 = []
+
+        anno = {}
+        ln_det = {}
+        nh_det = {}
+        nh_det0 = {}
+
         moving_ave = nh.util.util_averages.CumMovingAve()
 
-        prog = ub.ProgIter(zip(ln_loader, my_loader), desc='')
-        for ln_batch, my_batch in prog:
+        coco_truth = []
+        ln_coco_detections = []
+        nh_coco_detections0 = []
+
+        prog = ub.ProgIter(zip(ln_loader, nh_loader), desc='')
+        for bx, (ln_batch, nh_batch) in enumerate(prog):
             ln_inputs, ln_bramboxes = ln_batch
             inp_size = tuple(ln_inputs.shape[-2:][::-1])
-            # my_inputs, my_labels = my_batch
+            nh_inputs, nh_labels = nh_batch
 
+            nh_targets = nh_labels[0]
+            nh_gt_weights = nh_labels[1]
+
+            # Convert brambox into components understood by netharn
             ln_labels = brambox_to_labels(ln_bramboxes, inp_size)
-            # my_targets = my_labels[0]
-            # gt_weights = my_labels[1]
-
             ln_inputs = harn.xpu.variable(ln_inputs)
             ln_targets = harn.xpu.variable(ln_labels[0])
-            gt_weights = harn.xpu.variable(ln_labels[1])
+            ln_gt_weights = harn.xpu.variable(ln_labels[1])  # NOQA
 
-            net.loss.seen = 1000000
-            ln_outputs = harn.model(ln_inputs)
-            # ln_loss_ten1 = harn.criterion(ln_outputs, ln_targets, seen=net.loss.seen)
-            # ln_loss_ten2 = net.loss(ln_outputs, ln_targets)
-            ln_loss_bram = net.loss(ln_outputs, ln_bramboxes)
+            ln_net.loss.seen = 1000000
+            ln_outputs = ln_net._forward(ln_inputs)
 
-            # my_loss_weighted = harn.criterion(ln_outputs, my_targets, gt_weights=gt_weights, seen=seen)
-            # my_loss_unweighted = harn.criterion(ln_outputs, my_targets, seen=seen)
+            if CHECK_SANITY:
+                nh_outputs = harn.model(ln_inputs)
+                assert np.all(nh_outputs == ln_outputs)
 
+            ln_loss_bram = ln_net.loss(ln_outputs, ln_bramboxes)
             moving_ave.update(ub.odict([
-                # ('loss_ten1', float(ln_loss_ten1.sum())),
-                # ('loss_ten2', float(ln_loss_ten2.sum())),
-                # ('my_weighted', float(my_loss_weighted.sum())),
-                # ('my_unweighted', float(my_loss_unweighted.sum())),
                 ('loss_bram', float(ln_loss_bram.sum())),
-                # ('coord', harn.criterion.loss_coord),
-                # ('conf', harn.criterion.loss_conf),
-                # ('cls', harn.criterion.loss_cls),
             ]))
 
-            average_losses = moving_ave.average()
-            desc = ub.repr2(average_losses, nl=0, precision=2, si=True)
-            prog.set_description(desc, refresh=False)
+            if CHECK_LOSS:
+                seen = ln_net.loss.seen
+                ln_loss_ten1 = harn.criterion(ln_outputs, ln_targets,
+                                              seen=seen)
+                ln_loss_ten2 = ln_net.loss(ln_outputs, ln_targets)
 
-            # TODO: check that my postprocess of ln outputs gives good map
-            ln_postout = postprocess(ln_outputs)
+                nh_weighted = harn.criterion(ln_outputs, nh_targets,
+                                             gt_weights=nh_gt_weights,
+                                             seen=seen)
+                nh_unweighted = harn.criterion(ln_outputs, nh_targets,
+                                               seen=seen)
+
+                moving_ave.update(ub.odict([
+                    ('loss_ten1', float(ln_loss_ten1.sum())),
+                    ('loss_ten2', float(ln_loss_ten2.sum())),
+                    ('nh_weighted', float(nh_weighted.sum())),
+                    ('nh_unweighted', float(nh_unweighted.sum())),
+                    # ('coord', harn.criterion.loss_coord),
+                    # ('conf', harn.criterion.loss_conf),
+                    # ('cls', harn.criterion.loss_cls),
+                ]))
+            # Display progress information
+            average_losses = moving_ave.average()
+            description = ub.repr2(average_losses, nl=0, precision=2, si=True)
+            prog.set_description(description, refresh=False)
+
+            # nh_outputs and ln_outputs should be the same, so no need to
+            # differentiate between them here.
+            ln_postout = ln_postprocess(ln_outputs.clone())
+            nh_postout = nh_postprocess(ln_outputs.clone())
+
+            # Should use the original NMS strategy
+            nh_postout0 = nh_postprocess(ln_outputs.clone(), mode=0)
+
+            ln_brambox_postout = detection_to_brambox([x.clone() for x in ln_postout])
+            nh_brambox_postout = detection_to_brambox([x.clone() for x in nh_postout])
+            nh_brambox_postout0 = detection_to_brambox([x.clone() for x in nh_postout0])
+
+            # Record data scored by brambox
+            offset = len(anno)
+            def img_to_box(boxes, offset):
+                gname_lut = ln_loader.dataset.keys
+                return {gname_lut[offset + k]: v for k, v in enumerate(boxes)}
+            anno.update(img_to_box(ln_bramboxes, offset))
+            ln_det.update(img_to_box(ln_brambox_postout, offset))
+            nh_det.update(img_to_box(nh_brambox_postout, offset))
+            nh_det0.update(img_to_box(nh_brambox_postout0, offset))
+
             bg_weights = torch.FloatTensor(np.ones(len(ln_targets)))
             indices = None
             orig_sizes = None
 
-            ln_labels = ln_targets, gt_weights, orig_sizes, indices, bg_weights
-            batch_confusions.extend(list(harn._measure_confusion(ln_postout, ln_labels, inp_size)))
+            # Record data scored by netharn
 
-    y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
-    # TODO: write out a few visualizations
-    loader = harn.loaders['test']
-    num_classes = len(loader.dataset.label_names)
+            ln_labels = ln_targets, ln_gt_weights, orig_sizes, indices, bg_weights
+
+            ln_results.append((ln_postout, ln_labels, inp_size))
+            nh_results.append((nh_postout, nh_labels, inp_size))
+            nh_results0.append((nh_postout0, nh_labels, inp_size))
+
+            # preds, truths = harn._postout_to_coco(ln_postout, ln_labels, inp_size)
+            # ln_coco_detections.append(preds)
+
+            preds, truths = harn._postout_to_coco(nh_postout0, nh_labels, inp_size)
+            nh_coco_detections0.append(preds)
+            coco_truth.append(truths)
+
+            # kw = dict(bias=0)
+            # for y in harn._measure_confusion(ln_postout, ln_labels, inp_size, **kw):
+            #     ln_batch_confusions.append(y)
+
+            # for y in harn._measure_confusion(nh_postout, nh_labels, inp_size, **kw):
+            #     nh_batch_confusions.append(y)
+
+            # for y in harn._measure_confusion(nh_postout0, nh_labels, inp_size, **kw):
+            #     nh_batch_confusions0.append(y)
+
+            if bx > 50:
+                break
+
+    # Compute mAP using brambox / lightnet
+    ln_mAP = round(bbb.ap(*bbb.pr(ln_det, anno)) * 100, 2)
+    nh_mAP = round(bbb.ap(*bbb.pr(nh_det, anno)) * 100, 2)
+    nh_mAP0 = round(bbb.ap(*bbb.pr(nh_det0, anno)) * 100, 2)
+    print('\n----')
+    print('ln_mAP = {!r}'.format(ln_mAP))
+    print('nh_mAP = {!r}'.format(nh_mAP))
+    print('nh_mAP0 = {!r}'.format(nh_mAP0))
+
+    num_classes = len(LABELS)
     cls_labels = list(range(num_classes))
 
-    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
-    aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
-    mean_ap = np.nanmean(aps['ap'])
-    max_ap = np.nanmax(aps['ap'])
-    print(aps)
-    print('mean_ap = {!r}'.format(mean_ap))
-    print('max_ap = {!r}'.format(max_ap))
+    # # Compute mAP using netharn
+    # if False:
+    #     is_tp = (y.true == y.pred) & (y.pred >= 0)
+    #     is_fp = (y.true != y.pred) & (y.pred >= 0)
+    #     rest = ~(is_fp | is_tp)
+
+    #     y.true[is_tp] = 1
+    #     y.pred[is_tp] = 1
+
+    #     y.true[is_fp] = 0
+    #     y.pred[is_fp] = 1
+
+    #     y.true[rest] = 0
+    #     y.pred[rest] = 0
+
+    #     import sklearn
+    #     import sklearn.metrics
+    #     sklearn.metrics.average_precision_score(y.true, y.score, 'weighted',
+    #                                             y.weight)
+
+    for bias in [0, 1]:
+        ln_batch_confusions = []
+        nh_batch_confusions = []
+        nh_batch_confusions0 = []
+        print('\n\n======\n\nbias = {!r}'.format(bias))
+        kw = dict(bias=bias, PREFER_WEIGHTED_TRUTH=False)
+        for ln_postout, ln_labels, inp_size in ln_results:
+            for y in harn._measure_confusion(ln_postout, ln_labels, inp_size, **kw):
+                ln_batch_confusions.append(y)
+
+        for nh_postout, nh_labels, inp_size in nh_results:
+            for y in harn._measure_confusion(nh_postout, nh_labels, inp_size, **kw):
+                nh_batch_confusions.append(y)
+
+        for nh_postout0, nh_labels, inp_size in nh_results0:
+            for y in harn._measure_confusion(nh_postout0, nh_labels, inp_size, **kw):
+                nh_batch_confusions0.append(y)
+
+        confusions = {
+            'lh': ln_batch_confusions,
+            # 'nh': nh_batch_confusions,
+            'nh0': nh_batch_confusions0,
+        }
+
+        for lbl, batch_confusions in confusions.items():
+            print('----')
+            print('\nlbl = {!r}'.format(lbl))
+            y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
+
+            # aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+            # aps = aps.rename(dict(zip(cls_labels, LABELS)), axis=0)
+            # mean_ap = np.nanmean(aps['ap'])
+            # print('mean_ap_07 = {:.2f}'.format(mean_ap * 100))
+
+            # aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=False)
+            # aps = aps.rename(dict(zip(cls_labels, LABELS)), axis=0)
+            # mean_ap = np.nanmean(aps['ap'])
+            # print('mean_ap_12 = {:.2f}'.format(mean_ap * 100))
+
+            # Try the other way
+            from netharn.metrics.detections import _confusion_pr_ap
+            prec, recall, ap2 = _confusion_pr_ap(y)
+            print('ap2 = {!r}'.format(round(ap2 * 100, 2)))
+
+            # max_ap = np.nanmax(aps['ap'])
+            # print(aps)
+            # print('max_ap = {!r}'.format(max_ap))
 
 
 def _run_quick_test():
@@ -844,7 +1097,8 @@ def _run_quick_test():
             outputs = harn.model(inputs)
 
             target, gt_weights, orig_sizes, indices, bg_weights = labels
-            loss = harn.criterion(outputs, target, gt_weights=gt_weights, seen=1000000000)
+            loss = harn.criterion(outputs, target, gt_weights=gt_weights,
+                                  seen=1000000000)
             moving_ave.update(ub.odict([
                 ('loss', float(loss.sum())),
                 ('coord', harn.criterion.loss_coord),

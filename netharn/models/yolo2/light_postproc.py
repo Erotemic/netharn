@@ -35,7 +35,7 @@ class GetBoundingBoxes(object):
         self.nms_thresh = nms_thresh
 
     @profiler.profile
-    def __call__(self, network_output, mode=1):
+    def __call__(self, network_output, mode=0):
         """ Compute bounding boxes after thresholding and nms
 
             network_output (torch.autograd.Variable): Output tensor from the lightnet network
@@ -185,7 +185,7 @@ class GetBoundingBoxes(object):
         return obj(network_output)
 
     @profiler.profile
-    def _get_boxes(self, output, mode=1):
+    def _get_boxes(self, output, mode=0):
         """
         Returns array of detections for every image in batch
 
@@ -340,7 +340,7 @@ class GetBoundingBoxes(object):
         return boxes
 
     @profiler.profile
-    def _nms(self, boxes, mode=1):
+    def _nms(self, boxes, mode=0):
         """ Non maximum suppression.
         Source: https://www.pyimagesearch.com/2015/02/16/faster-non-maximum-suppression-python/
 
