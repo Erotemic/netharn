@@ -226,6 +226,22 @@ class RegionLoss(BaseLossWithCudaState):
         >>> print(f'loss = {loss:.2f}')
         loss = 20.18
 
+    Example:
+        >>> from netharn.models.yolo2.light_yolo import Yolo
+        >>> torch.random.manual_seed(0)
+        >>> network = Yolo(num_classes=2, conf_thresh=4e-2)
+        >>> self = RegionLoss(num_classes=network.num_classes, anchors=network.anchors)
+        >>> Win, Hin = 96, 96
+        >>> Wout, Hout = 1, 1
+        >>> target = torch.FloatTensor([])
+        >>> im_data = torch.randn(2, 3, Hin, Win)
+        >>> output = network.forward(im_data)
+        >>> loss = float(self.forward(output, target))
+        >>> print(f'output.sum() = {output.sum():.2f}')
+        output.sum() = 2.15
+        >>> print(f'loss = {loss:.2f}')
+        loss = 20.18
+
     """
 
     def __init__(self, num_classes, anchors, coord_scale=1.0,
@@ -369,7 +385,7 @@ class RegionLoss(BaseLossWithCudaState):
         # Compute losses
         loss_coord = self.coord_scale * self.mse(coord * coord_mask, tcoord * coord_mask) / nB
         loss_conf = self.mse(conf * conf_mask, tconf * conf_mask) / nB
-        if nC > 1:
+        if nC > 1 and cls.numel():
             loss_cls = self.class_scale * 2 * self.cls_critrion(cls, tcls) / nB
             loss_tot = loss_coord + loss_conf + loss_cls
             self.loss_cls = float(loss_cls.data.cpu().numpy())
