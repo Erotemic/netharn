@@ -392,6 +392,10 @@ class RegionLoss(BaseLossWithCudaState):
         """
         Compare prediction boxes and ground truths, convert ground truths to network output tensors
 
+        Args:
+            pred_boxes (Tensor):   shape [B * A * W * H, 4]
+            ground_truth (Tensor): shape [B, max(gtannots), 4]
+
         Example:
             >>> from netharn.models.yolo2.light_yolo import Yolo
             >>> from netharn.models.yolo2.light_region_loss import RegionLoss
@@ -417,13 +421,37 @@ class RegionLoss(BaseLossWithCudaState):
             >>> gt_weights = torch.FloatTensor([[-1, -1, -1], [1, 1, 0]])
             >>> pred_boxes = torch.rand(90, 4)
             >>> seen = 0
+            >>> self._build_targets_tensor(pred_boxes, ground_truth, nH, nW, seen, gt_weights)
+
+        Example:
+            >>> from netharn.models.yolo2.light_yolo import Yolo
+            >>> from netharn.models.yolo2.light_region_loss import RegionLoss
+            >>> torch.random.manual_seed(0)
+            >>> network = Yolo(num_classes=2, conf_thresh=4e-2)
+            >>> self = RegionLoss(num_classes=network.num_classes, anchors=network.anchors)
+            >>> Win, Hin = 96, 96
+            >>> nW, nH = 3, 3
+            >>> ground_truth = torch.FloatTensor([])
+            >>> gt_weights = torch.FloatTensor([[-1, -1, -1], [1, 1, 0]])
+            >>> pred_boxes = torch.rand(90, 4)
+            >>> seen = 0
+            >>> self._build_targets_tensor(pred_boxes, ground_truth, nH, nW, seen, gt_weights)
         """
+        gtempty = (ground_truth.numel() == 0)
+
         # Parameters
-        nB = ground_truth.size(0)
-        nT = ground_truth.size(1)
+        nB = ground_truth.shape[0] if not gtempty else 0
+        nT = ground_truth.shape[1] if not gtempty else 0
         nA = self.num_anchors
         nAnchors = nA * nH * nW
         nPixels = nH * nW
+
+        if nB == 0:
+            # torch does not preserve shapes when any dimension goes to 0
+            # fix nB if there is no groundtruth
+            nB = int(len(pred_boxes) / (nA * nPixels))
+        else:
+            assert nB == int(len(pred_boxes) / (nA * nPixels)), 'bad assumption'
 
         seen = seen + nB
 
@@ -440,86 +468,87 @@ class RegionLoss(BaseLossWithCudaState):
             tcoord[:, :, 0].fill_(0.5)
             tcoord[:, :, 1].fill_(0.5)
 
-        pred_cxywh = pred_boxes
-        pred_tlbr = util.Boxes(pred_cxywh.data.cpu().numpy(), 'cxywh').toformat('tlbr').data
+        if not gtempty:
+            pred_cxywh = pred_boxes
+            pred_tlbr = util.Boxes(pred_cxywh.data.cpu().numpy(), 'cxywh').toformat('tlbr').data
 
-        gt_class = ground_truth[..., 0].data.cpu().numpy()
-        gt_cxywh = util.Boxes(ground_truth[..., 1:5].data.cpu().numpy().astype(np.float32), 'cxywh').scale([nW, nH])
+            gt_class = ground_truth[..., 0].data.cpu().numpy()
+            gt_cxywh = util.Boxes(ground_truth[..., 1:5].data.cpu().numpy().astype(np.float32), 'cxywh').scale([nW, nH])
 
-        gt_tlbr = gt_cxywh.to_tlbr().data
+            gt_tlbr = gt_cxywh.to_tlbr().data
 
-        rel_gt_cxywh = gt_cxywh.copy()
-        rel_gt_cxywh.data.T[0:2] = 0
+            rel_gt_cxywh = gt_cxywh.copy()
+            rel_gt_cxywh.data.T[0:2] = 0
 
-        rel_gt_tlbr = rel_gt_cxywh.toformat('tlbr').data
+            rel_gt_tlbr = rel_gt_cxywh.toformat('tlbr').data
 
-        gt_isvalid = (gt_class >= 0)
+            gt_isvalid = (gt_class >= 0)
 
-        # Loop over ground_truths and construct tensors
-        for bx in range(nB):
-            # Get the actual groundtruth boxes for this batch item
-            flags = gt_isvalid[bx]
-            if not np.any(flags):
-                continue
+            # Loop over ground_truths and construct tensors
+            for bx in range(nB):
+                # Get the actual groundtruth boxes for this batch item
+                flags = gt_isvalid[bx]
+                if not np.any(flags):
+                    continue
 
-            # Create gt anchor assignments
-            batch_rel_gt_tlbr = rel_gt_tlbr[bx][flags]
-            anchor_ious = util.box_ious(self.rel_anchors_tlbr,
-                                        batch_rel_gt_tlbr, bias=0,
-                                        mode=self.iou_mode)
-            best_ns = np.argmax(anchor_ious, axis=0)
+                # Create gt anchor assignments
+                batch_rel_gt_tlbr = rel_gt_tlbr[bx][flags]
+                anchor_ious = util.box_ious(self.rel_anchors_tlbr,
+                                            batch_rel_gt_tlbr, bias=0,
+                                            mode=self.iou_mode)
+                best_ns = np.argmax(anchor_ious, axis=0)
 
-            # Setting confidence mask
-            cur_pred_tlbr = pred_tlbr[bx * nAnchors:(bx + 1) * nAnchors]
-            cur_gt_tlbr = gt_tlbr[bx][flags]
+                # Setting confidence mask
+                cur_pred_tlbr = pred_tlbr[bx * nAnchors:(bx + 1) * nAnchors]
+                cur_gt_tlbr = gt_tlbr[bx][flags]
 
-            ious = util.box_ious(cur_pred_tlbr, cur_gt_tlbr, bias=0,
-                                 mode=self.iou_mode)
-            cur_ious = torch.FloatTensor(ious.max(-1))
-            conf_mask[bx].view(-1)[cur_ious > self.thresh] = 0
+                ious = util.box_ious(cur_pred_tlbr, cur_gt_tlbr, bias=0,
+                                     mode=self.iou_mode)
+                cur_ious = torch.FloatTensor(ious.max(-1))
+                conf_mask[bx].view(-1)[cur_ious > self.thresh] = 0
 
-            for t in range(nT):
-                if not flags[t]:
-                    break
+                for t in range(nT):
+                    if not flags[t]:
+                        break
 
-                if gt_weights is None:
-                    weight = 1
-                else:
-                    weight = gt_weights[bx][t]
+                    if gt_weights is None:
+                        weight = 1
+                    else:
+                        weight = gt_weights[bx][t]
 
-                gx, gy, gw, gh = gt_cxywh.data[bx][t]
-                gi = min(nW - 1, max(0, int(gx)))
-                gj = min(nH - 1, max(0, int(gy)))
+                    gx, gy, gw, gh = gt_cxywh.data[bx][t]
+                    gi = min(nW - 1, max(0, int(gx)))
+                    gj = min(nH - 1, max(0, int(gy)))
 
-                best_n = best_ns[t]
+                    best_n = best_ns[t]
 
-                gt_box_ = gt_tlbr[bx][t]
-                pred_box_ = pred_tlbr[bx * nAnchors + best_n * nPixels + gj * nW + gi]
+                    gt_box_ = gt_tlbr[bx][t]
+                    pred_box_ = pred_tlbr[bx * nAnchors + best_n * nPixels + gj * nW + gi]
 
-                iou = float(util.box_ious(gt_box_[None, :], pred_box_[None, :],
-                                          bias=0, mode=self.iou_mode)[0, 0])
+                    iou = float(util.box_ious(gt_box_[None, :], pred_box_[None, :],
+                                              bias=0, mode=self.iou_mode)[0, 0])
 
-                best_anchor = self.anchors[best_n]
-                best_aw, best_ah = best_anchor
+                    best_anchor = self.anchors[best_n]
+                    best_aw, best_ah = best_anchor
 
-                if weight == 0:
-                    # HACK: Only allow weight == 0 and weight == 1 for now
-                    # TODO:
-                    #    - [ ] Allow for continuous weights
-                    #    - [ ] Allow for per-image background weight
-                    conf_mask[bx, best_n, gj * nW + gi] = 0
-                else:
-                    assert weight == 1, 'can only have weight in {0, 1} for now'
-                    coord_mask[bx, best_n, 0, gj * nW + gi] = 1
-                    cls_mask[bx, best_n, gj * nW + gi] = 1
-                    conf_mask[bx, best_n, gj * nW + gi] = self.object_scale
+                    if weight == 0:
+                        # HACK: Only allow weight == 0 and weight == 1 for now
+                        # TODO:
+                        #    - [ ] Allow for continuous weights
+                        #    - [ ] Allow for per-image background weight
+                        conf_mask[bx, best_n, gj * nW + gi] = 0
+                    else:
+                        assert weight == 1, 'can only have weight in {0, 1} for now'
+                        coord_mask[bx, best_n, 0, gj * nW + gi] = 1
+                        cls_mask[bx, best_n, gj * nW + gi] = 1
+                        conf_mask[bx, best_n, gj * nW + gi] = self.object_scale
 
-                    tcoord[bx, best_n, 0, gj * nW + gi] = gx - gi
-                    tcoord[bx, best_n, 1, gj * nW + gi] = gy - gj
-                    tcoord[bx, best_n, 2, gj * nW + gi] = math.log(gw / best_aw)
-                    tcoord[bx, best_n, 3, gj * nW + gi] = math.log(gh / best_ah)
-                    tconf[bx, best_n, gj * nW + gi] = iou
-                    tcls[bx, best_n, gj * nW + gi] = ground_truth[bx, t, 0]
+                        tcoord[bx, best_n, 0, gj * nW + gi] = gx - gi
+                        tcoord[bx, best_n, 1, gj * nW + gi] = gy - gj
+                        tcoord[bx, best_n, 2, gj * nW + gi] = math.log(gw / best_aw)
+                        tcoord[bx, best_n, 3, gj * nW + gi] = math.log(gh / best_ah)
+                        tconf[bx, best_n, gj * nW + gi] = iou
+                        tcls[bx, best_n, gj * nW + gi] = ground_truth[bx, t, 0]
 
         return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
 
