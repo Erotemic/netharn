@@ -35,8 +35,8 @@ def stats_dict(list_, axis=None, nan=False, sum=False, extreme=True,
         {
             'mean': np.array([0.5206, 0.6425], dtype=np.float32),
             'std': np.array([0.2854, 0.2517], dtype=np.float32),
-            'max': np.array([0.9637, 0.9256], dtype=np.float32),
             'min': np.array([0.0202, 0.0871], dtype=np.float32),
+            'max': np.array([0.9637, 0.9256], dtype=np.float32),
             'shape': (10, 2),
         }
 
@@ -48,7 +48,7 @@ def stats_dict(list_, axis=None, nan=False, sum=False, extreme=True,
         >>> stats = stats_dict(list_, axis=axis, nan=True)
         >>> result = str(ub.repr2(stats, nl=0, precision=1, strkeys=True))
         >>> print(result)
-        {mean: 20.0, std: 13.2, max: 41.0, min: 0.0, shape: (100,), num_nan: 1}
+        {mean: 20.0, std: 13.2, min: 0.0, max: 41.0, shape: (100,), num_nan: 1}
     """
     # Assure input is in numpy format
     if isinstance(list_, np.ndarray):
@@ -95,8 +95,8 @@ def stats_dict(list_, axis=None, nan=False, sum=False, extreme=True,
             stats['mean'] = np.float32(mean_)
             stats['std'] = np.float32(std_)
         if extreme:
-            stats['min'] = np.int32(min_val)
-            stats['max'] = np.int32(max_val)
+            stats['min'] = np.float32(min_val)
+            stats['max'] = np.float32(max_val)
         if n_extreme:
             stats['nMin'] = np.int32(nMin)
             stats['nMax'] = np.int32(nMax)
