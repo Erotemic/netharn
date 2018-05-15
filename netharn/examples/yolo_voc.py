@@ -353,7 +353,7 @@ class YoloHarn(nh.FitHarn):
             >>> harn = setup_harness(bsize=2)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'test')
-            >>> weights_fpath = light_yolo.demo_weights()
+            >>> weights_fpath = light_yolo.demo_voc_weights()
             >>> state_dict = harn.xpu.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn.run_batch(batch)
@@ -385,7 +385,7 @@ class YoloHarn(nh.FitHarn):
             >>> harn = setup_harness(bsize=1)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'test')
-            >>> weights_fpath = light_yolo.demo_weights()
+            >>> weights_fpath = light_yolo.demo_voc_weights()
             >>> state_dict = harn.xpu.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn.run_batch(batch)
@@ -425,7 +425,7 @@ class YoloHarn(nh.FitHarn):
             >>> harn = setup_harness(bsize=4)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'test')
-            >>> weights_fpath = light_yolo.demo_weights()
+            >>> weights_fpath = light_yolo.demo_voc_weights()
             >>> state_dict = harn.xpu.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn.run_batch(batch)
@@ -721,7 +721,7 @@ def setup_harness(bsize=16, workers=0):
         }),
 
         'initializer': (nh.initializers.Pretrained, {
-            # 'fpath': light_yolo.demo_weights(),
+            # 'fpath': light_yolo.demo_voc_weights(),
             'fpath': light_yolo.initial_imagenet_weights(),
         }),
 

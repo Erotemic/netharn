@@ -224,7 +224,7 @@ class Yolo(nn.Module):
             >>> from netharn.models.yolo2.light_yolo import *
             >>> inp_size = (288, 288)
             >>> self = Yolo(num_classes=20, conf_thresh=0.01, nms_thresh=0.4)
-            >>> state_dict = torch.load(demo_weights())['weights']
+            >>> state_dict = torch.load(demo_voc_weights())['weights']
             >>> self.load_state_dict(state_dict)
             >>> im_data, rgb255 = demo_image(inp_size)
             >>> im_data = torch.cat([im_data, im_data])  # make a batch size of 2
@@ -311,7 +311,10 @@ def find_anchors(dset):
     return anchors
 
 
-def demo_weights():
+def demo_voc_weights():
+    """
+    Demo weights for Pascal VOC dataset
+    """
     import ubelt as ub
     url = 'https://gitlab.com/EAVISE/lightnet/raw/master/examples/yolo-voc/lightnet_weights.pt'
     fpath = ub.grabdata(url)
