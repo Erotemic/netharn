@@ -64,7 +64,7 @@ def profile_loss_speed():
     python ~/code/netharn/netharn/models/yolo2/light_region_loss.py profile_loss_speed --profile
 
     Benchmark:
-        >>> profile_loss_speed()
+        #>>> profile_loss_speed()
     """
     from netharn.models.yolo2.light_yolo import Yolo
     import netharn.models.yolo2.light_region_loss
@@ -104,7 +104,7 @@ def compare_loss_speed():
     python ~/code/netharn/netharn/models/yolo2/light_region_loss.py compare_loss_speed
 
     Example:
-        >>> compare_loss_speed()
+        #>>> compare_loss_speed()
     """
     from netharn.models.yolo2.light_yolo import Yolo
     import netharn.models.yolo2.light_region_loss
