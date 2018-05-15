@@ -4,6 +4,116 @@ import ubelt as ub
 import numpy as np
 
 
+def stats_dict(list_, axis=None, nan=False, sum=False, extreme=True,
+               n_extreme=False, median=False, shape=True, size=False):
+    """
+    Args:
+        list_ (listlike): values to get statistics of
+        axis (int): if `list_` is ndarray then this specifies the axis
+        nan (bool): report number of nan items
+        sum (bool): report sum of values
+        extreme (bool): report min and max values
+        n_extreme (bool): report extreme value frequencies
+        median (bool): report median
+        size (bool): report array size
+        shape (bool): report array shape
+
+    Returns:
+        collections.OrderedDict: stats: dictionary of common numpy statistics
+            (min, max, mean, std, nMin, nMax, shape)
+
+    SeeAlso:
+        scipy.stats.describe
+
+    Example:
+        >>> axis = 0
+        >>> rng = np.random.RandomState(0)
+        >>> list_ = rng.rand(10, 2).astype(np.float32)
+        >>> stats = stats_dict(list_, axis=axis, nan=False)
+        >>> result = str(ub.repr2(stats, nl=1, precision=4, with_dtype=True))
+        >>> print(result)
+        {
+            'mean': np.array([0.5206, 0.6425], dtype=np.float32),
+            'std': np.array([0.2854, 0.2517], dtype=np.float32),
+            'max': np.array([0.9637, 0.9256], dtype=np.float32),
+            'min': np.array([0.0202, 0.0871], dtype=np.float32),
+            'shape': (10, 2),
+        }
+
+    Example:
+        >>> axis = 0
+        >>> rng = np.random.RandomState(0)
+        >>> list_ = rng.randint(0, 42, size=100).astype(np.float32)
+        >>> list_[4] = np.nan
+        >>> stats = stats_dict(list_, axis=axis, nan=True)
+        >>> result = str(ub.repr2(stats, nl=0, precision=1, strkeys=True))
+        >>> print(result)
+        {mean: 20.0, std: 13.2, max: 41.0, min: 0.0, shape: (100,), num_nan: 1}
+    """
+    # Assure input is in numpy format
+    if isinstance(list_, np.ndarray):
+        nparr = list_
+    elif isinstance(list_, list):
+        nparr = np.array(list_)
+    else:
+        nparr = np.array(list(list_))
+    # Check to make sure stats are feasible
+    if len(nparr) == 0:
+        stats = collections.OrderedDict([('empty_list', True)])
+        if size:
+            stats['size'] = 0
+    else:
+        if nan:
+            min_val = np.nanmin(nparr, axis=axis)
+            max_val = np.nanmax(nparr, axis=axis)
+            mean_ = np.nanmean(nparr, axis=axis)
+            std_  = np.nanstd(nparr, axis=axis)
+        else:
+            min_val = nparr.min(axis=axis)
+            max_val = nparr.max(axis=axis)
+            mean_ = nparr.mean(axis=axis)
+            std_  = nparr.std(axis=axis)
+        # number of entries with min/max val
+        nMin = np.sum(nparr == min_val, axis=axis)
+        nMax = np.sum(nparr == max_val, axis=axis)
+        stats = collections.OrderedDict([])
+
+        # Not sure why this wont work
+        # if not isinstance(moments, list):
+        #     moments = list(range(1, moments + 1))
+        # nan_policy = 'propogate'
+        # if nan:
+        #     nan_policy = 'omit'
+        # for moment in moments:
+        #     nth_moment = scipy.stats.moment(nparr, axis=axis,
+        #                                     nan_policy=nan_policy)
+        #     nth_moment = np.float32(nth_moment)
+        #     if moment == 1:
+        #         stats['mean'] = nth_moment
+
+        if True:
+            stats['mean'] = np.float32(mean_)
+            stats['std'] = np.float32(std_)
+        if extreme:
+            stats['min'] = np.int32(min_val)
+            stats['max'] = np.int32(max_val)
+        if n_extreme:
+            stats['nMin'] = np.int32(nMin)
+            stats['nMax'] = np.int32(nMax)
+        if size:
+            stats['size'] = nparr.size
+        if shape:
+            stats['shape'] = nparr.shape
+        if median:
+            stats['med'] = np.nanmedian(nparr)
+        if nan:
+            stats['num_nan'] = np.isnan(nparr).sum()
+        if sum:
+            sumfunc = np.nansum if nan else np.sum
+            stats['sum'] = sumfunc(nparr, axis=axis)
+    return stats
+
+
 class MovingAve(ub.NiceRepr):
     def average(self):
         raise NotImplementedError()
