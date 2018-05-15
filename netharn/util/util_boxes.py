@@ -305,14 +305,15 @@ class Boxes(ub.NiceRepr):
             new_data = boxes.float().clone()
         else:
             new_data = boxes.astype(np.float).copy()
-        if self.format in ['xywh', 'cxywh']:
-            new_data[..., 0] += tx
-            new_data[..., 1] += ty
-        elif self.format in ['tlbr']:
-            new_data[..., 0:4:2] += tx
-            new_data[..., 1:4:2] += ty
-        else:
-            raise KeyError(self.format)
+        if new_data.size > 0:
+            if self.format in ['xywh', 'cxywh']:
+                new_data[..., 0] += tx
+                new_data[..., 1] += ty
+            elif self.format in ['tlbr']:
+                new_data[..., 0:4:2] += tx
+                new_data[..., 1:4:2] += ty
+            else:
+                raise KeyError(self.format)
         return Boxes(new_data, self.format)
 
     @property
