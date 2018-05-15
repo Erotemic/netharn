@@ -25,7 +25,7 @@ def _run_quick_test():
 
     if 0:
         # Load up pretrained VOC weights
-        weights_fpath = light_yolo.demo_weights()
+        weights_fpath = light_yolo.demo_voc_weights()
         state_dict = harn.xpu.load(weights_fpath)['weights']
         harn.model.module.load_state_dict(state_dict)
     else:
