@@ -312,10 +312,13 @@ def find_anchors(dset):
 
 
 def demo_weights():
-    from os.path import dirname, join
-    import lightnet
-    dpath = dirname(dirname(lightnet.__file__))
-    fpath = join(dpath, 'examples', 'yolo-voc', 'lightnet_weights.pt')
+    import ubelt as ub
+    url = 'https://gitlab.com/EAVISE/lightnet/raw/master/examples/yolo-voc/lightnet_weights.pt'
+    fpath = ub.grabdata(url)
+    # import lightnet
+    # from os.path import dirname, join
+    # dpath = dirname(dirname(lightnet.__file__))
+    # fpath = join(dpath, 'examples', 'yolo-voc', 'lightnet_weights.pt')
     return fpath
 
 
