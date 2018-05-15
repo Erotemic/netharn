@@ -8,7 +8,6 @@ import netharn as nh
 from netharn import util
 import imgaug.augmenters as iaa
 from netharn.util import profiler  # NOQA
-from netharn.data import collate
 import torch.utils.data as torch_data
 from netharn.models.yolo2 import multiscale_batch_sampler
 from netharn.models.yolo2 import light_region_loss
@@ -287,13 +286,22 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>>         break
             >>> assert len(shapes) > 1
         """
+        import torch.utils.data.sampler as torch_sampler
         assert len(self) > 0, 'must have some data'
+        if shuffle:
+            sampler = torch_sampler.RandomSampler(self)
+            resample_freq = 10
+        else:
+            sampler = torch_sampler.SequentialSampler(self)
+            resample_freq = None
+
         # use custom sampler that does multiscale training
         batch_sampler = multiscale_batch_sampler.MultiScaleBatchSampler(
-            self, batch_size=batch_size, shuffle=shuffle
+            sampler, batch_size=batch_size, resample_freq=resample_freq,
         )
+        # torch.utils.data.sampler.WeightedRandomSampler
         loader = torch_data.DataLoader(self, batch_sampler=batch_sampler,
-                                       collate_fn=collate.padded_collate,
+                                       collate_fn=nh.data.collate.padded_collate,
                                        num_workers=num_workers,
                                        pin_memory=pin_memory)
         if loader.batch_size != batch_size:
