@@ -18,6 +18,99 @@ mkinit /code/netharn/netharn/examples/example_test.py --dry
 # </AUTOGEN_INIT>
 
 
+def _run_quick_test():
+    harn = setup_harness(bsize=2)
+    harn.hyper.xpu = nh.XPU(0)
+    harn.initialize()
+
+    if 0:
+        # Load up pretrained VOC weights
+        weights_fpath = light_yolo.demo_weights()
+        state_dict = harn.xpu.load(weights_fpath)['weights']
+        harn.model.module.load_state_dict(state_dict)
+    else:
+        weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
+        state_dict = harn.xpu.load(weights_fpath)['weights']
+        harn.model.module.load_state_dict(state_dict)
+
+    harn.model.eval()
+
+    with torch.no_grad():
+        postprocess = harn.model.module.postprocess
+        # postprocess.conf_thresh = 0.001
+        # postprocess.nms_thresh = 0.5
+        batch_confusions = []
+        moving_ave = nh.util.util_averages.CumMovingAve()
+        loader = harn.loaders['test']
+        prog = ub.ProgIter(iter(loader), desc='')
+        for batch in prog:
+            inputs, labels = harn.prepare_batch(batch)
+            inp_size = np.array(inputs.shape[-2:][::-1])
+            outputs = harn.model(inputs)
+
+            target, gt_weights, orig_sizes, indices, bg_weights = labels
+            loss = harn.criterion(outputs, target, gt_weights=gt_weights,
+                                  seen=1000000000)
+            moving_ave.update(ub.odict([
+                ('loss', float(loss.sum())),
+                ('coord', harn.criterion.loss_coord),
+                ('conf', harn.criterion.loss_conf),
+                ('cls', harn.criterion.loss_cls),
+            ]))
+
+            average_losses = moving_ave.average()
+            desc = ub.repr2(average_losses, nl=0, precision=2, si=True)
+            prog.set_description(desc, refresh=False)
+
+            postout = postprocess(outputs)
+            for y in harn._measure_confusion(postout, labels, inp_size):
+                batch_confusions.append(y)
+
+            # batch_output.append((outputs.cpu().data.numpy().copy(), inp_size))
+            # batch_labels.append([x.cpu().data.numpy().copy() for x in labels])
+
+        average_losses = moving_ave.average()
+        print('average_losses {}'.format(ub.repr2(average_losses)))
+
+    # batch_confusions = []
+    # for (outputs, inp_size), labels in ub.ProgIter(zip(batch_output, batch_labels), total=len(batch_labels)):
+    #     labels = [torch.Tensor(x) for x in labels]
+    #     outputs = torch.Tensor(outputs)
+    #     postout = postprocess(outputs)
+    #     for y in harn._measure_confusion(postout, labels, inp_size):
+    #         batch_confusions.append(y)
+
+    if False:
+        from netharn.util import mplutil
+        mplutil.qtensure()  # xdoc: +SKIP
+        harn.visualize_prediction(batch, outputs, postout, thresh=.1)
+
+    y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
+    # TODO: write out a few visualizations
+    num_classes = len(loader.dataset.label_names)
+    cls_labels = list(range(num_classes))
+
+    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+    aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
+    mean_ap = np.nanmean(aps['ap'])
+    max_ap = np.nanmax(aps['ap'])
+    print(aps)
+    print('mean_ap = {!r}'.format(mean_ap))
+    print('max_ap = {!r}'.format(max_ap))
+
+    aps = nh.metrics.ave_precisions(y[y.score > .01], cls_labels, use_07_metric=True)
+    aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
+    mean_ap = np.nanmean(aps['ap'])
+    max_ap = np.nanmax(aps['ap'])
+    print(aps)
+    print('mean_ap = {!r}'.format(mean_ap))
+    print('max_ap = {!r}'.format(max_ap))
+
+    # import sklearn.metrics
+    # sklearn.metrics.accuracy_score(y.true, y.pred)
+    # sklearn.metrics.precision_score(y.true, y.pred, average='weighted')
+
+
 def compare_loss():
     harn = setup_harness(bsize=2)
     harn.hyper.xpu = nh.XPU(0)
@@ -421,94 +514,10 @@ def _test_with_lnstyle_data():
             # print('max_ap = {!r}'.format(max_ap))
 
 
-def _run_quick_test():
-    harn = setup_harness(bsize=2)
-    harn.hyper.xpu = nh.XPU(0)
-    harn.initialize()
-
-    if 0:
-        # Load up pretrained VOC weights
-        weights_fpath = light_yolo.demo_weights()
-        state_dict = harn.xpu.load(weights_fpath)['weights']
-        harn.model.module.load_state_dict(state_dict)
-    else:
-        weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
-        state_dict = harn.xpu.load(weights_fpath)['weights']
-        harn.model.module.load_state_dict(state_dict)
-
-    harn.model.eval()
-
-    with torch.no_grad():
-        postprocess = harn.model.module.postprocess
-        # postprocess.conf_thresh = 0.001
-        # postprocess.nms_thresh = 0.5
-        batch_confusions = []
-        moving_ave = nh.util.util_averages.CumMovingAve()
-        loader = harn.loaders['test']
-        prog = ub.ProgIter(iter(loader), desc='')
-        for batch in prog:
-            inputs, labels = harn.prepare_batch(batch)
-            inp_size = np.array(inputs.shape[-2:][::-1])
-            outputs = harn.model(inputs)
-
-            target, gt_weights, orig_sizes, indices, bg_weights = labels
-            loss = harn.criterion(outputs, target, gt_weights=gt_weights,
-                                  seen=1000000000)
-            moving_ave.update(ub.odict([
-                ('loss', float(loss.sum())),
-                ('coord', harn.criterion.loss_coord),
-                ('conf', harn.criterion.loss_conf),
-                ('cls', harn.criterion.loss_cls),
-            ]))
-
-            average_losses = moving_ave.average()
-            desc = ub.repr2(average_losses, nl=0, precision=2, si=True)
-            prog.set_description(desc, refresh=False)
-
-            postout = postprocess(outputs)
-            for y in harn._measure_confusion(postout, labels, inp_size):
-                batch_confusions.append(y)
-
-            # batch_output.append((outputs.cpu().data.numpy().copy(), inp_size))
-            # batch_labels.append([x.cpu().data.numpy().copy() for x in labels])
-
-        average_losses = moving_ave.average()
-        print('average_losses {}'.format(ub.repr2(average_losses)))
-
-    # batch_confusions = []
-    # for (outputs, inp_size), labels in ub.ProgIter(zip(batch_output, batch_labels), total=len(batch_labels)):
-    #     labels = [torch.Tensor(x) for x in labels]
-    #     outputs = torch.Tensor(outputs)
-    #     postout = postprocess(outputs)
-    #     for y in harn._measure_confusion(postout, labels, inp_size):
-    #         batch_confusions.append(y)
-
-    if False:
-        from netharn.util import mplutil
-        mplutil.qtensure()  # xdoc: +SKIP
-        harn.visualize_prediction(batch, outputs, postout, thresh=.1)
-
-    y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
-    # TODO: write out a few visualizations
-    num_classes = len(loader.dataset.label_names)
-    cls_labels = list(range(num_classes))
-
-    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
-    aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
-    mean_ap = np.nanmean(aps['ap'])
-    max_ap = np.nanmax(aps['ap'])
-    print(aps)
-    print('mean_ap = {!r}'.format(mean_ap))
-    print('max_ap = {!r}'.format(max_ap))
-
-    aps = nh.metrics.ave_precisions(y[y.score > .01], cls_labels, use_07_metric=True)
-    aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
-    mean_ap = np.nanmean(aps['ap'])
-    max_ap = np.nanmax(aps['ap'])
-    print(aps)
-    print('mean_ap = {!r}'.format(mean_ap))
-    print('max_ap = {!r}'.format(max_ap))
-
-    # import sklearn.metrics
-    # sklearn.metrics.accuracy_score(y.true, y.pred)
-    # sklearn.metrics.precision_score(y.true, y.pred, average='weighted')
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python ~/code/netharn/netharn/examples/example_test.py all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

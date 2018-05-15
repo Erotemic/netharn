@@ -1,6 +1,5 @@
 """
-python -c "import ubelt._internal as a; a.autogen_init('netharn.util')"
-python -m netharn
+mkinit netharn.util
 """
 # flake8: noqa
 from __future__ import absolute_import, division, print_function, unicode_literals
@@ -52,17 +51,17 @@ else:
                                       scores_to_color, set_figtitle,
                                       show_if_requested,)
     from netharn.util.nms import (non_max_supression,)
-    from netharn.util.profiler import (IS_PROFILING, IS_PROFILING, KernprofParser,
+    from netharn.util.profiler import (IS_PROFILING, KernprofParser,
                                        dump_global_profile_report, dynamic_profile,
                                        find_parent_class, find_pattern_above_row,
-                                       find_pyclass_above_row, profile, profile,
+                                       find_pyclass_above_row, profile,
                                        profile_onthefly,)
     from netharn.util.torch_utils import (grad_context, number_of_parameters,)
     from netharn.util.util_averages import (CumMovingAve, ExpMovingAve,
                                             InternalRunningStats, MovingAve,
                                             RunningStats, WindowedMovingAve,
-                                            absdev,)
-    from netharn.util.util_boxes import (Boxes, bbox_ious_c, box_ious, box_ious_py,
+                                            absdev, stats_dict,)
+    from netharn.util.util_boxes import (Boxes, box_ious, box_ious_py,
                                          box_ious_torch,)
     from netharn.util.util_cv2 import (draw_boxes_on_image, draw_text_on_image,
                                        putMultiLineText,)

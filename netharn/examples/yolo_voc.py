@@ -408,6 +408,110 @@ class YoloHarn(nh.FitHarn):
                 raise ValueError('{}={} is not finite'.format(k, v))
         return metrics_dict
 
+    @profiler.profile
+    def on_epoch(harn):
+        """
+        custom callback
+
+        Example:
+            >>> harn = setup_harness(bsize=4)
+            >>> harn.initialize()
+            >>> batch = harn._demo_batch(0, 'test')
+            >>> weights_fpath = light_yolo.demo_weights()
+            >>> state_dict = harn.xpu.load(weights_fpath)['weights']
+            >>> harn.model.module.load_state_dict(state_dict)
+            >>> outputs, loss = harn.run_batch(batch)
+            >>> # run a few batches
+            >>> harn.on_batch(batch, outputs, loss)
+            >>> harn.on_batch(batch, outputs, loss)
+            >>> harn.on_batch(batch, outputs, loss)
+            >>> # then finish the epoch
+            >>> harn.on_epoch()
+        """
+        tag = harn.current_tag
+        if harn.batch_confusions:
+            y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
+            # TODO: write out a few visualizations
+            loader = harn.loaders[tag]
+            num_classes = len(loader.dataset.label_names)
+            labels = list(range(num_classes))
+            aps = nh.metrics.ave_precisions(y, labels, use_07_metric=True)
+            harn.aps[tag] = aps
+            mean_ap = np.nanmean(aps['ap'])
+            max_ap = np.nanmax(aps['ap'])
+            harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
+            harn.log_value(tag + ' epoch max-AP', max_ap, harn.epoch)
+            harn.batch_confusions.clear()
+            metrics_dict = ub.odict()
+            metrics_dict['max-AP'] = max_ap
+            metrics_dict['mAP'] = mean_ap
+            return metrics_dict
+
+    # Non-standard problem-specific custom methods
+
+    @profiler.profile
+    def _measure_confusion(harn, postout, labels, inp_size, **kw):
+        targets = labels[0]
+        gt_weights = labels[1]
+        # orig_sizes = labels[2]
+        # indices = labels[3]
+        bg_weights = labels[4]
+
+        def asnumpy(tensor):
+            return tensor.data.cpu().numpy()
+
+        bsize = len(labels[0])
+        for bx in range(bsize):
+            postitem = asnumpy(postout[bx])
+            target = asnumpy(targets[bx]).reshape(-1, 5)
+            true_cxywh   = target[:, 1:5]
+            true_cxs     = target[:, 0]
+            true_weight  = asnumpy(gt_weights[bx])
+
+            # Remove padded truth
+            flags = true_cxs != -1
+            true_cxywh  = true_cxywh[flags]
+            true_cxs    = true_cxs[flags]
+            true_weight = true_weight[flags]
+
+            # orig_size    = asnumpy(orig_sizes[bx])
+            # gx           = int(asnumpy(indices[bx]))
+
+            # how much do we care about the background in this image?
+            bg_weight = float(asnumpy(bg_weights[bx]))
+
+            # Unpack postprocessed predictions
+            sboxes = postitem.reshape(-1, 6)
+            pred_cxywh = sboxes[:, 0:4]
+            pred_scores = sboxes[:, 4]
+            pred_cxs = sboxes[:, 5].astype(np.int)
+
+            true_tlbr = util.Boxes(true_cxywh, 'cxywh').to_tlbr()
+            pred_tlbr = util.Boxes(pred_cxywh, 'cxywh').to_tlbr()
+
+            true_tlbr = true_tlbr.scale(inp_size)
+            pred_tlbr = pred_tlbr.scale(inp_size)
+
+            # TODO: can we invert the letterbox transform here and clip for
+            # some extra mAP?
+            true_boxes = true_tlbr.data
+            pred_boxes = pred_tlbr.data
+
+            y = nh.metrics.detection_confusions(
+                true_boxes=true_boxes,
+                true_cxs=true_cxs,
+                true_weights=true_weight,
+                pred_boxes=pred_boxes,
+                pred_scores=pred_scores,
+                pred_cxs=pred_cxs,
+                bg_weight=bg_weight,
+                bg_cls=-1,
+                ovthresh=harn.hyper.other['ovthresh'],
+                **kw
+            )
+            # y['gx'] = gx
+            yield y
+
     def _postout_to_coco(harn, postout, labels, inp_size):
         """
         -[ ] TODO: dump predictions for the test set to disk and score using
@@ -476,130 +580,7 @@ class YoloHarn(nh.FitHarn):
                     'weight': weight,
                 }
                 truth.append(true)
-
         return predictions, truth
-
-    @profiler.profile
-    def on_epoch(harn):
-        """
-        custom callback
-
-        Example:
-            >>> harn = setup_harness(bsize=4)
-            >>> harn.initialize()
-            >>> batch = harn._demo_batch(0, 'test')
-            >>> weights_fpath = light_yolo.demo_weights()
-            >>> state_dict = harn.xpu.load(weights_fpath)['weights']
-            >>> harn.model.module.load_state_dict(state_dict)
-            >>> outputs, loss = harn.run_batch(batch)
-            >>> # run a few batches
-            >>> harn.on_batch(batch, outputs, loss)
-            >>> harn.on_batch(batch, outputs, loss)
-            >>> harn.on_batch(batch, outputs, loss)
-            >>> # then finish the epoch
-            >>> harn.on_epoch()
-        """
-        tag = harn.current_tag
-        if harn.batch_confusions:
-            y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
-            # TODO: write out a few visualizations
-            loader = harn.loaders[tag]
-            num_classes = len(loader.dataset.label_names)
-            labels = list(range(num_classes))
-            aps = nh.metrics.ave_precisions(y, labels, use_07_metric=True)
-            harn.aps[tag] = aps
-            mean_ap = np.nanmean(aps['ap'])
-            max_ap = np.nanmax(aps['ap'])
-            harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
-            harn.log_value(tag + ' epoch max-AP', max_ap, harn.epoch)
-            harn.batch_confusions.clear()
-            metrics_dict = ub.odict()
-            metrics_dict['max-AP'] = max_ap
-            metrics_dict['mAP'] = mean_ap
-            return metrics_dict
-
-    # Non-standard problem-specific custom methods
-
-    @profiler.profile
-    def _measure_confusion(harn, postout, labels, inp_size, **kw):
-        targets = labels[0]
-        gt_weights = labels[1]
-        # orig_sizes = labels[2]
-        # indices = labels[3]
-        bg_weights = labels[4]
-
-        # def clip_boxes_to_letterbox(boxes, letterbox_tlbr):
-        #     if boxes.shape[0] == 0:
-        #         return boxes
-
-        #     boxes = boxes.copy()
-        #     left, top, right, bot = letterbox_tlbr
-        #     x1, y1, x2, y2 = boxes.T
-        #     np.minimum(x1, right, out=x1)
-        #     np.minimum(y1, bot, out=y1)
-        #     np.minimum(x2, right, out=x2)
-        #     np.minimum(y2, bot, out=y2)
-
-        #     np.maximum(x1, left, out=x1)
-        #     np.maximum(y1, top, out=y1)
-        #     np.maximum(x2, left, out=x2)
-        #     np.maximum(y2, top, out=y2)
-        #     return boxes
-
-        def asnumpy(tensor):
-            return tensor.data.cpu().numpy()
-
-        bsize = len(labels[0])
-        for bx in range(bsize):
-            postitem = asnumpy(postout[bx])
-            target = asnumpy(targets[bx]).reshape(-1, 5)
-            true_cxywh   = target[:, 1:5]
-            true_cxs     = target[:, 0]
-            true_weight  = asnumpy(gt_weights[bx])
-
-            # Remove padded truth
-            flags = true_cxs != -1
-            true_cxywh  = true_cxywh[flags]
-            true_cxs    = true_cxs[flags]
-            true_weight = true_weight[flags]
-
-            # orig_size    = asnumpy(orig_sizes[bx])
-            # gx           = int(asnumpy(indices[bx]))
-
-            # how much do we care about the background in this image?
-            bg_weight = float(asnumpy(bg_weights[bx]))
-
-            # Unpack postprocessed predictions
-            sboxes = postitem.reshape(-1, 6)
-            pred_cxywh = sboxes[:, 0:4]
-            pred_scores = sboxes[:, 4]
-            pred_cxs = sboxes[:, 5].astype(np.int)
-
-            true_tlbr = util.Boxes(true_cxywh, 'cxywh').to_tlbr()
-            pred_tlbr = util.Boxes(pred_cxywh, 'cxywh').to_tlbr()
-
-            true_tlbr = true_tlbr.scale(inp_size)
-            pred_tlbr = pred_tlbr.scale(inp_size)
-
-            # TODO: can we invert the letterbox transform here and clip for
-            # some extra mAP?
-            true_boxes = true_tlbr.data
-            pred_boxes = pred_tlbr.data
-
-            y = nh.metrics.detection_confusions(
-                true_boxes=true_boxes,
-                true_cxs=true_cxs,
-                true_weights=true_weight,
-                pred_boxes=pred_boxes,
-                pred_scores=pred_scores,
-                pred_cxs=pred_cxs,
-                bg_weight=bg_weight,
-                bg_cls=-1,
-                ovthresh=harn.hyper.other['ovthresh'],
-                **kw
-            )
-            # y['gx'] = gx
-            yield y
 
     def visualize_prediction(harn, batch, outputs, postout, idx=0, thresh=None):
         """
@@ -661,6 +642,12 @@ class YoloHarn(nh.FitHarn):
         mplutil.draw_boxes(pred_cxywh_.data, color='blue', box_format='cxywh', labels=pred_labels)
 
         # mplutil.show_if_requested()
+
+    def deploy(harn):
+        """
+        Experimental function that will deploy a standalone predictor
+        """
+        pass
 
 
 def setup_harness(bsize=16, workers=0):
@@ -783,15 +770,7 @@ def setup_harness(bsize=16, workers=0):
     harn.intervals['log_iter_train'] = 1
     harn.intervals['log_iter_test'] = None
     harn.intervals['log_iter_vali'] = None
-
-    def deploy_predictor(harn):
-        pass
-
     return harn
-
-
-def deploy_predictor(harn):
-    pass
 
 
 def train():

@@ -321,6 +321,13 @@ class Boxes(ub.NiceRepr):
 
     @property
     def area(self):
+        """
+        Example:
+            >>> Boxes([25, 30, 15, 10], 'xywh').area
+            array([150])
+            >>> Boxes([[25, 30, 0, 0]], 'xywh').area
+            array([[0]])
+        """
         w, h = self.to_xywh().components[-2:]
         return w * h
 
