@@ -240,8 +240,7 @@ class RegionLoss(BaseLossWithCudaState):
         >>> print(f'output.sum() = {output.sum():.2f}')
         output.sum() = 2.15
         >>> print(f'loss = {loss:.2f}')
-        loss = 20.18
-
+        loss = 16.47
     """
 
     def __init__(self, num_classes, anchors, coord_scale=1.0,
