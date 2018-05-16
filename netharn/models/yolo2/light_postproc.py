@@ -251,10 +251,10 @@ class GetBoundingBoxes(object):
         anchor_w = self.anchors[:, 0].contiguous().view(1, self.num_anchors, 1)
         anchor_h = self.anchors[:, 1].contiguous().view(1, self.num_anchors, 1)
         if cuda:
-            lin_x = lin_x.cuda()
-            lin_y = lin_y.cuda()
-            anchor_w = anchor_w.cuda()
-            anchor_h = anchor_h.cuda()
+            lin_x = lin_x.cuda(output.device)
+            lin_y = lin_y.cuda(output.device)
+            anchor_w = anchor_w.cuda(output.device)
+            anchor_h = anchor_h.cuda(output.device)
 
         # -1 == 5+num_classes (we can drop feature maps if 1 class)
         output_ = output.view(bsize, self.num_anchors, -1, h * w)
