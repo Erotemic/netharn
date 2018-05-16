@@ -184,9 +184,7 @@ class Boxes(ub.NiceRepr):
         >>> Boxes([25, 30, 15, 10], 'xywh').scale(2).to_tlbr()
         <Boxes(tlbr, array([50., 60., 80., 80.]))>
         >>> Boxes(torch.FloatTensor([[25, 30, 15, 20]]), 'xywh').scale(.1).to_tlbr()
-        <Boxes(tlbr,
-             2.5000  3.0000  4.0000  5.0000
-            [torch.FloatTensor of size ...
+        <Boxes(tlbr, tensor([[ 2.5000,  3.0000,  4.0000,  5.0000]]))>
 
     Example:
         >>> datas = [

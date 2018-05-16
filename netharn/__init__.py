@@ -1,7 +1,7 @@
 # flake8: noqa
 __version__ = '0.0.3.dev0'
 """
-mkinit netharn', attrs=True)"
+mkinit netharn
 """
 from netharn import criterions
 from netharn import data
