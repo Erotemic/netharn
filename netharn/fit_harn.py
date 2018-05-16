@@ -858,6 +858,8 @@ class CoreMixin:
         return metrics_dict
 
     def _check_divergence(harn):
+        # Eventually we may need to remove
+        # num_batches_tracked once 0.5.0 lands
         state = harn.model.module.state_dict()
         weights = sum(v.sum() for v in state.values())
         if not np.isfinite(weights):
