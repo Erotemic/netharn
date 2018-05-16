@@ -687,7 +687,7 @@ def setup_harness(bsize=16, workers=0):
 
     nice = ub.argval('--nice', default='Yolo2Baseline')
     batch_size = int(ub.argval('--batch_size', default=bsize))
-    bstep = int(ub.argval('--bstep', 1))
+    bstep = int(ub.argval('--bstep', 4))
     workers = int(ub.argval('--workers', default=workers))
     decay = float(ub.argval('--decay', default=0.0005))
     lr = float(ub.argval('--lr', default=0.001))
@@ -825,6 +825,8 @@ if __name__ == '__main__':
 
         python ~/code/netharn/netharn/examples/yolo_voc.py all
         python ~/code/netharn/netharn/examples/yolo_voc.py setup_harness
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --nice=check --workers=4
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
