@@ -1,12 +1,12 @@
 """
-python -c "import ubelt._internal as a; a.autogen_init('netharn.data')"
+mkinit netharn.data')"
 """
 # flake8: noqa
 
 __DYNAMIC__ = False
 if __DYNAMIC__:
-    from ubelt._internal import dynamic_import
-    exec(dynamic_import(__name__))
+    from mkinit import dynamic_init
+    exec(dynamic_init(__name__))
 else:
     # <AUTOGEN_INIT>
     from netharn.data import base

@@ -7,7 +7,7 @@ import sys
 
 sys.path.append(ub.truepath('~/code/netharn/netharn/examples'))  # NOQA
 # import mkinit
-# exec(mkinit.dynamic_init('yolo_voc'))
+# exec(dynamic_init('yolo_voc'))
 from yolo_voc import setup_harness, light_yolo
 
 """
