@@ -765,11 +765,15 @@ class CoreMixin:
         if isinstance(prog, ub.ProgIter):
             prog.begin()
         with util.grad_context(learn):
+            harn.debug('Making batch iterator')
             batch_iter = iter(loader)
+            harn.debug('Starting batch iteration')
             for bx in range(len(loader)):
                 raw_batch = next(batch_iter)
 
                 harn.bxs[tag] = bx
+                harn.debug('{} batch iteration {}'.format(tag, bx))
+
                 batch = harn.prepare_batch(raw_batch)
 
                 # core learning / backprop

@@ -213,7 +213,7 @@ def ensure_rng(rng, api='numpy'):
     """
     if api == 'numpy':
         if rng is None:
-            rng = np.random
+            rng = np.random.RandomState(seed=None)
         elif isinstance(rng, int):
             rng = np.random.RandomState(seed=rng % _SEED_MAX)
         elif isinstance(rng, random.Random):
