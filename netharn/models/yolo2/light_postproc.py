@@ -189,6 +189,9 @@ class GetBoundingBoxes(object):
         """
         Returns array of detections for every image in batch
 
+        CommandLine:
+            python ~/code/netharn/netharn/models/yolo2/light_postproc.py GetBoundingBoxes._get_boxes
+
         Examples:
             >>> import torch
             >>> torch.random.manual_seed(0)
@@ -240,7 +243,6 @@ class GetBoundingBoxes(object):
             output.unsqueeze_(0)
 
         # Variables
-        cuda = output.is_cuda
         bsize = output.size(0)
         h = output.size(2)
         w = output.size(3)
@@ -250,7 +252,7 @@ class GetBoundingBoxes(object):
         lin_y = torch.linspace(0, h - 1, h).repeat(w, 1).t().contiguous().view(h * w)
         anchor_w = self.anchors[:, 0].contiguous().view(1, self.num_anchors, 1)
         anchor_h = self.anchors[:, 1].contiguous().view(1, self.num_anchors, 1)
-        if cuda:
+        if output.is_cuda:
             lin_x = lin_x.cuda(output.device)
             lin_y = lin_y.cuda(output.device)
             anchor_w = anchor_w.cuda(output.device)
