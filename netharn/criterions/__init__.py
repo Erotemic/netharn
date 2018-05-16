@@ -1,13 +1,13 @@
 """
-python -c "import ubelt._internal as a; a.autogen_init('netharn.criterions')"
+mkinit netharn.criterions
 """
 # flake8: noqa
 from torch.nn.modules.loss import CrossEntropyLoss, MSELoss, TripletMarginLoss
 
 __DYNAMIC__ = False
 if __DYNAMIC__:
-    from ubelt._internal import dynamic_import
-    exec(dynamic_import(__name__))
+    from mkinit import dynamic_init
+    exec(dynamic_init(__name__))
 else:
     # <AUTOGEN_INIT>
     from netharn.criterions import contrastive_loss

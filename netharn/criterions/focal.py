@@ -28,14 +28,16 @@ def one_hot_embedding(labels, num_classes, cpu=True):
         >>> num_classes = max(labels) + 1
         >>> t = one_hot_embedding(labels, num_classes)
         >>> assert all(row[y] == 1 for row, y in zip(t.numpy(), labels.numpy()))
-        >>> print(t)
-         1  0  0  0  0
-         1  0  0  0  0
-         0  1  0  0  0
-         0  0  0  0  1
-         0  0  1  0  0
-         0  0  0  1  0
-        [torch.FloatTensor of size ...
+        >>> import ubelt as ub
+        >>> print(ub.repr2(t.numpy().tolist()))
+        [
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0],
+        ]
     """
     # y = torch.eye(num_classes)  # [D,D]
     # if labels.is_cuda:

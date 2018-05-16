@@ -1,7 +1,7 @@
 # flake8: noqa
 __version__ = '0.0.2.dev0'
 """
-python -c "import ubelt._internal as a; a.autogen_init('netharn', attrs=True)"
+mkinit netharn', attrs=True)"
 """
 from netharn import criterions
 from netharn import data

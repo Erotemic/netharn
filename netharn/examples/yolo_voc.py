@@ -172,7 +172,11 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> batch = collate.padded_collate(inbatch)
             >>> inputs, labels = batch
             >>> assert len(labels) == len(inbatch[0][1])
-            >>> target, gt_weights, origsize, index = labels
+            >>> targets = labels['targets']
+            >>> orig_sizes = labels['orig_sizes']
+            >>> gt_weights = labels['gt_weights']
+            >>> indices = labels['indices']
+            >>> bg_weights = labels['bg_weights']
             >>> assert list(target.shape) == [16, 6, 5]
             >>> assert list(gt_weights.shape) == [16, 6]
             >>> assert list(origsize.shape) == [16, 2]
@@ -242,8 +246,13 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         gt_weights = torch.FloatTensor(gt_weights)
         # how much do we care about the background in this image?
         bg_weight = torch.FloatTensor([1.0])
-        label = (target, gt_weights, orig_size, index, bg_weight)
-
+        label = {
+            'targets': target,
+            'gt_weights': gt_weights,
+            'orig_sizes': orig_size,
+            'indices': index,
+            'bg_weights': bg_weight
+        }
         return chw01, label
 
     def _load_item(self, index):
@@ -333,7 +342,7 @@ class YoloHarn(nh.FitHarn):
         batch_inputs, batch_labels = raw_batch
 
         inputs = harn.xpu.variable(batch_inputs)
-        labels = [harn.xpu.variable(d) for d in batch_labels]
+        labels = {k: harn.xpu.variable(d) for k, d in batch_labels.items()}
 
         batch = (inputs, labels)
         return batch
@@ -368,8 +377,10 @@ class YoloHarn(nh.FitHarn):
         inputs, labels = batch
         outputs = harn.model(inputs)
         # torch.cuda.synchronize()
-        target, gt_weights, orig_sizes, indices, bg_weights = labels
-        loss = harn.criterion(outputs, target, seen=n_seen)
+        target = labels['targets']
+        gt_weights = labels['gt_weights']
+        loss = harn.criterion(outputs, target, seen=n_seen,
+                              gt_weights=gt_weights)
         # torch.cuda.synchronize()
         return outputs, loss
 
@@ -459,16 +470,16 @@ class YoloHarn(nh.FitHarn):
 
     @profiler.profile
     def _measure_confusion(harn, postout, labels, inp_size, **kw):
-        targets = labels[0]
-        gt_weights = labels[1]
-        # orig_sizes = labels[2]
-        # indices = labels[3]
-        bg_weights = labels[4]
+        targets = labels['targets']
+        gt_weights = labels['gt_weights']
+        # orig_sizes = labels['orig_sizes']
+        # indices = labels['indices']
+        bg_weights = labels['bg_weights']
 
         def asnumpy(tensor):
             return tensor.data.cpu().numpy()
 
-        bsize = len(labels[0])
+        bsize = len(targets)
         for bx in range(bsize):
             postitem = asnumpy(postout[bx])
             target = asnumpy(targets[bx]).reshape(-1, 5)
@@ -525,11 +536,12 @@ class YoloHarn(nh.FitHarn):
         -[ ] TODO: dump predictions for the test set to disk and score using
              someone elses code.
         """
-        targets = labels[0]
-        gt_weights = labels[1]
-        orig_sizes = labels[2]
-        indices = labels[3]
-        # bg_weights = labels[4]
+        targets = labels['targets']
+        gt_weights = labels['gt_weights']
+        # orig_sizes = labels['orig_sizes']
+        indices = labels['indices']
+        orig_sizes = labels['orig_sizes']
+        # bg_weights = labels['bg_weights']
 
         def asnumpy(tensor):
             return tensor.data.cpu().numpy()
@@ -542,7 +554,7 @@ class YoloHarn(nh.FitHarn):
         predictions = []
         truth = []
 
-        bsize = len(labels[0])
+        bsize = len(targets)
         for bx in range(bsize):
             postitem = asnumpy(postout[bx])
             target = asnumpy(targets[bx]).reshape(-1, 5)
@@ -597,7 +609,10 @@ class YoloHarn(nh.FitHarn):
         """
         # xdoc: +REQUIRES(--show)
         inputs, labels = batch
-        targets, gt_weights, orig_sizes, indices, bg_weights = labels
+
+        targets = labels['targets']
+        orig_sizes = labels['orig_sizes']
+
         chw01 = inputs[idx]
         target = targets[idx]
         postitem = postout[idx]

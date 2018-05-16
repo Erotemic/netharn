@@ -5,14 +5,65 @@ import torch.utils.data as torch_data
 import torch
 import ubelt as ub
 import numpy as np  # NOQA
+import collections
+
+
+class CollateException(Exception):
+    pass
 
 
 default_collate = torch_data.dataloader.default_collate
 
 
+def _collate_else(batch, collate_func):
+    """
+    Handles recursion in the else case for these special collate functions
+    """
+    import re
+    error_msg = "batch must contain tensors, numbers, dicts or lists; found {}"
+    elem_type = type(batch[0])
+    if elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
+            and elem_type.__name__ != 'string_':
+        elem = batch[0]
+        if elem_type.__name__ == 'ndarray':
+            # array of string classes and object
+            if re.search('[SaUO]', elem.dtype.str) is not None:
+                raise TypeError(error_msg.format(elem.dtype))
+
+            return torch.stack([torch.from_numpy(b) for b in batch], 0)
+        if elem.shape == ():  # scalars
+            py_type = float if elem.dtype.name.startswith('float') else int
+            return torch_data.dataloader.numpy_type_map[elem.dtype.name](list(map(py_type, batch)))
+    elif isinstance(batch[0], torch_data.dataloader.int_classes):
+        return torch.LongTensor(batch)
+    elif isinstance(batch[0], float):
+        return torch.DoubleTensor(batch)
+    elif isinstance(batch[0], torch_data.dataloader.string_classes):
+        return batch
+    elif isinstance(batch[0], collections.Mapping):
+        return {key: collate_func([d[key] for d in batch]) for key in batch[0]}
+    elif isinstance(batch[0], collections.Sequence):
+        transposed = zip(*batch)
+        return [collate_func(samples) for samples in transposed]
+    else:
+        raise TypeError((error_msg.format(type(batch[0]))))
+    # if isinstance(inbatch[0], collections.Mapping):
+    #     keys = inbatch[0]
+    #     batch = {key: collate_func([d[key] for d in inbatch]) for key in keys}
+    # else:
+    #     transposed = zip(*inbatch)
+    #     # transposed = list(map(list, transposed))
+    #     batch = [collate_func(item) for item in transposed]
+    # return batch
+
+
 def list_collate(inbatch):
     """
     Used for detection datasets with boxes.
+
+    Args:
+        inbatch: a list of items returned by __getitem__ for each item in the
+            batch
 
     Example:
         >>> import torch
@@ -58,10 +109,13 @@ def list_collate(inbatch):
             else:
                 batch = inbatch
         else:
-            batch = [list_collate(item) for item in list(map(list, zip(*inbatch)))]
+            batch = _collate_else(inbatch, list_collate)
     except Exception as ex:
-        print('Failed to collate inbatch={}'.format(inbatch))
-        raise
+        if not isinstance(ex, CollateException):
+            raise CollateException(
+                'Failed to collate inbatch={}. Reason: {!r}'.format(inbatch, ex))
+        else:
+            raise
     return batch
     # else:
     #     # we know the order of data in __getitem__ so we can choose not to
@@ -172,10 +226,13 @@ def padded_collate(inbatch, fill_value=-1):
                 batch = inbatch
                 batch = default_collate(padded_inbatch)
         else:
-            batch = [padded_collate(item) for item in list(map(list, zip(*inbatch)))]
+            batch = _collate_else(inbatch, padded_collate)
     except Exception as ex:
-        print('Failed to collate inbatch={}'.format(inbatch))
-        raise
+        if not isinstance(ex, CollateException):
+            raise CollateException(
+                'Failed to collate inbatch={}. Reason: {!r}'.format(inbatch, ex))
+        else:
+            raise
     return batch
 
 

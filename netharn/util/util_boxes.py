@@ -235,10 +235,9 @@ class Boxes(ub.NiceRepr):
                        [48, 19, 39, 26]]))>
             >>> Boxes.random(3, rng=0, scale=100, tensor=True)
             <Boxes(xywh,
-                 27  35  30  27
-                 21  32  21  44
-                 48  19  39  26
-                [torch.LongTensor of size ...
+                tensor([[ 27,  35,  30,  27],
+                        [ 21,  32,  21,  44],
+                        [ 48,  19,  39,  26]]))>
         """
         from netharn import util
         rng = util.ensure_rng(rng)
