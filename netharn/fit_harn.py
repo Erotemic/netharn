@@ -69,6 +69,7 @@ import torch
 import ubelt as ub
 import sys
 from os.path import join
+import warnings
 import functools
 
 from netharn import device  # NOQA
@@ -144,6 +145,23 @@ class ExtraMixins:
             return batch
         else:
             return harn.prepare_batch(batch)
+
+    def _check_thread_safety(harn):
+        """
+        References:
+            https://github.com/pytorch/pytorch/issues/1355
+        """
+        import cv2
+        n_workers = max(loader.num_workers for loader in harn.loaders.values())
+        if n_workers > 1:
+            n_threads = cv2.getNumThreads()
+            if n_threads > 0:
+                msg = ('OpenCV threadcount of {} is non-zero and a DataLoader '
+                       'is using {} workers. This may cause deadlocks '
+                       'To be safe use cv2.setNumThreads(0)').format(
+                           n_threads, n_workers)
+                warnings.warn(msg, RuntimeWarning)
+                harn.warn(msg)
 
 
 @register_mixin
@@ -451,6 +469,9 @@ class SnapshotMixin:
 
         num_keep = harn.config['num_keep']
 
+        # TODO: add a config for always keeping specific iterations in
+        # multiples of X.
+
         def _epochs_to_remove(existing_epochs, num_keep):
             """
             doctest:
@@ -636,6 +657,8 @@ class CoreMixin:
         train_loader = harn.loaders['train']
         vali_loader  = harn.loaders.get('vali', None)
         test_loader  = harn.loaders.get('test', None)
+
+        harn._check_thread_safety()
 
         if not vali_loader:
             # if harn.monitor:

@@ -50,7 +50,9 @@ def stats_dict(list_, axis=None, nan=False, sum=False, extreme=True,
         >>> print(result)
         {mean: 20.0, std: 13.2, min: 0.0, max: 41.0, shape: (100,), num_nan: 1}
     """
-    # Assure input is in numpy format
+    stats = collections.OrderedDict([])
+
+    # Ensure input is in numpy format
     if isinstance(list_, np.ndarray):
         nparr = list_
     elif isinstance(list_, list):
@@ -59,7 +61,7 @@ def stats_dict(list_, axis=None, nan=False, sum=False, extreme=True,
         nparr = np.array(list(list_))
     # Check to make sure stats are feasible
     if len(nparr) == 0:
-        stats = collections.OrderedDict([('empty_list', True)])
+        stats['empty_list'] = True
         if size:
             stats['size'] = 0
     else:
@@ -76,20 +78,15 @@ def stats_dict(list_, axis=None, nan=False, sum=False, extreme=True,
         # number of entries with min/max val
         nMin = np.sum(nparr == min_val, axis=axis)
         nMax = np.sum(nparr == max_val, axis=axis)
-        stats = collections.OrderedDict([])
 
-        # Not sure why this wont work
-        # if not isinstance(moments, list):
-        #     moments = list(range(1, moments + 1))
-        # nan_policy = 'propogate'
-        # if nan:
-        #     nan_policy = 'omit'
-        # for moment in moments:
-        #     nth_moment = scipy.stats.moment(nparr, axis=axis,
-        #                                     nan_policy=nan_policy)
-        #     nth_moment = np.float32(nth_moment)
-        #     if moment == 1:
-        #         stats['mean'] = nth_moment
+        # Notes:
+        # the first central moment is 0
+        # the first raw moment is the mean
+        # the second central moment is the variance
+        # the third central moment is the skweness * var ** 3
+        # the fourth central moment is the kurtosis * var ** 4
+        # the third standardized moment is the skweness
+        # the fourth standardized moment is the kurtosis
 
         if True:
             stats['mean'] = np.float32(mean_)
