@@ -88,9 +88,9 @@ def adjust_gamma(img, gamma=1.0):
         http://www.pyimagesearch.com/2015/10/05/opencv-gamma-correction/
 
     Ignore:
-        >>> from netharn.util.imutil import *
+        >>> from netharn import util
         >>> fpath = grab_test_imgpath()
-        >>> img = imread(fpath)
+        >>> img = util.imread(fpath)
         >>> gamma = .5
         >>> imgf = ensure_float01(img)
         >>> img2 = adjust_gamma(img, gamma)
@@ -494,97 +494,6 @@ def load_image_paths(dpath, ext=('.png', '.tiff', 'tif')):
     return image_paths
 
 
-def imread(fpath, **kw):
-    """
-    reads image data in BGR format
-
-    Example:
-        >>> from netharn.util.imutil import *
-        >>> import tempfile
-        >>> from os.path import splitext  # NOQA
-        >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
-        >>> fpath = ub.grabdata('http://www.topcoder.com/contest/problem/UrbanMapper3D/JAX_Tile_043_DTM.tif')
-        >>> ext = splitext(fpath)[1]
-        >>> img1 = imread(fpath)
-        >>> # Check that write + read preserves data
-        >>> tmp = tempfile.NamedTemporaryFile(suffix=ext)
-        >>> imwrite(tmp.name, img1)
-        >>> img2 = imread(tmp.name)
-        >>> assert np.all(img2 == img1)
-
-    Example:
-        >>> import tempfile
-        >>> #img1 = (np.arange(0, 12 * 12 * 3).reshape(12, 12, 3) % 255).astype(np.uint8)
-        >>> img1 = imread(ub.grabdata('http://i.imgur.com/iXNf4Me.png', fname='ada.png'))
-        >>> tmp_tif = tempfile.NamedTemporaryFile(suffix='.tif')
-        >>> tmp_png = tempfile.NamedTemporaryFile(suffix='.png')
-        >>> imwrite(tmp_tif.name, img1)
-        >>> imwrite(tmp_png.name, img1)
-        >>> tif_im = imread(tmp_tif.name)
-        >>> png_im = imread(tmp_png.name)
-        >>> assert np.all(tif_im == png_im)
-
-    Example:
-        >>> from netharn.util.imutil import *
-        >>> import tempfile
-        >>> #img1 = (np.arange(0, 12 * 12 * 3).reshape(12, 12, 3) % 255).astype(np.uint8)
-        >>> tif_fpath = ub.grabdata('https://ghostscript.com/doc/tiff/test/images/rgb-3c-16b.tiff')
-        >>> img1 = imread(tif_fpath)
-        >>> tmp_tif = tempfile.NamedTemporaryFile(suffix='.tif')
-        >>> tmp_png = tempfile.NamedTemporaryFile(suffix='.png')
-        >>> imwrite(tmp_tif.name, img1)
-        >>> imwrite(tmp_png.name, img1)
-        >>> tif_im = imread(tmp_tif.name)
-        >>> png_im = imread(tmp_png.name)
-        >>> assert np.all(tif_im == png_im)
-
-        import plottool as pt
-        pt.qtensure()
-        pt.imshow(tif_im / 2 ** 16, pnum=(1, 2, 1), fnum=1)
-        pt.imshow(png_im / 2 ** 16, pnum=(1, 2, 2), fnum=1)
-
-    Ignore:
-        from PIL import Image
-        pil_img = Image.open(tif_fpath)
-        assert int(Image.PILLOW_VERSION.split('.')[0]) > 4
-    """
-    try:
-        if fpath.endswith(('.tif', '.tiff')):
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                # skimage reads in RGB, convert to BGR
-                image = skimage.io.imread(fpath, **kw)
-                if get_num_channels(image) == 3:
-                    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-                elif get_num_channels(image) == 4:
-                    image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)
-        else:
-            image = cv2.imread(fpath, flags=cv2.IMREAD_UNCHANGED)
-            if image is None:
-                raise IOError('OpenCV cannot read this image')
-        return image
-    except Exception as ex:
-        print('Error reading fpath = {!r}'.format(fpath))
-        raise
-
-
-def imwrite(fpath, image, **kw):
-    """
-    writes image data in BGR format
-    """
-    if fpath.endswith(('.tif', '.tiff')):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            # skimage writes in RGB, convert from BGR
-            if get_num_channels(image) == 3:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            elif get_num_channels(image) == 4:
-                image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
-            return skimage.io.imsave(fpath, image)
-    else:
-        return cv2.imwrite(fpath, image)
-
-
 def wide_strides_1d(margin, stop, step=None, start=0, keepbound=False,
                     check=True):
     """
@@ -612,7 +521,6 @@ def wide_strides_1d(margin, stop, step=None, start=0, keepbound=False,
         slice : slice in one dimension of size (margin)
 
     Example:
-        >>> from netharn.util.imutil import *
         >>> stop, margin, step = 2000, 360, 360
         >>> keepbound = True
         >>> strides = list(wide_strides_1d(margin, stop, step, keepbound, check=False))
@@ -686,7 +594,6 @@ def image_slices(img_shape, target_shape, overlap=0, keepbound=False):
         tuple(slice, slice): row and column slices used for numpy indexing
 
     Example:
-        >>> from netharn.util.imutil import *
         >>> img_shape = (2000, 2000)
         >>> target_shape = (360, 480)
         >>> overlap = 0
@@ -715,7 +622,6 @@ def run_length_encoding(img):
     img : 2D image
 
     Example:
-        >>> from netharn.util.imutil import *
         >>> lines = ub.codeblock(
         >>>     '''
         >>>     ..........
@@ -742,6 +648,95 @@ def run_length_encoding(img):
 
     h, w = img.shape[0:2]
     return (w, h), runlen
+
+
+def imread(fpath, **kw):
+    """
+    reads image data in BGR format
+
+    Example:
+        >>> import tempfile
+        >>> from os.path import splitext  # NOQA
+        >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
+        >>> fpath = ub.grabdata('http://www.topcoder.com/contest/problem/UrbanMapper3D/JAX_Tile_043_DTM.tif')
+        >>> ext = splitext(fpath)[1]
+        >>> img1 = imread(fpath)
+        >>> # Check that write + read preserves data
+        >>> tmp = tempfile.NamedTemporaryFile(suffix=ext)
+        >>> imwrite(tmp.name, img1)
+        >>> img2 = imread(tmp.name)
+        >>> assert np.all(img2 == img1)
+
+    Example:
+        >>> import tempfile
+        >>> #img1 = (np.arange(0, 12 * 12 * 3).reshape(12, 12, 3) % 255).astype(np.uint8)
+        >>> img1 = imread(ub.grabdata('http://i.imgur.com/iXNf4Me.png', fname='ada.png'))
+        >>> tmp_tif = tempfile.NamedTemporaryFile(suffix='.tif')
+        >>> tmp_png = tempfile.NamedTemporaryFile(suffix='.png')
+        >>> imwrite(tmp_tif.name, img1)
+        >>> imwrite(tmp_png.name, img1)
+        >>> tif_im = imread(tmp_tif.name)
+        >>> png_im = imread(tmp_png.name)
+        >>> assert np.all(tif_im == png_im)
+
+    Example:
+        >>> import tempfile
+        >>> #img1 = (np.arange(0, 12 * 12 * 3).reshape(12, 12, 3) % 255).astype(np.uint8)
+        >>> tif_fpath = ub.grabdata('https://ghostscript.com/doc/tiff/test/images/rgb-3c-16b.tiff')
+        >>> img1 = imread(tif_fpath)
+        >>> tmp_tif = tempfile.NamedTemporaryFile(suffix='.tif')
+        >>> tmp_png = tempfile.NamedTemporaryFile(suffix='.png')
+        >>> imwrite(tmp_tif.name, img1)
+        >>> imwrite(tmp_png.name, img1)
+        >>> tif_im = imread(tmp_tif.name)
+        >>> png_im = imread(tmp_png.name)
+        >>> assert np.all(tif_im == png_im)
+
+        import plottool as pt
+        pt.qtensure()
+        pt.imshow(tif_im / 2 ** 16, pnum=(1, 2, 1), fnum=1)
+        pt.imshow(png_im / 2 ** 16, pnum=(1, 2, 2), fnum=1)
+
+    Ignore:
+        from PIL import Image
+        pil_img = Image.open(tif_fpath)
+        assert int(Image.PILLOW_VERSION.split('.')[0]) > 4
+    """
+    try:
+        if fpath.endswith(('.tif', '.tiff')):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                # skimage reads in RGB, convert to BGR
+                image = skimage.io.imread(fpath, **kw)
+                if get_num_channels(image) == 3:
+                    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+                elif get_num_channels(image) == 4:
+                    image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)
+        else:
+            image = cv2.imread(fpath, flags=cv2.IMREAD_UNCHANGED)
+            if image is None:
+                raise IOError('OpenCV cannot read this image')
+        return image
+    except Exception as ex:
+        print('Error reading fpath = {!r}'.format(fpath))
+        raise
+
+
+def imwrite(fpath, image, **kw):
+    """
+    writes image data in BGR format
+    """
+    if fpath.endswith(('.tif', '.tiff')):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            # skimage writes in RGB, convert from BGR
+            if get_num_channels(image) == 3:
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            elif get_num_channels(image) == 4:
+                image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
+            return skimage.io.imsave(fpath, image)
+    else:
+        return cv2.imwrite(fpath, image)
 
 
 if __name__ == '__main__':
