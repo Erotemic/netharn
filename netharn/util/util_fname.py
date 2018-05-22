@@ -43,27 +43,33 @@ def shortest_unique_prefixes(items, sep=None, allow_simple=True, min_length=0, a
         ['z', 'dog', 'du', 'dov']
 
     Timeing:
+        >>> # DISABLE_DOCTEST
         >>> # make numbers larger to stress test
         >>> # L = max length of a string, N = number of strings,
         >>> # C = smallest gaurenteed common length
         >>> # (the setting N=10000, L=100, C=20 is feasible we are good)
+        >>> import ubelt as ub
         >>> import random
         >>> def make_data(N, L, C):
         >>>     rng = random.Random(0)
         >>>     return [''.join(['a' if i < C else chr(rng.randint(97, 122))
         >>>                      for i in range(L)]) for _ in range(N)]
         >>> items = make_data(N=1000, L=10, C=0)
-        >>> %timeit shortest_unique_prefixes(items)
-        17.5 ms ± 244 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
+        >>> ub.Timerit(3).call(shortest_unique_prefixes, items).print()
+        Timed for: 3 loops, best of 3
+            time per loop: best=24.54 ms, mean=24.54 ± 0.0 ms
         >>> items = make_data(N=1000, L=100, C=0)
-        >>> %timeit shortest_unique_prefixes(items)
-        141 ms ± 1.05 ms per loop (mean ± std. dev. of 7 runs, 10 loops each)
+        >>> ub.Timerit(3).call(shortest_unique_prefixes, items).print()
+        Timed for: 3 loops, best of 3
+            time per loop: best=155.4 ms, mean=155.4 ± 0.0 ms
         >>> items = make_data(N=1000, L=100, C=70)
-        >>> %timeit shortest_unique_prefixes(items)
-        141 ms ± 1.05 ms per loop (mean ± std. dev. of 7 runs, 10 loops each)
+        >>> ub.Timerit(3).call(shortest_unique_prefixes, items).print()
+        Timed for: 3 loops, best of 3
+            time per loop: best=232.8 ms, mean=232.8 ± 0.0 ms
         >>> items = make_data(N=10000, L=250, C=20)
-        >>> %timeit shortest_unique_prefixes(items)
-        3.55 s ± 23 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+        >>> ub.Timerit(3).call(shortest_unique_prefixes, items).print()
+        Timed for: 3 loops, best of 3
+            time per loop: best=4.063 s, mean=4.063 ± 0.0 s
     """
     if len(set(items)) != len(items):
         raise ValueError('inputs must be unique')

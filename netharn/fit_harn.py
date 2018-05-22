@@ -454,6 +454,54 @@ class SnapshotMixin:
             raise ValueError('harn.train_dpath is None')
         return join(harn.train_dpath, 'torch_snapshots')
 
+    def _epochs_to_remove(harn, existing_epochs, num_keep_recent,
+                          num_keep_best, keep_freq):
+        """
+        Unit testable helper for `cleanup_snapshots`. Determines which epochs
+        to remove given which epoches exist.
+
+        Keeps `keep_freq` most recent, `num_keep_best` best, and one every
+        `keep_freq` epochs.
+
+        Doctest:
+            >>> import netharn as nh
+            >>> harn = FitHarn({})
+            >>> rng = np.random.RandomState(0)
+            >>> harn.monitor = nh.Monitor(minimize=['loss'], maximize=['miou'])
+            >>> for epoch in range(200):
+            >>>     harn.monitor.update(epoch, {'loss': rng.rand(),
+            >>>                                 'miou': rng.rand()})
+            >>> existing_epochs = list(range(0, 200, 4))
+            >>> num_keep_best = 10
+            >>> num_keep_recent = 10
+            >>> keep_freq = 10
+            >>> to_remove = harn._epochs_to_remove(existing_epochs,
+            >>>                                    num_keep_recent, num_keep_best,
+            >>>                                    keep_freq)
+            >>> assert len(existing_epochs) - len(to_remove) < 40
+        """
+        keep = set()
+
+        recent = existing_epochs[-num_keep_recent:]
+        keep.update(recent)
+
+        # TODO: add a config for always keeping specific iterations in
+        # multiples of X.
+
+        if harn.monitor:
+            for best_epochs in harn.monitor.best_epochs().values():
+                best = ub.oset(best_epochs).intersection(existing_epochs)
+            keep.update(best[:num_keep_best])
+
+        # Keep a strided sampling of epochs
+        epoch_arr = np.array(existing_epochs)
+        flags = ((epoch_arr % keep_freq) == 0)
+        sampled = epoch_arr[flags]
+        keep.update(sampled)
+
+        to_remove = set(existing_epochs) - keep
+        return to_remove
+
     def cleanup_snapshots(harn):
         """
         remove old snapshots
@@ -467,39 +515,13 @@ class SnapshotMixin:
             for path in snapshots
         ])
 
-        num_keep = harn.config['num_keep']
-
-        # TODO: add a config for always keeping specific iterations in
-        # multiples of X.
-
-        def _epochs_to_remove(existing_epochs, num_keep):
-            """
-            doctest:
-                >>> import netharn as nh
-                >>> harn = FitHarn({})
-                >>> rng = np.random.RandomState(0)
-                >>> harn.monitor = nh.Monitor(minimize=['loss'], maximize=['miou'])
-                >>> for epoch in range(200):
-                >>>     harn.monitor.update(epoch, {'loss': rng.rand(),
-                >>>                                 'miou': rng.rand()})
-                >>> existing_epochs = list(range(0, 200, 4))
-                >>> num_keep = 10
-            """
-            keep = set()
-
-            recent = existing_epochs[-num_keep:]
-            keep.update(recent)
-
-            if harn.monitor:
-                for best_epochs in harn.monitor.best_epochs().values():
-                    best = ub.oset(best_epochs).intersection(existing_epochs)
-                keep.update(best[:num_keep])
-
-            to_remove = set(existing_epochs) - keep
-            return to_remove
+        num_keep_recent = harn.config['num_keep']
+        num_keep_best = harn.config['num_keep']
+        keep_freq = harn.config['keep_freq']
 
         epoch_to_fpath = dict(zip(existing_epochs, snapshots))
-        to_remove = _epochs_to_remove(existing_epochs, num_keep)
+        to_remove = harn._epochs_to_remove(existing_epochs, num_keep_recent,
+                                           num_keep_best, keep_freq)
         for fpath in ub.take(epoch_to_fpath, to_remove):
             ub.delete(fpath)
 
@@ -1036,8 +1058,12 @@ class FitHarn(*MIXINS):
             This serializable class encodes enough information to
             deterministically reproduce an experiment.
 
-            Because it is serializable it also has an easy to use dict
-            representation.
+            Because it is serializable it also has a dict representation.
+
+        train_dpath (str or None): if specified, all progress information is
+            stored in this path and the path computed via hyper is ignored.
+            Note: it is recomended that this is left None, and you allow
+            `hyper` to create a directory based on the hyperparamters.
 
     Note:
         hyper is optional. If you choose not to specify it then you must
@@ -1045,7 +1071,7 @@ class FitHarn(*MIXINS):
         (i.e. model, optimizer, monitor, etc...). You also need to specify
         train_dpath yourself if you want to save progress snapshots.
     """
-    def __init__(harn, hyper=None):
+    def __init__(harn, hyper=None, train_dpath=None):
         if isinstance(hyper, dict):
             hyper = hyperparams.HyperParams(**hyper)
         harn.hyper = hyper
@@ -1063,7 +1089,7 @@ class FitHarn(*MIXINS):
         harn.dynamics = {'batch_step': 1}
 
         harn.paths = None
-        harn.train_dpath = None
+        harn.train_dpath = train_dpath
         harn.nice_dpath = None
 
         harn._initialized = False
@@ -1109,7 +1135,8 @@ class FitHarn(*MIXINS):
             'large_loss': 100,
 
             # number of recent / best snapshots to keep
-            'num_keep': 10
+            'num_keep': 10,
+            'keep_freq': 10,
         }
         harn.current_tag = None
 
