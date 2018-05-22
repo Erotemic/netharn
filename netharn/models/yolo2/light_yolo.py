@@ -116,6 +116,9 @@ class Yolo(nn.Module):
 
     .. _Yolo v2: https://github.com/pjreddie/darknet/blob/777b0982322142991e1861161e68e1a01063d76f/cfg/yolo-voc.cfg
 
+    CommandLine:
+        python ~/code/netharn/netharn/models/yolo2/light_yolo.py Yolo
+
     Example:
         >>> from netharn.models.yolo2.light_yolo import *
         >>> torch.random.manual_seed(0)
