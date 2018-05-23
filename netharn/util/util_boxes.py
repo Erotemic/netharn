@@ -39,6 +39,8 @@ def box_ious(boxes1, boxes2, bias=0, mode=None):
         >>> ious_py = box_ious(boxes1, boxes2, bias=1, mode='py')
         >>> assert np.all(np.isclose(ious_c, ious_py))
     """
+    if mode == 'torch' or torch.is_tensor(boxes1):
+        return box_ious_torch(boxes1, boxes2, bias)
     if mode is None:
         mode = 'py' if bbox_ious_c is None else 'c'
     if mode == 'c':
@@ -50,12 +52,46 @@ def box_ious(boxes1, boxes2, bias=0, mode=None):
         raise KeyError(mode)
 
 
+# def light_bbox_ious_cxywh_bias0(boxes1, boxes2):
+#     """ Compute IOU between all boxes from ``boxes1`` with all boxes from ``boxes2``.
+
+#     Notes:
+#         Accepts cxywh format and the bias is 0
+
+#     Args:
+#         boxes1 (torch.Tensor): List of bounding boxes
+#         boxes2 (torch.Tensor): List of bounding boxes
+
+#     Note:
+#         List format: [[xc, yc, w, h],...]
+
+#     Example:
+#         >>> boxes1 = Boxes.random(5, scale=10.0, rng=0, format='cxywh', tensor=True).data
+#         >>> boxes2 = Boxes.random(7, scale=10.0, rng=1, format='cxywh', tensor=True).data
+#         >>> bias = 1
+#         >>> ious = light_bbox_ious(boxes1, boxes2)
+#     """
+#     b1x1, b1y1 = (boxes1[:, :2] - (boxes1[:, 2:4] / 2)).split(1, 1)
+#     b1x2, b1y2 = (boxes1[:, :2] + (boxes1[:, 2:4] / 2)).split(1, 1)
+#     b2x1, b2y1 = (boxes2[:, :2] - (boxes2[:, 2:4] / 2)).split(1, 1)
+#     b2x2, b2y2 = (boxes2[:, :2] + (boxes2[:, 2:4] / 2)).split(1, 1)
+
+#     dx = (b1x2.min(b2x2.t()) - b1x1.max(b2x1.t())).clamp(min=0)
+#     dy = (b1y2.min(b2y2.t()) - b1y1.max(b2y1.t())).clamp(min=0)
+#     intersections = dx * dy
+
+#     areas1 = (b1x2 - b1x1) * (b1y2 - b1y1)
+#     areas2 = (b2x2 - b2x1) * (b2y2 - b2y1)
+#     unions = (areas1 + areas2.t()) - intersections
+#     return intersections / unions
+
+
 def box_ious_torch(boxes1, boxes2, bias=1):
     """
     Example:
         >>> boxes1 = Boxes.random(5, scale=10.0, rng=0, format='tlbr', tensor=True).data
         >>> boxes2 = Boxes.random(7, scale=10.0, rng=1, format='tlbr', tensor=True).data
-        >>> bias = 1
+        >>> bias = 0
         >>> ious = box_ious_torch(boxes1, boxes2, bias)
         >>> ious_np = box_ious_py(boxes1.numpy(), boxes2.numpy(), bias)
         >>> assert np.all(ious_np == ious.numpy())
@@ -102,25 +138,28 @@ def box_ious_torch(boxes1, boxes2, bias=1):
 
 
     """
-    w1 = boxes1[:, 2] - boxes1[:, 0] + bias
-    h1 = boxes1[:, 3] - boxes1[:, 1] + bias
-    w2 = boxes2[:, 2] - boxes2[:, 0] + bias
-    h2 = boxes2[:, 3] - boxes2[:, 1] + bias
+    # boxes1 = boxes1.view(-1, 4)
+    # boxes2 = boxes2.view(-1, 4)
+
+    w1 = boxes1[..., 2] - boxes1[..., 0] + bias
+    h1 = boxes1[..., 3] - boxes1[..., 1] + bias
+    w2 = boxes2[..., 2] - boxes2[..., 0] + bias
+    h2 = boxes2[..., 3] - boxes2[..., 1] + bias
 
     areas1 = w1 * h1
     areas2 = w2 * h2
 
-    x_maxs = torch.min(boxes1[:, 2][:, None], boxes2[:, 2])
-    x_mins = torch.max(boxes1[:, 0][:, None], boxes2[:, 0])
+    x_maxs = torch.min(boxes1[..., 2][..., None], boxes2[..., 2])
+    x_mins = torch.max(boxes1[..., 0][..., None], boxes2[..., 0])
 
     iws = (x_maxs - x_mins + bias).clamp(0, float('inf'))
 
-    y_maxs = torch.min(boxes1[:, 3][:, None], boxes2[:, 3])
-    y_mins = torch.max(boxes1[:, 1][:, None], boxes2[:, 1])
+    y_maxs = torch.min(boxes1[..., 3][..., None], boxes2[..., 3])
+    y_mins = torch.max(boxes1[..., 1][..., None], boxes2[..., 1])
 
     ihs = (y_maxs - y_mins + bias).clamp(0, float('inf'))
 
-    areas_sum = (areas1[:, None] + areas2)
+    areas_sum = (areas1[..., None] + areas2)
 
     inter_areas = iws * ihs
     union_areas = (areas_sum - inter_areas)
@@ -160,191 +199,15 @@ def box_ious_py(boxes1, boxes2, bias=1):
     return ious
 
 
-class Boxes(ub.NiceRepr):
+class _BoxConversionMixins(object):
     """
-    Converts boxes between different formats as long as the last dimension
-    contains 4 coordinates and the format is specified.
-
-    This is a convinience class, and should not not store the data for very
-    long. The general idiom should be create class, convert data, and then get
-    the raw data and let the class be garbage collected. This will help ensure
-    that your code is portable and understandable if this class is not
-    available.
-
-    Example:
-        >>> # xdoctest: +IGNORE_WHITESPACE
-        >>> Boxes([25, 30, 15, 10], 'xywh')
-        <Boxes(xywh, array([25, 30, 15, 10]))>
-        >>> Boxes([25, 30, 15, 10], 'xywh').to_xywh()
-        <Boxes(xywh, array([25, 30, 15, 10]))>
-        >>> Boxes([25, 30, 15, 10], 'xywh').to_cxywh()
-        <Boxes(cxywh, array([32.5, 35. , 15. , 10. ]))>
-        >>> Boxes([25, 30, 15, 10], 'xywh').to_tlbr()
-        <Boxes(tlbr, array([25, 30, 40, 40]))>
-        >>> Boxes([25, 30, 15, 10], 'xywh').scale(2).to_tlbr()
-        <Boxes(tlbr, array([50., 60., 80., 80.]))>
-        >>> Boxes(torch.FloatTensor([[25, 30, 15, 20]]), 'xywh').scale(.1).to_tlbr()
-        <Boxes(tlbr, tensor([[ 2.5000,  3.0000,  4.0000,  5.0000]]))>
-
-    Example:
-        >>> datas = [
-        >>>     [1, 2, 3, 4],
-        >>>     [[1, 2, 3, 4], [4, 5, 6, 7]],
-        >>>     [[[1, 2, 3, 4], [4, 5, 6, 7]]],
-        >>> ]
-        >>> formats = ['xywh', 'cxywh', 'tlbr']
-        >>> for format1 in formats:
-        >>>     for data in datas:
-        >>>         self = box1 = Boxes(data, format1)
-        >>>         for format2 in formats:
-        >>>             box2 = box1.toformat(format2)
-        >>>             back = box2.toformat(format1)
-        >>>             assert box1 == back
+    Methods for converting between different bounding box formats
     """
-    def __init__(self, data, format='xywh'):
-        if isinstance(data, (list, tuple)):
-            data = np.array(data)
-        self.data = data
-        self.format = format
-
-    def __eq__(self, other):
-        return np.all(self.data == other.data) and self.format == other.format
-
-    def __nice__(self):
-        # return self.format + ', shape=' + str(list(self.data.shape))
-        data_repr = repr(self.data)
-        if '\n' in data_repr:
-            data_repr = ub.indent('\n' + data_repr.lstrip('\n'), '    ')
-        return '{}, {}'.format(self.format, data_repr)
-
-    __repr__ = ub.NiceRepr.__str__
-
-    @classmethod
-    def random(Boxes, num=1, scale=1.0, format='xywh', rng=None, tensor=False):
-        """
-        Makes random boxes
-
-        Example:
-            >>> # xdoctest: +IGNORE_WHITESPACE
-            >>> Boxes.random(3, rng=0, scale=100)
-            <Boxes(xywh,
-                array([[27, 35, 30, 27],
-                       [21, 32, 21, 44],
-                       [48, 19, 39, 26]]))>
-            >>> Boxes.random(3, rng=0, scale=100, tensor=True)
-            <Boxes(xywh,
-                tensor([[ 27,  35,  30,  27],
-                        [ 21,  32,  21,  44],
-                        [ 48,  19,  39,  26]]))>
-        """
-        from netharn import util
-        rng = util.ensure_rng(rng)
-
-        xywh = (rng.rand(num, 4) * scale / 2)
-        as_integer = isinstance(scale, int)
-        if as_integer:
-            xywh = xywh.astype(np.int)
-        if tensor:
-            if as_integer:
-                xywh = torch.LongTensor(xywh)
-            else:
-                xywh = torch.FloatTensor(xywh)
-        boxes = Boxes(xywh, format='xywh').toformat(format, copy=False)
-        return boxes
-
-    def copy(self):
-        if torch.is_tensor(self.data):
-            new_data = self.data.clone()
-        else:
-            new_data = self.data.copy()
-        return Boxes(new_data, self.format)
-
-    def scale(self, factor):
-        r"""
-        works with tlbr, cxywh, xywh, xy, or wh formats
-
-        Example:
-            >>> # xdoctest: +IGNORE_WHITESPACE
-            >>> Boxes(np.array([1, 1, 10, 10])).scale(2).data
-            array([ 2.,  2., 20., 20.])
-            >>> Boxes(np.array([[1, 1, 10, 10]])).scale((2, .5)).data
-            array([[ 2. ,  0.5, 20. ,  5. ]])
-            >>> Boxes(np.array([[10, 10]])).scale(.5).data
-            array([[5., 5.]])
-        """
-        boxes = self.data
-        sx, sy = factor if ub.iterable(factor) else (factor, factor)
-        if torch.is_tensor(boxes):
-            new_data = boxes.float().clone()
-        else:
-            if boxes.dtype.kind != 'f':
-                new_data = boxes.astype(np.float)
-            else:
-                new_data = boxes.copy()
-        new_data[..., 0:4:2] *= sx
-        new_data[..., 1:4:2] *= sy
-        return Boxes(new_data, self.format)
-
-    def shift(self, amount):
-        """
-        Example:
-            >>> # xdoctest: +IGNORE_WHITESPACE
-            >>> Boxes([25, 30, 15, 10], 'xywh').shift(10)
-            <Boxes(xywh, array([35., 40., 15., 10.]))>
-            >>> Boxes([25, 30, 15, 10], 'xywh').shift((10, 0))
-            <Boxes(xywh, array([35., 30., 15., 10.]))>
-            >>> Boxes([25, 30, 15, 10], 'tlbr').shift((10, 5))
-            <Boxes(tlbr, array([35., 35., 25., 15.]))>
-        """
-        boxes = self.data
-        tx, ty = amount if ub.iterable(amount) else (amount, amount)
-        if torch.is_tensor(boxes):
-            new_data = boxes.float().clone()
-        else:
-            new_data = boxes.astype(np.float).copy()
-        if new_data.size > 0:
-            if self.format in ['xywh', 'cxywh']:
-                new_data[..., 0] += tx
-                new_data[..., 1] += ty
-            elif self.format in ['tlbr']:
-                new_data[..., 0:4:2] += tx
-                new_data[..., 1:4:2] += ty
-            else:
-                raise KeyError(self.format)
-        return Boxes(new_data, self.format)
-
-    @property
-    def shape(self):
-        return self.data.shape
-
-    @property
-    def area(self):
-        """
-        Example:
-            >>> Boxes([25, 30, 15, 10], 'xywh').area
-            array([150])
-            >>> Boxes([[25, 30, 0, 0]], 'xywh').area
-            array([[0]])
-        """
-        w, h = self.to_xywh().components[-2:]
-        return w * h
-
-    @property
-    def components(self):
-        a = self.data[..., 0:1]
-        b = self.data[..., 1:2]
-        c = self.data[..., 2:3]
-        d = self.data[..., 3:4]
-        return [a, b, c, d]
-
-    @classmethod
-    def _cat(cls, datas):
-        if torch.is_tensor(datas[0]):
-            return torch.cat(datas, dim=-1)
-        else:
-            return np.concatenate(datas, axis=-1)
 
     def toformat(self, format, copy=True):
+        """
+        Changes the internal representation of the bounding box
+        """
         if format == 'xywh':
             return self.to_xywh(copy=copy)
         elif format == 'tlbr':
@@ -456,6 +319,114 @@ class Boxes(ub.NiceRepr):
         tlbr = tlbr.reshape(-1, 4)
         return Boxes(tlbr, format='tlbr')
 
+
+class _BoxPropertyMixins(object):
+
+    @property
+    def xy_center(self):
+        """ Returns the xy coordinates of the box centers """
+        xy = self.to_cxywh(copy=False).data[..., 0:2]
+        return xy
+
+    @property
+    def components(self):
+        a = self.data[..., 0:1]
+        b = self.data[..., 1:2]
+        c = self.data[..., 2:3]
+        d = self.data[..., 3:4]
+        return [a, b, c, d]
+
+    @property
+    def shape(self):
+        return self.data.shape
+
+    @property
+    def area(self):
+        """
+        Example:
+            >>> Boxes([25, 30, 15, 10], 'xywh').area
+            array([150])
+            >>> Boxes([[25, 30, 0, 0]], 'xywh').area
+            array([[0]])
+        """
+        w, h = self.to_xywh().components[-2:]
+        return w * h
+
+
+def _numel(data):
+    """ compatable API between torch and numpy """
+    if isinstance(data, np.ndarray):
+        return data.size
+    else:
+        return data.numel()
+
+
+class _BoxTransformMixins(object):
+    """
+    methods for transforming bounding boxes
+    """
+    def scale(self, factor):
+        r"""
+        works with tlbr, cxywh, xywh, xy, or wh formats
+
+        Example:
+            >>> # xdoctest: +IGNORE_WHITESPACE
+            >>> Boxes(np.array([1, 1, 10, 10])).scale(2).data
+            array([ 2.,  2., 20., 20.])
+            >>> Boxes(np.array([[1, 1, 10, 10]])).scale((2, .5)).data
+            array([[ 2. ,  0.5, 20. ,  5. ]])
+            >>> Boxes(np.array([[10, 10]])).scale(.5).data
+            array([[5., 5.]])
+        """
+        boxes = self.data
+        sx, sy = factor if ub.iterable(factor) else (factor, factor)
+        if torch.is_tensor(boxes):
+            new_data = boxes.float().clone()
+        else:
+            if boxes.dtype.kind != 'f':
+                new_data = boxes.astype(np.float)
+            else:
+                new_data = boxes.copy()
+        new_data[..., 0:4:2] *= sx
+        new_data[..., 1:4:2] *= sy
+        return Boxes(new_data, self.format)
+
+    def translate(self, amount):
+        """
+        Example:
+            >>> # xdoctest: +IGNORE_WHITESPACE
+            >>> Boxes([25, 30, 15, 10], 'xywh').shift(10)
+            <Boxes(xywh, array([35., 40., 15., 10.]))>
+            >>> Boxes([25, 30, 15, 10], 'xywh').shift((10, 0))
+            <Boxes(xywh, array([35., 30., 15., 10.]))>
+            >>> Boxes([25, 30, 15, 10], 'tlbr').shift((10, 5))
+            <Boxes(tlbr, array([35., 35., 25., 15.]))>
+        """
+        boxes = self.data
+        if not ub.iterable(amount):
+            tx = ty = amount
+        elif isinstance(amount, (list, tuple)):
+            tx, ty = amount
+        else:
+            tx = amount[..., 0]
+            ty = amount[..., 1]
+        if torch.is_tensor(boxes):
+            new_data = boxes.float().clone()
+        else:
+            new_data = boxes.astype(np.float).copy()
+        if _numel(new_data) > 0:
+            if self.format in ['xywh', 'cxywh']:
+                new_data[..., 0] += tx
+                new_data[..., 1] += ty
+            elif self.format in ['tlbr']:
+                new_data[..., 0:4:2] += tx
+                new_data[..., 1:4:2] += ty
+            else:
+                raise KeyError(self.format)
+        return Boxes(new_data, self.format)
+
+    shift = translate
+
     def clip(self, x_min, y_min, x_max, y_max, inplace=False):
         """
         Clip boxes to image boundaries.  If box is in tlbr format, inplace
@@ -488,10 +459,130 @@ class Boxes(ub.NiceRepr):
         return self2
 
     def transpose(self):
+        """
+        Flips the box itself in data coordinates
+        """
         x, y, w, h = self.to_xywh().components
         self2 = self.__class__(self._cat([y, x, h, w]), format='xywh')
         self2 = self2.toformat(self.format)
         return self2
+
+
+class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransformMixins):
+    """
+    Converts boxes between different formats as long as the last dimension
+    contains 4 coordinates and the format is specified.
+
+    This is a convinience class, and should not not store the data for very
+    long. The general idiom should be create class, convert data, and then get
+    the raw data and let the class be garbage collected. This will help ensure
+    that your code is portable and understandable if this class is not
+    available.
+
+    Example:
+        >>> # xdoctest: +IGNORE_WHITESPACE
+        >>> Boxes([25, 30, 15, 10], 'xywh')
+        <Boxes(xywh, array([25, 30, 15, 10]))>
+        >>> Boxes([25, 30, 15, 10], 'xywh').to_xywh()
+        <Boxes(xywh, array([25, 30, 15, 10]))>
+        >>> Boxes([25, 30, 15, 10], 'xywh').to_cxywh()
+        <Boxes(cxywh, array([32.5, 35. , 15. , 10. ]))>
+        >>> Boxes([25, 30, 15, 10], 'xywh').to_tlbr()
+        <Boxes(tlbr, array([25, 30, 40, 40]))>
+        >>> Boxes([25, 30, 15, 10], 'xywh').scale(2).to_tlbr()
+        <Boxes(tlbr, array([50., 60., 80., 80.]))>
+        >>> Boxes(torch.FloatTensor([[25, 30, 15, 20]]), 'xywh').scale(.1).to_tlbr()
+        <Boxes(tlbr, tensor([[ 2.5000,  3.0000,  4.0000,  5.0000]]))>
+
+    Example:
+        >>> datas = [
+        >>>     [1, 2, 3, 4],
+        >>>     [[1, 2, 3, 4], [4, 5, 6, 7]],
+        >>>     [[[1, 2, 3, 4], [4, 5, 6, 7]]],
+        >>> ]
+        >>> formats = ['xywh', 'cxywh', 'tlbr']
+        >>> for format1 in formats:
+        >>>     for data in datas:
+        >>>         self = box1 = Boxes(data, format1)
+        >>>         for format2 in formats:
+        >>>             box2 = box1.toformat(format2)
+        >>>             back = box2.toformat(format1)
+        >>>             assert box1 == back
+    """
+    def __init__(self, data, format='xywh'):
+        CHECKS = False
+        if CHECKS:
+            if _numel(data) > 0 and data.shape[-1] == 4:
+                raise ValueError('trailing dimension of boxes must be 4')
+
+        if isinstance(data, (list, tuple)):
+            data = np.array(data)
+        self.data = data
+        self.format = format
+
+    def __getitem__(self, index):
+        cls = self.__class__
+        subset = cls(self.data[index], self.format)
+        return subset
+
+    def __eq__(self, other):
+        return np.all(self.data == other.data) and self.format == other.format
+
+    def __nice__(self):
+        # return self.format + ', shape=' + str(list(self.data.shape))
+        data_repr = repr(self.data)
+        if '\n' in data_repr:
+            data_repr = ub.indent('\n' + data_repr.lstrip('\n'), '    ')
+        return '{}, {}'.format(self.format, data_repr)
+
+    __repr__ = ub.NiceRepr.__str__
+
+    @classmethod
+    def random(Boxes, num=1, scale=1.0, format='xywh', rng=None, tensor=False):
+        """
+        Makes random boxes
+
+        Example:
+            >>> # xdoctest: +IGNORE_WHITESPACE
+            >>> Boxes.random(3, rng=0, scale=100)
+            <Boxes(xywh,
+                array([[27, 35, 30, 27],
+                       [21, 32, 21, 44],
+                       [48, 19, 39, 26]]))>
+            >>> Boxes.random(3, rng=0, scale=100, tensor=True)
+            <Boxes(xywh,
+                tensor([[ 27,  35,  30,  27],
+                        [ 21,  32,  21,  44],
+                        [ 48,  19,  39,  26]]))>
+        """
+        from netharn import util
+        rng = util.ensure_rng(rng)
+
+        xywh = (rng.rand(num, 4) * scale / 2)
+        as_integer = isinstance(scale, int)
+        if as_integer:
+            xywh = xywh.astype(np.int)
+        if tensor:
+            if as_integer:
+                xywh = torch.LongTensor(xywh)
+            else:
+                xywh = torch.FloatTensor(xywh)
+        boxes = Boxes(xywh, format='xywh').toformat(format, copy=False)
+        return boxes
+
+    def copy(self):
+        if torch.is_tensor(self.data):
+            new_data = self.data.clone()
+        else:
+            new_data = self.data.copy()
+        return Boxes(new_data, self.format)
+
+    @classmethod
+    def _cat(cls, datas):
+        if torch.is_tensor(datas[0]):
+            return torch.cat(datas, dim=-1)
+        else:
+            return np.concatenate(datas, axis=-1)
 
     def compress(self, flags, axis=0, inplace=False):
         """
@@ -506,6 +597,54 @@ class Boxes(ub.NiceRepr):
         self2 = self if inplace else self.copy()
         self2.data = self2.data.compress(flags, axis=axis)
         return self2
+
+    def numpy(self):
+        """ converts tensors to numpy """
+        new_self = self.copy()
+        if torch.is_tensor(self.data):
+            new_self.data = new_self.data.cpu().numpy()
+        return new_self
+
+    def ious(self, other, bias=0, mode=None):
+        """
+        Compute IOUs between these boxes and another set of boxes
+
+        Examples:
+            >>> formats = ['cxywh', 'xywh', 'tlbr']
+            >>> istensors = [False, True]
+            >>> results = {}
+            >>> for format in formats:
+            >>>     for tensor in istensors:
+            >>>         boxes1 = Boxes.random(5, scale=10.0, rng=0, format=format, tensor=tensor)
+            >>>         boxes2 = Boxes.random(7, scale=10.0, rng=1, format=format, tensor=tensor)
+            >>>         ious = boxes1.ious(boxes2)
+            >>>         results[(format, tensor)] = ious
+            >>> results = {k: v.numpy() if torch.is_tensor(v) else v for k, v in results.items() }
+            >>> results = {k: v.tolist() for k, v in results.items()}
+            >>> print(ub.repr2(results, sk=True, precision=3, nl=2))
+            >>> from functools import partial
+            >>> assert ub.allsame(results.values(), partial(np.allclose, atol=1e-07))
+        """
+        self_tlbr = self.to_tlbr(copy=False)
+        other_tlbr = other.to_tlbr(copy=False)
+        ious = box_ious(self_tlbr.data, other_tlbr.data, bias=bias, mode=mode)
+        return ious
+
+    def view(self, *shape):
+        """
+        Passthrough method to view or reshape
+
+        Example:
+            >>> self = Boxes.random(6, scale=10.0, rng=0, format='xywh', tensor=True)
+            >>> assert list(self.view(3, 2, 4).data.shape) == [3, 2, 4]
+            >>> self = Boxes.random(6, scale=10.0, rng=0, format='tlbr', tensor=False)
+            >>> assert list(self.view(3, 2, 4).data.shape) == [3, 2, 4]
+        """
+        if torch.is_tensor(self.data):
+            data_ = self.data.view(*shape)
+        else:
+            data_ = self.data.reshape(*shape)
+        return self.__class__(data_, self.format)
 
 
 if __name__ == '__main__':
