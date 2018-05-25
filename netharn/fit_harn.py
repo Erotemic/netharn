@@ -155,7 +155,7 @@ class ExtraMixins:
         n_workers = max(loader.num_workers for loader in harn.loaders.values())
         if n_workers > 1:
             n_threads = cv2.getNumThreads()
-            if n_threads > 0:
+            if n_threads > 1:
                 msg = ('OpenCV threadcount of {} is non-zero and a DataLoader '
                        'is using {} workers. This may cause deadlocks '
                        'To be safe use cv2.setNumThreads(0)').format(
