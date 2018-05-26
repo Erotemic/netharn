@@ -253,6 +253,7 @@ def iou_overlap(true_boxes, pred_box, bias=1):
         python -m netharn.metrics.detections iou_overlap
 
     Example:
+        >>> # xdoctest: +IGNORE_WHITESPACE
         >>> true_boxes = np.array([[ 0,  0, 10, 10],
         >>>                        [10,  0, 20, 10],
         >>>                        [20,  0, 30, 10]])
