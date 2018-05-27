@@ -6,7 +6,7 @@ mkinit netharn.schedulers
 __DYNAMIC__ = False
 if __DYNAMIC__:
     import mkinit
-    exec(dynamic_init(__name__))
+    exec(mkinit.dynamic_init(__name__))
 else:
     # <AUTOGEN_INIT>
     from netharn.schedulers import listed
