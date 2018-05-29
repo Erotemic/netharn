@@ -316,31 +316,32 @@ class RegionLoss(BaseLossWithCudaState):
             cls = output[:, :, 5:].contiguous().view(nB * nA, nC, nH * nW).transpose(1, 2).contiguous().view(-1, nC)
 
         with torch.no_grad():
-            device = self.get_device()
             # Create prediction boxes
-            pred_boxes = torch.FloatTensor(nB * nA * nH * nW, 4)
+            pred_cxywh = torch.FloatTensor(nB * nA * nH * nW, 4)
             lin_x = torch.linspace(0, nW - 1, nW).repeat(nH, 1).view(nH * nW)
             lin_y = torch.linspace(0, nH - 1, nH).repeat(nW, 1).t().contiguous().view(nH * nW)
             anchor_w = self.anchors[:, 0].contiguous().view(nA, 1)
             anchor_h = self.anchors[:, 1].contiguous().view(nA, 1)
 
+            device = self.get_device()
             if device is not None:
-                pred_boxes = pred_boxes.to(device)
+                self.rel_anchors_boxes.data = self.rel_anchors_boxes.data.to(device)
+                self.anchors = self.anchors.to(device)
+                pred_cxywh = pred_cxywh.to(device)
                 lin_x = lin_x.to(device)
                 lin_y = lin_y.to(device)
                 anchor_w = anchor_w.to(device)
                 anchor_h = anchor_h.to(device)
 
             # Convert raw network output to bounding boxes in network output coordinates
-            pred_boxes[:, 0] = (coord[:, :, 0].data + lin_x).view(-1)
-            pred_boxes[:, 1] = (coord[:, :, 1].data + lin_y).view(-1)
-            pred_boxes[:, 2] = (coord[:, :, 2].data.exp() * anchor_w).view(-1)
-            pred_boxes[:, 3] = (coord[:, :, 3].data.exp() * anchor_h).view(-1)
-            pred_boxes = pred_boxes.cpu()
+            pred_cxywh[:, 0] = (coord[:, :, 0].data + lin_x).view(-1)
+            pred_cxywh[:, 1] = (coord[:, :, 1].data + lin_y).view(-1)
+            pred_cxywh[:, 2] = (coord[:, :, 2].data.exp() * anchor_w).view(-1)
+            pred_cxywh[:, 3] = (coord[:, :, 3].data.exp() * anchor_h).view(-1)
 
             # Get target values
             coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = self.build_targets(
-                pred_boxes, target, nH, nW, seen=seen, gt_weights=gt_weights)
+                pred_cxywh, target, nH, nW, seen=seen, gt_weights=gt_weights)
 
             coord_mask = coord_mask.view(*list(coord_mask.shape[0:-2]) + [coord_mask.shape[-2] * coord_mask.shape[-1]])
             conf_mask = conf_mask.view(*list(conf_mask.shape[0:-2]) + [conf_mask.shape[-2] * conf_mask.shape[-1]])
@@ -392,9 +393,9 @@ class RegionLoss(BaseLossWithCudaState):
 
         return loss_tot
 
-    def build_targets(self, pred_boxes, ground_truth, nH, nW, seen=0, gt_weights=None):
+    def build_targets(self, pred_cxywh, ground_truth, nH, nW, seen=0, gt_weights=None):
         """ Compare prediction boxes and targets, convert targets to network output tensors """
-        return self._build_targets_tensor(pred_boxes, ground_truth, nH, nW, seen=seen, gt_weights=gt_weights)
+        return self._build_targets_tensor(pred_cxywh, ground_truth, nH, nW, seen=seen, gt_weights=gt_weights)
 
     @profiler.profile
     def _build_targets_tensor(self, pred_cxywh, ground_truth, nH, nW, seen=0, gt_weights=None):
@@ -470,6 +471,15 @@ class RegionLoss(BaseLossWithCudaState):
         tcoord = torch.zeros(nB, nA, 4, nH, nW)
         tconf = torch.zeros(nB, nA, nH, nW)
         tcls = torch.zeros(nB, nA, nH, nW)
+
+        device = self.get_device()
+        if device is not None:
+            conf_mask = conf_mask.to(device)
+            coord_mask = coord_mask.to(device)
+            cls_mask = cls_mask.to(device)
+            tcoord = tcoord.to(device)
+            tconf = tconf.to(device)
+            tcls = tcls.to(device)
 
         if seen < 12800:
             coord_mask.fill_(1)
