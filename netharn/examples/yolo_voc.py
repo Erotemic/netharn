@@ -266,11 +266,11 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         gt_weights = 1.0 - annot['gt_ishard'].astype(np.float)
         return image, tlbr, gt_classes, gt_weights
 
-    @ub.memoize_method  # remove this if RAM is a problem
+    # @ub.memoize_method  # remove this if RAM is a problem
     def _load_image(self, index):
         return super(YoloVOCDataset, self)._load_image(index)
 
-    @ub.memoize_method
+    # @ub.memoize_method
     def _load_annotation(self, index):
         return super(YoloVOCDataset, self)._load_annotation(index)
 
