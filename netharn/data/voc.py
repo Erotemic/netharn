@@ -216,7 +216,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
 
     def _load_image(self, index):
         fpath = self.gpaths[index]
-        imbgr = cv2.imread(fpath)
+        imbgr = cv2.imread(fpath, flags=cv2.IMREAD_COLOR)
         imrgb_255 = cv2.cvtColor(imbgr, cv2.COLOR_BGR2RGB)
         return imrgb_255
 
