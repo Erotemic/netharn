@@ -704,6 +704,10 @@ def setup_harness(bsize=16, workers=0):
         for key, dset in datasets.items()
     }
 
+    if workers > 0:
+        import cv2
+        cv2.setNumThreads(0)
+
     # simulated_bsize = bstep * batch_size
     hyper = nh.HyperParams(**{
         'nice': nice,
