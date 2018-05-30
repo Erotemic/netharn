@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
+import os
 import torch
 import ubelt as ub
 import numpy as np
@@ -413,7 +414,13 @@ class YoloHarn(nh.FitHarn):
             inputs, labels = batch
             inp_size = np.array(inputs.shape[-2:][::-1])
 
-            postout = harn.model.module.postprocess(outputs)
+            try:
+                postout = harn.model.module.postprocess(outputs)
+            except Exception as ex:
+                harn.error('\n\n\n')
+                harn.error('ERROR: FAILED TO POSTPROCESS OUTPUTS')
+                harn.error('DETAILS: {!r}'.format(ex))
+                raise
 
             for y in harn._measure_confusion(postout, labels, inp_size):
                 harn.batch_confusions.append(y)
@@ -472,9 +479,9 @@ class YoloHarn(nh.FitHarn):
     def _measure_confusion(harn, postout, labels, inp_size, **kw):
         targets = labels['targets']
         gt_weights = labels['gt_weights']
+        bg_weights = labels['bg_weights']
         # orig_sizes = labels['orig_sizes']
         # indices = labels['indices']
-        bg_weights = labels['bg_weights']
 
         def asnumpy(tensor):
             return tensor.data.cpu().numpy()
@@ -602,7 +609,8 @@ class YoloHarn(nh.FitHarn):
                 truth.append(true)
         return predictions, truth
 
-    def visualize_prediction(harn, batch, outputs, postout, idx=0, thresh=None):
+    def visualize_prediction(harn, batch, outputs, postout, idx=0, thresh=None,
+                             orig_img=None):
         """
         Returns:
             np.ndarray: numpy image
@@ -614,13 +622,13 @@ class YoloHarn(nh.FitHarn):
         orig_sizes = labels['orig_sizes']
 
         chw01 = inputs[idx]
-        target = targets[idx]
-        postitem = postout[idx]
+        target = targets[idx].cpu().numpy().reshape(-1, 5)
+        postitem = postout[idx].cpu().numpy().reshape(-1, 6)
         orig_size = orig_sizes[idx].cpu().numpy()
         # ---
         hwc01 = chw01.cpu().numpy().transpose(1, 2, 0)
         # TRUE
-        true_cxs = target[:, 0].long()
+        true_cxs = target[:, 0].astype(np.int)
         true_cxywh = target[:, 1:5]
         flags = true_cxs != -1
         true_cxywh = true_cxywh[flags]
@@ -628,7 +636,7 @@ class YoloHarn(nh.FitHarn):
         # PRED
         pred_cxywh = postitem[:, 0:4]
         pred_scores = postitem[:, 4]
-        pred_cxs = postitem[:, 5]
+        pred_cxs = postitem[:, 5].astype(np.int)
 
         if thresh is not None:
             flags = pred_scores > thresh
@@ -636,35 +644,99 @@ class YoloHarn(nh.FitHarn):
             pred_cxywh = pred_cxywh[flags]
             pred_scores = pred_scores[flags]
 
-        pred_clsnms = list(ub.take(harn.datasets['train'].label_names,
-                                   pred_cxs.long().cpu().numpy()))
+        label_names = harn.datasets['train'].label_names
+
+        true_clsnms = list(ub.take(label_names, true_cxs))
+        pred_clsnms = list(ub.take(label_names, pred_cxs))
         pred_labels = ['{}@{:.2f}'.format(n, s)
                        for n, s in zip(pred_clsnms, pred_scores)]
-
-        true_labels = list(ub.take(harn.datasets['train'].label_names,
-                                   true_cxs.long().cpu().numpy()))
         # ---
         inp_size = np.array(hwc01.shape[0:2][::-1])
         target_size = inp_size
 
-        true_boxes_ = util.Boxes(true_cxywh.cpu().numpy(), 'cxywh').scale(inp_size)
-        pred_boxes_ = util.Boxes(pred_cxywh.cpu().numpy(), 'cxywh').scale(inp_size)
+        true_boxes_ = nh.util.Boxes(true_cxywh, 'cxywh').scale(inp_size)
+        pred_boxes_ = nh.util.Boxes(pred_cxywh, 'cxywh').scale(inp_size)
 
         letterbox = harn.datasets['train'].letterbox
         img = letterbox._img_letterbox_invert(hwc01, orig_size, target_size)
         img = np.clip(img, 0, 1)
+        if orig_img is not None:
+            # we are given the original image, to avoid artifacts from
+            # inverting a downscale
+            assert orig_img.shape == img.shape
+
         true_cxywh_ = letterbox._boxes_letterbox_invert(true_boxes_, orig_size, target_size)
         pred_cxywh_ = letterbox._boxes_letterbox_invert(pred_boxes_, orig_size, target_size)
 
-        from netharn.util import mplutil
         shift, scale, embed_size = letterbox._letterbox_transform(orig_size, target_size)
 
-        mplutil.figure(doclf=True, fnum=1)
-        mplutil.imshow(img, colorspace='rgb')
-        mplutil.draw_boxes(true_cxywh_.data, color='green', box_format='cxywh', labels=true_labels)
-        mplutil.draw_boxes(pred_cxywh_.data, color='blue', box_format='cxywh', labels=pred_labels)
+        fig = nh.util.figure(doclf=True, fnum=1)
+        nh.util.imshow(img, colorspace='rgb')
+        nh.util.draw_boxes(true_cxywh_.data, color='green', box_format='cxywh', labels=true_clsnms)
+        nh.util.draw_boxes(pred_cxywh_.data, color='blue', box_format='cxywh', labels=pred_labels)
+        return fig
 
-        # mplutil.show_if_requested()
+    def _pick_dumpcats(harn):
+        """
+        Hack to pick several images from the validation set to monitor each
+        epoch.
+        """
+        vali_dset = harn.loaders['vali'].dataset
+        chosen_gids = set()
+        for cid, gids in vali_dset.dset.cid_to_gids.items():
+            for gid in gids:
+                if gid not in chosen_gids:
+                    chosen_gids.add(gid)
+                    break
+        for gid, aids in vali_dset.dset.gid_to_aids.items():
+            if len(aids) == 0:
+                chosen_gids.add(gid)
+                break
+
+        gid_to_index = {
+            img['id']: index
+            for index, img in enumerate(vali_dset.dset.dataset['images'])}
+
+        chosen_indices = list(ub.take(gid_to_index, chosen_gids))
+        harn.chosen_indices = sorted(chosen_indices)
+
+    def _dump_chosen_validation_data(harn):
+        """
+        Dump a visualization of the validation images to disk
+        """
+        harn.debug('DUMP CHOSEN INDICES')
+
+        if not hasattr(harn, 'chosen_indices'):
+            harn._pick_dumpcats()
+
+        vali_dset = harn.loaders['vali'].dataset
+        for indices in ub.chunks(harn.chosen_indices, 16):
+            harn.debug('PREDICTING CHUNK')
+            inbatch = [vali_dset[index] for index in indices]
+            raw_batch = nh.data.collate.padded_collate(inbatch)
+            batch = harn.prepare_batch(raw_batch)
+            outputs, loss = harn.run_batch(batch)
+            postout = harn.model.module.postprocess(outputs)
+
+            for idx, index in enumerate(indices):
+                orig_img = vali_dset._load_image(index)
+                fig = harn.visualize_prediction(batch, outputs, postout, idx=idx,
+                                                thresh=0.1, orig_img=orig_img)
+                img = nh.util.mplutil.render_figure_to_image(fig)
+                dump_dpath = ub.ensuredir((harn.train_dpath, 'dump'))
+                dump_fname = 'pred_{:04d}_{:08d}.png'.format(index, harn.epoch)
+                fpath = os.path.join(dump_dpath, dump_fname)
+                harn.debug('dump viz fpath = {}'.format(fpath))
+                nh.util.imwrite(fpath, img)
+
+    def dump_batch_item(harn, batch, outputs, postout):
+        fig = harn.visualize_prediction(batch, outputs, postout, idx=0,
+                                        thresh=0.2)
+        img = nh.util.mplutil.render_figure_to_image(fig)
+        dump_dpath = ub.ensuredir((harn.train_dpath, 'dump'))
+        dump_fname = 'pred_{:08d}.png'.format(harn.epoch)
+        fpath = os.path.join(dump_dpath, dump_fname)
+        nh.util.imwrite(fpath, img)
 
     def deploy(harn):
         """
