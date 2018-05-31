@@ -109,6 +109,13 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         # the aspect ratio.
         self.letterbox = nh.data.transforms.Resize(None, mode='letterbox')
 
+    # def __len__(self):
+    #     # hack
+    #     if 'train' in self.split:
+    #         return 100
+    #     else:
+    #         return super().__len__()
+
     @profiler.profile
     def __getitem__(self, index):
         """
@@ -328,6 +335,8 @@ class YoloHarn(nh.FitHarn):
         harn.batch_confusions = []
         harn.aps = {}
 
+        harn.chosen_indices = {}
+
     # def initialize(harn):
     #     super().initialize()
     #     harn.datasets['train']._augmenter = harn.datasets['train'].augmenter
@@ -455,6 +464,10 @@ class YoloHarn(nh.FitHarn):
             >>> harn.on_epoch()
         """
         tag = harn.current_tag
+
+        if tag in {'test', 'vali'}:
+            harn._dump_chosen_indices()
+
         if harn.batch_confusions:
             y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
             # TODO: write out a few visualizations
@@ -676,54 +689,64 @@ class YoloHarn(nh.FitHarn):
         nh.util.draw_boxes(pred_cxywh_.data, color='blue', box_format='cxywh', labels=pred_labels)
         return fig
 
-    def _pick_dumpcats(harn):
+    def _choose_indices(harn):
         """
         Hack to pick several images from the validation set to monitor each
         epoch.
         """
-        vali_dset = harn.loaders['vali'].dataset
+        tag = harn.current_tag
+        dset = harn.loaders[tag].dataset
+
+        cid_to_gids = ub.ddict(set)
+        empty_gids = []
+        for gid in range(len(dset)):
+            annots = dset._load_annotation(gid)
+            if len(annots['gt_classes']) == 0:
+                empty_gids.append(gid)
+            for cid, ishard in zip(annots['gt_classes'], annots['gt_ishard']):
+                if not ishard:
+                    cid_to_gids[cid].add(gid)
+
+        # Choose an image with each category
         chosen_gids = set()
-        for cid, gids in vali_dset.dset.cid_to_gids.items():
+        for cid, gids in cid_to_gids.items():
             for gid in gids:
                 if gid not in chosen_gids:
                     chosen_gids.add(gid)
                     break
-        for gid, aids in vali_dset.dset.gid_to_aids.items():
-            if len(aids) == 0:
-                chosen_gids.add(gid)
-                break
 
-        gid_to_index = {
-            img['id']: index
-            for index, img in enumerate(vali_dset.dset.dataset['images'])}
+        # Choose an image with nothing in it (if it exists)
+        if empty_gids:
+            chosen_gids.add(empty_gids[0])
 
-        chosen_indices = list(ub.take(gid_to_index, chosen_gids))
-        harn.chosen_indices = sorted(chosen_indices)
+        chosen_indices = chosen_gids
+        harn.chosen_indices[tag] = sorted(chosen_indices)
 
-    def _dump_chosen_validation_data(harn):
+    def _dump_chosen_indices(harn):
         """
         Dump a visualization of the validation images to disk
         """
+        tag = harn.current_tag
         harn.debug('DUMP CHOSEN INDICES')
 
-        if not hasattr(harn, 'chosen_indices'):
-            harn._pick_dumpcats()
+        if tag not in harn.chosen_indices:
+            harn._choose_indices()
 
-        vali_dset = harn.loaders['vali'].dataset
-        for indices in ub.chunks(harn.chosen_indices, 16):
+        dset = harn.loaders[tag].dataset
+        for indices in ub.chunks(harn.chosen_indices[tag], 16):
             harn.debug('PREDICTING CHUNK')
-            inbatch = [vali_dset[index] for index in indices]
+            inbatch = [dset[index] for index in indices]
             raw_batch = nh.data.collate.padded_collate(inbatch)
             batch = harn.prepare_batch(raw_batch)
             outputs, loss = harn.run_batch(batch)
             postout = harn.model.module.postprocess(outputs)
 
             for idx, index in enumerate(indices):
-                orig_img = vali_dset._load_image(index)
+                orig_img = dset._load_image(index)
                 fig = harn.visualize_prediction(batch, outputs, postout, idx=idx,
                                                 thresh=0.1, orig_img=orig_img)
                 img = nh.util.mplutil.render_figure_to_image(fig)
-                dump_dpath = ub.ensuredir((harn.train_dpath, 'dump'))
+                dump_dpath = ub.ensuredir((harn.train_dpath, 'dump', tag))
                 dump_fname = 'pred_{:04d}_{:08d}.png'.format(index, harn.epoch)
                 fpath = os.path.join(dump_dpath, dump_fname)
                 harn.debug('dump viz fpath = {}'.format(fpath))
