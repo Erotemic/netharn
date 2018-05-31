@@ -20,142 +20,6 @@ from netharn.util import profiler
 __all__ = ['RegionLoss']
 
 
-# def math.log(x):
-#     return math.log(max(x, np.finfo(np.float).eps))
-
-@profiler.profile
-def benchmark_region_loss():
-    """
-    CommandLine:
-        python ~/code/netharn/netharn/models/yolo2/light_region_loss.py benchmark_region_loss --profile
-
-    Benchmark:
-        >>> benchmark_region_loss()
-    """
-    from netharn.models.yolo2.light_yolo import Yolo
-    torch.random.manual_seed(0)
-    network = Yolo(num_classes=2, conf_thresh=4e-2)
-    self = RegionLoss(num_classes=network.num_classes, anchors=network.anchors)
-    Win, Hin = 96, 96
-    # true boxes for each item in the batch
-    # each box encodes class, center, width, and height
-    # coordinates are normalized in the range 0 to 1
-    # items in each batch are padded with dummy boxes with class_id=-1
-    target = torch.FloatTensor([
-        # boxes for batch item 1
-        [[0, 0.50, 0.50, 1.00, 1.00],
-         [1, 0.32, 0.42, 0.22, 0.12]],
-        # boxes for batch item 2 (it has no objects, note the pad!)
-        [[-1, 0, 0, 0, 0],
-         [-1, 0, 0, 0, 0]],
-    ])
-    im_data = torch.randn(len(target), 3, Hin, Win)
-    output = network.forward(im_data)
-    import ubelt
-    for timer in ubelt.Timerit(250, bestof=10, label='time'):
-        with timer:
-            loss = float(self.forward(output, target))
-    print('loss = {!r}'.format(loss))
-
-
-@profiler.profile
-def profile_loss_speed():
-    """
-    python ~/code/netharn/netharn/models/yolo2/light_region_loss.py profile_loss_speed --profile
-
-    Benchmark:
-        #>>> profile_loss_speed()
-    """
-    from netharn.models.yolo2.light_yolo import Yolo
-    import netharn.models.yolo2.light_region_loss
-    import lightnet.network
-    import netharn as nh
-
-    rng = util.ensure_rng(0)
-    torch.random.manual_seed(0)
-    network = Yolo(num_classes=2, conf_thresh=4e-2)
-
-    self1 = netharn.models.yolo2.light_region_loss.RegionLoss(
-        num_classes=network.num_classes, anchors=network.anchors)
-    self2 = lightnet.network.RegionLoss(num_classes=network.num_classes,
-                                        anchors=network.anchors)
-
-    bsize = 8
-    # Make a random semi-realistic set of groundtruth items
-    n_targets = [rng.randint(0, 20) for _ in range(bsize)]
-    target_list = [torch.FloatTensor(
-        np.hstack([rng.randint(0, network.num_classes, nT)[:, None],
-                   util.Boxes.random(nT, scale=1.0, rng=rng).data]))
-        for nT in n_targets]
-    target = nh.data.collate.padded_collate(target_list)
-
-    Win, Hin = 416, 416
-    im_data = torch.randn(len(target), 3, Hin, Win)
-    output = network.forward(im_data)
-
-    loss1 = float(self1(output, target))
-    loss2 = float(self2(output, target))
-    print('loss1 = {!r}'.format(loss1))
-    print('loss2 = {!r}'.format(loss2))
-
-
-def compare_loss_speed():
-    """
-    python ~/code/netharn/netharn/models/yolo2/light_region_loss.py compare_loss_speed
-
-    Example:
-        #>>> compare_loss_speed()
-    """
-    from netharn.models.yolo2.light_yolo import Yolo
-    import netharn.models.yolo2.light_region_loss
-    import lightnet.network
-    import ubelt as ub
-    torch.random.manual_seed(0)
-    network = Yolo(num_classes=2, conf_thresh=4e-2)
-
-    self1 = netharn.models.yolo2.light_region_loss.RegionLoss(
-        num_classes=network.num_classes, anchors=network.anchors)
-    self2 = lightnet.network.RegionLoss(num_classes=network.num_classes,
-                                        anchors=network.anchors)
-
-    # Win, Hin = 416, 416
-    Win, Hin = 96, 96
-
-    # ----- More targets -----
-    rng = util.ensure_rng(0)
-    import netharn as nh
-
-    bsize = 4
-    # Make a random semi-realistic set of groundtruth items
-    n_targets = [rng.randint(0, 10) for _ in range(bsize)]
-    target_list = [torch.FloatTensor(
-        np.hstack([rng.randint(0, network.num_classes, nT)[:, None],
-                   util.Boxes.random(nT, scale=1.0, rng=rng).data]))
-        for nT in n_targets]
-    target = nh.data.collate.padded_collate(target_list)
-
-    im_data = torch.randn(len(target), 3, Hin, Win)
-    output = network.forward(im_data)
-
-    self1.iou_mode = 'c'
-    for timer in ub.Timerit(100, bestof=10, label='cython_ious'):
-        with timer:
-            loss_cy = float(self1(output, target))
-
-    self1.iou_mode = 'py'
-    for timer in ub.Timerit(100, bestof=10, label='python_ious'):
-        with timer:
-            loss_py = float(self1(output, target))
-
-    for timer in ub.Timerit(100, bestof=10, label='original'):
-        with timer:
-            loss_orig = float(self2(output, target))
-
-    print('loss_cy   = {!r}'.format(loss_cy))
-    print('loss_py   = {!r}'.format(loss_py))
-    print('loss_orig = {!r}'.format(loss_orig))
-
-
 class BaseLossWithCudaState(torch.nn.modules.loss._Loss):
     """
     Keep track of if the module is in cpu or gpu mode
@@ -180,6 +44,8 @@ class BaseLossWithCudaState(torch.nn.modules.loss._Loss):
         return self._iscuda
 
     def get_device(self):
+        if self._device_num is None:
+            return torch.device('cpu')
         return self._device_num
 
 
@@ -280,6 +146,113 @@ class RegionLoss(BaseLossWithCudaState):
 
         self.iou_mode = None
 
+    def _output_to_boxes(self, output):
+        """
+        Returns boxes in normalized cxywh space and logspace
+
+        Maintains dimensions as much as possible
+
+        Args:
+            output (tensor): with shape [nB, nA, 5 + nC, nH, nW]
+        """
+        # Parameters
+        # output = output.view(nB
+        nB, nA, nC5, nH, nW = output.shape
+        assert nA == self.num_anchors
+        assert nC5 == self.num_classes + 5
+        nC = nC5 - 5
+        # assert nO == (nA * (5 + nC))
+
+        device = self.get_device()
+        self.anchors = self.anchors.to(device)
+        anchor_w = self.anchors[:, 0].contiguous().view(1, nA, 1, 1, 1)
+        anchor_h = self.anchors[:, 1].contiguous().view(1, nA, 1, 1, 1)
+
+        output_ = output.view(nB, nA, 5 + nC, nH, nW)
+
+        # The 0, 1, 2, and 3-rd output in the 3rd dim are bbox coords
+        coord = torch.zeros_like(output_[:, :, :4, :, :], device=device)
+        coord[:, :, 0:2, :, :] = output_[:, :, 0:2, :, :].sigmoid()  # tx,ty
+        coord[:, :, 2:4, :, :] = output_[:, :, 2:4, :, :]            # tw,th
+
+        # The 4-th output in the 3rd dim is an iou score
+        conf = output_[:, :, 4:5, :, :].sigmoid()
+
+        def swap_third_dim(x):
+            """ for yolo output makes the 3rd dim the last """
+            x = x.view(nB * nA, -1, nH * nW)
+            x = x.transpose(1, 2).contiguous()
+            x = x.view(nB, nA, nH, nW, -1)
+            return x
+
+        # The the rest of the outputs are class probabilities
+        if nC > 1:
+            cls = swap_third_dim(output_[:, :, 5:, :, :])
+
+        # Add center offsets to each grid cell in the network output.
+        lin_x = torch.linspace(
+            0, nW - 1, nW, device=device).repeat(nH, 1)
+        lin_y = torch.linspace(
+            0, nH - 1, nH, device=device).repeat(nW, 1).t().contiguous()
+
+        # Create prediction boxes
+        pred_cxywh = torch.FloatTensor(nB * nA * nH * nW, 4, device=device)
+        pred_cxywh[:, 0] = (coord[:, :, 0:1, :, :].data + lin_x).view(-1)
+        pred_cxywh[:, 1] = (coord[:, :, 1:2, :, :].data + lin_y).view(-1)
+        pred_cxywh[:, 2] = (coord[:, :, 2:3, :, :].data.exp() * anchor_w).view(-1)
+        pred_cxywh[:, 3] = (coord[:, :, 3:4, :, :].data.exp() * anchor_h).view(-1)
+
+        # conf.view(nB * nA * nW * nH, 1)
+        # coord.view(nB * nA, 4, nH * nC)
+        # coord2 = swap_third_dim(coord).view(-1, 4)
+
+        return coord, conf, cls, pred_cxywh
+
+    def fw2(self):
+        _tup = self.build_targets(
+            pred_cxywh, target, nH, nW, seen=seen, gt_weights=gt_weights)
+        coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = _tup
+
+        # Replicate along the third dim
+        coord_mask = coord_mask.expand_as(tcoord)
+
+        if nC > 1:
+            tcls = tcls.view(-1)[cls_mask.view(-1)].long()
+            cls_mask = cls_mask.view(-1, 1).repeat(1, nC)
+
+        tcoord = Variable(tcoord, requires_grad=False)
+        tconf = Variable(tconf, requires_grad=False)
+        coord_mask = Variable(coord_mask, requires_grad=False)
+        conf_mask = Variable(conf_mask.sqrt(), requires_grad=False)
+
+        tconf = tconf.view(nB, nA, 1, nH, nW)
+        conf_mask = conf_mask.view(nB, nA, 1, nH, nW)
+        coord_mask = coord_mask.view(nB, nA, 4, nH, nW)
+        cls_mask = cls_mask.view(nB, nA, nH, nW, nC)  # note the difference
+
+        if nC > 1:
+            tcls = Variable(tcls, requires_grad=False)
+            cls_mask = Variable(cls_mask, requires_grad=False)
+            pcls = cls[cls_mask].view(-1, nC)
+
+        # Compute losses
+
+        # corresponds to delta_region_box
+        loss_coord = self.coord_scale * self.mse(coord * coord_mask, tcoord * coord_mask) / nB
+        loss_conf = self.mse(conf * conf_mask, tconf * conf_mask) / nB
+        if nC > 1 and cls.numel():
+            loss_cls = self.class_scale * 2 * self.cls_critrion(pcls, tcls) / nB
+            loss_tot = loss_coord + loss_conf + loss_cls
+            self.loss_cls = float(loss_cls.data.cpu().numpy())
+        else:
+            self.loss_cls = 0
+            loss_tot = loss_coord + loss_conf
+
+        self.loss_tot = float(loss_tot.data.cpu().numpy())
+        self.loss_coord = float(loss_coord.data.cpu().numpy())
+        self.loss_conf = float(loss_conf.data.cpu().numpy())
+        pass
+
     @profiler.profile
     def forward(self, output, target, seen=0, gt_weights=None):
         """ Compute Region loss.
@@ -340,8 +313,9 @@ class RegionLoss(BaseLossWithCudaState):
             pred_cxywh[:, 3] = (coord[:, :, 3].data.exp() * anchor_h).view(-1)
 
             # Get target values
-            coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = self.build_targets(
+            _tup = self.build_targets(
                 pred_cxywh, target, nH, nW, seen=seen, gt_weights=gt_weights)
+            coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = _tup
 
             coord_mask = coord_mask.view(*list(coord_mask.shape[0:-2]) + [coord_mask.shape[-2] * coord_mask.shape[-1]])
             conf_mask = conf_mask.view(*list(conf_mask.shape[0:-2]) + [conf_mask.shape[-2] * conf_mask.shape[-1]])
@@ -465,21 +439,23 @@ class RegionLoss(BaseLossWithCudaState):
         seen = seen + nB
 
         # Tensors
-        conf_mask = torch.ones(nB, nA, nH, nW) * self.noobject_scale
-        coord_mask = torch.zeros(nB, nA, 1, nH, nW)
-        cls_mask = torch.zeros(nB, nA, nH, nW).byte()
-        tcoord = torch.zeros(nB, nA, 4, nH, nW)
-        tconf = torch.zeros(nB, nA, nH, nW)
-        tcls = torch.zeros(nB, nA, nH, nW)
-
         device = self.get_device()
-        if device is not None:
-            conf_mask = conf_mask.to(device)
-            coord_mask = coord_mask.to(device)
-            cls_mask = cls_mask.to(device)
-            tcoord = tcoord.to(device)
-            tconf = tconf.to(device)
-            tcls = tcls.to(device)
+        conf_mask = torch.ones(nB, nA, 1, nH, nW, device=device)
+        coord_mask = torch.zeros(nB, nA, 1, nH, nW, device=device)
+        cls_mask = torch.zeros(nB, nA, 1, nH, nW, device=device).byte()
+        tcoord = torch.zeros(nB, nA, 4, nH, nW, device=device)
+        tconf = torch.zeros(nB, nA, 1, nH, nW, device=device)
+        tcls = torch.zeros(nB, nA, 1, nH, nW, device=device)
+
+        conf_mask = conf_mask * self.noobject_scale
+
+        # if device is not None:
+        #     conf_mask = conf_mask.to(device)
+        #     coord_mask = coord_mask.to(device)
+        #     cls_mask = cls_mask.to(device)
+        #     tcoord = tcoord.to(device)
+        #     tconf = tconf.to(device)
+        #     tcls = tcls.to(device)
 
         if seen < 12800:
             coord_mask.fill_(1)
@@ -540,33 +516,32 @@ class RegionLoss(BaseLossWithCudaState):
                     gj = min(nH - 1, max(0, int(gy)))
 
                     best_n = best_ns[t]
+                    best_aw, best_ah = self.anchors[best_n]
 
                     gt_box_ = gt_boxes[bx][t]
                     pred_box_ = cur_pred_boxes[best_n, gj, gi]
 
                     iou = gt_box_[None, :].ious(pred_box_[None, :], bias=0)[0, 0]
 
-                    best_anchor = self.anchors[best_n]
-                    best_aw, best_ah = best_anchor
-
                     if weight == 0:
                         # HACK: Only allow weight == 0 and weight == 1 for now
                         # TODO:
                         #    - [ ] Allow for continuous weights
                         #    - [ ] Allow for per-image background weight
-                        conf_mask[bx, best_n, gj, gi] = 0
+                        conf_mask[bx, best_n, 0, gj, gi] = 0
                     else:
-                        assert weight == 1, 'can only have weight in {0, 1} for now'
+                        assert weight == 1, (
+                            'can only have weight in {0, 1} for now')
                         coord_mask[bx, best_n, 0, gj, gi] = 1
-                        cls_mask[bx, best_n, gj, gi] = 1
-                        conf_mask[bx, best_n, gj, gi] = self.object_scale
+                        cls_mask[bx, best_n, 0, gj, gi] = 1
+                        conf_mask[bx, best_n, 0, gj, gi] = self.object_scale
 
                         tcoord[bx, best_n, 0, gj, gi] = gx - gi
                         tcoord[bx, best_n, 1, gj, gi] = gy - gj
                         tcoord[bx, best_n, 2, gj, gi] = math.log(gw / best_aw)
                         tcoord[bx, best_n, 3, gj, gi] = math.log(gh / best_ah)
-                        tconf[bx, best_n, gj, gi] = iou
-                        tcls[bx, best_n, gj, gi] = ground_truth[bx, t, 0]
+                        tconf[bx, best_n, 0, gj, gi] = iou
+                        tcls[bx, best_n, 0, gj, gi] = ground_truth[bx, t, 0]
 
         return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
 
