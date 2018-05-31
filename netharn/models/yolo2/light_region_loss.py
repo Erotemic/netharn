@@ -280,31 +280,34 @@ class RegionLoss(BaseLossWithCudaState):
         if isinstance(target, Variable):
             target = target.data
 
-        # Get x,y,w,h,conf,cls
-        output_ = output.view(nB, nA, -1, nH * nW)
+        # Get x,y,w,h,conf,*cls_probs from the third dimension
+        output_ = output.view(nB, nA, 5 + nC, nH, nW)
 
-        coord = torch.zeros_like(output_[:, :, :4])
+        coord = torch.zeros_like(output_[:, :, :4, :, :])
+        coord[:, :, 0:2, :, :] = output_[:, :, 0:2, :, :].sigmoid()  # tx,ty
+        coord[:, :, 2:4, :, :] = output_[:, :, 2:4, :, :]            # tw,th
 
-        coord[:, :, 0:2] = output_[:, :, 0:2].sigmoid()  # tx,ty
-        coord[:, :, 2:4] = output_[:, :, 2:4]            # tw,th
-
-        conf = output_[:, :, 4].sigmoid()
+        conf = output_[:, :, 4:5, :, :].sigmoid()
         if nC > 1:
-            cls = output_[:, :, 5:].contiguous().view(nB * nA, nC, nH * nW).transpose(1, 2).contiguous().view(-1, nC)
+            # Swaps the dimensions to be [B, A, H, W, C]
+            cls_probs = output_[:, :, 5:].contiguous().view(nB * nA, nC, nH * nW).transpose(1, 2).contiguous().view(nB, nA, nH, nW, nC)
+
+        # coord = coord.view(nB, nA, 4, nH, nW)
+        # conf  = conf.view(nB, nA, 1, nH, nW)
 
         with torch.no_grad():
             # Create prediction boxes
             pred_cxywh = torch.FloatTensor(nB * nA * nH * nW, 4, device=device)
-            lin_x = torch.linspace(0, nW - 1, nW, device=device).repeat(nH, 1).view(nH * nW)
-            lin_y = torch.linspace(0, nH - 1, nH, device=device).repeat(nW, 1).t().contiguous().view(nH * nW)
-            anchor_w = self.anchors[:, 0].contiguous().view(nA, 1)
-            anchor_h = self.anchors[:, 1].contiguous().view(nA, 1)
+            lin_x = torch.linspace(0, nW - 1, nW, device=device).repeat(nH, 1)
+            lin_y = torch.linspace(0, nH - 1, nH, device=device).repeat(nW, 1).t().contiguous()
+            anchor_w = self.anchors[:, 0].contiguous().view(nA, 1).view(1, nA, 1, 1, 1)
+            anchor_h = self.anchors[:, 1].contiguous().view(nA, 1).view(1, nA, 1, 1, 1)
 
             # Convert raw network output to bounding boxes in network output coordinates
-            pred_cxywh[:, 0] = (coord[:, :, 0].data + lin_x).view(-1)
-            pred_cxywh[:, 1] = (coord[:, :, 1].data + lin_y).view(-1)
-            pred_cxywh[:, 2] = (coord[:, :, 2].data.exp() * anchor_w).view(-1)
-            pred_cxywh[:, 3] = (coord[:, :, 3].data.exp() * anchor_h).view(-1)
+            pred_cxywh[:, 0] = (coord[:, :, 0:1, :, :].data + lin_x).view(-1)
+            pred_cxywh[:, 1] = (coord[:, :, 1:2, :, :].data + lin_y).view(-1)
+            pred_cxywh[:, 2] = (coord[:, :, 2:3, :, :].data.exp() * anchor_w).view(-1)
+            pred_cxywh[:, 3] = (coord[:, :, 3:4, :, :].data.exp() * anchor_h).view(-1)
 
             # Get target values
             _tup = self.build_targets(
@@ -313,9 +316,9 @@ class RegionLoss(BaseLossWithCudaState):
 
             coord_mask = coord_mask.expand_as(tcoord)
             conf_mask = conf_mask.sqrt()
+
             if nC > 1:
-                tcls = tcls.view(-1)[cls_mask.view(-1)].long()
-                cls_mask = cls_mask.view(-1, 1).repeat(1, nC)
+                masked_tcls = tcls[cls_mask].view(-1).long()
 
         tcoord = Variable(tcoord, requires_grad=False)
         tconf = Variable(tconf, requires_grad=False)
@@ -323,19 +326,19 @@ class RegionLoss(BaseLossWithCudaState):
         conf_mask = Variable(conf_mask, requires_grad=False)
         if nC > 1:
             tcls = Variable(tcls, requires_grad=False)
-            cls_mask = Variable(cls_mask, requires_grad=False)
-            cls = cls[cls_mask].view(-1, nC)
+            # Swaps the dimensions to be [B, A, H, W, C]
+            # (Allowed because 3rd dimension is guarneteed to be 1 here)
+            cls_probs_mask = cls_mask.reshape(nB, nA, nH, nW, 1).repeat(1, 1, 1, 1, nC)
+            cls_probs_mask = Variable(cls_probs_mask, requires_grad=False)
+            masked_cls_probs = cls_probs[cls_probs_mask].view(-1, nC)
 
         # Compute losses
-
-        coord = coord.view(nB, nA, 4, nH, nW)
-        conf = conf.view(nB, nA, 1, nH, nW)
 
         # corresponds to delta_region_box
         loss_coord = self.coord_scale * self.mse(coord * coord_mask, tcoord * coord_mask) / nB
         loss_conf = self.mse(conf * conf_mask, tconf * conf_mask) / nB
-        if nC > 1 and cls.numel():
-            loss_cls = self.class_scale * 2 * self.cls_critrion(cls, tcls) / nB
+        if nC > 1 and masked_cls_probs.numel():
+            loss_cls = self.class_scale * 2 * self.cls_critrion(masked_cls_probs, masked_tcls) / nB
             loss_tot = loss_coord + loss_conf + loss_cls
             self.loss_cls = float(loss_cls.data.cpu().numpy())
         else:
@@ -503,7 +506,7 @@ class RegionLoss(BaseLossWithCudaState):
 
                 # Mark that we will care about this prediction with some weight
                 coord_mask[bx, best_n, 0, gj, gi] = weight
-                cls_mask[bx, best_n, 0, gj, gi] = weight
+                cls_mask[bx, best_n, 0, gj, gi] = (weight > .5)
                 conf_mask[bx, best_n, 0, gj, gi] = self.object_scale * weight
 
                 # The prediction will be punished if it does not match this
