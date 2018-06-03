@@ -22,6 +22,9 @@ mkinit /code/netharn/netharn/examples/example_test.py --dry
 def compare_ap_impl(**kw):
     """
 
+    Pascal 2007 + 2012 trainval has 16551 annotations
+    Pascal 2007 test has 4952 annotations
+
     xdata = []
     ydatas = ub.ddict(list)
     for x in np.arange(0, 20):
