@@ -470,6 +470,9 @@ class YoloHarn(nh.FitHarn):
 
         if harn.batch_confusions:
             y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
+
+            precision, recall, ap = nh.metrics.detections._multiclass_ap(y)
+
             # TODO: write out a few visualizations
             loader = harn.loaders[tag]
             num_classes = len(loader.dataset.label_names)
@@ -484,6 +487,7 @@ class YoloHarn(nh.FitHarn):
             metrics_dict = ub.odict()
             metrics_dict['max-AP'] = max_ap
             metrics_dict['mAP'] = mean_ap
+            metrics_dict['AP'] = ap
             return metrics_dict
 
     # Non-standard problem-specific custom methods
