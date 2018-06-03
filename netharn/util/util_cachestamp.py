@@ -4,6 +4,8 @@ import ubelt as ub
 
 class CacheStamp(object):
     """
+    Quickly determine if a computation that writes a file has been done.
+
     Writes a file that marks that a procedure has been done by writing a
     "stamp" file to disk. Removing the stamp file will force recomputation.
     However, removing or changing the result of the computation may not trigger
@@ -22,11 +24,10 @@ class CacheStamp(object):
         dpath (str):
             where to store the cached stamp file
 
-        product (str, optional):
-            path that we expect the computation to produce. If specified its
-            hash is stored.
-            TODO: should we allow product to be a list of the computation
-                produces more than one file?
+        product (str or list, optional):
+            Path or paths that we expect the computation to produce. If
+            specified the hash of the paths are stored. It is faster, but lets
+            robust if products are not specified.
 
         quick (bool):
             if False and product was specified, we use the product hash to
@@ -54,32 +55,51 @@ class CacheStamp(object):
         >>> ub.delete(product)
         >>> assert self.expired()
     """
-    def __init__(self, fname, cfgstr, dpath, product=None, quick=True):
+    def __init__(self, fname, dpath, cfgstr=None, product=None, quick=False):
         self.cacher = ub.Cacher(fname, cfgstr=cfgstr, dpath=dpath)
         self.product = product
         self.quick = quick
 
-    def _get_certificate(self):
+    def _get_certificate(self, cfgstr=None):
         """
         Returns the stamp certificate if it exists
         """
-        certificate = self.cacher.tryload()
+        certificate = self.cacher.tryload(cfgstr=cfgstr)
         return certificate
 
-    def expired(self):
+    def _rectify_products(self, product=None):
+        """ puts products in a normalied format """
+        products = self.product if product is None else product
+        return products
+
+    def _product_hash(self, product=None):
+        """
+        Get the hash of the each product file
+        """
+        products = self._rectify_products(product)
+        product_hash = [ub.hash_file(p) for p in products]
+        return product_hash
+
+    def expired(self, cfgstr=None, product=None):
         """
         Check to see if a previously existing stamp is still valid and if the
         expected result of that computation still exists.
+
+        Args:
+            cfgstr (str, optional): override the default cfgstr if specified
+            product (str or list, optional): override the default product if
+                specified
         """
-        certificate = self._get_certificate()
+        products = self._rectify_products(product)
+        certificate = self._get_certificate(cfgstr=cfgstr)
         if certificate is None:
             # We dont even have a certificate, so we are expired
             is_expired = True
-        elif self.product is None:
+        elif products is None:
             # We dont have a product to check, so assume not expired
             # TODO: we could check the timestamp in the cerficiate
             is_expired = False
-        elif not exists(self.product):
+        elif not all(map(exists, products)):
             # We are expired if the expected product does not exist
             is_expired = True
         elif self.quick:
@@ -88,25 +108,27 @@ class CacheStamp(object):
         else:
             # We are expired if the hash of the existing product data
             # does not match the expected hash in the certificate
-            product_hash = ub.hash_data(self.product)
+            product_hash = self._product_hash(products)
             certificate_hash = certificate['product_hash']
             is_expired = not product_hash.startswith(certificate_hash)
         return is_expired
 
-    def renew(self):
+    def renew(self, cfgstr=None, product=None):
         """
-        Signal that the product has been recomputed and we should recertify it.
+        Recertify that the product has been recomputed by writing a new
+        certificate to disk.
         """
+        products = self._rectify_products(product)
         certificate = {
             'timestamp': ub.timestamp(),
-            'product': self.product,
+            'product': products,
         }
-        if self.product is not None:
-            if not exists(self.product):
+        if products is not None:
+            if not all(map(exists, products)):
                 raise IOError(
-                    'The stamped product must exist: {}'.format(self.product))
-            certificate['product_hash'] = ub.hash_file(self.product)
-        self.cacher.save(certificate)
+                    'The stamped product must exist: {}'.format(products))
+            certificate['product_hash'] = self._product_hash(products)
+        self.cacher.save(certificate, cfgstr=cfgstr)
 
 
 if __name__ == '__main__':
