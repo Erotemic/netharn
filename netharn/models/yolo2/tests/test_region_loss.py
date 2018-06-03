@@ -5,7 +5,7 @@ from netharn.util import profiler
 from netharn.models.yolo2 import light_region_loss
 
 
-def test_perfect_score():
+def check_perfect_score():
     from netharn.models.yolo2.light_region_loss import RegionLoss
     torch.random.manual_seed(0)
     anchors = np.array([[.75, .75], [1.0, .3], [.3, 1.0]])
@@ -45,7 +45,6 @@ def test_perfect_score():
     lin_y = torch.linspace(0, nH - 1, nH).repeat(nW, 1).t().contiguous().view(nH * nW)
     anchor_w = self.anchors[:, 0].contiguous().view(nA, 1)
     anchor_h = self.anchors[:, 1].contiguous().view(nA, 1)
-
 
     seen = 0
     _tup = self._build_targets_tensor(pred_cxywh, ground_truth, nH, nW, seen,
