@@ -51,17 +51,23 @@ def _compare_map():
     assert exists(my_weights_fpath)
     assert exists(ln_weights_fpath)
 
-    # Move the weights to the local computer
-    cacher = ub.Cacher('yolo_weights', dpath=ub.truepath('~/tmp'))
-    ln_weights_fpath_ = cacher.tryload(cfgstr=ub.hash_data(ln_weights_fpath))
-
     ln_weights_fpath_ = ub.truepath('~/tmp/ln_weights.pt')
-    if not exists(ln_weights_fpath_):
-        shutil.copy2(ln_weights_fpath, ln_weights_fpath_)
-
     my_weights_fpath_ = ub.truepath('~/tmp/my_weights.pt')
-    if not exists(my_weights_fpath_):
+
+    # Move the weights to the local computer
+    stamp = nh.util.CacheStamp(
+        'ln_weights.stamp', product=ln_weights_fpath_,
+        cfgstr=ub.hash_data(ln_weights_fpath), dpath=ub.truepath('~/tmp'))
+    if stamp.expired():
+        shutil.copy2(ln_weights_fpath, ln_weights_fpath_)
+        stamp.renew()
+
+    stamp = nh.util.CacheStamp(
+        'nh_weights.stamp', product=my_weights_fpath_,
+        cfgstr=ub.hash_data(my_weights_fpath), dpath=ub.truepath('~/tmp'))
+    if stamp.expired():
         shutil.copy2(my_weights_fpath, my_weights_fpath_)
+        stamp.renew()
 
     harn = setup_harness(bsize=2)
     xpu = harn.hyper.xpu = nh.XPU.cast('auto')
