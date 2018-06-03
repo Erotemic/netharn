@@ -4,6 +4,7 @@ import pandas as pd
 import ubelt as ub
 import torch
 import sys
+from os.path import exists
 
 sys.path.append(ub.truepath('~/code/netharn/netharn/examples'))  # NOQA
 # import mkinit
@@ -16,6 +17,170 @@ mkinit /code/netharn/netharn/examples/example_test.py --dry
 
 # <AUTOGEN_INIT>
 # </AUTOGEN_INIT>
+
+
+def _compare_map():
+    """
+    Most recent training run gave:
+        2018-06-03 00:57:31,830 : log_value(test epoch L_bbox, 0.4200094618143574, 160
+        2018-06-03 00:57:31,830 : log_value(test epoch L_iou, 1.6416475874762382, 160
+        2018-06-03 00:57:31,830 : log_value(test epoch L_cls, 1.3163336199137472, 160
+
+        LightNet Results:
+            TEST 30000 mAP:74.18% Loss:3.16839 (Coord:0.38 Conf:1.61 Cls:1.17)
+
+        My Results:
+            # Worse losses (due to different image loading)
+            loss: 5.00 {coord: 0.69, conf: 2.05, cls: 2.26}
+            mAP = 0.6227
+            The MAP is quite a bit worse... Why is that?
+    """
+    import netharn as nh
+    import ubelt as ub
+    import sys
+    from os.path import exists  # NOQA
+    sys.path.append(ub.truepath('~/code/netharn/netharn/examples'))  # NOQA
+    from yolo_voc import setup_harness, light_yolo  # NOQA
+    import shutil
+    import lightnet as ln
+    ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
+
+    my_weights_fpath = ub.truepath('~/remote/namek/work/voc_yolo2/fit/nice/dynamic/torch_snapshots/_epoch_00000140.pt')
+    ln_weights_fpath = ub.truepath('~/remote/namek/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
+    ln_weights_fpath = ub.truepath('~/remote/namek/code/lightnet/examples/yolo-voc/backup/weights_45000.pt')
+    assert exists(my_weights_fpath)
+    assert exists(ln_weights_fpath)
+
+    # Move the weights to the local computer
+    cacher = ub.Cacher('yolo_weights', dpath=ub.truepath('~/tmp'))
+    ln_weights_fpath_ = cacher.tryload(cfgstr=ub.hash_data(ln_weights_fpath))
+
+    ln_weights_fpath_ = ub.truepath('~/tmp/ln_weights.pt')
+    if not exists(ln_weights_fpath_):
+        shutil.copy2(ln_weights_fpath, ln_weights_fpath_)
+
+    my_weights_fpath_ = ub.truepath('~/tmp/my_weights.pt')
+    if not exists(my_weights_fpath_):
+        shutil.copy2(my_weights_fpath, my_weights_fpath_)
+
+    harn = setup_harness(bsize=2)
+    xpu = harn.hyper.xpu = nh.XPU.cast('auto')
+    harn.initialize()
+
+    ########
+    # Create instances of netharn and lightnet YOLOv2 model
+    ########
+
+    my_model = harn.model
+    my_model.load_state_dict(harn.xpu.load(my_weights_fpath)['model_state_dict'])
+
+    ln_model = ln.models.Yolo(ln_test.CLASSES, ln_weights_fpath,
+                              ln_test.CONF_THRESH, ln_test.NMS_THRESH)
+    ln_model = xpu.move(ln_model)
+
+    import copy
+    ln_model_with_nh_weights = copy.deepcopy(ln_model)
+    nh_weights = harn.xpu.load(my_weights_fpath)['model_state_dict']
+    nh_weights = {k.replace('module.', ''): v for k, v in nh_weights.items()}
+    ln_model_with_nh_weights.load_state_dict(nh_weights)
+
+    num = 50
+    num = None
+
+    # Compute ln_mAP on ln_model with NH_weights
+    nh_mAP = _compute_lightnet_map(ln_model_with_nh_weights, xpu, num=num)
+    # Compute ln_mAP on ln_model with ln_weights
+    ln_mAP = _compute_lightnet_map(ln_model, xpu, num=num)
+
+    print('ln_mAP on ln_model with LN_weights = {!r}'.format(ln_mAP))
+    print('ln_mAP on ln_model with NH_weights = {!r}'.format(nh_mAP))
+    """
+    ln_mAP on ln_model with LN_weights = 66.27
+    ln_mAP on ln_model with NH_weights = 62.2
+
+    Shows about a 4 point difference in mAP, which is not too bad considering
+    that the lightnet data loader is slightly different than the netharn data
+    loader. I think letterboxes are computed differently.
+    """
+
+
+def _compute_lightnet_map(ln_model, xpu, num=None):
+    """
+    Compute the results on the ln test set using a ln model.
+    Weights can either be lightnet or netharn
+    """
+    import os
+    import lightnet as ln
+    ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
+
+    TESTFILE = ub.truepath('~/code/lightnet/examples/yolo-voc/data/test.pkl')
+    os.chdir(ub.truepath('~/code/lightnet/examples/yolo-voc/'))
+    ln_dset = ln_test.CustomDataset(TESTFILE, ln_model)
+    ln_loader = torch.utils.data.DataLoader(
+        ln_dset, batch_size=2, shuffle=False, drop_last=False, num_workers=0,
+        pin_memory=True, collate_fn=ln.data.list_collate,
+    )
+
+    # ----------------------
+    # Postprocessing to transform yolo outputs into detections
+    # Basic difference here is the implementation of NMS
+    ln_postprocess = ln_model.postprocess
+
+    # ----------------------
+    # Define helper functions to deal with bramboxes
+    detection_to_brambox = ln.data.transform.TensorToBrambox(ln_test.NETWORK_SIZE,
+                                                             ln_test.LABELS)
+
+    # ----------------------
+    def img_to_box(boxes, offset):
+        gname_lut = ln_loader.dataset.keys
+        return {gname_lut[offset + k]: v for k, v in enumerate(boxes)}
+
+    with torch.no_grad():
+        anno = {}
+        ln_det = {}
+
+        moving_ave = nh.util.util_averages.CumMovingAve()
+
+        prog = ub.ProgIter(ln_loader, desc='')
+        for bx, ln_batch in enumerate(prog):
+            ln_inputs, ln_bramboxes = ln_batch
+
+            # Convert brambox into components understood by netharn
+            ln_inputs = xpu.variable(ln_inputs)
+
+            ln_model.loss.seen = 1000000
+            ln_outputs = ln_model._forward(ln_inputs)
+
+            ln_loss_bram = ln_model.loss(ln_outputs, ln_bramboxes)
+            moving_ave.update(ub.odict([
+                ('loss_bram', float(ln_loss_bram.sum())),
+            ]))
+
+            # Display progress information
+            average_losses = moving_ave.average()
+            description = ub.repr2(average_losses, nl=0, precision=2, si=True)
+            prog.set_description(description, refresh=False)
+
+            # nh_outputs and ln_outputs should be the same, so no need to
+            # differentiate between them here.
+            ln_postout = ln_postprocess(ln_outputs.clone())
+
+            ln_brambox_postout = detection_to_brambox([x.clone() for x in ln_postout])
+
+            # Record data scored by brambox
+            offset = len(anno)
+            anno.update(img_to_box(ln_bramboxes, offset))
+            ln_det.update(img_to_box(ln_brambox_postout, offset))
+
+            if num is not None and bx >= num:
+                break
+
+    import brambox.boxes as bbb
+    # Compute mAP using brambox / lightnet
+    ln_mAP = round(bbb.ap(*bbb.pr(ln_det, anno)) * 100, 2)
+    print('\nln_mAP = {!r}'.format(ln_mAP))
+    return ln_mAP
 
 
 def _run_quick_test():
