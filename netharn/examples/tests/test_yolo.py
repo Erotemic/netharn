@@ -46,6 +46,7 @@ def _compare_map():
     ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
 
     my_weights_fpath = ub.truepath('~/remote/namek/work/voc_yolo2/fit/nice/dynamic/torch_snapshots/_epoch_00000140.pt')
+    my_weights_fpath = ub.truepath('~/remote/namek/work/voc_yolo2/fit/nice/dynamic/torch_snapshots/_epoch_00000080.pt')
     ln_weights_fpath = ub.truepath('~/remote/namek/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
     ln_weights_fpath = ub.truepath('~/remote/namek/code/lightnet/examples/yolo-voc/backup/weights_45000.pt')
     assert exists(my_weights_fpath)
@@ -80,12 +81,14 @@ def _compare_map():
     my_model = harn.model
     my_model.load_state_dict(harn.xpu.load(my_weights_fpath)['model_state_dict'])
 
-    ln_model = ln.models.Yolo(ln_test.CLASSES, ln_weights_fpath,
-                              ln_test.CONF_THRESH, ln_test.NMS_THRESH)
-    ln_model = xpu.move(ln_model)
+    ln_model_with_ln_weights = ln.models.Yolo(ln_test.CLASSES,
+                                              ln_weights_fpath,
+                                              ln_test.CONF_THRESH,
+                                              ln_test.NMS_THRESH)
+    ln_model_with_ln_weights = xpu.move(ln_model_with_ln_weights)
 
     import copy
-    ln_model_with_nh_weights = copy.deepcopy(ln_model)
+    ln_model_with_nh_weights = copy.deepcopy(ln_model_with_ln_weights)
     nh_weights = harn.xpu.load(my_weights_fpath)['model_state_dict']
     nh_weights = {k.replace('module.', ''): v for k, v in nh_weights.items()}
     ln_model_with_nh_weights.load_state_dict(nh_weights)
@@ -93,20 +96,34 @@ def _compare_map():
     num = 50
     num = None
 
-    # Compute ln_mAP on ln_model with NH_weights
-    nh_mAP = _compute_lightnet_map(ln_model_with_nh_weights, xpu, num=num)
-    # Compute ln_mAP on ln_model with ln_weights
-    ln_mAP = _compute_lightnet_map(ln_model, xpu, num=num)
+    # Compute brambox-style mAP on ln_model with LN and NH weights
+    ln_mAP1 = _compute_lightnet_map(ln_model_with_ln_weights, xpu, num=num)
+    nh_mAP1 = _compute_lightnet_map(ln_model_with_nh_weights, xpu, num=num)
 
-    print('ln_mAP on ln_model with LN_weights = {!r}'.format(ln_mAP))
-    print('ln_mAP on ln_model with NH_weights = {!r}'.format(nh_mAP))
+    # Compute netharn-style mAP on ln_model with LN and NH weights
+    ln_mAP2 = _compute_netharn_map(ln_model_with_ln_weights, xpu, harn, num=num)
+    nh_mAP2 = _compute_netharn_map(ln_model_with_nh_weights, xpu, harn, num=num)
+    print('\n')
+
+    print('ln_mAP1 on ln_model with LN_weights = {!r}'.format(ln_mAP1))
+    print('nh_mAP1 on ln_model with NH_weights = {!r}'.format(nh_mAP1))
     """
-    ln_mAP on ln_model with LN_weights = 66.27
-    ln_mAP on ln_model with NH_weights = 62.2
+    ln_mAP1 on ln_model with LN_weights = 66.27
+    ln_mAP1 on ln_model with NH_weights = 62.2
 
     Shows about a 4 point difference in mAP, which is not too bad considering
     that the lightnet data loader is slightly different than the netharn data
     loader. I think letterboxes are computed differently.
+    """
+
+    print('nh_mAP2 on ln_model with LN_weights = {:.4f}'.format(ln_mAP2))
+    print('nh_mAP2 on ln_model with NH_weights = {:.4f}'.format(nh_mAP2))
+
+    """
+    My map computation seem systematically off
+
+    nh_mAP2 on ln_model with LN_weights = 0.5610
+    nh_mAP2 on ln_model with NH_weights = 0.5182
     """
 
 
@@ -186,7 +203,112 @@ def _compute_lightnet_map(ln_model, xpu, num=None):
     # Compute mAP using brambox / lightnet
     ln_mAP = round(bbb.ap(*bbb.pr(ln_det, anno)) * 100, 2)
     print('\nln_mAP = {!r}'.format(ln_mAP))
+
     return ln_mAP
+
+
+def _compute_netharn_map(ln_model, xpu, harn, num=None):
+    """
+    Uses ln data, but nh map computation
+    """
+    import os
+    import lightnet as ln
+    ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
+
+    TESTFILE = ub.truepath('~/code/lightnet/examples/yolo-voc/data/test.pkl')
+    os.chdir(ub.truepath('~/code/lightnet/examples/yolo-voc/'))
+    ln_dset = ln_test.CustomDataset(TESTFILE, ln_model)
+    ln_loader = torch.utils.data.DataLoader(
+        ln_dset, batch_size=2, shuffle=False, drop_last=False, num_workers=0,
+        pin_memory=True, collate_fn=ln.data.list_collate,
+    )
+
+    # ----------------------
+    # Postprocessing to transform yolo outputs into detections
+    # Basic difference here is the implementation of NMS
+    ln_postprocess = ln_model.postprocess
+
+    # ----------------------
+    with torch.no_grad():
+        ln_results = []
+
+        moving_ave = nh.util.util_averages.CumMovingAve()
+
+        prog = ub.ProgIter(ln_loader, desc='')
+        for bx, ln_batch in enumerate(prog):
+            ln_inputs, ln_bramboxes = ln_batch
+
+            # Convert brambox into components understood by netharn
+            ln_inputs = xpu.variable(ln_inputs)
+
+            inp_size = tuple(ln_inputs.shape[-2:][::-1])
+            ln_labels = brambox_to_labels(ln_bramboxes, inp_size, ln_test.LABELS)
+
+            ln_model.loss.seen = 1000000
+            ln_outputs = ln_model._forward(ln_inputs)
+
+            ln_loss_bram = ln_model.loss(ln_outputs, ln_bramboxes)
+            moving_ave.update(ub.odict([
+                ('loss_bram', float(ln_loss_bram.sum())),
+            ]))
+
+            # Display progress information
+            average_losses = moving_ave.average()
+            description = ub.repr2(average_losses, nl=0, precision=2, si=True)
+            prog.set_description(description, refresh=False)
+
+            # nh_outputs and ln_outputs should be the same, so no need to
+            # differentiate between them here.
+            ln_postout = ln_postprocess(ln_outputs.clone())
+
+            ln_results.append((ln_postout, ln_labels, inp_size))
+
+            if num is not None and bx >= num:
+                break
+
+    batch_confusions = []
+    kw = dict(bias=0, PREFER_WEIGHTED_TRUTH=False)
+    for ln_postout, ln_labels, inp_size in ln_results:
+        for y in harn._measure_confusion(ln_postout, ln_labels, inp_size, **kw):
+            batch_confusions.append(y)
+
+    y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
+
+    num_classes = len(ln_test.LABELS)
+    cls_labels = list(range(num_classes))
+    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+    aps = aps.rename(dict(zip(cls_labels, ln_test.LABELS)), axis=0)
+    mean_ap = np.nanmean(aps['ap'])
+    return mean_ap
+
+
+def brambox_to_labels(ln_bramboxes, inp_size, LABELS):
+    """ convert brambox to netharn style labels """
+    import lightnet as ln
+    max_anno = max(map(len, ln_bramboxes))
+    ln_targets = [
+        ln.data.transform.BramboxToTensor.apply(
+            annos, inp_size, max_anno=max_anno, class_label_map=LABELS)
+        for annos in ln_bramboxes]
+    ln_targets = torch.stack(ln_targets)
+
+    gt_weights = -np.ones((len(ln_bramboxes), max_anno), dtype=np.float32)
+    for i, annos in enumerate(ln_bramboxes):
+        weights = 1.0 - np.array([anno.ignore for anno in annos], dtype=np.float32)
+        gt_weights[i, 0:len(annos)] = weights
+    gt_weights = torch.Tensor(gt_weights)
+
+    bg_weights = torch.FloatTensor(np.ones(len(ln_targets)))
+    indices = None
+    orig_sizes = None
+    ln_labels = {
+        'targets': ln_targets,
+        'gt_weights': gt_weights,
+        'orig_sizes': orig_sizes,
+        'indices': indices,
+        'bg_weights': bg_weights,
+    }
+    return ln_labels
 
 
 def _run_quick_test():
@@ -327,7 +449,7 @@ def compare_loss():
     ln_tf_target = []
     for anno in ln_targets[0]:
         anno.class_label = anno.class_id
-        tf = ln.data.preprocess.BramboxToTensor._tf_anno(anno, inp_size, None)
+        tf = ln.data.transform.BramboxToTensor._tf_anno(anno, inp_size, None)
         ln_tf_target.append(tf)
 
     ln_boxes = nh.util.Boxes(np.array(ln_tf_target)[:, 1:], 'cxywh').scale(inp_size)
@@ -451,27 +573,6 @@ def _test_with_lnstyle_data():
     NETWORK_SIZE = (416, 416)
     detection_to_brambox = ln.data.TensorToBrambox(NETWORK_SIZE, LABELS)
 
-    def brambox_to_labels(ln_bramboxes, inp_size):
-        """ convert brambox to netharn style labels """
-        max_anno = max(map(len, ln_bramboxes))
-        ln_targets = [
-            ln.data.preprocess.BramboxToTensor.apply(
-                annos, inp_size, max_anno=max_anno, class_label_map=LABELS)
-            for annos in ln_bramboxes]
-        ln_targets = torch.stack(ln_targets)
-
-        gt_weights = -np.ones((len(ln_bramboxes), max_anno), dtype=np.float32)
-        for i, annos in enumerate(ln_bramboxes):
-            weights = 1.0 - np.array([anno.ignore for anno in annos], dtype=np.float32)
-            gt_weights[i, 0:len(annos)] = weights
-        gt_weights = torch.Tensor(gt_weights)
-
-        bg_weights = torch.FloatTensor(np.ones(len(ln_targets)))
-        indices = None
-        orig_sizes = None
-        ln_labels = ln_targets, gt_weights, orig_sizes, indices, bg_weights
-        return ln_labels
-
     # ----------------------
     CHECK_LOSS = False
 
@@ -503,14 +604,14 @@ def _test_with_lnstyle_data():
             inp_size = tuple(ln_inputs.shape[-2:][::-1])
             nh_inputs, nh_labels = nh_batch
 
-            nh_targets = nh_labels[0]
-            nh_gt_weights = nh_labels[1]
+            nh_targets = nh_labels['targets']
+            nh_gt_weights = nh_labels['gt_weights']
 
             # Convert brambox into components understood by netharn
-            ln_labels = brambox_to_labels(ln_bramboxes, inp_size)
+            ln_labels = brambox_to_labels(ln_bramboxes, inp_size, ln_test.LABELS)
             ln_inputs = harn.xpu.variable(ln_inputs)
-            ln_targets = harn.xpu.variable(ln_labels[0])
-            ln_gt_weights = harn.xpu.variable(ln_labels[1])  # NOQA
+            ln_targets = harn.xpu.variable(ln_labels['targets'])
+            ln_gt_weights = harn.xpu.variable(ln_labels['gt_weights'])  # NOQA
 
             ln_net.loss.seen = 1000000
             ln_outputs = ln_net._forward(ln_inputs)
@@ -572,14 +673,7 @@ def _test_with_lnstyle_data():
             nh_det.update(img_to_box(nh_brambox_postout, offset))
             nh_det0.update(img_to_box(nh_brambox_postout0, offset))
 
-            bg_weights = torch.FloatTensor(np.ones(len(ln_targets)))
-            indices = None
-            orig_sizes = None
-
             # Record data scored by netharn
-
-            ln_labels = ln_targets, ln_gt_weights, orig_sizes, indices, bg_weights
-
             ln_results.append((ln_postout, ln_labels, inp_size))
             nh_results.append((nh_postout, nh_labels, inp_size))
             nh_results0.append((nh_postout0, nh_labels, inp_size))

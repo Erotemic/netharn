@@ -74,13 +74,14 @@ class CacheStamp(object):
             products = [products]
         return products
 
-    def _product_hash(self, product=None):
+    def _product_file_hash(self, product=None):
         """
         Get the hash of the each product file
         """
         products = self._rectify_products(product)
-        product_hash = [ub.hash_file(p) for p in products]
-        return product_hash
+        # product_file_hash = [ub.hash_file(p) for p in products]
+        product_file_hash = [hash_file2(p) for p in products]
+        return product_file_hash
 
     def expired(self, cfgstr=None, product=None):
         """
@@ -110,9 +111,9 @@ class CacheStamp(object):
         else:
             # We are expired if the hash of the existing product data
             # does not match the expected hash in the certificate
-            product_hash = self._product_hash(products)
-            certificate_hash = certificate['product_hash']
-            is_expired = product_hash != certificate_hash
+            product_file_hash = self._product_file_hash(products)
+            certificate_hash = certificate.get('product_file_hash', None)
+            is_expired = product_file_hash != certificate_hash
         return is_expired
 
     def renew(self, cfgstr=None, product=None):
@@ -129,8 +130,47 @@ class CacheStamp(object):
             if not all(map(exists, products)):
                 raise IOError(
                     'The stamped product must exist: {}'.format(products))
-            certificate['product_hash'] = self._product_hash(products)
+            certificate['product_file_hash'] = self._product_file_hash(products)
         self.cacher.save(certificate, cfgstr=cfgstr)
+
+
+def hash_file2(fpath, blocksize=65536, hasher='xx64'):
+    r"""
+    Hashes the data in a file on disk using xxHash
+
+    xxHash is much faster than sha1, bringing computation time down from .57
+    seconds to .12 seconds for a 387M file.
+
+    xdata = 2 ** np.array([8, 12, 14, 16])
+    ydatas = ub.ddict(list)
+    for blocksize in xdata:
+        print('blocksize = {!r}'.format(blocksize))
+        ydatas['sha1'].append(ub.Timerit(2).call(ub.hash_file, my_weights_fpath_, hasher='sha1', blocksize=blocksize).min())
+        ydatas['sha256'].append(ub.Timerit(2).call(ub.hash_file, my_weights_fpath_, hasher='sha256', blocksize=blocksize).min())
+        ydatas['sha512'].append(ub.Timerit(2).call(ub.hash_file, my_weights_fpath_, hasher='sha512', blocksize=blocksize).min())
+        ydatas['md5'].append(ub.Timerit(2).call(ub.hash_file, my_weights_fpath_, hasher='md5', blocksize=blocksize).min())
+        ydatas['xx32'].append(ub.Timerit(2).call(hash_file2, my_weights_fpath_, hasher='xx32', blocksize=blocksize).min())
+        ydatas['xx64'].append(ub.Timerit(2).call(hash_file2, my_weights_fpath_, hasher='xx64', blocksize=blocksize).min())
+
+    nh.util.qtensure()
+    nh.util.multi_plot(xdata, ydatas)
+    """
+    import xxhash
+    if hasher == 'xx32':
+        hasher = xxhash.xxh32()
+    elif hasher == 'xx64':
+        hasher = xxhash.xxh64()
+
+    with open(fpath, 'rb') as file:
+        buf = file.read(blocksize)
+        # otherwise hash the entire file
+        while len(buf) > 0:
+            hasher.update(buf)
+            buf = file.read(blocksize)
+    # Get the hashed representation
+    text = ub.util_hash._digest_hasher(hasher, hashlen=None,
+                                       base=ub.util_hash.DEFAULT_ALPHABET)
+    return text
 
 
 if __name__ == '__main__':
