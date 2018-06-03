@@ -214,8 +214,8 @@ def _compare_map():
     import lightnet as ln
     ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
 
-    my_weights_fpath = ub.truepath('~/remote/namek/work/voc_yolo2/fit/nice/dynamic/torch_snapshots/_epoch_00000140.pt')
     my_weights_fpath = ub.truepath('~/remote/namek/work/voc_yolo2/fit/nice/dynamic/torch_snapshots/_epoch_00000080.pt')
+    my_weights_fpath = ub.truepath('~/remote/namek/work/voc_yolo2/fit/nice/dynamic/torch_snapshots/_epoch_00000160.pt')
     ln_weights_fpath = ub.truepath('~/remote/namek/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
     ln_weights_fpath = ub.truepath('~/remote/namek/code/lightnet/examples/yolo-voc/backup/weights_45000.pt')
     assert exists(my_weights_fpath)
@@ -239,42 +239,47 @@ def _compare_map():
         shutil.copy2(my_weights_fpath, my_weights_fpath_)
         stamp.renew()
 
-    harn = setup_harness(bsize=2)
-    xpu = harn.hyper.xpu = nh.XPU.cast('auto')
-    harn.initialize()
-
     ########
     # Create instances of netharn and lightnet YOLOv2 model
     ########
 
-    my_model = harn.model
-    my_model.load_state_dict(harn.xpu.load(my_weights_fpath)['model_state_dict'])
+    # Netharn model, postprocess, and lightnet weights
+    nh_harn = setup_harness(bsize=2)
+    xpu = nh_harn.hyper.xpu = nh.XPU.cast('auto')
+    nh_harn.initialize()
+    my_model = nh_harn.model
+    my_model.load_state_dict(nh_harn.xpu.load(my_weights_fpath)['model_state_dict'])
 
+    # Netharn model, postprocess, and lightnet weights
+    ln_harn = setup_harness(bsize=2)
+    ln_harn.initialize()
+    ln_weights = {'module.' + k: v for k, v in ln_harn.xpu.load(ln_weights_fpath)['weights'].items()}
+    ln_harn.model.load_state_dict(ln_weights)
+
+    # Lightnet model, postprocess, and lightnet weights
     ln_model_with_ln_weights = ln.models.Yolo(ln_test.CLASSES,
                                               ln_weights_fpath,
                                               ln_test.CONF_THRESH,
                                               ln_test.NMS_THRESH)
     ln_model_with_ln_weights = xpu.move(ln_model_with_ln_weights)
 
+    # Lightnet model, postprocess, and netharn weights
     import copy
     ln_model_with_nh_weights = copy.deepcopy(ln_model_with_ln_weights)
-    nh_weights = harn.xpu.load(my_weights_fpath)['model_state_dict']
+    nh_weights = nh_harn.xpu.load(my_weights_fpath)['model_state_dict']
     nh_weights = {k.replace('module.', ''): v for k, v in nh_weights.items()}
     ln_model_with_nh_weights.load_state_dict(nh_weights)
 
-    num = None
     num = 50
+    num = None
 
     # Compute brambox-style mAP on ln_model with LN and NH weights
     ln_mAP1 = _ln_data_ln_map(ln_model_with_ln_weights, xpu, num=num)
     nh_mAP1 = _ln_data_ln_map(ln_model_with_nh_weights, xpu, num=num)
 
     # Compute netharn-style mAP on ln_model with LN and NH weights
-    ln_mAP2 = _ln_data_nh_map(ln_model_with_ln_weights, xpu, harn, num=num)
-    nh_mAP2 = _ln_data_nh_map(ln_model_with_nh_weights, xpu, harn, num=num)
-    print('\n')
-
-    _nh_data_nh_map(harn, num=num)
+    ln_mAP2 = _ln_data_nh_map(ln_model_with_ln_weights, xpu, nh_harn, num=num)
+    nh_mAP2 = _ln_data_nh_map(ln_model_with_nh_weights, xpu, nh_harn, num=num)
 
     print('\n')
     print('ln_mAP1 on ln_model with LN_weights = {!r}'.format(ln_mAP1))
@@ -282,6 +287,16 @@ def _compare_map():
 
     print('nh_mAP2 on ln_model with LN_weights = {:.4f}'.format(ln_mAP2))
     print('nh_mAP2 on ln_model with NH_weights = {:.4f}'.format(nh_mAP2))
+
+    nh_mAP3, nh_aps = _nh_data_nh_map(nh_harn, num=num)
+    ln_mAP3, ln_aps = _nh_data_nh_map(ln_harn, num=num)
+
+    print('\n')
+    print('nh_mAP3 on nh_model with LN_weights = {:.4f}'.format(nh_mAP3))
+    print('ln_mAP3 on nh_model with NH_weights = {:.4f}'.format(ln_mAP3))
+
+    # Method data       mAP  aero bike bird boat bottle bus  car  cat  chair cow  table dog  horse mbike person plant sheep sofa train tv
+    # YOLOv2 544 07++12 73.4 86.3 82.0 74.8 59.2 51.8   79.8 76.5 90.6 52.1  78.2 58.5  89.3 82.5  83.4  81.3   49.1  77.2  62.4 83.8 68.7
 
     """
     BramBox MAP:
@@ -297,6 +312,18 @@ def _compare_map():
 
         nh_mAP2 on ln_model with LN_weights = 0.5437
         nh_mAP2 on ln_model with NH_weights = 0.4991
+
+    NetHarn Model And AP:
+        nh_mAP3 on nh_model with LN_weights = 0.6890
+        ln_mAP3 on nh_model with NH_weights = 0.7296
+
+        It looks like the score from EAVISE was in AP not mAP.
+        I'm still getting a difference in 4 score points, but this gap is
+        more reasonable. The AP computation is probably correct, given that it
+        produces the same results on dummy data.
+
+        The difference now may be the learning rates.
+        Perhaps doing the warmup run will actually give me desired results.
     """
 
 
@@ -452,8 +479,8 @@ def _ln_data_nh_map(ln_model, xpu, harn, num=None):
 
     precision, recall, mean_ap = nh.metrics.detections._multiclass_ap(y)
 
-    # aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
-    # aps = aps.rename(dict(zip(cls_labels, ln_test.LABELS)), axis=0)
+    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+    aps = aps.rename(dict(zip(cls_labels, ln_test.LABELS)), axis=0)
     # mean_ap = np.nanmean(aps['ap'])
 
     return mean_ap
@@ -473,8 +500,8 @@ def _nh_data_nh_map(harn, num=10):
             inp_size = np.array(inputs.shape[-2:][::-1])
             outputs = harn.model(inputs)
 
-            target, gt_weights, orig_sizes, indices, bg_weights = labels
-            loss = harn.criterion(outputs, target, gt_weights=gt_weights,
+            loss = harn.criterion(outputs, labels['targets'],
+                                  gt_weights=labels['gt_weights'],
                                   seen=1000000000)
             moving_ave.update(ub.odict([
                 ('loss', float(loss.sum())),
@@ -506,7 +533,15 @@ def _nh_data_nh_map(harn, num=10):
 
     y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
     precision, recall, ap = nh.metrics.detections._multiclass_ap(y)
-    return ap
+
+    ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
+    num_classes = len(ln_test.LABELS)
+    cls_labels = list(range(num_classes))
+
+    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+    aps = aps.rename(dict(zip(cls_labels, ln_test.LABELS)), axis=0)
+    # return ap
+    return ap, aps
 
 
 def brambox_to_labels(ln_bramboxes, inp_size, LABELS):
