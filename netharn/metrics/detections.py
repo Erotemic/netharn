@@ -5,7 +5,7 @@ from netharn import util
 from netharn.util import profiler
 
 
-def _confusion_pr_ap(y):
+def _multiclass_ap(y):
     """ computes pr like lightnet from netharn confusions """
     y = y.sort_values('score', ascending=False)
 
