@@ -274,6 +274,9 @@ def _compare_map():
     nh_mAP2 = _ln_data_nh_map(ln_model_with_nh_weights, xpu, harn, num=num)
     print('\n')
 
+    _nh_data_nh_map(harn, num=num)
+
+    print('\n')
     print('ln_mAP1 on ln_model with LN_weights = {!r}'.format(ln_mAP1))
     print('nh_mAP1 on ln_model with NH_weights = {!r}'.format(nh_mAP1))
 
@@ -502,26 +505,8 @@ def _nh_data_nh_map(harn, num=10):
         harn.visualize_prediction(batch, outputs, postout, thresh=.1)
 
     y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
-    # TODO: write out a few visualizations
-    num_classes = len(loader.dataset.label_names)
-    cls_labels = list(range(num_classes))
-
-    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
-    aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
-    mean_ap = np.nanmean(aps['ap'])
-    max_ap = np.nanmax(aps['ap'])
-    print(aps)
-    print('mean_ap = {!r}'.format(mean_ap))
-    print('max_ap = {!r}'.format(max_ap))
-
-    aps = nh.metrics.ave_precisions(y[y.score > .01], cls_labels, use_07_metric=True)
-    aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
-    mean_ap = np.nanmean(aps['ap'])
-    max_ap = np.nanmax(aps['ap'])
-    print(aps)
-    print('mean_ap = {!r}'.format(mean_ap))
-    print('max_ap = {!r}'.format(max_ap))
-
+    precision, recall, ap = nh.metrics.detections._multiclass_ap(y)
+    return ap
 
 
 def brambox_to_labels(ln_bramboxes, inp_size, LABELS):
