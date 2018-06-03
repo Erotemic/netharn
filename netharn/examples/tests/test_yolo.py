@@ -19,6 +19,175 @@ mkinit /code/netharn/netharn/examples/example_test.py --dry
 # </AUTOGEN_INIT>
 
 
+def compare_ap_impl(**kw):
+    """
+
+    xdata = []
+    ydatas = ub.ddict(list)
+    for x in np.arange(0, 20):
+        xdata.append(x)
+        for k, v in compare_ap_impl(n_bad=x).items():
+            ydatas[k].append(v)
+
+    xdata = []
+    ydatas = ub.ddict(list)
+    for x in np.linspace(0.001, 0.1, 10):
+        xdata.append(x)
+        kw = {'good_perb': x}
+        for k, v in compare_ap_impl(**kw).items():
+            ydatas[k].append(v)
+
+    nh.util.qtensure()
+    nh.util.multi_plot(xdata, ydatas, fnum=1, doclf=True, ymax=100, ymin=0)
+
+    compare_ap_impl(good_perb=0.1)
+    """
+    import netharn as nh
+    rng = np.random.RandomState(0)
+
+    NETWORK_SIZE = (1000, 1000)
+
+    LABELS = list(map(str, range(20)))
+
+    params = {
+        'n_true': 10,
+        'n_bad': 10,
+        'n_missing': 1,
+        'good_perb': 0.03,
+    }
+    params.update(**kw)
+
+    true_boxes = nh.util.Boxes.random(params['n_true'], scale=1.0, format='cxywh', rng=rng)
+    true_labels = rng.randint(0, len(LABELS), len(true_boxes.data))[:, None]
+
+    # Perterb the truth a bit to make detections
+    perb = nh.util.Boxes.random(len(true_boxes.data), scale=params['good_perb'], format='cxywh', rng=rng)
+
+    good_det_boxes = nh.util.Boxes(true_boxes.to_cxywh().data + perb.data, 'cxywh')
+    bad_det_boxes = nh.util.Boxes.random(params['n_bad'], scale=1.0, format='cxywh', rng=rng)
+
+    good_det_boxes = good_det_boxes[params['n_missing']:]
+
+    good_conf = np.clip(rng.randn(len(good_det_boxes.data)) / 3 + .7, 0, 1)[:, None]
+    bad_conf = np.clip(rng.randn(len(bad_det_boxes.data)) / 3 + .3, 0, 1)[:, None]
+    bad_labels = rng.randint(0, len(LABELS), len(bad_det_boxes.data))[:, None]
+
+    good_pred = np.hstack([good_det_boxes.data, good_conf, true_labels[params['n_missing']:]])
+    bad_pred = np.hstack([bad_det_boxes.data, bad_conf, bad_labels])
+
+    truth = np.hstack([true_labels, true_boxes.data])
+    pred = np.vstack([good_pred, bad_pred])
+
+    def bb_map(truth, pred):
+        import lightnet as ln
+        import torch
+        detection_to_brambox = ln.data.transform.TensorToBrambox(NETWORK_SIZE, LABELS)
+        def as_annos(truth, Win=1, Hin=1):
+            """
+            Construct an BramBox annotation using the basic YOLO box format
+            """
+            from brambox.boxes.annotations import Annotation
+            for true in truth:
+                anno = Annotation()
+                anno.class_id = true[0]
+                anno.class_label = LABELS[int(true[0])]
+                x_center, y_center, w, h = true[1:5]
+                anno.x_top_left = (x_center - w / 2) * Win
+                anno.y_top_left = (y_center - h / 2) * Hin
+                anno.width, anno.height = w * Win, h * Hin
+                anno.ignore = False
+                yield anno
+
+        true_bram = list(as_annos(truth, *NETWORK_SIZE))
+        pred_bram = detection_to_brambox([torch.Tensor(pred)])[0]
+
+        ln_det = {'a': pred_bram}
+        anno = {'a': true_bram}
+
+        import brambox.boxes as bbb
+        detections = ln_det
+        ground_truth = anno
+        overlap_threshold = 0.5
+        bb_precision, bb_recall = bbb.pr(detections, ground_truth, overlap_threshold)
+        bb_map = round(bbb.ap(bb_precision, bb_recall) * 100, 2)
+        return bb_map
+
+    def nh_map(truth, pred, **nhkw):
+        target = truth.reshape(-1, 5)
+        true_cxywh   = target[:, 1:5]
+        true_cxs     = target[:, 0]
+        true_weight  = np.ones(len(target))
+
+        inp_size = NETWORK_SIZE
+
+        # Remove padded truth
+        flags = true_cxs != -1
+        true_cxywh  = true_cxywh[flags]
+        true_cxs    = true_cxs[flags]
+        true_weight = true_weight[flags]
+
+        # how much do we care about the background in this image?
+        bg_weight = 1.0
+
+        # Unpack postprocessed predictions
+        sboxes = pred.reshape(-1, 6)
+        pred_cxywh = sboxes[:, 0:4]
+        pred_scores = sboxes[:, 4]
+        pred_cxs = sboxes[:, 5].astype(np.int)
+
+        true_tlbr = nh.util.Boxes(true_cxywh, 'cxywh').to_tlbr()
+        pred_tlbr = nh.util.Boxes(pred_cxywh, 'cxywh').to_tlbr()
+
+        true_tlbr = true_tlbr.scale(inp_size)
+        pred_tlbr = pred_tlbr.scale(inp_size)
+
+        true_boxes = true_tlbr.data
+        pred_boxes = pred_tlbr.data
+
+        ovthresh = 0.5
+
+        y = nh.metrics.detection_confusions(
+            true_boxes=true_boxes,
+            true_cxs=true_cxs,
+            true_weights=true_weight,
+            pred_boxes=pred_boxes,
+            pred_scores=pred_scores,
+            pred_cxs=pred_cxs,
+            bg_weight=bg_weight,
+            bg_cls=-1,
+            ovthresh=ovthresh,
+            **nhkw,
+        )
+        y = pd.DataFrame(y)
+
+        num_classes = len(LABELS)
+        cls_labels = list(range(num_classes))
+        aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=False)
+        aps = aps.rename(dict(zip(cls_labels, LABELS)), axis=0)
+        mean_ap = np.nanmean(aps['ap'])
+
+        nh_precision, nh_recall, avg = nh.metrics.detections._confusion_pr_ap(y)
+        map1 = round(mean_ap * 100, 2)
+        map2 = round(avg * 100, 2)
+        return map1, map2
+
+    # print('bb_precision = {}'.format(ub.repr2(bb_precision, precision=2, nl=0)))
+    # print('nh_precision = {}'.format(ub.repr2(nh_precision, precision=2, nl=0)))
+
+    # print('bb_recall    = {}'.format(ub.repr2(bb_recall, precision=2, nl=0)))
+    # print('nh_recall    = {}'.format(ub.repr2(nh_recall, precision=2, nl=0)))
+
+    nhkw = {'bias': 0}
+
+    data = {
+        'bb': bb_map(truth, pred),
+        'nh_m1': nh_map(truth, pred, bias=0.0)[0],
+        'nh_m2': nh_map(truth, pred, bias=0.0)[1],
+    }
+    print(data)
+    return data
+
+
 def _compare_map():
     """
     Most recent training run gave:
@@ -120,10 +289,10 @@ def _compare_map():
     print('nh_mAP2 on ln_model with NH_weights = {:.4f}'.format(nh_mAP2))
 
     """
-    My map computation seem systematically off
+    My map computation seems systematically off
 
-    nh_mAP2 on ln_model with LN_weights = 0.5610
-    nh_mAP2 on ln_model with NH_weights = 0.5182
+    nh_mAP2 on ln_model with LN_weights = 0.5437
+    nh_mAP2 on ln_model with NH_weights = 0.4991
     """
 
 
