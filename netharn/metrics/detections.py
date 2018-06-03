@@ -20,7 +20,7 @@ def _confusion_pr_ap(y):
                 positives.append((row.score, False))
 
     # sort matches by confidence from high to low
-    positives = sorted(positives, key=lambda d: d[0], reverse=True)
+    positives = sorted(positives, key=lambda d: (d[0], -d[1]), reverse=True)
 
     tps = []
     fps = []
