@@ -18,6 +18,11 @@ Notes:
         * a criterion
         * an optimizer
 
+TODO:
+    [ ] - output "glance" curves to disk
+    [x] - move logs to a logs folder. Keep a single master log in the root
+    [ ] - Why didnt the best_snapshot.pt get saved in the most recent yolo run?
+
 Example:
     >>> import netharn as nh
     >>> size = 3
@@ -59,8 +64,8 @@ Example:
 """
 import glob
 import itertools as it
-import logging  # NOQA
-import numpy as np  # NOQA
+import logging
+import numpy as np
 import os
 import parse
 import shutil
@@ -214,25 +219,39 @@ class InitializeMixin:
             return harn.train_dpath
 
     def setup_loggers(harn):
+        """
+        Setup file logging and / or tensorboard logging
+        """
         if harn.train_dpath is None:
             harn.warn('harn.train_dpath is None, cannot setup loggers')
             return
 
         use_file_logger = True
         if use_file_logger and harn.flog is None:
-            flog_fname = 'fitlog_{}.log'.format(ub.timestamp())
-            flog_fpath = os.path.join(harn.train_dpath, flog_fname)
+
             flog = logging.getLogger(harn.__class__.__name__)
             formatter = logging.Formatter('%(asctime)s : %(message)s')
-            handler = logging.FileHandler(flog_fpath, mode='w')
-            handler.setFormatter(formatter)
+
+            # Add timestamped fpath write handler
+            flog_fname = 'fitlog_{}.log'.format(ub.timestamp())
+            flog_dpath = ub.ensuredir(join(harn.train_dpath, 'logs'))
+            w_flog_fpath = join(flog_dpath, flog_fname)
+            w_handler = logging.FileHandler(w_flog_fpath, mode='w')
+            w_handler.setFormatter(formatter)
+
+            # Add a simple root append handler
+            a_flog_fpath = join(harn.train_dpath, 'fit.log')
+            a_handler = logging.FileHandler(a_flog_fpath, mode='w')
+            a_handler.setFormatter(formatter)
+
             flog.propagate = False
             flog.setLevel(logging.DEBUG)
-            flog.addHandler(handler)
+            flog.addHandler(w_handler)
+            flog.addHandler(a_handler)
             harn.flog = flog
             harn.debug('initialized file logger')
-            flog_link = os.path.join(harn.train_dpath, 'fit.log')
-            ub.symlink(flog_fpath, flog_link, overwrite=True)
+            # flog_link = join(harn.train_dpath, 'fit.log')
+            # ub.symlink(flog_fpath, flog_link, overwrite=True)
 
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
