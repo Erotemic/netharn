@@ -112,7 +112,7 @@ class CacheStamp(object):
             # does not match the expected hash in the certificate
             product_hash = self._product_hash(products)
             certificate_hash = certificate['product_hash']
-            is_expired = not product_hash.startswith(certificate_hash)
+            is_expired = product_hash != certificate_hash
         return is_expired
 
     def renew(self, cfgstr=None, product=None):
