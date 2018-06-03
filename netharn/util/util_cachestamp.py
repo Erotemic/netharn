@@ -10,8 +10,8 @@ class CacheStamp(object):
     "stamp" file to disk. Removing the stamp file will force recomputation.
     However, removing or changing the result of the computation may not trigger
     recomputation unless specific handling is done or the expected "product"
-    of the computation is a file and registered with the stamper.  If quick is
-    True, we only check if the product exists, and we ignore its hash.
+    of the computation is a file and registered with the stamper.  If robust is
+    False, we only check if the product exists, and we ignore its hash.
 
     Args:
         fname (str):
@@ -29,9 +29,10 @@ class CacheStamp(object):
             specified the hash of the paths are stored. It is faster, but lets
             robust if products are not specified.
 
-        quick (bool):
-            if False and product was specified, we use the product hash to
-            check if it is expired.
+        robust (bool):
+            if True and product was specified, we use the product hash to
+            check if it is expired, otherwise we assume the file has not
+            been corrupoted or changed.
 
     Example:
         >>> import ubelt as ub
@@ -44,21 +45,22 @@ class CacheStamp(object):
         >>>     ub.writeto(product, 'very expensive')
         >>>     self.renew()
         >>> assert not self.expired()
-        >>> # corrupting the output will not expire in quick mode
+        >>> self.robust = False
+        >>> # corrupting the output will not expire in non-robust mode
         >>> ub.writeto(product, 'corrupted')
         >>> assert not self.expired()
-        >>> self.quick = False
-        >>> # but it will if we are not in quick mode
+        >>> self.robust = True
+        >>> # but it will expire if we are not in robust mode
         >>> assert self.expired()
-        >>> # deleting the product will cause expiration
-        >>> self.quick = True
+        >>> # deleting the product will cause expiration in any mode
+        >>> self.robust = False
         >>> ub.delete(product)
         >>> assert self.expired()
     """
-    def __init__(self, fname, dpath, cfgstr=None, product=None, quick=False):
+    def __init__(self, fname, dpath, cfgstr=None, product=None, robust=True):
         self.cacher = ub.Cacher(fname, cfgstr=cfgstr, dpath=dpath)
         self.product = product
-        self.quick = quick
+        self.robust = robust
 
     def _get_certificate(self, cfgstr=None):
         """
@@ -105,7 +107,7 @@ class CacheStamp(object):
         elif not all(map(exists, products)):
             # We are expired if the expected product does not exist
             is_expired = True
-        elif self.quick:
+        elif not self.robust:
             # Assume that the product hash is the same.
             is_expired = False
         else:
@@ -173,38 +175,10 @@ def hash_file2(fpath, blocksize=65536, hasher='xx64'):
     return text
 
 
-def hash_file3(fpath):
-    r"""
-    Hashes the data in a file on disk using xxHash
-
-    xxHash is much faster than sha1, bringing computation time down from .57
-    seconds to .12 seconds for a 387M file.
-
-    my_weights_fpath_ = ub.truepath('~/tmp/my_weights.pt')
-
-    xdata = 2 ** np.array([8, 12, 14, 16])
-    ydatas = ub.ddict(list)
-    for blocksize in xdata:
-        print('blocksize = {!r}'.format(blocksize))
-        ydatas['sha1'].append(ub.Timerit(2).call(ub.hash_file, my_weights_fpath_, hasher='sha1', blocksize=blocksize).min())
-        #ydatas['sha256'].append(ub.Timerit(2).call(ub.hash_file, my_weights_fpath_, hasher='sha256', blocksize=blocksize).min())
-        #ydatas['sha512'].append(ub.Timerit(2).call(ub.hash_file, my_weights_fpath_, hasher='sha512', blocksize=blocksize).min())
-        #ydatas['md5'].append(ub.Timerit(2).call(ub.hash_file, my_weights_fpath_, hasher='md5', blocksize=blocksize).min())
-        #ydatas['xx32'].append(ub.Timerit(2).call(hash_file2, my_weights_fpath_, hasher='xx32', blocksize=blocksize).min())
-        ydatas['xx64'].append(ub.Timerit(2).call(hash_file2, my_weights_fpath_, hasher='xx64', blocksize=blocksize).min())
-        ydatas['cmd'].append(ub.Timerit(2).call(hash_file3, my_weights_fpath_).min())
-
-    import netharn as nh
-    nh.util.qtensure()
-    nh.util.multi_plot(xdata, ydatas)
-    """
-    return ub.cmd(['sha1sum', fpath])['out'].split(' ')[0]
-
-
 if __name__ == '__main__':
     """
     CommandLine:
-        python -m netharn.util.util_cachestamp CacheStamp.renew
+        python -m netharn.util.util_cachestamp all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

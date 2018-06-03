@@ -756,7 +756,7 @@ class CoreMixin:
         """
         harn.debug('=== start epoch {} ==='.format(harn.epoch))
 
-        current_lr = np.mean(list(harn._current_lrs()))
+        current_lr = max(harn._current_lrs())
         harn.log_value('epoch lr', current_lr, harn.epoch)
 
         # run training epoch

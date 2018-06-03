@@ -75,5 +75,7 @@ def test_restart_lr():
     print('failpoint_lrs = {!r}'.format(failpoint_lrs))
     print('restart_lrs = {!r}'.format(restart_lrs))
 
-    # harn.failpoint = 60
-    # harn.run()
+    harn.failpoint = None
+    harn.run()
+
+    assert restart_lrs == failpoint_lrs
