@@ -166,7 +166,7 @@ def compare_ap_impl(**kw):
         aps = aps.rename(dict(zip(cls_labels, LABELS)), axis=0)
         mean_ap = np.nanmean(aps['ap'])
 
-        nh_precision, nh_recall, avg = nh.metrics.detections._confusion_pr_ap(y)
+        nh_precision, nh_recall, avg = nh.metrics.detections._multiclass_ap(y)
         map1 = round(mean_ap * 100, 2)
         map2 = round(avg * 100, 2)
         return map1, map2
@@ -262,41 +262,42 @@ def _compare_map():
     nh_weights = {k.replace('module.', ''): v for k, v in nh_weights.items()}
     ln_model_with_nh_weights.load_state_dict(nh_weights)
 
-    num = 50
     num = None
+    num = 50
 
     # Compute brambox-style mAP on ln_model with LN and NH weights
-    ln_mAP1 = _compute_lightnet_map(ln_model_with_ln_weights, xpu, num=num)
-    nh_mAP1 = _compute_lightnet_map(ln_model_with_nh_weights, xpu, num=num)
+    ln_mAP1 = _ln_data_ln_map(ln_model_with_ln_weights, xpu, num=num)
+    nh_mAP1 = _ln_data_ln_map(ln_model_with_nh_weights, xpu, num=num)
 
     # Compute netharn-style mAP on ln_model with LN and NH weights
-    ln_mAP2 = _compute_netharn_map(ln_model_with_ln_weights, xpu, harn, num=num)
-    nh_mAP2 = _compute_netharn_map(ln_model_with_nh_weights, xpu, harn, num=num)
+    ln_mAP2 = _ln_data_nh_map(ln_model_with_ln_weights, xpu, harn, num=num)
+    nh_mAP2 = _ln_data_nh_map(ln_model_with_nh_weights, xpu, harn, num=num)
     print('\n')
 
     print('ln_mAP1 on ln_model with LN_weights = {!r}'.format(ln_mAP1))
     print('nh_mAP1 on ln_model with NH_weights = {!r}'.format(nh_mAP1))
-    """
-    ln_mAP1 on ln_model with LN_weights = 66.27
-    ln_mAP1 on ln_model with NH_weights = 62.2
-
-    Shows about a 4 point difference in mAP, which is not too bad considering
-    that the lightnet data loader is slightly different than the netharn data
-    loader. I think letterboxes are computed differently.
-    """
 
     print('nh_mAP2 on ln_model with LN_weights = {:.4f}'.format(ln_mAP2))
     print('nh_mAP2 on ln_model with NH_weights = {:.4f}'.format(nh_mAP2))
 
     """
-    My map computation seems systematically off
+    BramBox MAP:
+        ln_mAP1 on ln_model with LN_weights = 66.27
+        ln_mAP1 on ln_model with NH_weights = 62.2
 
-    nh_mAP2 on ln_model with LN_weights = 0.5437
-    nh_mAP2 on ln_model with NH_weights = 0.4991
+        Shows about a 4 point difference in mAP, which is not too bad considering
+        that the lightnet data loader is slightly different than the netharn data
+        loader. I think letterboxes are computed differently.
+
+    NetHarn MAP:
+        My map computation seems systematically off
+
+        nh_mAP2 on ln_model with LN_weights = 0.5437
+        nh_mAP2 on ln_model with NH_weights = 0.4991
     """
 
 
-def _compute_lightnet_map(ln_model, xpu, num=None):
+def _ln_data_ln_map(ln_model, xpu, num=None):
     """
     Compute the results on the ln test set using a ln model.
     Weights can either be lightnet or netharn
@@ -376,7 +377,7 @@ def _compute_lightnet_map(ln_model, xpu, num=None):
     return ln_mAP
 
 
-def _compute_netharn_map(ln_model, xpu, harn, num=None):
+def _ln_data_nh_map(ln_model, xpu, harn, num=None):
     """
     Uses ln data, but nh map computation
     """
@@ -445,10 +446,82 @@ def _compute_netharn_map(ln_model, xpu, harn, num=None):
 
     num_classes = len(ln_test.LABELS)
     cls_labels = list(range(num_classes))
-    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
-    aps = aps.rename(dict(zip(cls_labels, ln_test.LABELS)), axis=0)
-    mean_ap = np.nanmean(aps['ap'])
+
+    precision, recall, mean_ap = nh.metrics.detections._multiclass_ap(y)
+
+    # aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+    # aps = aps.rename(dict(zip(cls_labels, ln_test.LABELS)), axis=0)
+    # mean_ap = np.nanmean(aps['ap'])
+
     return mean_ap
+
+
+def _nh_data_nh_map(harn, num=10):
+    with torch.no_grad():
+        postprocess = harn.model.module.postprocess
+        # postprocess.conf_thresh = 0.001
+        # postprocess.nms_thresh = 0.5
+        batch_confusions = []
+        moving_ave = nh.util.util_averages.CumMovingAve()
+        loader = harn.loaders['test']
+        prog = ub.ProgIter(iter(loader), desc='')
+        for bx, batch in enumerate(prog):
+            inputs, labels = harn.prepare_batch(batch)
+            inp_size = np.array(inputs.shape[-2:][::-1])
+            outputs = harn.model(inputs)
+
+            target, gt_weights, orig_sizes, indices, bg_weights = labels
+            loss = harn.criterion(outputs, target, gt_weights=gt_weights,
+                                  seen=1000000000)
+            moving_ave.update(ub.odict([
+                ('loss', float(loss.sum())),
+                ('coord', harn.criterion.loss_coord),
+                ('conf', harn.criterion.loss_conf),
+                ('cls', harn.criterion.loss_cls),
+            ]))
+
+            average_losses = moving_ave.average()
+            desc = ub.repr2(average_losses, nl=0, precision=2, si=True)
+            prog.set_description(desc, refresh=False)
+
+            postout = postprocess(outputs)
+            for y in harn._measure_confusion(postout, labels, inp_size):
+                batch_confusions.append(y)
+
+            # batch_output.append((outputs.cpu().data.numpy().copy(), inp_size))
+            # batch_labels.append([x.cpu().data.numpy().copy() for x in labels])
+            if num is not None and bx >= num:
+                break
+
+        average_losses = moving_ave.average()
+        print('average_losses {}'.format(ub.repr2(average_losses)))
+
+    if False:
+        from netharn.util import mplutil
+        mplutil.qtensure()  # xdoc: +SKIP
+        harn.visualize_prediction(batch, outputs, postout, thresh=.1)
+
+    y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
+    # TODO: write out a few visualizations
+    num_classes = len(loader.dataset.label_names)
+    cls_labels = list(range(num_classes))
+
+    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+    aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
+    mean_ap = np.nanmean(aps['ap'])
+    max_ap = np.nanmax(aps['ap'])
+    print(aps)
+    print('mean_ap = {!r}'.format(mean_ap))
+    print('max_ap = {!r}'.format(max_ap))
+
+    aps = nh.metrics.ave_precisions(y[y.score > .01], cls_labels, use_07_metric=True)
+    aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
+    mean_ap = np.nanmean(aps['ap'])
+    max_ap = np.nanmax(aps['ap'])
+    print(aps)
+    print('mean_ap = {!r}'.format(mean_ap))
+    print('max_ap = {!r}'.format(max_ap))
+
 
 
 def brambox_to_labels(ln_bramboxes, inp_size, LABELS):
@@ -939,8 +1012,8 @@ def _test_with_lnstyle_data():
             # print('mean_ap_12 = {:.2f}'.format(mean_ap * 100))
 
             # Try the other way
-            from netharn.metrics.detections import _confusion_pr_ap
-            prec, recall, ap2 = _confusion_pr_ap(y)
+            from netharn.metrics.detections import _multiclass_ap
+            prec, recall, ap2 = _multiclass_ap(y)
             print('ap2 = {!r}'.format(round(ap2 * 100, 2)))
 
             # max_ap = np.nanmax(aps['ap'])
