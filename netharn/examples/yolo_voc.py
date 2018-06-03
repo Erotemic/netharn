@@ -732,6 +732,8 @@ class YoloHarn(nh.FitHarn):
         if tag not in harn.chosen_indices:
             harn._choose_indices()
 
+        nh.util.mplutil.aggensure()
+
         dset = harn.loaders[tag].dataset
         for indices in ub.chunks(harn.chosen_indices[tag], 16):
             harn.debug('PREDICTING CHUNK')
@@ -926,6 +928,7 @@ if __name__ == '__main__':
         python ~/code/netharn/netharn/examples/yolo_voc.py setup_harness
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --nice=check --workers=4
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=dynamic --lr=.0001 --bstep=4
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

@@ -297,9 +297,9 @@ class RegionLoss(BaseLossWithCudaState):
 
         with torch.no_grad():
             # Create prediction boxes
-            pred_cxywh = torch.FloatTensor(nB * nA * nH * nW, 4, device=device)
-            lin_x = torch.linspace(0, nW - 1, nW, device=device).repeat(nH, 1)
-            lin_y = torch.linspace(0, nH - 1, nH, device=device).repeat(nW, 1).t().contiguous()
+            pred_cxywh = torch.empty(nB * nA * nH * nW, 4, dtype=torch.float32, device=device)
+            lin_x = torch.linspace(0, nW - 1, nW).repeat(nH, 1).to(device)
+            lin_y = torch.linspace(0, nH - 1, nH).repeat(nW, 1).t().contiguous().to(device)
             anchor_w = self.anchors[:, 0].contiguous().view(nA, 1).view(1, nA, 1, 1, 1)
             anchor_h = self.anchors[:, 1].contiguous().view(nA, 1).view(1, nA, 1, 1, 1)
 
@@ -351,18 +351,18 @@ class RegionLoss(BaseLossWithCudaState):
 
         return loss_tot
 
-    def build_targets(self, pred_cxywh, ground_truth, nH, nW, seen=0, gt_weights=None):
+    def build_targets(self, pred_cxywh, target, nH, nW, seen=0, gt_weights=None):
         """ Compare prediction boxes and targets, convert targets to network output tensors """
-        return self._build_targets_tensor(pred_cxywh, ground_truth, nH, nW, seen=seen, gt_weights=gt_weights)
+        return self._build_targets_tensor(pred_cxywh, target, nH, nW, seen=seen, gt_weights=gt_weights)
 
     @profiler.profile
-    def _build_targets_tensor(self, pred_cxywh, ground_truth, nH, nW, seen=0, gt_weights=None):
+    def _build_targets_tensor(self, pred_cxywh, target, nH, nW, seen=0, gt_weights=None):
         """
         Compare prediction boxes and ground truths, convert ground truths to network output tensors
 
         Args:
             pred_cxywh (Tensor):   shape [B * A * W * H, 4] in normalized cxywh format
-            ground_truth (Tensor): shape [B, max(gtannots), 4]
+            target (Tensor): shape [B, max(gtannots), 4]
 
         Example:
             >>> from netharn.models.yolo2.light_yolo import Yolo
@@ -372,13 +372,13 @@ class RegionLoss(BaseLossWithCudaState):
             >>> self = RegionLoss(num_classes=network.num_classes, anchors=network.anchors)
             >>> Win, Hin = 96, 96
             >>> nW, nH = 3, 3
-            >>> ground_truth = torch.FloatTensor([])
+            >>> target = torch.FloatTensor([])
             >>> gt_weights = torch.FloatTensor([[-1, -1, -1], [1, 1, 0]])
             >>> #pred_cxywh = torch.rand(90, 4)
             >>> nB = len(gt_weights)
             >>> pred_cxywh = torch.rand(nB, len(anchors), nH, nW, 4).view(-1, 4)
             >>> seen = 0
-            >>> self._build_targets_tensor(pred_cxywh, ground_truth, nH, nW, seen, gt_weights)
+            >>> self._build_targets_tensor(pred_cxywh, target, nH, nW, seen, gt_weights)
 
         Example:
             >>> from netharn.models.yolo2.light_region_loss import RegionLoss
@@ -390,7 +390,7 @@ class RegionLoss(BaseLossWithCudaState):
             >>> # each box encodes class, center, width, and height
             >>> # coordinates are normalized in the range 0 to 1
             >>> # items in each batch are padded with dummy boxes with class_id=-1
-            >>> ground_truth = torch.FloatTensor([
+            >>> target = torch.FloatTensor([
             >>>     # boxes for batch item 0 (it has no objects, note the pad!)
             >>>     [[-1, 0, 0, 0, 0],
             >>>      [-1, 0, 0, 0, 0],
@@ -404,13 +404,13 @@ class RegionLoss(BaseLossWithCudaState):
             >>> nB = len(gt_weights)
             >>> pred_cxywh = torch.rand(nB, len(anchors), nH, nW, 4).view(-1, 4)
             >>> seen = 0
-            >>> coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = self._build_targets_tensor(pred_cxywh, ground_truth, nH, nW, seen, gt_weights)
+            >>> coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = self._build_targets_tensor(pred_cxywh, target, nH, nW, seen, gt_weights)
         """
-        gtempty = (ground_truth.numel() == 0)
+        gtempty = (target.numel() == 0)
 
         # Parameters
-        nB = ground_truth.shape[0] if not gtempty else 0
-        nT = ground_truth.shape[1] if not gtempty else 0
+        nB = target.shape[0] if not gtempty else 0
+        nT = target.shape[1] if not gtempty else 0
         nA = self.num_anchors
 
         if nB == 0:
@@ -450,8 +450,8 @@ class RegionLoss(BaseLossWithCudaState):
         pred_cxywh = pred_cxywh.view(nB, nA, nH, nW, 4)
         pred_boxes = util.Boxes(pred_cxywh, 'cxywh')
 
-        gt_class = ground_truth[..., 0].data
-        gt_boxes_norm = util.Boxes(ground_truth[..., 1:5], 'cxywh')
+        gt_class = target[..., 0].data
+        gt_boxes_norm = util.Boxes(target[..., 1:5], 'cxywh')
         gt_boxes = gt_boxes_norm.scale([nW, nH])
         # Construct "relative" versions of the true boxes, centered at 0
         rel_gt_boxes = gt_boxes.copy()
@@ -515,7 +515,7 @@ class RegionLoss(BaseLossWithCudaState):
                 tcoord[bx, best_n, 2, gj, gi] = math.log(gw / best_aw)
                 tcoord[bx, best_n, 3, gj, gi] = math.log(gh / best_ah)
                 tconf[bx, best_n, 0, gj, gi] = iou
-                tcls[bx, best_n, 0, gj, gi] = ground_truth[bx, t, 0]
+                tcls[bx, best_n, 0, gj, gi] = target[bx, t, 0]
 
         return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
 

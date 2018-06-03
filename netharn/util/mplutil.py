@@ -1521,33 +1521,53 @@ def save_parts(fig, fpath, grouped_axes=None, dpi=None):
 _qtensured = False
 
 
-def qtensure():
-    global _qtensured
+def _current_ipython_session():
+    """
+    Returns a reference to the current IPython session, if one is running
+    """
     try:
         __IPYTHON__
     except NameError:
-        return False
+        return None
     else:
-        import sys
         import IPython
         ipython = IPython.get_ipython()
-        if ipython is None:
-            # we must have exited ipython at some point
-            return
-        # import matplotlib as mpl
+        # if ipython is None we must have exited ipython at some point
+        return ipython
 
-        if 'PyQt4' in sys.modules:
-            #IPython.get_ipython().magic('pylab qt4')
-            # if not mpl.get_backend().startswith('Qt4'):
-            if not _qtensured:
+
+def qtensure():
+    """
+    If you are in an IPython session, ensures that your backend is Qt.
+    """
+    global _qtensured
+    if not _qtensured:
+        ipython = _current_ipython_session()
+        if ipython:
+            import sys
+            if 'PyQt4' in sys.modules:
                 ipython.magic('pylab qt4 --no-import-all')
                 _qtensured = True
-        else:
-            # if gt.__PYQT__.GUITOOL_PYQT_VERSION == 5:
-            # if not mpl.get_backend().startswith('Qt5'):
-            if not _qtensured:
+            else:
                 ipython.magic('pylab qt5 --no-import-all')
                 _qtensured = True
+
+
+def aggensure():
+    """
+    Ensures that you are in agg mode as long as IPython is not running
+
+    This might help prevent errors in tmux like:
+        qt.qpa.screen: QXcbConnection: Could not connect to display localhost:10.0
+        Could not connect to any X display.
+    """
+    import matplotlib as mpl
+    current_backend = mpl.get_backend()
+    if current_backend != 'agg':
+        ipython = _current_ipython_session()
+        if not ipython:
+            from matplotlib import pyplot as plt
+            plt.switch_backend('agg')
 
 
 def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
