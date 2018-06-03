@@ -56,15 +56,15 @@ def _compare_map():
 
     # Move the weights to the local computer
     stamp = nh.util.CacheStamp(
-        'ln_weights.stamp', product=ln_weights_fpath_,
-        cfgstr=ub.hash_data(ln_weights_fpath), dpath=ub.truepath('~/tmp'))
+        'ln_weights.stamp', product=ln_weights_fpath_, cfgstr='ln',
+        dpath=ub.truepath('~/tmp'))
     if stamp.expired():
         shutil.copy2(ln_weights_fpath, ln_weights_fpath_)
         stamp.renew()
 
     stamp = nh.util.CacheStamp(
-        'nh_weights.stamp', product=my_weights_fpath_,
-        cfgstr=ub.hash_data(my_weights_fpath), dpath=ub.truepath('~/tmp'))
+        'nh_weights.stamp', product=my_weights_fpath_, cfgstr='nh',
+        dpath=ub.truepath('~/tmp'))
     if stamp.expired():
         shutil.copy2(my_weights_fpath, my_weights_fpath_)
         stamp.renew()
