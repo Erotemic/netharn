@@ -796,8 +796,8 @@ def setup_harness(bsize=16, workers=0):
 
     # We will divide the learning rate by the simulated batch size
     datasets = {
-        'train': YoloVOCDataset(split='trainval'),
-        'test': YoloVOCDataset(split='test'),
+        'train': YoloVOCDataset(years=[2007, 2012], split='trainval'),
+        'test': YoloVOCDataset(years=[2007], split='test'),
     }
     loaders = {
         key: dset.make_loader(batch_size=batch_size, num_workers=workers,

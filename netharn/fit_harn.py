@@ -596,6 +596,8 @@ class ScheduleMixin:
         """
         Get the of distinct learning rates (usually only 1) currently in use
         """
+        optim_lrs = {group['lr'] for group in harn.optimizer.param_groups}
+
         if harn.scheduler is None:
             if harn.optimizer is None:
                 assert harn.dry
@@ -609,6 +611,9 @@ class ScheduleMixin:
         else:
             # workaround for ReduceLROnPlateau
             lrs = {group['lr'] for group in harn.scheduler.optimizer.param_groups}
+
+        if optim_lrs != lrs:
+            raise AssertionError('optimizer and scheduler are out of sync')
         return lrs
 
     def _check_termination(harn):
@@ -622,7 +627,7 @@ class ScheduleMixin:
             return True
         return False
 
-    def _step_scheduler(harn, improved):
+    def _step_scheduler(harn, improved=None):
         """
         helper function to change the learning rate that handles the way that
         different schedulers might be used.
@@ -1067,6 +1072,10 @@ class CoreCallback:
         if 'optimizer_state_dict' in snapshot_state:
             harn.optimizer.load_state_dict(snapshot_state['optimizer_state_dict'])
             harn.debug('loaded optimizer_state_dict')
+
+        # Ensure scheduler is given current information
+        if harn.scheduler:
+            harn.scheduler.step(epoch=harn.epoch - 1)
 
 
 # Define the exposed class as a union of mixin classes
