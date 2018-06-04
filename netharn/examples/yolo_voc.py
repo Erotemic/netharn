@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
+import os
 import torch
 import ubelt as ub
 import numpy as np
@@ -107,6 +108,13 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         # Used to resize images to the appropriate inp_size without changing
         # the aspect ratio.
         self.letterbox = nh.data.transforms.Resize(None, mode='letterbox')
+
+    # def __len__(self):
+    #     # hack
+    #     if 'train' in self.split:
+    #         return 100
+    #     else:
+    #         return super().__len__()
 
     @profiler.profile
     def __getitem__(self, index):
@@ -266,11 +274,11 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         gt_weights = 1.0 - annot['gt_ishard'].astype(np.float)
         return image, tlbr, gt_classes, gt_weights
 
-    @ub.memoize_method  # remove this if RAM is a problem
+    # @ub.memoize_method  # remove this if RAM is a problem
     def _load_image(self, index):
         return super(YoloVOCDataset, self)._load_image(index)
 
-    @ub.memoize_method
+    # @ub.memoize_method
     def _load_annotation(self, index):
         return super(YoloVOCDataset, self)._load_annotation(index)
 
@@ -326,6 +334,8 @@ class YoloHarn(nh.FitHarn):
         super().__init__(**kw)
         harn.batch_confusions = []
         harn.aps = {}
+
+        harn.chosen_indices = {}
 
     # def initialize(harn):
     #     super().initialize()
@@ -413,7 +423,13 @@ class YoloHarn(nh.FitHarn):
             inputs, labels = batch
             inp_size = np.array(inputs.shape[-2:][::-1])
 
-            postout = harn.model.module.postprocess(outputs)
+            try:
+                postout = harn.model.module.postprocess(outputs)
+            except Exception as ex:
+                harn.error('\n\n\n')
+                harn.error('ERROR: FAILED TO POSTPROCESS OUTPUTS')
+                harn.error('DETAILS: {!r}'.format(ex))
+                raise
 
             for y in harn._measure_confusion(postout, labels, inp_size):
                 harn.batch_confusions.append(y)
@@ -448,8 +464,15 @@ class YoloHarn(nh.FitHarn):
             >>> harn.on_epoch()
         """
         tag = harn.current_tag
+
+        if tag in {'test', 'vali'}:
+            harn._dump_chosen_indices()
+
         if harn.batch_confusions:
             y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
+
+            precision, recall, ap = nh.metrics.detections._multiclass_ap(y)
+
             # TODO: write out a few visualizations
             loader = harn.loaders[tag]
             num_classes = len(loader.dataset.label_names)
@@ -464,6 +487,7 @@ class YoloHarn(nh.FitHarn):
             metrics_dict = ub.odict()
             metrics_dict['max-AP'] = max_ap
             metrics_dict['mAP'] = mean_ap
+            metrics_dict['AP'] = ap
             return metrics_dict
 
     # Non-standard problem-specific custom methods
@@ -472,9 +496,9 @@ class YoloHarn(nh.FitHarn):
     def _measure_confusion(harn, postout, labels, inp_size, **kw):
         targets = labels['targets']
         gt_weights = labels['gt_weights']
+        bg_weights = labels['bg_weights']
         # orig_sizes = labels['orig_sizes']
         # indices = labels['indices']
-        bg_weights = labels['bg_weights']
 
         def asnumpy(tensor):
             return tensor.data.cpu().numpy()
@@ -602,7 +626,8 @@ class YoloHarn(nh.FitHarn):
                 truth.append(true)
         return predictions, truth
 
-    def visualize_prediction(harn, batch, outputs, postout, idx=0, thresh=None):
+    def visualize_prediction(harn, batch, outputs, postout, idx=0, thresh=None,
+                             orig_img=None):
         """
         Returns:
             np.ndarray: numpy image
@@ -614,13 +639,13 @@ class YoloHarn(nh.FitHarn):
         orig_sizes = labels['orig_sizes']
 
         chw01 = inputs[idx]
-        target = targets[idx]
-        postitem = postout[idx]
+        target = targets[idx].cpu().numpy().reshape(-1, 5)
+        postitem = postout[idx].cpu().numpy().reshape(-1, 6)
         orig_size = orig_sizes[idx].cpu().numpy()
         # ---
         hwc01 = chw01.cpu().numpy().transpose(1, 2, 0)
         # TRUE
-        true_cxs = target[:, 0].long()
+        true_cxs = target[:, 0].astype(np.int)
         true_cxywh = target[:, 1:5]
         flags = true_cxs != -1
         true_cxywh = true_cxywh[flags]
@@ -628,7 +653,7 @@ class YoloHarn(nh.FitHarn):
         # PRED
         pred_cxywh = postitem[:, 0:4]
         pred_scores = postitem[:, 4]
-        pred_cxs = postitem[:, 5]
+        pred_cxs = postitem[:, 5].astype(np.int)
 
         if thresh is not None:
             flags = pred_scores > thresh
@@ -636,35 +661,111 @@ class YoloHarn(nh.FitHarn):
             pred_cxywh = pred_cxywh[flags]
             pred_scores = pred_scores[flags]
 
-        pred_clsnms = list(ub.take(harn.datasets['train'].label_names,
-                                   pred_cxs.long().cpu().numpy()))
+        label_names = harn.datasets['train'].label_names
+
+        true_clsnms = list(ub.take(label_names, true_cxs))
+        pred_clsnms = list(ub.take(label_names, pred_cxs))
         pred_labels = ['{}@{:.2f}'.format(n, s)
                        for n, s in zip(pred_clsnms, pred_scores)]
-
-        true_labels = list(ub.take(harn.datasets['train'].label_names,
-                                   true_cxs.long().cpu().numpy()))
         # ---
         inp_size = np.array(hwc01.shape[0:2][::-1])
         target_size = inp_size
 
-        true_boxes_ = util.Boxes(true_cxywh.cpu().numpy(), 'cxywh').scale(inp_size)
-        pred_boxes_ = util.Boxes(pred_cxywh.cpu().numpy(), 'cxywh').scale(inp_size)
+        true_boxes_ = nh.util.Boxes(true_cxywh, 'cxywh').scale(inp_size)
+        pred_boxes_ = nh.util.Boxes(pred_cxywh, 'cxywh').scale(inp_size)
 
         letterbox = harn.datasets['train'].letterbox
         img = letterbox._img_letterbox_invert(hwc01, orig_size, target_size)
         img = np.clip(img, 0, 1)
+        if orig_img is not None:
+            # we are given the original image, to avoid artifacts from
+            # inverting a downscale
+            assert orig_img.shape == img.shape
+
         true_cxywh_ = letterbox._boxes_letterbox_invert(true_boxes_, orig_size, target_size)
         pred_cxywh_ = letterbox._boxes_letterbox_invert(pred_boxes_, orig_size, target_size)
 
-        from netharn.util import mplutil
         shift, scale, embed_size = letterbox._letterbox_transform(orig_size, target_size)
 
-        mplutil.figure(doclf=True, fnum=1)
-        mplutil.imshow(img, colorspace='rgb')
-        mplutil.draw_boxes(true_cxywh_.data, color='green', box_format='cxywh', labels=true_labels)
-        mplutil.draw_boxes(pred_cxywh_.data, color='blue', box_format='cxywh', labels=pred_labels)
+        fig = nh.util.figure(doclf=True, fnum=1)
+        nh.util.imshow(img, colorspace='rgb')
+        nh.util.draw_boxes(true_cxywh_.data, color='green', box_format='cxywh', labels=true_clsnms)
+        nh.util.draw_boxes(pred_cxywh_.data, color='blue', box_format='cxywh', labels=pred_labels)
+        return fig
 
-        # mplutil.show_if_requested()
+    def _choose_indices(harn):
+        """
+        Hack to pick several images from the validation set to monitor each
+        epoch.
+        """
+        tag = harn.current_tag
+        dset = harn.loaders[tag].dataset
+
+        cid_to_gids = ub.ddict(set)
+        empty_gids = []
+        for gid in range(len(dset)):
+            annots = dset._load_annotation(gid)
+            if len(annots['gt_classes']) == 0:
+                empty_gids.append(gid)
+            for cid, ishard in zip(annots['gt_classes'], annots['gt_ishard']):
+                if not ishard:
+                    cid_to_gids[cid].add(gid)
+
+        # Choose an image with each category
+        chosen_gids = set()
+        for cid, gids in cid_to_gids.items():
+            for gid in gids:
+                if gid not in chosen_gids:
+                    chosen_gids.add(gid)
+                    break
+
+        # Choose an image with nothing in it (if it exists)
+        if empty_gids:
+            chosen_gids.add(empty_gids[0])
+
+        chosen_indices = chosen_gids
+        harn.chosen_indices[tag] = sorted(chosen_indices)
+
+    def _dump_chosen_indices(harn):
+        """
+        Dump a visualization of the validation images to disk
+        """
+        tag = harn.current_tag
+        harn.debug('DUMP CHOSEN INDICES')
+
+        if tag not in harn.chosen_indices:
+            harn._choose_indices()
+
+        nh.util.mplutil.aggensure()
+
+        dset = harn.loaders[tag].dataset
+        for indices in ub.chunks(harn.chosen_indices[tag], 16):
+            harn.debug('PREDICTING CHUNK')
+            inbatch = [dset[index] for index in indices]
+            raw_batch = nh.data.collate.padded_collate(inbatch)
+            batch = harn.prepare_batch(raw_batch)
+            outputs, loss = harn.run_batch(batch)
+            postout = harn.model.module.postprocess(outputs)
+
+            for idx, index in enumerate(indices):
+                orig_img = dset._load_image(index)
+                fig = harn.visualize_prediction(batch, outputs, postout, idx=idx,
+                                                thresh=0.1, orig_img=orig_img)
+                img = nh.util.mplutil.render_figure_to_image(fig)
+                dump_dpath = ub.ensuredir((harn.train_dpath, 'dump', tag))
+                dump_fname = 'pred_{:04d}_{:08d}.png'.format(index, harn.epoch)
+                fpath = os.path.join(dump_dpath, dump_fname)
+                harn.debug('dump viz fpath = {}'.format(fpath))
+                nh.util.imwrite(fpath, img)
+
+    def dump_batch_item(harn, batch, outputs, postout):
+        fig = harn.visualize_prediction(batch, outputs, postout, idx=0,
+                                        thresh=0.2)
+        img = nh.util.mplutil.render_figure_to_image(fig)
+        dump_dpath = ub.ensuredir((harn.train_dpath, 'dump'))
+        dump_fname = 'pred_{:08d}.png'.format(harn.epoch)
+        fpath = os.path.join(dump_dpath, dump_fname)
+        nh.util.imwrite(fpath, img)
 
     def deploy(harn):
         """
@@ -695,8 +796,8 @@ def setup_harness(bsize=16, workers=0):
 
     # We will divide the learning rate by the simulated batch size
     datasets = {
-        'train': YoloVOCDataset(split='trainval'),
-        'test': YoloVOCDataset(split='test'),
+        'train': YoloVOCDataset(years=[2007, 2012], split='trainval'),
+        'test': YoloVOCDataset(years=[2007], split='test'),
     }
     loaders = {
         key: dset.make_loader(batch_size=batch_size, num_workers=workers,
@@ -704,7 +805,11 @@ def setup_harness(bsize=16, workers=0):
         for key, dset in datasets.items()
     }
 
-    # simulated_bsize = bstep * batch_size
+    if workers > 0:
+        import cv2
+        cv2.setNumThreads(0)
+
+    simulated_bsize = bstep * batch_size
     hyper = nh.HyperParams(**{
         'nice': nice,
         'workdir': ub.truepath('~/work/voc_yolo2'),
@@ -722,7 +827,8 @@ def setup_harness(bsize=16, workers=0):
             'num_classes': datasets['train'].num_classes,
             'anchors': datasets['train'].anchors,
             'conf_thresh': 0.001,
-            'nms_thresh': 0.5,
+            # 'nms_thresh': 0.5,  # reproduce original yolo
+            'nms_thresh': 0.4,  # reproduce lightnet
         }),
 
         'criterion': (light_region_loss.RegionLoss, {
@@ -743,30 +849,54 @@ def setup_harness(bsize=16, workers=0):
         'optimizer': (torch.optim.SGD, {
             'lr': lr / 10,
             'momentum': 0.9,
-            'weight_decay': decay,
+            'dampening': 0,
+            # multiplying by batch size was one of those unpublished details
+            'weight_decay': decay * simulated_bsize,
         }),
+
+        # Pascal 2007 + 2012 trainval has 16551 images
+        # Pascal 2007 test has 4952 images
+        # In the original YOLO, one batch is 64 images,
+        # so one epoch is 16551 / 64 = 259 iterations.
+        #
+        # From the original YOLO VOC v2 config
+        # https://github.com/pjreddie/darknet/blob/master/cfg/yolov2-voc.cfg
+        #     learning_rate=0.001
+        #     burn_in=1000
+        #     max_batches = 80200
+        #     policy=steps
+        #     steps=40000,60000
+        #     scales=.1,.1
+        #
+        # However, the LIGHTNET values are
+        #   LR_STEPS = [250, 25000, 35000]
+        #
+        # Based in this, the iter to batch conversion is
+        #
+        # ((np.array([250, 25000, 35000, 1000, 40000, 60000, 80200]) / 256) + 1).astype(np.int)
+        # array([  1,  98, 137,   4, 157, 235, 314])
+
 
         'scheduler': (nh.schedulers.ListedLR, {
             'points': {
                 # dividing by batch size was one of those unpublished details
-                # 0: lr / simulated_bsize,
-                # 5:  .01 / simulated_bsize,
-                # 60: .011 / simulated_bsize,
-                # 90: .001 / simulated_bsize,
-                0:  lr / 10,
-                1:  lr,
-                59: lr * 1.1,
-                60: lr / 10,
-                90: lr / 100,
+                # 0:  lr * 0.1 / simulated_bsize,  # burnin
+                # 4:  lr * 1.0 / simulated_bsize,
+                # 157: lr * 0.1 / simulated_bsize,
+                # 235: lr * 0.001 / simulated_bsize,
+                0:  lr * 0.1 / simulated_bsize,
+                1:  lr * 1.0 / simulated_bsize,
+                60: lr * 0.1 / simulated_bsize,
+                90: lr * 0.001 / simulated_bsize,
             },
-            'interpolate': True
+            'interpolate': False
         }),
 
         'monitor': (nh.Monitor, {
             'minimize': ['loss'],
             'maximize': ['mAP'],
-            'patience': 160,
-            'max_epoch': 160,
+            'patience': 314,
+            'max_epoch': 314,
         }),
 
         'augment': datasets['train'].augmenter,
@@ -798,7 +928,7 @@ def setup_harness(bsize=16, workers=0):
 
 def train():
     harn = setup_harness()
-    util.ensure_ulimit()
+    # util.ensure_ulimit()
     harn.run()
 
 
@@ -827,6 +957,14 @@ if __name__ == '__main__':
         python ~/code/netharn/netharn/examples/yolo_voc.py setup_harness
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --nice=check --workers=4
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=dynamic --lr=.0001 --bstep=4
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=fixed_decay --lr=0.001 --bstep=4
+
+        srun -c 4 -p priority --gres=gpu:1 \
+            python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=fixed_schedule --lr=0.001 --bstep=4 --workers=4
+
+            python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=2,3 --batch_size=32 --nice=fixed_schedule --lr=0.001 --bstep=2 --workers=4
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

@@ -108,7 +108,8 @@ class Yolo(nn.Module):
         conf_thresh (Number, optional): Confidence threshold for postprocessing of the boxes; Default **0.25**
         nms_thresh (Number, optional): Non-maxima suppression threshold for postprocessing; Default **0.4**
         input_channels (Number, optional): Number of input channels; Default **3**
-        anchors (dict, optional): Dictionary containing `num` and `values` properties with anchor values; Default **Yolo v2 anchors**
+        anchors (list): 2D list representing anchor boxes. These width and
+            height values should be in network output coordinates.
 
     Attributes:
         self.loss (fn): loss function. Usually this is :class:`~lightnet.network.RegionLoss`

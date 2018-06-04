@@ -39,8 +39,17 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         ...     print(a.shape)
 
     Example:
-        >>> self = VOCDataset()
+        >>> self = VOCDataset(split='trainval', years=[2007, 2012])
+        >>> test = VOCDataset(split='test', years=[2007])
 
+        >>> self1 = VOCDataset(split='trainval', years=[2012])
+        >>> self2 = VOCDataset(split='trainval', years=[2007])
+
+
+        from netharn import util
+        util.qtensure()
+        self1.show_image(198)
+        self2.show_image(300)
     """
     def __init__(self, devkit_dpath=None, split='train', years=[2007, 2012]):
         if devkit_dpath is None:
@@ -154,7 +163,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         return devkit_dpath
 
     def __nice__(self):
-        return '{} {}'.format(self.split, len(self))
+        return '{}'.format(len(self))
 
     def __len__(self):
         return len(self.gpaths)
@@ -216,7 +225,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
 
     def _load_image(self, index):
         fpath = self.gpaths[index]
-        imbgr = cv2.imread(fpath)
+        imbgr = cv2.imread(fpath, flags=cv2.IMREAD_COLOR)
         imrgb_255 = cv2.cvtColor(imbgr, cv2.COLOR_BGR2RGB)
         return imrgb_255
 
@@ -265,6 +274,16 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
                   'fpath': fpath,
                   'seg_areas': seg_areas}
         return annots
+
+    def show_image(self, index, fnum=None):
+        from netharn import util
+        hwc, boxes, gt_classes = self._load_item(index, inp_size=None)
+
+        labels = list(ub.take(self.label_names, gt_classes))
+
+        util.figure(doclf=True, fnum=fnum)
+        util.imshow(hwc, colorspace='rgb')
+        util.draw_boxes(boxes, color='green', box_format='tlbr', labels=labels)
 
     def make_loader(self, *args, **kwargs):
         """
