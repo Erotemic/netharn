@@ -28,9 +28,12 @@ tqdm
 
 xxhash
 
+opencv-python
+pyqt5
 
 # imgaug
 -e git+https://github.com/aleju/imgaug.git@master#egg=imgaug
+
 
 # line_profiler
 # scipy
@@ -38,5 +41,3 @@ xxhash
 
 # onnx
 # tensorboard
-# opencv_python # CAREFUL, dont clobber ones that we installed
-# torch
