@@ -21,9 +21,7 @@ mkinit /code/netharn/netharn/examples/example_test.py --dry
 
 def compare_ap_impl(**kw):
     """
-
-    Pascal 2007 + 2012 trainval has 16551 annotations
-    Pascal 2007 test has 4952 annotations
+    Compare computation of AP between netharn and brambox
 
     xdata = []
     ydatas = ub.ddict(list)
@@ -193,6 +191,11 @@ def compare_ap_impl(**kw):
 
 def _compare_map():
     """
+    Pascal 2007 + 2012 trainval has 16551 images
+    Pascal 2007 test has 4952 images
+
+    One epoch is 1035 iterations
+
     Most recent training run gave:
         2018-06-03 00:57:31,830 : log_value(test epoch L_bbox, 0.4200094618143574, 160
         2018-06-03 00:57:31,830 : log_value(test epoch L_iou, 1.6416475874762382, 160
@@ -219,8 +222,10 @@ def _compare_map():
 
     my_weights_fpath = ub.truepath('~/remote/namek/work/voc_yolo2/fit/nice/dynamic/torch_snapshots/_epoch_00000080.pt')
     my_weights_fpath = ub.truepath('~/remote/namek/work/voc_yolo2/fit/nice/dynamic/torch_snapshots/_epoch_00000160.pt')
+    my_weights_fpath = ub.truepath('~/remote/namek/work/voc_yolo2/fit/nice/dynamic/torch_snapshots/_epoch_00000040.pt')
     ln_weights_fpath = ub.truepath('~/remote/namek/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
     ln_weights_fpath = ub.truepath('~/remote/namek/code/lightnet/examples/yolo-voc/backup/weights_45000.pt')
+    ln_weights_fpath = ub.truepath('~/remote/namek/code/lightnet/examples/yolo-voc/backup/final.pt')
     assert exists(my_weights_fpath)
     assert exists(ln_weights_fpath)
 
@@ -273,8 +278,8 @@ def _compare_map():
     nh_weights = {k.replace('module.', ''): v for k, v in nh_weights.items()}
     ln_model_with_nh_weights.load_state_dict(nh_weights)
 
-    num = 50
     num = None
+    num = 50
 
     # Compute brambox-style mAP on ln_model with LN and NH weights
     ln_mAP1 = _ln_data_ln_map(ln_model_with_ln_weights, xpu, num=num)
