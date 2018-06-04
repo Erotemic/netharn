@@ -809,7 +809,7 @@ def setup_harness(bsize=16, workers=0):
         import cv2
         cv2.setNumThreads(0)
 
-    # simulated_bsize = bstep * batch_size
+    simulated_bsize = bstep * batch_size
     hyper = nh.HyperParams(**{
         'nice': nice,
         'workdir': ub.truepath('~/work/voc_yolo2'),
@@ -827,7 +827,8 @@ def setup_harness(bsize=16, workers=0):
             'num_classes': datasets['train'].num_classes,
             'anchors': datasets['train'].anchors,
             'conf_thresh': 0.001,
-            'nms_thresh': 0.5,
+            # 'nms_thresh': 0.5,  # reproduce original yolo
+            'nms_thresh': 0.4,  # reproduce lightnet
         }),
 
         'criterion': (light_region_loss.RegionLoss, {
@@ -848,23 +849,20 @@ def setup_harness(bsize=16, workers=0):
         'optimizer': (torch.optim.SGD, {
             'lr': lr / 10,
             'momentum': 0.9,
-            'weight_decay': decay,
+            'dampening': 0,
+            # multiplying by batch size was one of those unpublished details
+            'weight_decay': decay * simulated_bsize,
         }),
 
         'scheduler': (nh.schedulers.ListedLR, {
             'points': {
                 # dividing by batch size was one of those unpublished details
-                # 0: lr / simulated_bsize,
-                # 5:  .01 / simulated_bsize,
-                # 60: .011 / simulated_bsize,
-                # 90: .001 / simulated_bsize,
-                0:  lr / 10,
-                1:  lr,
-                59: lr * 1.1,
-                60: lr / 10,
-                90: lr / 100,
+                0:  lr * 0.1 / simulated_bsize,
+                1:  lr * 1.0 / simulated_bsize,
+                60: lr * 0.1 / simulated_bsize,
+                90: lr * 0.001 / simulated_bsize,
             },
-            'interpolate': True
+            'interpolate': False
         }),
 
         'monitor': (nh.Monitor, {
@@ -933,6 +931,8 @@ if __name__ == '__main__':
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --nice=check --workers=4
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=dynamic --lr=.0001 --bstep=4
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=fixed_decay --lr=0.001 --bstep=4
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

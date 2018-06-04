@@ -194,7 +194,10 @@ def _compare_map():
     Pascal 2007 + 2012 trainval has 16551 images
     Pascal 2007 test has 4952 images
 
-    One epoch is 1035 iterations
+    In Lightnet:
+        One batch is 64 images, so one epoch is 16551 / 64 = 259 iterations.
+        The LR says step at iteration 250, so thats just about one batch.  No
+        special handling needed.
 
     Most recent training run gave:
         2018-06-03 00:57:31,830 : log_value(test epoch L_bbox, 0.4200094618143574, 160
