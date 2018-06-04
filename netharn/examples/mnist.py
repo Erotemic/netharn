@@ -205,7 +205,7 @@ def train_mnist():
         # labels = datasets['train'].task.labels
         label = labels[0]
         metrics_dict = netharn.metrics._clf_metrics(output, label,
-                                                 all_labels=all_labels)
+                                                    all_labels=all_labels)
         return metrics_dict
 
     workdir = ub.truepath('~/data/work/mnist/')

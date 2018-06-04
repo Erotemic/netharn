@@ -18,6 +18,11 @@ Notes:
         * a criterion
         * an optimizer
 
+TODO:
+    [ ] - output "glance" curves to disk
+    [x] - move logs to a logs folder. Keep a single master log in the root
+    [ ] - Why didnt the best_snapshot.pt get saved in the most recent yolo run?
+
 Example:
     >>> import netharn as nh
     >>> size = 3
@@ -59,8 +64,8 @@ Example:
 """
 import glob
 import itertools as it
-import logging  # NOQA
-import numpy as np  # NOQA
+import logging
+import numpy as np
 import os
 import parse
 import shutil
@@ -93,6 +98,9 @@ MIXINS = []
 
 
 class StopTraining(StopIteration):
+    """
+    Signals that training should terminate
+    """
     pass
 
 
@@ -155,7 +163,7 @@ class ExtraMixins:
         n_workers = max(loader.num_workers for loader in harn.loaders.values())
         if n_workers > 1:
             n_threads = cv2.getNumThreads()
-            if n_threads > 0:
+            if n_threads > 1:
                 msg = ('OpenCV threadcount of {} is non-zero and a DataLoader '
                        'is using {} workers. This may cause deadlocks '
                        'To be safe use cv2.setNumThreads(0)').format(
@@ -214,25 +222,39 @@ class InitializeMixin:
             return harn.train_dpath
 
     def setup_loggers(harn):
+        """
+        Setup file logging and / or tensorboard logging
+        """
         if harn.train_dpath is None:
             harn.warn('harn.train_dpath is None, cannot setup loggers')
             return
 
         use_file_logger = True
         if use_file_logger and harn.flog is None:
-            flog_fname = 'fitlog_{}.log'.format(ub.timestamp())
-            flog_fpath = os.path.join(harn.train_dpath, flog_fname)
+
             flog = logging.getLogger(harn.__class__.__name__)
             formatter = logging.Formatter('%(asctime)s : %(message)s')
-            handler = logging.FileHandler(flog_fpath, mode='w')
-            handler.setFormatter(formatter)
+
+            # Add timestamped fpath write handler
+            flog_fname = 'fitlog_{}.log'.format(ub.timestamp())
+            flog_dpath = ub.ensuredir(join(harn.train_dpath, 'logs'))
+            w_flog_fpath = join(flog_dpath, flog_fname)
+            w_handler = logging.FileHandler(w_flog_fpath, mode='w')
+            w_handler.setFormatter(formatter)
+
+            # Add a simple root append handler
+            a_flog_fpath = join(harn.train_dpath, 'fit.log')
+            a_handler = logging.FileHandler(a_flog_fpath, mode='w')
+            a_handler.setFormatter(formatter)
+
             flog.propagate = False
             flog.setLevel(logging.DEBUG)
-            flog.addHandler(handler)
+            flog.addHandler(w_handler)
+            flog.addHandler(a_handler)
             harn.flog = flog
             harn.debug('initialized file logger')
-            flog_link = os.path.join(harn.train_dpath, 'fit.log')
-            ub.symlink(flog_fpath, flog_link, overwrite=True)
+            # flog_link = join(harn.train_dpath, 'fit.log')
+            # ub.symlink(flog_fpath, flog_link, overwrite=True)
 
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
@@ -577,6 +599,8 @@ class ScheduleMixin:
         """
         Get the of distinct learning rates (usually only 1) currently in use
         """
+        optim_lrs = {group['lr'] for group in harn.optimizer.param_groups}
+
         if harn.scheduler is None:
             if harn.optimizer is None:
                 assert harn.dry
@@ -590,6 +614,9 @@ class ScheduleMixin:
         else:
             # workaround for ReduceLROnPlateau
             lrs = {group['lr'] for group in harn.scheduler.optimizer.param_groups}
+
+        if optim_lrs != lrs:
+            raise AssertionError('optimizer and scheduler are out of sync')
         return lrs
 
     def _check_termination(harn):
@@ -603,7 +630,7 @@ class ScheduleMixin:
             return True
         return False
 
-    def _step_scheduler(harn, improved):
+    def _step_scheduler(harn, improved=None):
         """
         helper function to change the learning rate that handles the way that
         different schedulers might be used.
@@ -732,7 +759,7 @@ class CoreMixin:
         """
         harn.debug('=== start epoch {} ==='.format(harn.epoch))
 
-        current_lr = np.mean(list(harn._current_lrs()))
+        current_lr = max(harn._current_lrs())
         harn.log_value('epoch lr', current_lr, harn.epoch)
 
         # run training epoch
@@ -813,6 +840,7 @@ class CoreMixin:
             harn.debug('Making batch iterator')
             batch_iter = iter(loader)
             harn.debug('Starting batch iteration')
+
             for bx in range(len(loader)):
                 raw_batch = next(batch_iter)
 
@@ -1048,6 +1076,10 @@ class CoreCallback:
         if 'optimizer_state_dict' in snapshot_state:
             harn.optimizer.load_state_dict(snapshot_state['optimizer_state_dict'])
             harn.debug('loaded optimizer_state_dict')
+
+        # Ensure scheduler is given current information
+        if harn.scheduler:
+            harn.scheduler.step(epoch=harn.epoch - 1)
 
 
 # Define the exposed class as a union of mixin classes

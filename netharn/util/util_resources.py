@@ -1,4 +1,7 @@
 def ensure_ulimit():
+    """
+    srun -c 4 -p priority python -c "import resource; print(resource.getrlimit(resource.RLIMIT_NOFILE))"
+    """
     # NOTE: It is important to have a high enought ulimit for DataParallel
     try:
         import resource

@@ -26,6 +26,8 @@ pytest-cov
 coverage >= 4.3.4
 tqdm
 
+xxhash
+
 
 # imgaug
 -e git+https://github.com/aleju/imgaug.git@master#egg=imgaug

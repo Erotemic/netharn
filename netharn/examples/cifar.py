@@ -132,8 +132,7 @@ def radial_fourier_mask(img_chw, radius=11, axis=None, clip=None):
         >>> img_chw = img_tensor.numpy()
         >>> out = radial_fourier_mask(img_chw, radius=11)
         >>> # xdoc: REQUIRES(--show)
-        >>> import plottool as pt
-        >>> pt.qtensure()
+        >>> nh.util.qtensure()
         >>> def keepdim(func):
         >>>     def _wrap(im):
         >>>         needs_transpose = (im.shape[0] == 3)
@@ -160,35 +159,36 @@ def radial_fourier_mask(img_chw, radius=11, axis=None, clip=None):
         >>> def yuv_to_bgr(im):
         >>>     return util.convert_colorspace(im, src_space='yuv', dst_space='bgr')
         >>> dpath = ub.ensuredir('./fouriertest')
+        >>> from matplotlib import pyplot as plt
         >>> for x in ub.ProgIter(range(100)):
         >>>     img_tensor, label = dset[x]
         >>>     img_chw = img_tensor.numpy()
         >>>     bgr_img = rgb_to_bgr(img_chw)
-        >>>     pt.imshow(bgr_img.transpose(1, 2, 0), fnum=1)
-        >>>     pnum_ = pt.make_pnum_nextgen(nRows=4, nCols=5)
+        >>>     nh.util.imshow(bgr_img.transpose(1, 2, 0), fnum=1)
+        >>>     pnum_ = nh.util.PlotNums(nRows=4, nCols=5)
         >>>     for r in range(0, 17):
         >>>         imgt = radial_fourier_mask(bgr_img, r, clip=(0, 1))
-        >>>         pt.imshow(imgt.transpose(1, 2, 0), pnum=pnum_(), fnum=2)
-        >>>         pt.gca().set_title('r = {}'.format(r))
-        >>>     pt.set_figtitle('BGR')
-        >>>     pt.gcf().savefig(join(dpath, '{}_{:08d}.png'.format('bgr', x)))
-        >>>     pnum_ = pt.make_pnum_nextgen(nRows=4, nCols=5)
+        >>>         nh.util.imshow(imgt.transpose(1, 2, 0), pnum=pnum_(), fnum=2)
+        >>>         plt.gca().set_title('r = {}'.format(r))
+        >>>     nh.util.set_figtitle('BGR')
+        >>>     plt.gcf().savefig(join(dpath, '{}_{:08d}.png'.format('bgr', x)))
+        >>>     pnum_ = nh.util.PlotNums(nRows=4, nCols=5)
         >>>     for r in range(0, 17):
         >>>         imgt = lab_to_bgr(radial_fourier_mask(bgr_to_lab(bgr_img), r)).transpose(1, 2, 0)
-        >>>         pt.imshow(imgt, pnum=pnum_(), fnum=3)
-        >>>         pt.gca().set_title('r = {}'.format(r))
+        >>>         nh.util.imshow(imgt, pnum=pnum_(), fnum=3)
+        >>>         plt.gca().set_title('r = {}'.format(r))
         >>>         #imgt = lab_to_bgr(to_lab(bgr_img)).transpose(1, 2, 0)
-        >>>         #pt.imshow(lab_to_bgr(to_lab(bgr_img)).transpose(1, 2, 0), pnum=pnum_(), fnum=2)
-        >>>     pt.set_figtitle('LAB')
-        >>>     pt.gcf().savefig(join(dpath, '{}_{:08d}.png'.format('lab', x)))
-        >>>     pnum_ = pt.make_pnum_nextgen(nRows=4, nCols=5)
+        >>>         #nh.util.imshow(lab_to_bgr(to_lab(bgr_img)).transpose(1, 2, 0), pnum=pnum_(), fnum=2)
+        >>>     nh.util.set_figtitle('LAB')
+        >>>     plt.gcf().savefig(join(dpath, '{}_{:08d}.png'.format('lab', x)))
+        >>>     pnum_ = nh.util.PlotNums(nRows=4, nCols=5)
         >>>     for r in range(0, 17):
         >>>         imgt = yuv_to_bgr(radial_fourier_mask(bgr_to_yuv(bgr_img), r, clip=(0., 1.))).transpose(1, 2, 0)
-        >>>         pt.imshow(imgt, pnum=pnum_(), fnum=4)
-        >>>         pt.gca().set_title('r = {}'.format(r))
-        >>>     pt.set_figtitle('YUV')
-        >>>     pt.gcf().savefig(join(dpath, '{}_{:08d}.png'.format('yuv', x)))
-        >>> pt.show_if_requested()
+        >>>         nh.util.imshow(imgt, pnum=pnum_(), fnum=4)
+        >>>         plt.gca().set_title('r = {}'.format(r))
+        >>>     nh.util.set_figtitle('YUV')
+        >>>     plt.gcf().savefig(join(dpath, '{}_{:08d}.png'.format('yuv', x)))
+        >>> nh.util.show_if_requested()
 
     Ignore:
         im_chw = bgr_to_lab(bgr_img)
@@ -250,11 +250,11 @@ def radial_fourier_mask(img_chw, radius=11, axis=None, clip=None):
     # dft_filt = [np.fft.ifftshift(c) for c in dft_filt_shift]
     # idft_filt = [cv2.idft(c) for c in dft_filt]
     # img_filt = np.dstack([np.linalg.norm(c, axis=-1) for c in idft_filt])
-    # pt.imshow(dft_mag.transpose(1, 2, 0), norm=True)
+    # nh.util.imshow(dft_mag.transpose(1, 2, 0), norm=True)
     # if False:
-    #     pt.imshow(np.log(dft_mag[0]), norm=True, pnum=(1, 3, 1))
-    #     pt.imshow(np.log(dft_mag[1]), norm=True, pnum=(1, 3, 2))
-    #     pt.imshow(np.log(dft_mag[2]), norm=True, pnum=(1, 3, 3))
+    #     nh.util.imshow(np.log(dft_mag[0]), norm=True, pnum=(1, 3, 1))
+    #     nh.util.imshow(np.log(dft_mag[1]), norm=True, pnum=(1, 3, 2))
+    #     nh.util.imshow(np.log(dft_mag[2]), norm=True, pnum=(1, 3, 3))
 
 
 def zca_whitening_matrix(X):

@@ -25,7 +25,11 @@ def stats_dict(list_, axis=None, nan=False, sum=False, extreme=True,
     SeeAlso:
         scipy.stats.describe
 
+    CommandLine:
+        python -m netharn.util.util_averages stats_dict
+
     Example:
+        >>> # xdoctest: +IGNORE_WHITESPACE
         >>> axis = 0
         >>> rng = np.random.RandomState(0)
         >>> list_ = rng.rand(10, 2).astype(np.float32)
@@ -33,14 +37,15 @@ def stats_dict(list_, axis=None, nan=False, sum=False, extreme=True,
         >>> result = str(ub.repr2(stats, nl=1, precision=4, with_dtype=True))
         >>> print(result)
         {
-            'mean': np.array([0.5206, 0.6425], dtype=np.float32),
-            'std': np.array([0.2854, 0.2517], dtype=np.float32),
-            'min': np.array([0.0202, 0.0871], dtype=np.float32),
-            'max': np.array([0.9637, 0.9256], dtype=np.float32),
+            'mean': np.array([ 0.5206,  0.6425], dtype=np.float32),
+            'std': np.array([ 0.2854,  0.2517], dtype=np.float32),
+            'min': np.array([ 0.0202,  0.0871], dtype=np.float32),
+            'max': np.array([ 0.9637,  0.9256], dtype=np.float32),
             'shape': (10, 2),
         }
 
     Example:
+        >>> # xdoctest: +IGNORE_WHITESPACE
         >>> axis = 0
         >>> rng = np.random.RandomState(0)
         >>> list_ = rng.randint(0, 42, size=100).astype(np.float32)
