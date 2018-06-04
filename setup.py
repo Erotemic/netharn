@@ -77,6 +77,8 @@ def parse_version(package):
     visitor.visit(pt)
     return visitor.version
 
+version = parse_version('netharn')
+
 
 def parse_description():
     """
