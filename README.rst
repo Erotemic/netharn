@@ -1,3 +1,6 @@
+|Travis| |Codecov| |Appveyor| |Pypi|
+
+
 netharn
 =======
 
