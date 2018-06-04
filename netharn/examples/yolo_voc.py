@@ -880,14 +880,14 @@ def setup_harness(bsize=16, workers=0):
         'scheduler': (nh.schedulers.ListedLR, {
             'points': {
                 # dividing by batch size was one of those unpublished details
-                0:  lr * 0.1 / simulated_bsize,  # burnin
-                4:  lr * 1.0 / simulated_bsize,
-                157: lr * 0.1 / simulated_bsize,
-                235: lr * 0.001 / simulated_bsize,
-                # 0:  lr * 0.1 / simulated_bsize,
-                # 1:  lr * 1.0 / simulated_bsize,
-                # 60: lr * 0.1 / simulated_bsize,
-                # 90: lr * 0.001 / simulated_bsize,
+                # 0:  lr * 0.1 / simulated_bsize,  # burnin
+                # 4:  lr * 1.0 / simulated_bsize,
+                # 157: lr * 0.1 / simulated_bsize,
+                # 235: lr * 0.001 / simulated_bsize,
+                0:  lr * 0.1 / simulated_bsize,
+                1:  lr * 1.0 / simulated_bsize,
+                60: lr * 0.1 / simulated_bsize,
+                90: lr * 0.001 / simulated_bsize,
             },
             'interpolate': False
         }),
@@ -962,7 +962,9 @@ if __name__ == '__main__':
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=fixed_decay --lr=0.001 --bstep=4
 
         srun -c 4 -p priority --gres=gpu:1 \
-            python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=fixed_schedule --lr=0.001 --bstep=4
+            python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=fixed_schedule --lr=0.001 --bstep=4 --workers=4
+
+            python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=2,3 --batch_size=32 --nice=fixed_schedule --lr=0.001 --bstep=2 --workers=4
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
