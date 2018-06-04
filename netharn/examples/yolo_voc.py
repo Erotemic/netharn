@@ -854,13 +854,40 @@ def setup_harness(bsize=16, workers=0):
             'weight_decay': decay * simulated_bsize,
         }),
 
+        # Pascal 2007 + 2012 trainval has 16551 images
+        # Pascal 2007 test has 4952 images
+        # In the original YOLO, one batch is 64 images,
+        # so one epoch is 16551 / 64 = 259 iterations.
+        #
+        # From the original YOLO VOC v2 config
+        # https://github.com/pjreddie/darknet/blob/master/cfg/yolov2-voc.cfg
+        #     learning_rate=0.001
+        #     burn_in=1000
+        #     max_batches = 80200
+        #     policy=steps
+        #     steps=40000,60000
+        #     scales=.1,.1
+        #
+        # However, the LIGHTNET values are
+        #   LR_STEPS = [250, 25000, 35000]
+        #
+        # Based in this, the iter to batch conversion is
+        #
+        # ((np.array([250, 25000, 35000, 1000, 40000, 60000, 80200]) / 256) + 1).astype(np.int)
+        # array([  1,  98, 137,   4, 157, 235, 314])
+
+
         'scheduler': (nh.schedulers.ListedLR, {
             'points': {
                 # dividing by batch size was one of those unpublished details
-                0:  lr * 0.1 / simulated_bsize,
-                1:  lr * 1.0 / simulated_bsize,
-                60: lr * 0.1 / simulated_bsize,
-                90: lr * 0.001 / simulated_bsize,
+                0:  lr * 0.1 / simulated_bsize,  # burnin
+                4:  lr * 1.0 / simulated_bsize,
+                157: lr * 0.1 / simulated_bsize,
+                235: lr * 0.001 / simulated_bsize,
+                # 0:  lr * 0.1 / simulated_bsize,
+                # 1:  lr * 1.0 / simulated_bsize,
+                # 60: lr * 0.1 / simulated_bsize,
+                # 90: lr * 0.001 / simulated_bsize,
             },
             'interpolate': False
         }),
@@ -868,8 +895,8 @@ def setup_harness(bsize=16, workers=0):
         'monitor': (nh.Monitor, {
             'minimize': ['loss'],
             'maximize': ['mAP'],
-            'patience': 160,
-            'max_epoch': 160,
+            'patience': 314,
+            'max_epoch': 314,
         }),
 
         'augment': datasets['train'].augmenter,
@@ -933,6 +960,7 @@ if __name__ == '__main__':
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=dynamic --lr=.0001 --bstep=4
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=fixed_decay --lr=0.001 --bstep=4
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=fixed_schedule --lr=0.001 --bstep=4
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
