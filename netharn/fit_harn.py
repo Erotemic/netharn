@@ -98,6 +98,9 @@ MIXINS = []
 
 
 class StopTraining(StopIteration):
+    """
+    Signals that training should terminate
+    """
     pass
 
 
@@ -837,6 +840,7 @@ class CoreMixin:
             harn.debug('Making batch iterator')
             batch_iter = iter(loader)
             harn.debug('Starting batch iteration')
+
             for bx in range(len(loader)):
                 raw_batch = next(batch_iter)
 
