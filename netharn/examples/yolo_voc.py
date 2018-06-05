@@ -24,6 +24,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         python ~/code/netharn/netharn/examples/yolo_voc.py YoloVOCDataset
 
     Example:
+        >>> # DISABLE_DOCTSET
         >>> assert len(YoloVOCDataset(split='train', years=[2007])) == 2501
         >>> assert len(YoloVOCDataset(split='test', years=[2007])) == 4952
         >>> assert len(YoloVOCDataset(split='val', years=[2007])) == 2510
@@ -34,6 +35,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         >>> assert len(YoloVOCDataset(split='val', years=[2007, 2012])) == 8333
 
     Example:
+        >>> # DISABLE_DOCTSET
         >>> self = YoloVOCDataset()
         >>> for i in range(10):
         ...     a, bc = self[i]
@@ -123,6 +125,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             python ~/code/netharn/netharn/examples/yolo_voc.py YoloVOCDataset.__getitem__ --show
 
         Example:
+            >>> # DISABLE_DOCTSET
             >>> import sys, ubelt
             >>> sys.path.append(ubelt.truepath('~/code/netharn/netharn/examples'))
             >>> from yolo_voc import *
@@ -143,6 +146,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> mplutil.show_if_requested()
 
         Example:
+            >>> # DISABLE_DOCTSET
             >>> import sys, ubelt
             >>> sys.path.append(ubelt.truepath('~/code/netharn/netharn/examples'))
             >>> from yolo_voc import *
@@ -289,6 +293,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             python ~/code/netharn/netharn/examples/yolo_voc.py YoloVOCDataset.make_loader
 
         Example:
+            >>> # DISABLE_DOCTSET
             >>> torch.random.manual_seed(0)
             >>> self = YoloVOCDataset(split='train')
             >>> self.augmenter = None
@@ -369,6 +374,7 @@ class YoloHarn(nh.FitHarn):
             python ~/code/netharn/netharn/examples/yolo_voc.py YoloHarn.run_batch
 
         Example:
+            >>> # DISABLE_DOCTSET
             >>> harn = setup_harness(bsize=2)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'test')
@@ -403,6 +409,7 @@ class YoloHarn(nh.FitHarn):
             python ~/code/netharn/netharn/examples/yolo_voc.py YoloHarn.on_batch --gpu=0 --show
 
         Example:
+            >>> # DISABLE_DOCTSET
             >>> harn = setup_harness(bsize=1)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'test')
@@ -449,6 +456,7 @@ class YoloHarn(nh.FitHarn):
         custom callback
 
         Example:
+            >>> # DISABLE_DOCTSET
             >>> harn = setup_harness(bsize=4)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'test')
@@ -780,6 +788,7 @@ def setup_harness(bsize=16, workers=0):
         python ~/code/netharn/netharn/examples/yolo_voc.py setup_harness
 
     Example:
+        >>> # DISABLE_DOCTSET
         >>> harn = setup_harness()
         >>> harn.initialize()
     """

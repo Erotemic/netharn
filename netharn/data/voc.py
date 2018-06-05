@@ -20,6 +20,7 @@ import torch.utils.data as torch_data
 class VOCDataset(torch_data.Dataset, ub.NiceRepr):
     """
     Example:
+        >>> # xdoc: +REQUIRES(--voc)
         >>> assert len(VOCDataset(split='train', years=[2007])) == 2501
         >>> assert len(VOCDataset(split='test', years=[2007])) == 4952
         >>> assert len(VOCDataset(split='val', years=[2007])) == 2510
@@ -30,6 +31,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         >>> assert len(VOCDataset(split='val', years=[2007, 2012])) == 8333
 
     Example:
+        >>> # xdoc: +REQUIRES(--voc)
         >>> years = [2007, 2012]
         >>> self = VOCDataset()
         >>> for i in range(10):
@@ -39,6 +41,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         ...     print(a.shape)
 
     Example:
+        >>> # xdoc: +REQUIRES(--voc)
         >>> self = VOCDataset(split='trainval', years=[2007, 2012])
         >>> test = VOCDataset(split='test', years=[2007])
 
@@ -131,6 +134,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
 
         Example:
             >>> # SCRIPT
+            >>> # xdoc: +REQUIRES(--voc)
             >>> from netharn.data.voc import *  # NOQA
             >>> VOCDataset.ensure_voc_data()
         """
@@ -177,6 +181,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
             bbox is in x1,y1,x2,y2 (i.e. tlbr) format
 
         Example:
+            >>> # xdoc: +REQUIRES(--voc)
             >>> self = VOCDataset()
             >>> chw, label = self[1]
             >>> hwc = chw.numpy().transpose(1, 2, 0)
@@ -322,6 +327,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
             https://github.com/pytorch/pytorch/issues/1512
 
         Example:
+            >>> # xdoc: +REQUIRES(--voc)
             >>> self = VOCDataset()
             >>> #inbatch = [self[i] for i in range(10)]
             >>> loader = self.make_loader(batch_size=10)

@@ -65,7 +65,12 @@ def _rectify_class(lookup, arg, kw):
 
     if isinstance(arg, tuple):
         cls = lookup(arg[0])
-        kw2 = arg[1]
+        try:
+            kw2 = arg[1]
+        except Exception:
+            print('lookup = {!r}'.format(lookup))
+            print('arg = {!r}'.format(arg))
+            raise
     else:
         cls = lookup(arg)
         kw2 = {}

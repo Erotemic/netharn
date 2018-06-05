@@ -23,7 +23,7 @@ Pypi:
      # https://packaging.python.org/tutorials/distributing-packages/
 
      # Build wheel or source distribution
-     python setup.py bdist_wheel --universal
+     python setup.py bdist_wheel --py-limited-api=cp36
 
      # Use twine to upload. This will prompt for username and password
      twine upload --username erotemic --skip-existing dist/*

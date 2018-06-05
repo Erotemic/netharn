@@ -53,12 +53,22 @@ def apply_initializer(input, func, funckw):
     Args:
         input: can be a model, layer, or tensor
 
-    >>> from torch import nn
-    >>> class DummyNet(nn.Module):
-    >>>     def __init__(self, n_channels=1, n_classes=10):
-    >>>         super(DummyNet, self).__init__()
-    >>>         self.conv1 = nn.Conv2d(n_channels, 10, kernel_size=5)
-    >>> model = DummyNet()
+    Example:
+        >>> from torch import nn
+        >>> class DummyNet(nn.Module):
+        >>>     def __init__(self, n_channels=1, n_classes=10):
+        >>>         super(DummyNet, self).__init__()
+        >>>         self.conv = nn.Conv2d(n_channels, 10, kernel_size=5)
+        >>>         self.norm = nn.BatchNorm2d(10)
+        >>> model = DummyNet()
+        >>> func = nn.init.constant_
+        >>> apply_initializer(model, func, {'val': 42})
+        >>> assert np.all(model.conv.weight == 42)
+        >>> assert np.all(model.conv.bias == 0), 'bias is always init to zero'
+        >>> assert np.all(model.norm.bias == 0), 'bias is always init to zero'
+        >>> assert np.all(model.norm.weight == 1)
+        >>> assert np.all(model.norm.running_mean == 0.0)
+        >>> assert np.all(model.norm.running_var == 1.0)
     """
     if getattr(input, 'bias', None) is not None:
         # zero all biases
@@ -72,6 +82,9 @@ def apply_initializer(input, func, funckw):
         func(input.weight, **funckw)
     elif isinstance(input, torch.nn.modules.batchnorm._BatchNorm):
         input.reset_parameters()
+        # always initialize batch norm weights to 1
+        torch.nn.init.constant_(input.weight, 1.0)
+        torch.nn.init.constant_(input.bias, 0.0)
     # elif isinstance(input, torch.nn.modules.Linear):
     #     input.reset_parameters()
     elif hasattr(input, 'reset_parameters'):
