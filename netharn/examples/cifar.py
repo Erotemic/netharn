@@ -87,7 +87,7 @@ def train():
     n_classes = 10  # hacked in
     loaders = {
         key: torch.utils.data.DataLoader(dset, shuffle=key == 'train',
-                                         batch_size=batch_size,
+                                         num_workers=2, batch_size=batch_size,
                                          pin_memory=True)
         for key, dset in datasets.items()
     }
