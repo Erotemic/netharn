@@ -854,4 +854,10 @@ def train():
     workdir = ub.ensuredir('train_cifar_work')
     harn.setup_dpath(workdir)
 
+
     harn.run()
+
+ """
+        python examples/cifar.py train --lab
+        python examples/cifar.py train --rgb-indie
+ """

@@ -46,9 +46,6 @@ class CIFAR_FitHarn(nh.FitHarn):
 def train():
     """
     Replicates parameters from https://github.com/kuangliu/pytorch-cifar
-
-    Example:
-        >>> train()
     """
     import random
     import torchvision
@@ -147,10 +144,6 @@ def train():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python examples/cifar.py train
-        python examples/cifar.py train --lab
-        python examples/cifar.py train --rgb-indie
+        python examples/cifar.py --gpu=1
     """
     train()
-    # import xdoctest
-    # xdoctest.doctest_module(__file__)
