@@ -225,6 +225,7 @@ class Yolo(nn.Module):
     def forward(self, x):
         """
         Example:
+            >>> # xdoc: +REQUIRES(--download)
             >>> from netharn.models.yolo2.light_yolo import *
             >>> inp_size = (288, 288)
             >>> self = Yolo(num_classes=20, conf_thresh=0.01, nms_thresh=0.4)

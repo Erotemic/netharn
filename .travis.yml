@@ -14,10 +14,12 @@ before_install:
   - pip install pytest-cov -U
   - pip install codecov -U
   - pip install xdoctest -U
+  - pip install ubelt -U
   - pip install opencv-python
+  - pip install pyqt5
   - pip install --progress-bar off torch
   - pip install -e git+https://github.com/aleju/imgaug.git@master#egg=imgaug
-  - pip install -r requirements.txt -U
+  - pip install -r requirements.txt 
 install:
   #- travis_retry python setup.py build develop
   - travis_retry pip install -e .

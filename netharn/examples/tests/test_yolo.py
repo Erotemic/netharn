@@ -3,10 +3,10 @@ import numpy as np
 import pandas as pd
 import ubelt as ub
 import torch
-import sys
-from os.path import exists
+# import sys
+# from os.path import exists
 
-sys.path.append(ub.truepath('~/code/netharn/netharn/examples'))  # NOQA
+# sys.path.append(ub.truepath('~/code/netharn/netharn/examples'))  # NOQA
 # import mkinit
 # exec(dynamic_init('yolo_voc'))
 from yolo_voc import setup_harness, light_yolo
@@ -178,7 +178,7 @@ def compare_ap_impl(**kw):
     # print('bb_recall    = {}'.format(ub.repr2(bb_recall, precision=2, nl=0)))
     # print('nh_recall    = {}'.format(ub.repr2(nh_recall, precision=2, nl=0)))
 
-    nhkw = {'bias': 0}
+    nhkw = {'bias': 0}  # NOQA
 
     data = {
         'bb': bb_map(truth, pred),
@@ -706,7 +706,7 @@ def compare_loss():
 
     # Test model forward is the same for my image
     ln_outputs = ln_net._forward(harn.xpu.move(nh_img[None, :]))
-    nh_outputs = harn.model(harn.xpu.move(nh_img[None, :]))
+    # nh_outputs = harn.model(harn.xpu.move(nh_img[None, :]))
 
     seen = ln_net.loss.seen = 99999999
     ln_loss = ln_net.loss(ln_outputs, nh_targets)
@@ -868,7 +868,7 @@ def _test_with_lnstyle_data():
         moving_ave = nh.util.util_averages.CumMovingAve()
 
         coco_truth = []
-        ln_coco_detections = []
+        # ln_coco_detections = []
         nh_coco_detections0 = []
 
         prog = ub.ProgIter(zip(ln_loader, nh_loader), desc='')
@@ -980,8 +980,8 @@ def _test_with_lnstyle_data():
     print('nh_mAP = {!r}'.format(nh_mAP))
     print('nh_mAP0 = {!r}'.format(nh_mAP0))
 
-    num_classes = len(LABELS)
-    cls_labels = list(range(num_classes))
+    # num_classes = len(LABELS)
+    # cls_labels = list(range(num_classes))
 
     # # Compute mAP using netharn
     # if False:
