@@ -57,6 +57,7 @@ def train():
 
     batch_size = 128
     lr = 0.1
+    workers = 2
 
     xpu = nh.XPU.cast('argv')
 
@@ -87,10 +88,15 @@ def train():
     n_classes = 10  # hacked in
     loaders = {
         key: torch.utils.data.DataLoader(dset, shuffle=key == 'train',
-                                         num_workers=2, batch_size=batch_size,
+                                         num_workers=workers,
+                                         batch_size=batch_size,
                                          pin_memory=True)
         for key, dset in datasets.items()
     }
+
+    if workers > 0:
+        import cv2
+        cv2.setNumThreads(0)
 
     initializer_ = (nh.initializers.KaimingNormal, {'param': 0, 'mode': 'fan_in'})
     # initializer_ = (initializers.LSUV, {})
