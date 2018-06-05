@@ -59,8 +59,7 @@ class Folders(object):
             # import utool
             # utool.embed()
             raise ValueError('model_cls is None')
-
-        arch = hyper.model_cls.__name__
+        # arch = hyper.model_cls.__name__
 
         train_dset = hyper.datasets['train']
         if hasattr(train_dset, 'input_id'):
@@ -89,14 +88,13 @@ class Folders(object):
         # Gather all information about this run into a single hash
         train_hashid = ub.hash_data(train_id)[0:8]
 
-        input_dname = 'input_' + input_id
-
-        verbose_dpath = join(self.hyper.workdir, 'fit', 'link', 'arch', arch, input_dname, train_id)
+        # input_dname = 'input_' + input_id
+        # verbose_dpath = join(self.hyper.workdir, 'fit', 'link', 'arch', arch, input_dname, train_id)
         hashed_dpath = join(self.hyper.workdir, 'fit', 'runs', train_hashid)
 
         # setup a cannonical and a linked symlink dir
         train_dpath = hashed_dpath
-        link_dpath = verbose_dpath
+        # link_dpath = verbose_dpath
 
         # also setup a "nice" custom name, which may conflict, but oh well
         if hyper.nice:
@@ -132,7 +130,7 @@ class Folders(object):
             ('nice', hyper.nice),
 
             ('train_dpath', train_dpath),
-            ('link_dpath', link_dpath),
+            # ('link_dpath', link_dpath),
             ('nice_dpath', nice_dpath),
 
             # TODO, add in n_classes if applicable
@@ -153,9 +151,9 @@ class Folders(object):
         util.write_json(train_info_fpath, train_info)
 
         # setup symlinks
-        ub.ensuredir(dirname(train_info['link_dpath']))
-        ub.symlink(train_info['train_dpath'], train_info['link_dpath'],
-                   overwrite=True, verbose=3)
+        # ub.ensuredir(dirname(train_info['link_dpath']))
+        # ub.symlink(train_info['train_dpath'], train_info['link_dpath'],
+        #            overwrite=True, verbose=3)
 
         if train_info['nice_dpath']:
             ub.ensuredir(dirname(train_info['nice_dpath']))

@@ -322,7 +322,7 @@ def demo_voc_weights():
     """
     import ubelt as ub
     url = 'https://gitlab.com/EAVISE/lightnet/raw/master/examples/yolo-voc/lightnet_weights.pt'
-    fpath = ub.grabdata(url)
+    fpath = ub.grabdata(url, appname='netharn')
     # import lightnet
     # from os.path import dirname, join
     # dpath = dirname(dirname(lightnet.__file__))
@@ -331,17 +331,20 @@ def demo_voc_weights():
 
 
 def initial_imagenet_weights():
-    import os
+    # import os
     import ubelt as ub
-    weight_fpath = ub.grabdata(
-        'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='netharn')
-    torch_fpath = weight_fpath + '.pt'
-    if not os.path.exists(torch_fpath):
-        import lightnet.models
-        # hack to transform initial state
-        model = lightnet.models.Yolo(num_classes=1000)
-        model.load_weights(weight_fpath)
-        torch.save(model.state_dict(), torch_fpath)
+    # fpath = ub.grabdata(url)
+    torch_fpath = ub.grabdata('https://data.kitware.com/api/v1/item/5b16b81b8d777f15ebe1ffcd/download',
+                              fname='darknet19_448.conv.23.pt', appname='netharn')
+    # weight_fpath = ub.grabdata(
+    #     'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='netharn')
+    # torch_fpath = weight_fpath + '.pt'
+    # if not os.path.exists(torch_fpath):
+    #     import lightnet.models
+    #     # hack to transform initial state
+    #     model = lightnet.models.Yolo(num_classes=1000)
+    #     model.load_weights(weight_fpath)
+    #     torch.save(model.state_dict(), torch_fpath)
     return torch_fpath
 
 
