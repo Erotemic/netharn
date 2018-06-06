@@ -342,7 +342,7 @@ class RegionLoss(BaseLossWithCudaState):
 
         # Parameters
         nB = target.shape[0] if not gtempty else 0
-        nT = target.shape[1] if not gtempty else 0
+        # nT = target.shape[1] if not gtempty else 0
         nA = self.num_anchors
 
         if nB == 0:
