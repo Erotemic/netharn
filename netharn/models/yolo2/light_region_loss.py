@@ -445,8 +445,6 @@ class RegionLoss(BaseLossWithCudaState):
             # Assign groundtruth boxes to predicted boxes
             ious = cur_pred_boxes.ious(cur_gt_boxes, bias=0)
             cur_ious, _ = ious.max(dim=-1)
-            import utool
-            utool.embed()
 
             # Set confidence mask of matching detections to 0
             conf_mask[bx].view(-1)[cur_ious.view(-1) > self.thresh] = 0
