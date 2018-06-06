@@ -21,7 +21,6 @@ else:
     from netharn.util import util_demodata
     from netharn.util import util_fname
     from netharn.util import util_idstr
-    from netharn.util import util_imageio
     from netharn.util import util_io
     from netharn.util import util_iter
     from netharn.util import util_json
@@ -127,7 +126,7 @@ else:
                'shortest_unique_suffixes', 'show_if_requested', 'shuffle',
                'stats_dict', 'torch_utils', 'util_averages', 'util_boxes',
                'util_cachestamp', 'util_cv2', 'util_demodata', 'util_fname',
-               'util_idstr', 'util_imageio', 'util_io', 'util_iter', 'util_json',
-               'util_numpy', 'util_random', 'util_resources', 'util_slider',
-               'util_subextreme', 'walk_json', 'wide_strides_1d', 'write_arr',
-               'write_h5arr', 'write_json']
+               'util_idstr', 'util_io', 'util_iter', 'util_json', 'util_numpy',
+               'util_random', 'util_resources', 'util_slider', 'util_subextreme',
+               'walk_json', 'wide_strides_1d', 'write_arr', 'write_h5arr',
+               'write_json']
