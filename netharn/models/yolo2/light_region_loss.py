@@ -445,11 +445,13 @@ class RegionLoss(BaseLossWithCudaState):
             # Assign groundtruth boxes to predicted boxes
             ious = cur_pred_boxes.ious(cur_gt_boxes, bias=0)
             cur_ious, _ = ious.max(dim=-1)
+            import utool
+            utool.embed()
 
             # Set confidence mask of matching detections to 0
             conf_mask[bx].view(-1)[cur_ious.view(-1) > self.thresh] = 0
 
-            for t in range(len(cur_gt_boxes)):
+            for t in range(cur_gt_boxes.shape[0]):
                 gt_box_ = cur_gt_boxes[t]
                 # coord weights are slightly different than other weights
                 weight = gt_weights[bx, t]
