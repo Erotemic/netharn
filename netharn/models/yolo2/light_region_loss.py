@@ -460,7 +460,8 @@ class RegionLoss(BaseLossWithCudaState):
 
                 # Undocumented darknet detail: multiply coord weight by two
                 # minus the area of the true box in normalized coordinates.
-                coord_mask[bx, ax, 0, gj, gi] = weight * (2 - gw * gh)
+                # the square root is because we are on the inside of the MSE
+                coord_mask[bx, ax, 0, gj, gi] = (weight * (2 - gw * gh)) ** .5
                 cls_mask[bx, ax, 0, gj, gi] = int(weight > .5)
                 conf_mask[bx, ax, 0, gj, gi] = self.object_scale * weight
 
