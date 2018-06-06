@@ -463,7 +463,9 @@ class RegionLoss(BaseLossWithCudaState):
                 # the square root is because the weight is multiplied on the
                 # inside of the MSE. We get the right loss via:
                 # diferentiate of s * .5 * (sqrt(w) * t - sqrt(w) * x) ** 2 wrt
-                coord_mask[bx, ax, 0, gj, gi] = (weight * (2 - gw * gh)) ** .5
+                coord_weight = (weight * (2 - gw * gh)) ** .5
+                print('coord_weight = {!r}'.format(coord_weight))
+                coord_mask[bx, ax, 0, gj, gi] = coord_weight
                 cls_mask[bx, ax, 0, gj, gi] = int(weight > .5)
                 conf_mask[bx, ax, 0, gj, gi] = self.object_scale * weight
 
