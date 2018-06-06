@@ -6,6 +6,8 @@ if __name__ == '__main__':
     package_name = 'netharn'
     pytest_args = [
         '-p', 'no:doctest',
+        '-s',
+        '-v',
         '--cov-config', '.coveragerc',
         '--cov-report', 'html',
         '--cov-report', 'term',
