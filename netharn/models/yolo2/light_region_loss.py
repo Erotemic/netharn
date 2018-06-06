@@ -305,7 +305,7 @@ class RegionLoss(BaseLossWithCudaState):
             >>> nB = len(gt_weights)
             >>> pred_cxywh = torch.rand(nB, len(self.anchors), nH, nW, 4).view(-1, 4)
             >>> seen = 0
-            >>> self._build_targets_tensor(pred_cxywh, target, nH, nW, seen, gt_weights)
+            >>> self.build_targets(pred_cxywh, target, nH, nW, seen, gt_weights)
 
         Example:
             >>> from netharn.models.yolo2.light_region_loss import RegionLoss
