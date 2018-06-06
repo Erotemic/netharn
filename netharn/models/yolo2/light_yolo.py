@@ -130,8 +130,8 @@ class Yolo(nn.Module):
         >>> network_output = self.forward(im_data)
         >>> A = len(self.anchors)
         >>> Wout, Hout = Win // 32, Hin // 32
-        >>> assert list(network_output.shape) == [2, 125, 3, 3]
-        >>> assert list(network_output.shape) == [B, A * (C + 5), Wout, Hout]
+        >>> assert list(network_output.shape) == [2, 5, 25, 3, 3]
+        >>> assert list(network_output.shape) == [B, A, (C + 5), Wout, Hout]
         >>> # The default postprocess function will construct the bounding boxes
         >>> # Each item in `postout` is a list of detected boxes with columns:
         >>> # x_center, y_center, width, height, confidence, class_id

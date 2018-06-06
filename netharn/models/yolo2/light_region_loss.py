@@ -451,7 +451,7 @@ class RegionLoss(BaseLossWithCudaState):
 
                 # Mark that we will care about this prediction with some weight
                 coord_mask[bx, ax, 0, gj, gi] = weight
-                cls_mask[bx, ax, 0, gj, gi] = (weight > .5)
+                cls_mask[bx, ax, 0, gj, gi] = int(weight > .5)
                 conf_mask[bx, ax, 0, gj, gi] = self.object_scale * weight
 
                 # The true box is converted into coordinates comparable to the
