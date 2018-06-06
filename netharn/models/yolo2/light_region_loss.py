@@ -303,7 +303,7 @@ class RegionLoss(BaseLossWithCudaState):
             >>> gt_weights = torch.FloatTensor([[-1, -1, -1], [1, 1, 0]])
             >>> #pred_cxywh = torch.rand(90, 4)
             >>> nB = len(gt_weights)
-            >>> pred_cxywh = torch.rand(nB, len(anchors), nH, nW, 4).view(-1, 4)
+            >>> pred_cxywh = torch.rand(nB, len(self.anchors), nH, nW, 4).view(-1, 4)
             >>> seen = 0
             >>> self._build_targets_tensor(pred_cxywh, target, nH, nW, seen, gt_weights)
 
