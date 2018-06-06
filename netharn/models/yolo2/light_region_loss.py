@@ -376,11 +376,15 @@ class RegionLoss(BaseLossWithCudaState):
         # outputs are punished for not predicting center anchor locations ---
         # unless tcoord is overriden by a real groundtruth target later on.
         if seen < 12800:
-            coord_mask.fill_(1)
             # By default encourage the network to predict no shift
             tcoord[:, :, 0:2, :, :].fill_(0.5)
             # By default encourage the network to predict no scale (in logspace)
             tcoord[:, :, 0:2, :, :].fill_(0.0)
+            # In the warmup phase we care about changing the coords to be
+            # exactly the anchors if they don't predict anything, but the
+            # weight is only 0.1, set it to 0.1 / self.coord_scale because we
+            # will multiply by coord_scale later
+            coord_mask.fill_(0.1 / self.coord_scale)
 
         if gtempty:
             return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
@@ -450,7 +454,10 @@ class RegionLoss(BaseLossWithCudaState):
                 iou = ious[ax, gj, gi, t].item()
 
                 # Mark that we will care about this prediction with some weight
-                coord_mask[bx, ax, 0, gj, gi] = weight
+
+                # Undocumented darknet detail: multiply coord weight by two
+                # minus the area of the true box in normalized coordinates.
+                coord_mask[bx, ax, 0, gj, gi] = weight * (2 - gw * gh)
                 cls_mask[bx, ax, 0, gj, gi] = int(weight > .5)
                 conf_mask[bx, ax, 0, gj, gi] = self.object_scale * weight
 
