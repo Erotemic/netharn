@@ -4,7 +4,7 @@
 #   Copyright EAVISE
 #
 import torch
-from torch.autograd import Variable
+# from torch.autograd import Variable
 from netharn.util import profiler
 from netharn import util
 import numpy as np
@@ -239,13 +239,12 @@ class GetBoundingBoxes(object):
         output = output.clone()
 
         # Check dimensions
-        if output.dim() == 3:
-            output.unsqueeze_(0)
+        # if output.dim() == 3:
+        #     output.unsqueeze_(0)
 
         # Variables
-        bsize = output.size(0)
-        h = output.size(2)
-        w = output.size(3)
+        bsize = output.shape[0]
+        h, w = output.shape[-2:]
 
         # Compute xc,yc, w,h, box_score on Tensor
         lin_x = torch.linspace(0, w - 1, w).repeat(h, 1).view(h * w)
