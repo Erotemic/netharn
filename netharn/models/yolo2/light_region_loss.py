@@ -438,7 +438,7 @@ class RegionLoss(BaseLossWithCudaState):
                     break
 
                 gt_box_ = cur_gt_boxes[t]
-                weight = 1 if gt_weights is None else gt_weights[bx][t]
+                weight = 1.0 if gt_weights is None else gt_weights[bx][t]
 
                 # The assigned (best) anchor index
                 ax = best_anchor_idxs[t].item()
@@ -465,6 +465,10 @@ class RegionLoss(BaseLossWithCudaState):
                 # diferentiate of s * .5 * (sqrt(w) * t - sqrt(w) * x) ** 2 wrt
                 coord_weight = (weight * (2 - gw * gh)) ** .5
                 print('\n\n coord_weight = {!r} \n\n'.format(coord_weight))
+                print('gh = {!r}'.format(gh))
+                print('gw = {!r}'.format(gw))
+                print('gw * gh = {!r}'.format(gw * gh))
+                print('\n\n')
                 coord_mask[bx, ax, 0, gj, gi] = coord_weight
                 cls_mask[bx, ax, 0, gj, gi] = int(weight > .5)
                 conf_mask[bx, ax, 0, gj, gi] = self.object_scale * weight
