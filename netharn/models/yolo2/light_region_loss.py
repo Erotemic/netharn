@@ -262,18 +262,21 @@ class RegionLoss(BaseLossWithCudaState):
             seemingly random multiply by .5 in our MSE computation so the torch
             autodiff algorithm produces the same result as darknet.
         """
-        loss_coord = self.coord_scale * 0.5 * self.coord_mse(coord * coord_mask, tcoord * coord_mask) / nB
+        loss_coord = self.coord_scale * 0.5 * self.coord_mse(
+            coord_mask * coord, coord_mask * tcoord) / nB
 
         # object_scale and noobject_scale are incorporated in conf_mask.
-        loss_conf = 0.5 * self.conf_mse(conf * conf_mask, tconf * conf_mask) / nB
+        loss_conf = 0.5 * self.conf_mse(conf_mask * conf,
+                                        conf_mask * tconf) / nB
 
         if nC > 1 and masked_cls_probs.numel():
-            loss_cls = self.class_scale * self.cls_critrion(masked_cls_probs, masked_tcls) / nB
-            loss_tot = loss_coord + loss_conf + loss_cls
+            loss_cls = self.class_scale * self.cls_critrion(masked_cls_probs,
+                                                            masked_tcls) / nB
             self.loss_cls = float(loss_cls.data.cpu().numpy())
         else:
-            self.loss_cls = 0
-            loss_tot = loss_coord + loss_conf
+            self.loss_cls = loss_cls = 0
+
+        loss_tot = loss_coord + loss_conf + loss_cls
 
         # Record loss components as module members
         self.loss_tot = float(loss_tot.data.cpu().numpy())
