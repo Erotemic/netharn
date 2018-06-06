@@ -944,36 +944,8 @@ def train():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=Small --lr=.00005
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=Warmup64 --lr=.0001
-
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1,2,3 --batch_size=64 --workers=4 --nice=ColdOpen64 --lr=.001
-
-
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=dynamic --lr=.001 --bstep=4
-
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=letterboxed_copylr --bstep=4
-
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=letterboxed_copylr_reworkaug --bstep=4
-
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=better_lr1 --lr=0.0001 --decay=0.0005 --bstep=4 --workers=4
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=16 --nice=better_lr2 --lr=0.000015625 --decay=0.0000078125 --bstep=4 --workers=4
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=3 --batch_size=16 --nice=better_lr3 --lr=0.00002 --decay=0.00001 --bstep=4 --workers=4
-
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=copy_aug --bstep=4 --lr=0.000015625 --decay=0.0000078125
-
-        python ~/code/netharn/netharn/examples/yolo_voc.py all
-        python ~/code/netharn/netharn/examples/yolo_voc.py setup_harness
-
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --nice=check --workers=4
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=dynamic --lr=.0001 --bstep=4
-
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=fixed_decay --lr=0.001 --bstep=4
-
         srun -c 4 -p priority --gres=gpu:1 \
             python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=fixed_schedule --lr=0.001 --bstep=4 --workers=4
-
-            python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=2,3 --batch_size=32 --nice=fixed_schedule --lr=0.001 --bstep=2 --workers=4
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

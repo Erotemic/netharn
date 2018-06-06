@@ -214,13 +214,17 @@ class Yolo(nn.Module):
 
         self.postprocess = light_postproc.GetBoundingBoxes(
             self.num_classes, self.anchors, conf_thresh, nms_thresh)
-        # self.postprocess = light_postproc.GetBoundingBoxes(
-        #     self, conf_thresh, nms_thresh)
 
     def output_shape_for(self, input_shape):
-        b, c, h, w = input_shape
-        o = len(self.anchors) * (5 + self.num_classes)
-        return (b, o, h // 32, w // 32)
+        """
+        Shape of the output produced by this network
+        """
+        nB, c, inH, inW = input_shape
+        outH = inH / self.factor
+        outW = inW / self.factor
+        nA = len(self.anchors)
+        nC = self.num_classes
+        return (nB, nA, 5 + nC, outH, outW)
 
     def forward(self, x):
         """
@@ -270,6 +274,11 @@ class Yolo(nn.Module):
         # Route : layers=-1,-4
         out = self.layers[3](torch.cat((outputs[2], outputs[1]), 1))
 
+        # Reshape output to separate the anchor dimension from the box and class dimension
+        nB, nO, nH, nW = out.shape
+        nA = len(self.anchors)
+        nC = self.num_classes
+        out = out.view(nB, nA, 5 + nC, nH, nW)
         return out
 
 

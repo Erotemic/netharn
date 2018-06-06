@@ -1,8 +1,10 @@
-#
-#   Loss modules
-#   Copyright EAVISE
-#
 """
+Reproduces RegionLoss from Darknet:
+    https://github.com/pjreddie/darknet/blob/master/src/region_layer.c
+
+Based off RegionLoss from Lightnet:
+    https://gitlab.com/EAVISE/lightnet/blob/master/lightnet/network/loss/_regionloss.py
+
 Speedups
     [ ] - Preinitialize anchor tensors
 
@@ -22,7 +24,7 @@ __all__ = ['RegionLoss']
 
 class BaseLossWithCudaState(torch.nn.modules.loss._Loss):
     """
-    Keep track of if the module is in cpu or gpu mode
+    Helper to keep track of if a loss module is in cpu or gpu mod
     """
     def __init__(self):
         super(BaseLossWithCudaState, self).__init__()
@@ -133,8 +135,8 @@ class RegionLoss(BaseLossWithCudaState):
         self.loss_cls = None
         self.loss_tot = None
 
-        self.mse = nn.MSELoss(size_average=False)
-        self.mse = nn.MSELoss(size_average=False)
+        self.coord_mse = nn.MSELoss(size_average=False)
+        self.conf_mse = nn.MSELoss(size_average=False)
         self.cls_critrion = nn.CrossEntropyLoss(size_average=False)
 
         # Precompute relative anchors in tlbr format for iou computation
@@ -146,158 +148,65 @@ class RegionLoss(BaseLossWithCudaState):
 
         self.iou_mode = None
 
-    # def _output_to_boxes(self, output):
-    #     """
-    #     Returns boxes in normalized cxywh space and logspace
-
-    #     Maintains dimensions as much as possible
-
-    #     Args:
-    #         output (tensor): with shape [nB, nA, 5 + nC, nH, nW]
-    #     """
-    #     # Parameters
-    #     # output = output.view(nB
-    #     nB, nA, nC5, nH, nW = output.shape
-    #     assert nA == self.num_anchors
-    #     assert nC5 == self.num_classes + 5
-    #     nC = nC5 - 5
-    #     # assert nO == (nA * (5 + nC))
-
-    #     device = self.get_device()
-    #     self.anchors = self.anchors.to(device)
-    #     anchor_w = self.anchors[:, 0].contiguous().view(1, nA, 1, 1, 1)
-    #     anchor_h = self.anchors[:, 1].contiguous().view(1, nA, 1, 1, 1)
-
-    #     output_ = output.view(nB, nA, 5 + nC, nH, nW)
-
-    #     # The 0, 1, 2, and 3-rd output in the 3rd dim are bbox coords
-    #     coord = torch.zeros_like(output_[:, :, :4, :, :], device=device)
-    #     coord[:, :, 0:2, :, :] = output_[:, :, 0:2, :, :].sigmoid()  # tx,ty
-    #     coord[:, :, 2:4, :, :] = output_[:, :, 2:4, :, :]            # tw,th
-
-    #     # The 4-th output in the 3rd dim is an iou score
-    #     conf = output_[:, :, 4:5, :, :].sigmoid()
-
-    #     def swap_third_dim(x):
-    #         """ for yolo output makes the 3rd dim the last """
-    #         x = x.view(nB * nA, -1, nH * nW)
-    #         x = x.transpose(1, 2).contiguous()
-    #         x = x.view(nB, nA, nH, nW, -1)
-    #         return x
-
-    #     # The the rest of the outputs are class probabilities
-    #     if nC > 1:
-    #         cls = swap_third_dim(output_[:, :, 5:, :, :])
-
-    #     # Add center offsets to each grid cell in the network output.
-    #     lin_x = torch.linspace(
-    #         0, nW - 1, nW, device=device).repeat(nH, 1)
-    #     lin_y = torch.linspace(
-    #         0, nH - 1, nH, device=device).repeat(nW, 1).t().contiguous()
-
-    #     # Create prediction boxes
-    #     pred_cxywh = torch.FloatTensor(nB * nA * nH * nW, 4, device=device)
-    #     pred_cxywh[:, 0] = (coord[:, :, 0:1, :, :].data + lin_x).view(-1)
-    #     pred_cxywh[:, 1] = (coord[:, :, 1:2, :, :].data + lin_y).view(-1)
-    #     pred_cxywh[:, 2] = (coord[:, :, 2:3, :, :].data.exp() * anchor_w).view(-1)
-    #     pred_cxywh[:, 3] = (coord[:, :, 3:4, :, :].data.exp() * anchor_h).view(-1)
-
-    #     # conf.view(nB * nA * nW * nH, 1)
-    #     # coord.view(nB * nA, 4, nH * nC)
-    #     # coord2 = swap_third_dim(coord).view(-1, 4)
-
-    #     return coord, conf, cls, pred_cxywh
-
-    # def fw2(self):
-    #     _tup = self.build_targets(
-    #         pred_cxywh, target, nH, nW, seen=seen, gt_weights=gt_weights)
-    #     coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = _tup
-
-    #     # Replicate along the third dim
-    #     coord_mask = coord_mask.expand_as(tcoord)
-
-    #     if nC > 1:
-    #         tcls = tcls.view(-1)[cls_mask.view(-1)].long()
-    #         cls_mask = cls_mask.view(-1, 1).repeat(1, nC)
-
-    #     tcoord = Variable(tcoord, requires_grad=False)
-    #     tconf = Variable(tconf, requires_grad=False)
-    #     coord_mask = Variable(coord_mask, requires_grad=False)
-    #     conf_mask = Variable(conf_mask.sqrt(), requires_grad=False)
-
-    #     tconf = tconf.view(nB, nA, 1, nH, nW)
-    #     conf_mask = conf_mask.view(nB, nA, 1, nH, nW)
-    #     coord_mask = coord_mask.view(nB, nA, 4, nH, nW)
-    #     cls_mask = cls_mask.view(nB, nA, nH, nW, nC)  # note the difference
-
-    #     if nC > 1:
-    #         tcls = Variable(tcls, requires_grad=False)
-    #         cls_mask = Variable(cls_mask, requires_grad=False)
-    #         pcls = cls[cls_mask].view(-1, nC)
-
-    #     # Compute losses
-
-    #     # corresponds to delta_region_box
-    #     loss_coord = self.coord_scale * self.mse(coord * coord_mask, tcoord * coord_mask) / nB
-    #     loss_conf = self.mse(conf * conf_mask, tconf * conf_mask) / nB
-    #     if nC > 1 and cls.numel():
-    #         loss_cls = self.class_scale * 2 * self.cls_critrion(pcls, tcls) / nB
-    #         loss_tot = loss_coord + loss_conf + loss_cls
-    #         self.loss_cls = float(loss_cls.data.cpu().numpy())
-    #     else:
-    #         self.loss_cls = 0
-    #         loss_tot = loss_coord + loss_conf
-
-    #     self.loss_tot = float(loss_tot.data.cpu().numpy())
-    #     self.loss_coord = float(loss_coord.data.cpu().numpy())
-    #     self.loss_conf = float(loss_conf.data.cpu().numpy())
-    #     pass
-
     @profiler.profile
     def forward(self, output, target, seen=0, gt_weights=None):
         """ Compute Region loss.
 
         Args:
             output (torch.autograd.Variable): Output from the network
+                should have shape [B, A, 5 + C, H, W]
+
             target (torch.Tensor): the shape should be [B, T, 5], where B is
                 the batch size, T is the maximum number of boxes in an item,
                 and the final dimension should correspond to [class_idx,
                 center_x, center_y, width, height]. Items with fewer than T
                 boxes should be padded with dummy boxes with class_idx=-1.
-            seen (int): if specified, overrides the `seen` attribute read from `self.net` (default None)
+
+            seen (int): number of training batches the networks has "seen"
+
+        Example:
+            >>> nC = 2
+            >>> self = RegionLoss(num_classes=nC, anchors=np.array([[1, 1]]))
+            >>> nA = len(self.anchors)
+            >>> # one batch, with one anchor, with 2 classes and 3x3 grid cells
+            >>> output = torch.rand(1, nA, 5 + nC, 3, 3)
+            >>> # one batch, with one true box
+            >>> target = torch.rand(1, 1, 5)
+            >>> target[..., 0] = 0
+            >>> seen = 0
+            >>> gt_weights = None
+            >>> self.forward(output, target, seen)
         """
         # Parameters
-        nB = output.data.size(0)
-        nA = self.num_anchors
+        nB, nA, nC5, nH, nW = output.data.shape
         nC = self.num_classes
-        nH = output.data.size(2)
-        nW = output.data.size(3)
+        assert nA == self.num_anchors
+        assert nC5 == self.num_classes + 5
 
         device = self.get_device()
         self.rel_anchors_boxes.data = self.rel_anchors_boxes.data.to(device)
         self.anchors = self.anchors.to(device)
 
-        if isinstance(target, Variable):
-            target = target.data
+        # if isinstance(target, Variable):
+        #     target = target.data
 
         # Get x,y,w,h,conf,*cls_probs from the third dimension
-        output_ = output.view(nB, nA, 5 + nC, nH, nW)
+        # output_ = output.view(nB, nA, 5 + nC, nH, nW)
 
-        coord = torch.zeros_like(output_[:, :, :4, :, :])
-        coord[:, :, 0:2, :, :] = output_[:, :, 0:2, :, :].sigmoid()  # tx,ty
-        coord[:, :, 2:4, :, :] = output_[:, :, 2:4, :, :]            # tw,th
+        coord = torch.zeros_like(output[:, :, 0:4, :, :])
+        coord[:, :, 0:2, :, :] = output[:, :, 0:2, :, :].sigmoid()  # tx,ty
+        coord[:, :, 2:4, :, :] = output[:, :, 2:4, :, :]            # tw,th
 
-        conf = output_[:, :, 4:5, :, :].sigmoid()
+        conf = output[:, :, 4:5, :, :].sigmoid()
         if nC > 1:
-            # Swaps the dimensions to be [B, A, H, W, C]
-            cls_probs = output_[:, :, 5:].contiguous().view(nB * nA, nC, nH * nW).transpose(1, 2).contiguous().view(nB, nA, nH, nW, nC)
-
-        # coord = coord.view(nB, nA, 4, nH, nW)
-        # conf  = conf.view(nB, nA, 1, nH, nW)
+            # Swaps the dimensions from [B, A, C, H, W] to be [B, A, H, W, C]
+            cls_probs = output[:, :, 5:, :, :].contiguous().view(nB * nA, nC, nH * nW).transpose(1, 2).contiguous().view(nB, nA, nH, nW, nC)
 
         with torch.no_grad():
             # Create prediction boxes
             pred_cxywh = torch.empty(nB * nA * nH * nW, 4, dtype=torch.float32, device=device)
+
+            # Grid cell center offsets
             lin_x = torch.linspace(0, nW - 1, nW).repeat(nH, 1).to(device)
             lin_y = torch.linspace(0, nH - 1, nH).repeat(nW, 1).t().contiguous().to(device)
             anchor_w = self.anchors[:, 0].contiguous().view(nA, 1).view(1, nA, 1, 1, 1)
@@ -335,30 +244,48 @@ class RegionLoss(BaseLossWithCudaState):
         # Compute losses
 
         # corresponds to delta_region_box
-        loss_coord = self.coord_scale * self.mse(coord * coord_mask, tcoord * coord_mask) / nB
-        loss_conf = self.mse(conf * conf_mask, tconf * conf_mask) / nB
+        """
+        Notes:
+            In the yolo paper the function used to compute loss is
+                loss = coord_scale * (true_x - pred_x) ** 2
+
+            The derivative of this function wrt true_x is
+                delta = coord_scale * 2 * (true_x - pred_x)
+
+            However, in the darknet code the derivative is computed as:
+                delta = scale * (true_x - pred_x);
+
+                where scale is:
+                    scale = l.coord_scale * (2 - truth.w * truth.h)
+
+            Therefore, to be compatible with the original code we add a
+            seemingly random multiply by .5 in our MSE computation so the torch
+            autodiff algorithm produces the same result as darknet.
+        """
+        loss_coord = self.coord_scale * 0.5 * self.coord_mse(coord * coord_mask, tcoord * coord_mask) / nB
+
+        # object_scale and noobject_scale are incorporated in conf_mask.
+        loss_conf = 0.5 * self.conf_mse(conf * conf_mask, tconf * conf_mask) / nB
+
         if nC > 1 and masked_cls_probs.numel():
-            loss_cls = self.class_scale * 2 * self.cls_critrion(masked_cls_probs, masked_tcls) / nB
+            loss_cls = self.class_scale * self.cls_critrion(masked_cls_probs, masked_tcls) / nB
             loss_tot = loss_coord + loss_conf + loss_cls
             self.loss_cls = float(loss_cls.data.cpu().numpy())
         else:
             self.loss_cls = 0
             loss_tot = loss_coord + loss_conf
 
+        # Record loss components as module members
         self.loss_tot = float(loss_tot.data.cpu().numpy())
         self.loss_coord = float(loss_coord.data.cpu().numpy())
         self.loss_conf = float(loss_conf.data.cpu().numpy())
 
         return loss_tot
 
-    def build_targets(self, pred_cxywh, target, nH, nW, seen=0, gt_weights=None):
-        """ Compare prediction boxes and targets, convert targets to network output tensors """
-        return self._build_targets_tensor(pred_cxywh, target, nH, nW, seen=seen, gt_weights=gt_weights)
-
     @profiler.profile
-    def _build_targets_tensor(self, pred_cxywh, target, nH, nW, seen=0, gt_weights=None):
+    def build_targets(self, pred_cxywh, target, nH, nW, seen=0, gt_weights=None):
         """
-        Compare prediction boxes and ground truths, convert ground truths to network output tensors
+        Compare prediction boxes and targets, convert targets to network output tensors
 
         Args:
             pred_cxywh (Tensor):   shape [B * A * W * H, 4] in normalized cxywh format
@@ -404,7 +331,7 @@ class RegionLoss(BaseLossWithCudaState):
             >>> nB = len(gt_weights)
             >>> pred_cxywh = torch.rand(nB, len(anchors), nH, nW, 4).view(-1, 4)
             >>> seen = 0
-            >>> coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = self._build_targets_tensor(pred_cxywh, target, nH, nW, seen, gt_weights)
+            >>> coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = self.build_targets(pred_cxywh, target, nH, nW, seen, gt_weights)
         """
         gtempty = (target.numel() == 0)
 
@@ -431,17 +358,29 @@ class RegionLoss(BaseLossWithCudaState):
         tcls = torch.zeros(nB, nA, 1, nH, nW, device=device)
 
         # Create weights to determine which outputs are punished
+        # By default we punish all outputs for not having correct iou
+        # objectness prediction. The other masks default to zero meaning that
+        # by default we will not punish a prediction for having a different
+        # coordinate or class label (later the groundtruths will override these
+        # defaults for select grid cells and anchors)
         coord_mask = torch.zeros(nB, nA, 1, nH, nW, device=device)
         conf_mask = torch.ones(nB, nA, 1, nH, nW, device=device)
         cls_mask = torch.zeros(nB, nA, 1, nH, nW, device=device).byte()
 
+        # Default conf_mask to the noobject_scale
         conf_mask = conf_mask * self.noobject_scale
 
-        # When the network is starting, encourage background boxes to expand
+        # encourage the network to predict boxes centered on the grid cells by
+        # setting the default target xs and ys to be (.5, .5) (i.e. the
+        # relative center of a grid cell) fill the mask with ones so all
+        # outputs are punished for not predicting center anchor locations ---
+        # unless tcoord is overriden by a real groundtruth target later on.
         if seen < 12800:
             coord_mask.fill_(1)
-            tcoord[:, :, 0, ...].fill_(0.5)
-            tcoord[:, :, 1, ...].fill_(0.5)
+            # By default encourage the network to predict no shift
+            tcoord[:, :, 0:2, :, :].fill_(0.5)
+            # By default encourage the network to predict no scale (in logspace)
+            tcoord[:, :, 0:2, :, :].fill_(0.0)
 
         if gtempty:
             return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
@@ -454,9 +393,9 @@ class RegionLoss(BaseLossWithCudaState):
         gt_boxes_norm = util.Boxes(target[..., 1:5], 'cxywh')
         gt_boxes = gt_boxes_norm.scale([nW, nH])
         # Construct "relative" versions of the true boxes, centered at 0
+        # This will allow them to be compared to the anchor boxes.
         rel_gt_boxes = gt_boxes.copy()
         rel_gt_boxes.data[..., 0:2] = 0
-        # rel_gt_boxes = gt_boxes.translate(-gt_boxes.xy_center)
 
         # true boxes with a class of -1 are fillers, ignore them
         gt_isvalid = (gt_class >= 0)
@@ -477,7 +416,8 @@ class RegionLoss(BaseLossWithCudaState):
 
             # Assign groundtruth boxes to anchor boxes
             anchor_ious = self.rel_anchors_boxes.ious(batch_rel_gt_boxes, bias=0)
-            _, best_ns = anchor_ious.max(dim=0)
+            # _, best_ns = anchor_ious.max(dim=0)
+            _, best_anchor_idxs = anchor_ious.max(dim=0)
 
             # Assign groundtruth boxes to predicted boxes
             ious = cur_pred_boxes.ious(cur_gt_boxes, bias=0)
@@ -490,32 +430,42 @@ class RegionLoss(BaseLossWithCudaState):
                 if not flags[t]:
                     break
 
+                gt_box_ = cur_gt_boxes[t]
                 weight = 1 if gt_weights is None else gt_weights[bx][t]
 
-                gx, gy, gw, gh = gt_boxes[bx][t].to_cxywh().data
+                # The assigned (best) anchor index
+                ax = best_anchor_idxs[t].item()
+                anchor_w, anchor_h = self.anchors[ax]
+
+                # Compute this ground truth's grid cell
+                gx, gy, gw, gh = gt_box_.to_cxywh().data
                 gi = min(nW - 1, max(0, int(gx)))
                 gj = min(nH - 1, max(0, int(gy)))
 
-                best_n = best_ns[t]
-                best_aw, best_ah = self.anchors[best_n]
+                # The prediction will be punished if it does not match this true box
+                # pred_box_ = cur_pred_boxes[best_n, gj, gi]
 
-                gt_box_ = gt_boxes[bx][t]
-                pred_box_ = cur_pred_boxes[best_n, gj, gi]
-
-                iou = gt_box_[None, :].ious(pred_box_[None, :], bias=0)[0, 0]
+                # Get the precomputed iou of the truth with this box
+                # corresponding to the assigned anchor and grid cell
+                iou = ious[ax, gj, gi, t].item()
 
                 # Mark that we will care about this prediction with some weight
-                coord_mask[bx, best_n, 0, gj, gi] = weight
-                cls_mask[bx, best_n, 0, gj, gi] = (weight > .5)
-                conf_mask[bx, best_n, 0, gj, gi] = self.object_scale * weight
+                coord_mask[bx, ax, 0, gj, gi] = weight
+                cls_mask[bx, ax, 0, gj, gi] = (weight > .5)
+                conf_mask[bx, ax, 0, gj, gi] = self.object_scale * weight
 
-                # The prediction will be punished if it does not match this
-                tcoord[bx, best_n, 0, gj, gi] = gx - gi
-                tcoord[bx, best_n, 1, gj, gi] = gy - gj
-                tcoord[bx, best_n, 2, gj, gi] = math.log(gw / best_aw)
-                tcoord[bx, best_n, 3, gj, gi] = math.log(gh / best_ah)
-                tconf[bx, best_n, 0, gj, gi] = iou
-                tcls[bx, best_n, 0, gj, gi] = target[bx, t, 0]
+                # The true box is converted into coordinates comparable to the
+                # network outputs by:
+                # (1) we center the true box on its assigned grid cell
+                # (2) we divide its width and height by its assigned anchor
+                # (3) we take the log of width and height because the raw
+                #     network wh outputs are in logspace.
+                tcoord[bx, ax, 0, gj, gi] = gx - gi
+                tcoord[bx, ax, 1, gj, gi] = gy - gj
+                tcoord[bx, ax, 2, gj, gi] = math.log(gw / anchor_w)
+                tcoord[bx, ax, 3, gj, gi] = math.log(gh / anchor_h)
+                tconf[bx, ax, 0, gj, gi] = iou
+                tcls[bx, ax, 0, gj, gi] = target[bx, t, 0]
 
         return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
 

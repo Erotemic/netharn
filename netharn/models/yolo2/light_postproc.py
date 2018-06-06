@@ -45,7 +45,7 @@ class GetBoundingBoxes(object):
             >>> torch.random.manual_seed(0)
             >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
-            >>> output = torch.randn(8, 125, 9, 9)
+            >>> output = torch.randn(8, 5, 5 + 20, 9, 9)
             >>> boxes = self(output)
             >>> assert len(boxes) == 8
             >>> assert all(b.shape[1] == 6 for b in boxes)
@@ -60,7 +60,7 @@ class GetBoundingBoxes(object):
             >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> import ubelt
-            >>> output = torch.randn(16, 125, 9, 9)
+            >>> output = torch.randn(16, 5, 5 + 20, 9, 9)
             >>> output = output.cuda()
             >>> for timer in ubelt.Timerit(21, bestof=3, label='mode0+gpu'):
             >>>     output_ = output.clone()
@@ -73,7 +73,7 @@ class GetBoundingBoxes(object):
             >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> import ubelt
-            >>> output = torch.randn(16, 125, 9, 9)
+            >>> output = torch.randn(16, 5, 5 + 20, 9, 9)
             >>> output = output.cuda()
             >>> for timer in ubelt.Timerit(21, bestof=3, label='mode1+gpu'):
             >>>     output_ = output.clone()
@@ -86,7 +86,7 @@ class GetBoundingBoxes(object):
             >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> import ubelt
-            >>> output = torch.randn(16, 125, 9, 9)
+            >>> output = torch.randn(16, 5, 5 + 20, 9, 9)
             >>> #
             >>> for timer in ubelt.Timerit(21, bestof=3, label='mode0+cpu'):
             >>>     output_ = output.clone()
@@ -197,7 +197,7 @@ class GetBoundingBoxes(object):
             >>> torch.random.manual_seed(0)
             >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
-            >>> output = torch.randn(16, 125, 9, 9)
+            >>> output = torch.randn(16, 5, 5 + 20, 9, 9)
             >>> from netharn import XPU
             >>> output = XPU.cast('auto').move(output)
             >>> boxes = self._get_boxes(output.data)
@@ -210,7 +210,7 @@ class GetBoundingBoxes(object):
             >>> torch.random.manual_seed(0)
             >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
-            >>> output = torch.randn(16, 125, 9, 9)
+            >>> output = torch.randn(16, 5, 5 + 20, 9, 9)
             >>> from netharn import XPU
             >>> output = XPU.cast('auto').move(output)
             >>> for timer in ub.Timerit(100, bestof=10, label='mode 0'):
@@ -268,12 +268,7 @@ class GetBoundingBoxes(object):
 
         # Compute class_score
         if self.num_classes > 1:
-            if torch.__version__.startswith('0.3'):
-                cls_scores = torch.nn.functional.softmax(
-                    Variable(output_[:, :, 5:, :], volatile=True), 2).data
-            else:
-                cls_scores = torch.nn.functional.softmax(
-                    output_[:, :, 5:, :], 2)
+            cls_scores = torch.nn.functional.softmax(output_[:, :, 5:, :], 2)
             cls_max, cls_max_idx = torch.max(cls_scores, 2)
             cls_max.mul_(output_[:, :, 4, :])
         else:
@@ -360,7 +355,7 @@ class GetBoundingBoxes(object):
             >>> torch.random.manual_seed(0)
             >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.01, nms_thresh=0.5)
-            >>> output = torch.randn(8, 125, 9, 9)
+            >>> output = torch.randn(8, 5, 5 + 20, 9, 9)
             >>> boxes_ = self._get_boxes(output.data)
             >>> boxes = torch.Tensor(boxes_[0])
             >>> ans0 = self._nms(boxes, mode=0)
