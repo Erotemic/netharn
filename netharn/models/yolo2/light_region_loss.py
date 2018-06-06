@@ -407,6 +407,22 @@ class RegionLoss(BaseLossWithCudaState):
         # true boxes with a class of -1 are fillers, ignore them
         gt_isvalid = (gt_class >= 0)
 
+        # Compute the grid cell for each groundtruth box
+        true_xs, true_ys = gt_boxes.components[0:2]
+        true_is = true_xs.long().clamp_(0, nW - 1)
+        true_js = true_ys.long().clamp_(0, nH - 1)
+
+        if gt_weights is None:
+            # If unspecified give each groundtruth a default weight of 1
+            gt_weights = torch.ones_like(target[..., 0], device=device)
+
+        # Undocumented darknet detail: multiply coord weight by two
+        # minus the area of the true box in normalized coordinates.
+        # the square root is because the weight is multiplied on the
+        # inside of the MSE. We get the right loss via:
+        # diferentiate of s * .5 * (sqrt(w) * t - sqrt(w) * x) ** 2 wrt
+        gt_coord_weights = (gt_weights * (2.0 - gt_boxes_norm.area[..., 0])).sqrt()
+
         # Loop over ground_truths and construct tensors
         for bx in range(nB):
             # Get the actual groundtruth boxes for this batch item
@@ -433,21 +449,20 @@ class RegionLoss(BaseLossWithCudaState):
             # Set confidence mask of matching detections to 0
             conf_mask[bx].view(-1)[cur_ious.view(-1) > self.thresh] = 0
 
-            for t in range(nT):
-                if not flags[t]:
-                    break
-
+            for t in range(len(cur_gt_boxes)):
                 gt_box_ = cur_gt_boxes[t]
-                weight = 1.0 if gt_weights is None else gt_weights[bx][t]
+                # coord weights are slightly different than other weights
+                weight = gt_weights[bx, t]
+                coord_weight = gt_coord_weights[bx, t]
 
                 # The assigned (best) anchor index
                 ax = best_anchor_idxs[t].item()
                 anchor_w, anchor_h = self.anchors[ax]
 
                 # Compute this ground truth's grid cell
-                gx, gy, gw, gh = gt_box_.to_cxywh().data
-                gi = min(nW - 1, max(0, int(gx)))
-                gj = min(nH - 1, max(0, int(gy)))
+                gx, gy, gw, gh = gt_box_.data
+                gi = true_is[bx, t].item()
+                gj = true_js[bx, t].item()
 
                 # The prediction will be punished if it does not match this true box
                 # pred_box_ = cur_pred_boxes[best_n, gj, gi]
@@ -458,11 +473,6 @@ class RegionLoss(BaseLossWithCudaState):
 
                 # Mark that we will care about this prediction with some weight
 
-                # Undocumented darknet detail: multiply coord weight by two
-                # minus the area of the true box in normalized coordinates.
-                # the square root is because the weight is multiplied on the
-                # inside of the MSE. We get the right loss via:
-                # diferentiate of s * .5 * (sqrt(w) * t - sqrt(w) * x) ** 2 wrt
                 coord_weight = (weight * (2 - gw * gh / (nW * nH))) ** .5
                 coord_mask[bx, ax, 0, gj, gi] = coord_weight
                 cls_mask[bx, ax, 0, gj, gi] = int(weight > .5)
