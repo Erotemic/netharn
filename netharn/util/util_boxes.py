@@ -529,7 +529,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         return subset
 
     def __eq__(self, other):
-        return np.all(self.data == other.data) and self.format == other.format
+        return np.array_equal(self.data, other.data) and self.format == other.format
 
     def __nice__(self):
         # return self.format + ', shape=' + str(list(self.data.shape))
@@ -605,7 +605,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         """ converts tensors to numpy """
         new_self = self.copy()
         if torch.is_tensor(self.data):
-            new_self.data = new_self.data.cpu().numpy()
+            new_self.data = new_self.data.to('cpu').numpy()
         return new_self
 
     def ious(self, other, bias=0, mode=None):
