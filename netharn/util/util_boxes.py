@@ -529,6 +529,19 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         return subset
 
     def __eq__(self, other):
+        """
+        Tests equality of two Boxes objects
+        
+        Example:
+            >>> box0 = box1 = Boxes([[1, 2, 3, 4]], 'xywh')
+            >>> box2 = Boxes(box0.data, 'tlbr')
+            >>> box3 = Boxes([[0, 2, 3, 4]], box0.format)
+            >>> box4 = Boxes(box0.data, box2.format)
+            >>> assert box0 == box1
+            >>> assert not box0 == box2
+            >>> assert not box2 == box3
+            >>> assert box2 == box4
+        """
         return np.array_equal(self.data, other.data) and self.format == other.format
 
     def __nice__(self):
@@ -605,7 +618,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         """ converts tensors to numpy """
         new_self = self.copy()
         if torch.is_tensor(self.data):
-            new_self.data = new_self.data.to('cpu').numpy()
+            new_self.data = new_self.data.cpu().numpy()
         return new_self
 
     def ious(self, other, bias=0, mode=None):
