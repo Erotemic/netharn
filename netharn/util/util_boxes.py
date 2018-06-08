@@ -32,14 +32,17 @@ def box_ious(boxes1, boxes2, bias=0, mode=None):
     Example:
         >>> boxes1 = Boxes.random(5, scale=10.0, rng=0, format='tlbr').data
         >>> boxes2 = Boxes.random(7, scale=10.0, rng=1, format='tlbr').data
-        >>> ious_c = box_ious(boxes1, boxes2, bias=0, mode='c')
-        >>> ious_py = box_ious(boxes1, boxes2, bias=0, mode='py')
-        >>> assert np.all(np.isclose(ious_c, ious_py))
-        >>> ious_c = box_ious(boxes1, boxes2, bias=1, mode='c')
-        >>> ious_py = box_ious(boxes1, boxes2, bias=1, mode='py')
-        >>> assert np.all(np.isclose(ious_c, ious_py))
+        >>> if bbox_ious_c is not None:
+        >>>     ious_c = box_ious(boxes1, boxes2, bias=0, mode='c')
+        >>>     ious_py = box_ious(boxes1, boxes2, bias=0, mode='py')
+        >>>     assert np.all(np.isclose(ious_c, ious_py))
+        >>>     ious_c = box_ious(boxes1, boxes2, bias=1, mode='c')
+        >>>     ious_py = box_ious(boxes1, boxes2, bias=1, mode='py')
+        >>>     assert np.all(np.isclose(ious_c, ious_py))
     """
     if mode == 'torch' or torch.is_tensor(boxes1):
+        # TODO: add tests for equality with other methods or show why it should
+        # be different
         return box_ious_torch(boxes1, boxes2, bias)
     if mode is None:
         mode = 'py' if bbox_ious_c is None else 'c'
