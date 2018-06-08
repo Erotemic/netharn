@@ -55,6 +55,7 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
         python -m netharn.util.mplutil multi_plot:1 --show
 
     Example:
+        >>> autompl()
         >>> xdata = [1, 2, 3, 4, 5]
         >>> ydata_list = [[1, 2, 3, 4, 5], [3, 3, 3, 3, 3], [5, 4, np.nan, 2, 1], [4, 3, np.nan, 1, 0]]
         >>> kwargs = {'label': ['spamΣ', 'eggs', 'jamµ', 'pram'],  'linestyle': '-'}
@@ -63,6 +64,7 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
         >>> show_if_requested()
 
     Example:
+        >>> autompl()
         >>> fig1 = multi_plot([1, 2, 3], [4, 5, 6])
         >>> fig2 = multi_plot([1, 2, 3], [4, 5, 6], fnum=4)
         >>> show_if_requested()
@@ -569,6 +571,7 @@ def figure(fnum=None, pnum=(1, 1, 1), title=None, figtitle=None, doclf=False,
         python -m netharn.util.mplutil figure:0 --show
 
     Example:
+        >>> autompl()
         >>> import matplotlib.pyplot as plt
         >>> fnum = 1
         >>> fig = figure(fnum, (2, 2, 1))
@@ -578,6 +581,7 @@ def figure(fnum=None, pnum=(1, 1, 1), title=None, figtitle=None, doclf=False,
         >>> show_if_requested()
 
     Example:
+        >>> autompl()
         >>> import matplotlib.pyplot as plt
         >>> fnum = 1
         >>> fig = figure(fnum, (2, 2, 1))
@@ -932,6 +936,7 @@ def _dark_background(ax=None, doubleit=False, force=False):
 
     Example:
         >>> # ENABLE_DOCTEST
+        >>> autompl()
         >>> fig = figure()
         >>> _dark_background()
         >>> show_if_requested()
@@ -1014,6 +1019,7 @@ def set_figtitle(figtitle, subtitle='', forcefignum=True, incanvas=True,
 
     Example:
         >>> # DISABLE_DOCTEST
+        >>> autompl()
         >>> fig = figure(fnum=1, doclf=True)
         >>> result = set_figtitle(figtitle='figtitle', fig=fig)
         >>> # xdoc: +REQUIRES(--show)
@@ -1061,6 +1067,7 @@ def legend(loc='best', fontproperties=None, size=None, fc='w', alpha=1,
 
     Ignore:
         >>> # ENABLE_DOCTEST
+        >>> autompl()
         >>> loc = 'best'
         >>> xdata = np.linspace(-6, 6)
         >>> ydata = np.sin(xdata)
@@ -1123,12 +1130,13 @@ def distinct_colors(N, brightness=.878, randomize=True, hue_range=(0.0, 1.0), cm
 
     Ignore:
         >>> # build test data
-        >>> N = ub.smartcast(ub.get_argval('--N', default=2), int)
+        >>> autompl()
+        >>> N = ub.smartcast(ub.get_argval('--N', default=2), int)  # FIXME
         >>> randomize = not ub.argflag('--no-randomize')
         >>> brightness = 0.878
         >>> # execute function
         >>> cmap_seed = ub.get_argval('--cmap_seed', default=None)
-        >>> hue_range = ub.smartcast(ub.get_argval('--hue-range', default=(0.00, 1.0)), list)
+        >>> hue_range = ub.smartcast(ub.get_argval('--hue-range', default=(0.00, 1.0)), list)  #FIXME
         >>> RGB_tuples = distinct_colors(N, brightness, randomize, hue_range, cmap_seed=cmap_seed)
         >>> # verify results
         >>> assert len(RGB_tuples) == N
@@ -1226,6 +1234,7 @@ def distinct_markers(num, style='astrisk', total=None, offset=0):
         python -m .draw_func2 --exec-distinct_markers --style=polygon --show
 
     Ignore:
+        >>> autompl()
         >>> style = ub.get_argval('--style', type_=str, default='astrisk')
         >>> marker_list = distinct_markers(10, style)
         >>> x_data = np.arange(0, 3)
@@ -1464,6 +1473,7 @@ def save_parts(fig, fpath, grouped_axes=None, dpi=None):
 
     Ignore:
         >>> # DISABLE_DOCTEST
+        >>> autompl()
         >>> import matplotlib as mpl
         >>> import matplotlib.pyplot as plt
         >>> def testimg(fname):
@@ -1566,8 +1576,46 @@ def aggensure():
     if current_backend != 'agg':
         ipython = _current_ipython_session()
         if not ipython:
+            set_mpl_backend('agg')
+
+
+def set_mpl_backend(backend):
+    """
+    Args:
+        backend (str): name of backend to use (e.g. Agg, PyQt)
+    """
+    import sys
+    import matplotlib as mpl
+    if backend.lower().startswith('qt'):
+        # handle interactive qt case
+        qtensure()
+    if backend != mpl.get_backend():
+        # If we have already imported pyplot, then we need to use experimental
+        # behavior. Otherwise, we can just set the backend.
+        if 'matplotlib.pyplot' in sys.modules:
             from matplotlib import pyplot as plt
-            plt.switch_backend('agg')
+            plt.switch_backend(backend)
+        else:
+            mpl.use(backend)
+
+
+def autompl():
+    """
+    Uses platform heuristics to automatically set the mpl backend.
+    If no display is available it will be set to agg, otherwise we will try to
+    use the cross-platform Qt5Agg backend.
+    """
+    import os
+    import sys
+    if sys.platform.startswith('win32'):
+        # TODO: something reasonable
+        pass
+    else:
+        DISPLAY = os.environ.get('DISPLAY', '')
+        if not DISPLAY:
+            set_mpl_backend('agg')
+        else:
+            set_mpl_backend('Qt5Agg')
 
 
 def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
@@ -1601,6 +1649,7 @@ def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
         tuple: (fig, ax)
 
     Ignore:
+        >>> autompl()
         >>> img_fpath = ut.grab_test_imgpath('carl.jpg')
         >>> img = util.imread(img_fpath)
         >>> (fig, ax) = imshow(img)
@@ -1742,6 +1791,7 @@ def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
         cb : matplotlib colorbar object
 
     Ignore:
+        >>> autompl()
         >>> scalars = np.array([-1, -2, 1, 1, 2, 7, 10])
         >>> cmap_ = 'plasma'
         >>> logscale = False
@@ -2260,7 +2310,7 @@ def draw_boxes(boxes, box_format='xywh', color='blue', labels=None,
 
     Example:
         >>> from netharn.util.mplutil import *
-        >>> qtensure()  # xdoc: +SKIP
+        >>> autompl()
         >>> bboxes = [[.1, .1, .6, .3], [.3, .5, .5, .6]]
         >>> col = draw_boxes(bboxes)
     """

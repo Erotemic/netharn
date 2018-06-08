@@ -180,6 +180,9 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
             bbox and class_idxs are variable-length
             bbox is in x1,y1,x2,y2 (i.e. tlbr) format
 
+        CommandLine:
+            xdoctest ~/code/netharn/netharn/data/voc.py VOCDataset.__getitem__ --show --voc
+
         Example:
             >>> # xdoc: +REQUIRES(--voc)
             >>> self = VOCDataset()
@@ -187,12 +190,12 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
             >>> hwc = chw.numpy().transpose(1, 2, 0)
             >>> boxes, class_idxs = label
             >>> # xdoc: +REQUIRES(--show)
-            >>> from netharn.util import mplutil
-            >>> mplutil.qtensure()  # xdoc: +SKIP
-            >>> mplutil.figure(fnum=1, doclf=True)
-            >>> mplutil.imshow(hwc, colorspace='rgb')
-            >>> mplutil.draw_boxes(boxes.numpy(), box_format='tlbr')
-            >>> mplutil.show_if_requested()
+            >>> import netharn as nh
+            >>> nh.util.qtensure()  # xdoc: +SKIP
+            >>> nh.util.figure(fnum=1, doclf=True)
+            >>> nh.util.imshow(hwc, colorspace='rgb')
+            >>> nh.util.draw_boxes(boxes.numpy(), box_format='tlbr')
+            >>> nh.util.show_if_requested()
         """
         if isinstance(index, tuple):
             # Get size index from the batch loader

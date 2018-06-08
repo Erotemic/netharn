@@ -90,8 +90,9 @@ class RegionLoss(BaseLossWithCudaState):
         >>> output = network.forward(im_data)
         >>> loss = float(self.forward(output, target))
         >>> print(f'loss = {loss:.2f}')
-        loss = 20.18
         >>> print(f'output.sum() = {output.sum():.2f}')
+
+        loss = 20.18
         output.sum() = 2.15
 
     Example:
@@ -106,8 +107,9 @@ class RegionLoss(BaseLossWithCudaState):
         >>> output = network.forward(im_data)
         >>> loss = float(self.forward(output, target))
         >>> print(f'output.sum() = {output.sum():.2f}')
-        output.sum() = 2.15
         >>> print(f'loss = {loss:.2f}')
+
+        output.sum() = 2.15
         loss = 16.47
     """
 
@@ -340,7 +342,7 @@ class RegionLoss(BaseLossWithCudaState):
 
         # Parameters
         nB = target.shape[0] if not gtempty else 0
-        nT = target.shape[1] if not gtempty else 0
+        # nT = target.shape[1] if not gtempty else 0
         nA = self.num_anchors
 
         if nB == 0:

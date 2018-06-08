@@ -27,6 +27,7 @@ else:
     from netharn.util import util_numpy
     from netharn.util import util_random
     from netharn.util import util_resources
+    from netharn.util import util_slider
     from netharn.util import util_subextreme
 
     from netharn.util.imutil import (CV2_INTERPOLATION_TYPES, adjust_gamma,
@@ -38,7 +39,7 @@ else:
                                      make_channels_comparable,
                                      overlay_alpha_images, overlay_colorized,
                                      run_length_encoding, wide_strides_1d,)
-    from netharn.util.mplutil import (Color, PlotNums, adjust_subplots,
+    from netharn.util.mplutil import (Color, PlotNums, adjust_subplots, aggensure,
                                       axes_extent, colorbar, colorbar_image,
                                       copy_figure_to_clipboard,
                                       deterministic_shuffle, dict_intersection,
@@ -85,14 +86,17 @@ else:
     from netharn.util.util_random import (ensure_rng, random_combinations,
                                           random_product, shuffle,)
     from netharn.util.util_resources import (ensure_ulimit,)
+    from netharn.util.util_slider import (SlidingIndexDataset, SlidingSlices,
+                                          Stitcher,)
     from netharn.util.util_subextreme import (argsubmax, argsubmaxima,)
 
     __all__ = ['Boxes', 'CV2_INTERPOLATION_TYPES', 'CacheStamp', 'Color',
                'CumMovingAve', 'ExpMovingAve', 'IS_PROFILING',
                'InternalRunningStats', 'JSONEncoder', 'KernprofParser',
                'MovingAve', 'NumpyAwareJSONEncoder', 'NumpyEncoder', 'PlotNums',
-               'RunningStats', 'WindowedMovingAve', 'absdev', 'adjust_gamma',
-               'adjust_subplots', 'align_paths', 'apply_grouping', 'argsubmax',
+               'RunningStats', 'SlidingIndexDataset', 'SlidingSlices', 'Stitcher',
+               'WindowedMovingAve', 'absdev', 'adjust_gamma', 'adjust_subplots',
+               'aggensure', 'align_paths', 'apply_grouping', 'argsubmax',
                'argsubmaxima', 'atleast_3channels', 'atleast_nd', 'axes_extent',
                'box_ious', 'box_ious_py', 'box_ious_torch', 'check_aligned',
                'colorbar', 'colorbar_image', 'compact_idstr', 'convert_colorspace',
@@ -123,5 +127,6 @@ else:
                'stats_dict', 'torch_utils', 'util_averages', 'util_boxes',
                'util_cachestamp', 'util_cv2', 'util_demodata', 'util_fname',
                'util_idstr', 'util_io', 'util_iter', 'util_json', 'util_numpy',
-               'util_random', 'util_resources', 'util_subextreme', 'walk_json',
-               'wide_strides_1d', 'write_arr', 'write_h5arr', 'write_json']
+               'util_random', 'util_resources', 'util_slider', 'util_subextreme',
+               'walk_json', 'wide_strides_1d', 'write_arr', 'write_h5arr',
+               'write_json']

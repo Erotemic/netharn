@@ -12,7 +12,7 @@ def demodata_hsv_image(w=200, h=200):
     Example:
         >>> rgb255 = demodata_hsv_image()
         >>> from netharn.util import mplutil
-        >>> mplutil.qtensure()  # xdoc: +SKIP
+        >>> mplutil.autompl()
         >>> mplutil.figure(doclf=True, fnum=1)
         >>> mplutil.imshow(rgb255, colorspace='rgb')
         >>> mplutil.show_if_requested()
@@ -62,7 +62,7 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         >>> assert np.all(det.augment_image(img) == det.augment_image(img))
         >>> # xdoc: +REQUIRES(--show)
         >>> from netharn.util import mplutil
-        >>> mplutil.qtensure()  # xdoc: +SKIP
+        >>> mplutil.autompl()
         >>> mplutil.figure(doclf=True, fnum=1)
         >>> self = HSVShift(0.1, 1.5, 1.5)
         >>> pnums = mplutil.PlotNums(8, 8)
@@ -171,7 +171,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         >>> # xdoc: +REQUIRES(--show)
         >>> from netharn import util
         >>> from netharn.util import mplutil
-        >>> mplutil.qtensure()  # xdoc: +SKIP
+        >>> mplutil.autompl()
         >>> #mplutil.figure(doclf=True, fnum=1)
         >>> #pnum_ = mplutil.PlotNums(3, 2)
         >>> #mplutil.imshow(util.draw_boxes_on_image(img, util.Boxes.from_imgaug(bboi)), pnum=pnum_(), title='orig')
