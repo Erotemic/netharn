@@ -715,7 +715,12 @@ def imread(fpath, **kw):
         else:
             image = cv2.imread(fpath, flags=cv2.IMREAD_UNCHANGED)
             if image is None:
-                raise IOError('OpenCV cannot read this image')
+                if exists(fpath):
+                    raise IOError('OpenCV cannot read this image: "{}", '
+                                  'but it exists'.format(fpath))
+                else:
+                    raise IOError('OpenCV cannot read this image: "{}", '
+                                  'because it does not exist'.format(fpath))
         return image
     except Exception as ex:
         print('Error reading fpath = {!r}'.format(fpath))
