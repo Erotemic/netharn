@@ -259,7 +259,7 @@ def iou_overlap(true_boxes, pred_box, bias=1):
         >>>                        [20,  0, 30, 10]])
         >>> pred_box = np.array([6, 2, 20, 10, .9])
         >>> overlaps = iou_overlap(true_boxes, pred_box)
-        >>> assert np.array_equal(overlaps, [0.21, 0.63, 0.04])
+        >>> assert np.array_equal(overlaps, [0.21, 0.63, 0.04]), str(overlaps)
     """
     # import yolo_utils
     true_boxes = np.array(true_boxes)

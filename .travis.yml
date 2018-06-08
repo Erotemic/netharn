@@ -9,17 +9,17 @@ cache:
 python:
   - "3.6"
 before_install:
-  - pip install pip -U
-  - pip install pytest -U
-  - pip install pytest-cov -U
-  - pip install codecov -U
-  - pip install xdoctest -U
-  - pip install ubelt -U
-  - pip install opencv-python
-  - pip install pyqt5
+  - pip install --progress-bar off pip -U
+  - pip install --progress-bar off pytest -U
+  - pip install --progress-bar off pytest-cov -U
+  - pip install --progress-bar off codecov -U
+  - pip install --progress-bar off xdoctest -U
+  - pip install --progress-bar off ubelt -U
+  - pip install --progress-bar off opencv-python
+  - pip install --progress-bar off pyqt5
   - pip install --progress-bar off torch
-  - pip install -e git+https://github.com/aleju/imgaug.git@master#egg=imgaug
-  - pip install -r requirements.txt 
+  - pip install --progress-bar off -e git+https://github.com/aleju/imgaug.git@master#egg=imgaug
+  - pip install --progress-bar off -r requirements.txt 
 install:
   #- travis_retry python setup.py build develop
   - travis_retry pip install -e .
