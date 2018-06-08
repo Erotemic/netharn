@@ -9,7 +9,7 @@ cache:
 python:
   - "3.6"
 before_install:
-  - pip install --progress-bar off pip -U
+  - pip install pip -U
   - pip install --progress-bar off pytest -U
   - pip install --progress-bar off pytest-cov -U
   - pip install --progress-bar off codecov -U
