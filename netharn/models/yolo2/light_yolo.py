@@ -65,7 +65,7 @@ class Reorg(nn.Module):
         self.darknet = True
 
     def __repr__(self):
-        return f'{self.__class__.__name__} (stride={self.stride}, darknet_compatible_mode={self.darknet})'
+        return '{self.__class__.__name__} (stride={self.stride}, darknet_compatible_mode={self.darknet})'
 
     def forward(self, x):
         assert(x.data.dim() == 4)
