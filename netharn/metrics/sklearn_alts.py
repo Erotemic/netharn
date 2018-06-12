@@ -49,3 +49,22 @@ def confusion_matrix(y_true, y_pred, n_labels=None, labels=None,
                     shape=(n_labels, n_labels),
                     dtype=np.int64).toarray()
     return CM
+
+
+def global_accuracy_from_confusion(cfsn):
+    # real is rows, pred is columns
+    n_ii = np.diag(cfsn)
+    # sum over pred = columns = axis1
+    t_i = cfsn.sum(axis=1)
+    global_acc = n_ii.sum() / t_i.sum()
+    return global_acc
+
+
+def class_accuracy_from_confusion(cfsn):
+    # real is rows, pred is columns
+    n_ii = np.diag(cfsn)
+    # sum over pred = columns = axis1
+    t_i = cfsn.sum(axis=1)
+    per_class_acc = (n_ii / t_i).mean()
+    class_acc = np.nan_to_num(per_class_acc).mean()
+    return class_acc

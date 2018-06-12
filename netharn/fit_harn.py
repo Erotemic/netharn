@@ -839,13 +839,14 @@ class CoreMixin:
         with util.grad_context(learn):
             harn.debug('Making batch iterator')
             batch_iter = iter(loader)
-            harn.debug('Starting batch iteration')
+            harn.debug('Starting batch iteration for tag={}, epoch={}'.format(
+                tag, harn.epoch))
 
             for bx in range(len(loader)):
                 raw_batch = next(batch_iter)
 
                 harn.bxs[tag] = bx
-                harn.debug('{} batch iteration {}'.format(tag, bx))
+                # harn.debug('{} batch iteration {}'.format(tag, bx))
 
                 batch = harn.prepare_batch(raw_batch)
 
@@ -866,6 +867,7 @@ class CoreMixin:
                     msg = harn._batch_msg({'loss': ave_metrics['loss']}, bsize)
                     prog.set_description(tag + ' ' + msg)
 
+                    # log_iter_train, log_iter_test, log_iter_vali
                     if harn.check_interval('log_iter_' + tag, bx):
                         iter_idx = (harn.epoch * len(loader) + bx)
                         for key, value in ave_metrics.items():
@@ -885,6 +887,8 @@ class CoreMixin:
 
         for key, value in epoch_metrics.items():
             harn.log_value(tag + ' epoch ' + key, value, harn.epoch)
+        harn.debug('Finished batch iteration for tag={}, epoch={}'.format(
+            tag, harn.epoch))
 
         return epoch_metrics
 
@@ -904,7 +908,7 @@ class CoreMixin:
             loss.backward()
             # approximates a batch size of (bsize * bstep) if step > 1,
             bstep = harn.dynamics['batch_step']
-            if (bx + 1) % bstep  == 0:
+            if (bx + 1) % bstep == 0:
                 # NOTE: the last few batches might be skipped if bstep > 1
                 # harn.log("STEP")
                 harn.optimizer.step()
@@ -1085,6 +1089,19 @@ class CoreCallback:
 # Define the exposed class as a union of mixin classes
 class FitHarn(*MIXINS):
     """
+    Basic harness for training a pytorch model.
+
+    Note:
+        The following methods can be overriden to customize the harness
+
+            * prepare_batch(harn, raw_batch)
+
+            * run_batch(harn, batch)
+
+            * on_batch(harn, batch, outputs, loss)
+
+            * on_epoch(harn)
+
     Args:
         hyper (netharn.HyperParams): Parameters that determine the system.
             This serializable class encodes enough information to

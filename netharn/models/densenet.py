@@ -20,7 +20,7 @@ class Bottleneck(nn.Module):
         self.conv1 = nn.Conv2d(in_planes, 4 * growth_rate,
                                kernel_size=1, bias=False)
         self.bn2 = nn.BatchNorm2d(4 * growth_rate)
-        self.conv2 = nn.Conv2d(4  * growth_rate, growth_rate,
+        self.conv2 = nn.Conv2d(4 * growth_rate, growth_rate,
                                kernel_size=3, padding=1, bias=False)
 
     def forward(self, x):

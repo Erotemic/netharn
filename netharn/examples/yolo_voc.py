@@ -515,14 +515,14 @@ class YoloHarn(nh.FitHarn):
         for bx in range(bsize):
             postitem = asnumpy(postout[bx])
             target = asnumpy(targets[bx]).reshape(-1, 5)
-            true_cxywh   = target[:, 1:5]
-            true_cxs     = target[:, 0]
-            true_weight  = asnumpy(gt_weights[bx])
+            true_cxywh = target[:, 1:5]
+            true_cxs = target[:, 0]
+            true_weight = asnumpy(gt_weights[bx])
 
             # Remove padded truth
             flags = true_cxs != -1
-            true_cxywh  = true_cxywh[flags]
-            true_cxs    = true_cxs[flags]
+            true_cxywh = true_cxywh[flags]
+            true_cxs = true_cxs[flags]
             true_weight = true_weight[flags]
 
             # orig_size    = asnumpy(orig_sizes[bx])
@@ -590,18 +590,18 @@ class YoloHarn(nh.FitHarn):
         for bx in range(bsize):
             postitem = asnumpy(postout[bx])
             target = asnumpy(targets[bx]).reshape(-1, 5)
-            true_cxywh   = target[:, 1:5]
-            true_cxs     = target[:, 0]
-            true_weight  = asnumpy(gt_weights[bx])
+            true_cxywh = target[:, 1:5]
+            true_cxs = target[:, 0]
+            true_weight = asnumpy(gt_weights[bx])
 
             # Remove padded truth
             flags = true_cxs != -1
-            true_cxywh  = true_cxywh[flags]
-            true_cxs    = true_cxs[flags]
+            true_cxywh = true_cxywh[flags]
+            true_cxs = true_cxs[flags]
             true_weight = true_weight[flags]
 
             orig_size = asnumpy(orig_sizes[bx])
-            gx        = int(asnumpy(indices[bx]))
+            gx = int(asnumpy(indices[bx]))
 
             # how much do we care about the background in this image?
             # bg_weight = float(asnumpy(bg_weights[bx]))

@@ -381,6 +381,9 @@ class RegionLoss(BaseLossWithCudaState):
         # outputs are punished for not predicting center anchor locations ---
         # unless tcoord is overriden by a real groundtruth target later on.
         if seen < 12800:
+            # PJreddies version
+            # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L254
+
             # By default encourage the network to predict no shift
             tcoord[:, :, 0:2, :, :].fill_(0.5)
             # By default encourage the network to predict no scale (in logspace)
@@ -475,9 +478,21 @@ class RegionLoss(BaseLossWithCudaState):
 
                 # Mark that we will care about this prediction with some weight
 
-                coord_weight = (weight * (2 - gw * gh / (nW * nH))) ** .5
-                coord_mask[bx, ax, 0, gj, gi] = coord_weight
+                # PJReddie delta_region_box:
+                # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L86
+                # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L293
+                # float iou = delta_region_box(
+                #     truth, l.output, l.biases,
+                #     n=best_n, index=box_index, i=i, j=j, w=l.w, h=l.h, delta=l.delta,
+                #     scale=l.coord_scale * (2 - truth.w*truth.h), stride=l.w*l.h);
+                # coord_weight = (weight * (2 - gw * gh / (nW * nH))) ** .5
+                coord_mask[bx, ax, 0, gj, gi] = coord_weight * weight
+
+                # PJReddie delta_region_class:
+                # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L112
+                # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L314
                 cls_mask[bx, ax, 0, gj, gi] = int(weight > .5)
+
                 conf_mask[bx, ax, 0, gj, gi] = self.object_scale * weight
 
                 # The true box is converted into coordinates comparable to the

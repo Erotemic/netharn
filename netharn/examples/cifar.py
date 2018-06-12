@@ -6,46 +6,80 @@ import netharn as nh
 
 class CIFAR_FitHarn(nh.FitHarn):
 
-    def run_batch(harn, inputs, labels):
+    def __init__(harn, *args, **kw):
+        super().__init__(*args, **kw)
+        harn.batch_confusions = []
+
+    def run_batch(harn, batch):
         """
         Custom function to compute the output of a batch and its loss.
         """
+        inputs, labels = batch
         output = harn.model(*inputs)
         label = labels[0]
         loss = harn.criterion(output, label)
         outputs = [output]
         return outputs, loss
 
-    def on_batch(harn, outputs, labels):
-        from netharn.metrics import (confusion_matrix,
-                                     pixel_accuracy_from_confusion,
-                                     perclass_accuracy_from_confusion)
-
-        task = harn.datasets['train'].task
-        all_labels = task.labels
-
+    def on_batch(harn, batch, outputs, loss):
+        inputs, labels = batch
         label = labels[0]
         output = outputs[0]
 
         y_pred = output.data.max(dim=1)[1].cpu().numpy()
         y_true = label.data.cpu().numpy()
 
-        cfsn = confusion_matrix(y_pred, y_true, labels=all_labels)
+        harn.batch_confusions.append((y_true, y_pred))
 
-        global_acc = pixel_accuracy_from_confusion(cfsn)  # same as acc
-        perclass_acc = perclass_accuracy_from_confusion(cfsn)
-        # class_accuracy = perclass_acc.fillna(0).mean()
-        class_accuracy = np.nan_to_num(perclass_acc).mean()
+    def on_epoch(harn):
+        """
+        y_true = np.array([1, 1, 1, 1, 1, 0, 0, 0, 2, 2])
+        y_pred = np.array([1, 1, 1, 2, 1, 0, 0, 0, 2, 2])
+        all_labels = np.array([0, 1, 2])
+        """
+        from netharn.metrics import (confusion_matrix,
+                                     global_accuracy_from_confusion,
+                                     class_accuracy_from_confusion)
+        all_labels = np.arange(10)
+
+        all_trues, all_preds = zip(*harn.batch_confusions)
+        y_true = np.hstack(all_trues)
+        y_pred = np.hstack(all_preds)
+
+        # percent error really isn't a great metric, but its standard.
+        errors = (y_true != y_pred)
+        percent_error = errors.mean() * 100
+
+        cfsn = confusion_matrix(y_true, y_pred, labels=all_labels)
+
+        global_acc = global_accuracy_from_confusion(cfsn)
+        class_acc = class_accuracy_from_confusion(cfsn)
 
         metrics_dict = ub.odict()
         metrics_dict['global_acc'] = global_acc
-        metrics_dict['class_acc'] = class_accuracy
+        metrics_dict['class_acc'] = class_acc
+        metrics_dict['percent_error'] = percent_error
+
+        harn.batch_confusions.clear()
         return metrics_dict
 
 
 def train():
     """
     Replicates parameters from https://github.com/kuangliu/pytorch-cifar
+
+    The following is a table of kuangliu's reported accuracy and our measured
+    accuracy for each model.
+
+          model |  kuangliu  |    ours  |
+    -------------------------------------
+    ResNet50    |    93.62%  |
+    DenseNet121 |    95.04%  |  94.47%  |
+    DPN92       |    95.16%  |
+
+     reports the following test accuracies for these models:
+
+
     """
     import random
     import torchvision
@@ -101,18 +135,48 @@ def train():
     initializer_ = (nh.initializers.KaimingNormal, {'param': 0, 'mode': 'fan_in'})
     # initializer_ = (initializers.LSUV, {})
 
-    hyper = nh.HyperParams(
-        datasets=datasets,
-        nice='cifar10',
-        loaders=loaders,
-        workdir=workdir,
-        xpu=xpu,
-        model=(nh.models.densenet.DenseNet, {
+    model_key = ub.argval('--model', default='densenet121')
+
+    available_models = {
+        'densenet121': (nh.models.densenet.DenseNet, {
             'nblocks': [6, 12, 24, 16],
             'growth_rate': 12,
             'reduction': 0.5,
             'num_classes': n_classes,
         }),
+
+        'resnet50': (nh.models.resnet.ResNet, {
+            'num_blocks': [3, 4, 6, 3],
+            'num_classes': n_classes,
+            'block': 'Bottleneck',
+        }),
+
+        'dpn26': (nh.models.dual_path_net.DPN, dict(cfg={
+            'in_planes': (96, 192, 384, 768),
+            'out_planes': (256, 512, 1024, 2048),
+            'num_blocks': (2, 2, 2, 2),
+            'dense_depth': (16, 32, 24, 128),
+            'num_classes': n_classes,
+        })),
+
+        'dpn92': (nh.models.dual_path_net.DPN, dict(cfg={
+            'in_planes': (96, 192, 384, 768),
+            'out_planes': (256, 512, 1024, 2048),
+            'num_blocks': (3, 4, 20, 3),
+            'dense_depth': (16, 32, 24, 128),
+            'num_classes': n_classes,
+        })),
+    }
+
+    model_ = available_models[model_key]
+
+    hyper = nh.HyperParams(
+        datasets=datasets,
+        nice='cifar10_' + model_key,
+        loaders=loaders,
+        workdir=workdir,
+        xpu=xpu,
+        model=model_,
         optimizer=(torch.optim.SGD, {
             'lr': lr,
             'weight_decay': 5e-4,
@@ -142,7 +206,7 @@ def train():
         #     # 'colorspace': datasets['train'].output_colorspace,
         # }, datasets['train'].center_inputs.__dict__),
     )
-    harn = nh.FitHarn(hyper=hyper)
+    harn = CIFAR_FitHarn(hyper=hyper)
     harn.initialize()
     harn.run()
 
@@ -150,6 +214,7 @@ def train():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python examples/cifar.py --gpu=1
+        python examples/cifar.py --gpu=0 --model=densenet121
+        python examples/cifar.py --gpu=0 --model=resnet50
     """
     train()
