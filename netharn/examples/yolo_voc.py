@@ -63,15 +63,17 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         self.multi_scale_out_size = self.multi_scale_inp_size // self.factor
 
         # Original YOLO Anchors
-        # self.anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
-        #                            (6.63, 11.38), (9.42, 5.11),
-        #                            (16.62, 10.52)],
-        #                           dtype=np.float)
+        if ub.argflag('--orig'):
+            self.anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
+                                       (6.63, 11.38), (9.42, 5.11),
+                                       (16.62, 10.52)],
+                                      dtype=np.float)
+        else:
+            # Lightnet Anchors
+            self.anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
+                                     (5.05587, 8.09892), (9.47112, 4.84053),
+                                     (11.2364, 10.0071)])
 
-        # Lightnet Anchors
-        self.anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
-                                 (5.05587, 8.09892), (9.47112, 4.84053),
-                                 (11.2364, 10.0071)])
         self.num_anchors = len(self.anchors)
         self.augmenter = None
 
@@ -79,44 +81,17 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             import netharn.data.transforms  # NOQA
             from netharn.data.transforms import HSVShift
             augmentors = [
-                # iaa.Flipud(p=.5),
-                # iaa.Affine(
-                #     # scale={"x": (1.0, 1.01), "y": (1.0, 1.01)},
-                #     # translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
-                #     translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
-                #     rotate=(-3.6, 3.6),
-                #     # rotate=(-15, 15),
-                #     # shear=(-7, 7),
-                #     # order=[0, 1, 3],
-                #     order=1,
-                #     # cval=(0, 255),
-                #     cval=127,
-                #     mode=ia.ALL,
-                #     backend='cv2',
-                # ),
                 # Order used in lightnet is hsv, rc, rf, lb
                 # lb is applied externally to augmenters
-                HSVShift(hue=0.1, sat=1.5, val=1.5),
+                HSVShift(hue=0.1, sat=1.5, val=1.5),  # TODO: double check that this works correctly
                 iaa.Crop(percent=(0, .2)),
                 iaa.Fliplr(p=.5),
-                # iaa.AddToHueAndSaturation((-20, 20)),
-                # iaa.ContrastNormalization((0.5, 2.0), per_channel=0.5),
-                # iaa.AddToHueAndSaturation((-15, 15)),
-                # iaa.ContrastNormalization((0.75, 1.5))
-                # iaa.ContrastNormalization((0.75, 1.5), per_channel=0.5),
             ]
             self.augmenter = iaa.Sequential(augmentors)
 
         # Used to resize images to the appropriate inp_size without changing
         # the aspect ratio.
         self.letterbox = nh.data.transforms.Resize(None, mode='letterbox')
-
-    # def __len__(self):
-    #     # hack
-    #     if 'train' in self.split:
-    #         return 100
-    #     else:
-    #         return super().__len__()
 
     @profiler.profile
     def __getitem__(self, index):
@@ -342,13 +317,6 @@ class YoloHarn(nh.FitHarn):
 
         harn.chosen_indices = {}
 
-    # def initialize(harn):
-    #     super().initialize()
-    #     harn.datasets['train']._augmenter = harn.datasets['train'].augmenter
-    #     if harn.epoch <= 0:
-    #         # disable augmenter for the first epoch
-    #         harn.datasets['train'].augmenter = None
-
     @profiler.profile
     def prepare_batch(harn, raw_batch):
         """
@@ -425,7 +393,7 @@ class YoloHarn(nh.FitHarn):
             >>> harn.visualize_prediction(batch, outputs, postout, idx=0, thresh=0.01)
             >>> mplutil.show_if_requested()
         """
-        if harn.current_tag != 'train':
+        if harn.current_tag != 'train' and (harn.epoch % 10 == 9 or harn.epoch > 300):
             # Dont worry about computing mAP on the training set for now
             inputs, labels = batch
             inp_size = np.array(inputs.shape[-2:][::-1])
@@ -474,7 +442,8 @@ class YoloHarn(nh.FitHarn):
         tag = harn.current_tag
 
         if tag in {'test', 'vali'}:
-            harn._dump_chosen_indices()
+            if (harn.epoch % 10 == 9 or harn.epoch > 300):
+                harn._dump_chosen_indices()
 
         if harn.batch_confusions:
             y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
@@ -486,12 +455,15 @@ class YoloHarn(nh.FitHarn):
             num_classes = len(loader.dataset.label_names)
             labels = list(range(num_classes))
             aps = nh.metrics.ave_precisions(y, labels, use_07_metric=True)
+            harn.debug('aps[{}] = {!r}'.format(tag, aps))
             harn.aps[tag] = aps
             mean_ap = np.nanmean(aps['ap'])
             max_ap = np.nanmax(aps['ap'])
             harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
             harn.log_value(tag + ' epoch max-AP', max_ap, harn.epoch)
+
             harn.batch_confusions.clear()
+
             metrics_dict = ub.odict()
             metrics_dict['max-AP'] = max_ap
             metrics_dict['mAP'] = mean_ap
@@ -819,6 +791,47 @@ def setup_harness(bsize=16, workers=0):
         cv2.setNumThreads(0)
 
     simulated_bsize = bstep * batch_size
+
+    # Pascal 2007 + 2012 trainval has 16551 images
+    # Pascal 2007 test has 4952 images
+    # In the original YOLO, one batch is 64 images, therefore:
+    #
+    # ONE EPOCH is 16551 / 64 = 259 iterations.
+    #
+    # From the original YOLO VOC v2 config
+    # https://github.com/pjreddie/darknet/blob/master/cfg/yolov2-voc.cfg
+    #     learning_rate=0.001
+    #     burn_in=1000
+    #     max_batches = 80200
+    #     policy=steps
+    #     steps=40000,60000
+    #     scales=.1,.1
+    #
+    # However, the LIGHTNET values are
+    #   LR_STEPS = [250, 25000, 35000]
+    #
+    # Based in this, the iter to batch conversion is
+    #
+    # >>> np.array([250, 25000, 35000]) / 259
+    # [  1,  98, 137]
+    # >>> np.array([1000, 40000, 60000, 80200]) / 259
+    # array(4, 157, 235, 314])
+    if ub.argflag('--orig'):
+        lr_step_points = {
+            0:   lr * 0.1 / simulated_bsize,  # burnin
+            4:   lr * 1.0 / simulated_bsize,
+            157: lr * 0.1 / simulated_bsize,
+            235: lr * 0.01 / simulated_bsize,
+        }
+    else:
+        lr_step_points = {
+            # dividing by batch size was one of those unpublished details
+            0:  lr * 0.1 / simulated_bsize,
+            1:  lr * 1.0 / simulated_bsize,
+            60: lr * 0.1 / simulated_bsize,
+            90: lr * 0.01 / simulated_bsize,
+        }
+
     hyper = nh.HyperParams(**{
         'nice': nice,
         'workdir': ub.truepath('~/work/voc_yolo2'),
@@ -836,8 +849,9 @@ def setup_harness(bsize=16, workers=0):
             'num_classes': datasets['train'].num_classes,
             'anchors': datasets['train'].anchors,
             'conf_thresh': 0.001,
-            # 'nms_thresh': 0.5,  # reproduce original yolo
-            'nms_thresh': 0.4,  # reproduce lightnet
+            # nms_thresh=0.5 to reproduce original yolo
+            # nms_thresh=0.4 to reproduce lightnet
+            'nms_thresh': 0.5 if ub.argflag('--orig') else 0.4
         }),
 
         'criterion': (light_region_loss.RegionLoss, {
@@ -856,48 +870,15 @@ def setup_harness(bsize=16, workers=0):
         }),
 
         'optimizer': (torch.optim.SGD, {
-            'lr': lr / 10,
+            'lr': lr_step_points[0],
             'momentum': 0.9,
             'dampening': 0,
             # multiplying by batch size was one of those unpublished details
             'weight_decay': decay * simulated_bsize,
         }),
 
-        # Pascal 2007 + 2012 trainval has 16551 images
-        # Pascal 2007 test has 4952 images
-        # In the original YOLO, one batch is 64 images,
-        # so one epoch is 16551 / 64 = 259 iterations.
-        #
-        # From the original YOLO VOC v2 config
-        # https://github.com/pjreddie/darknet/blob/master/cfg/yolov2-voc.cfg
-        #     learning_rate=0.001
-        #     burn_in=1000
-        #     max_batches = 80200
-        #     policy=steps
-        #     steps=40000,60000
-        #     scales=.1,.1
-        #
-        # However, the LIGHTNET values are
-        #   LR_STEPS = [250, 25000, 35000]
-        #
-        # Based in this, the iter to batch conversion is
-        #
-        # ((np.array([250, 25000, 35000, 1000, 40000, 60000, 80200]) / 256) + 1).astype(np.int)
-        # array([  1,  98, 137,   4, 157, 235, 314])
-
-
         'scheduler': (nh.schedulers.ListedLR, {
-            'points': {
-                # dividing by batch size was one of those unpublished details
-                # 0:  lr * 0.1 / simulated_bsize,  # burnin
-                # 4:  lr * 1.0 / simulated_bsize,
-                # 157: lr * 0.1 / simulated_bsize,
-                # 235: lr * 0.001 / simulated_bsize,
-                0:  lr * 0.1 / simulated_bsize,
-                1:  lr * 1.0 / simulated_bsize,
-                60: lr * 0.1 / simulated_bsize,
-                90: lr * 0.001 / simulated_bsize,
-            },
+            'points': lr_step_points,
             'interpolate': False
         }),
 
@@ -929,7 +910,7 @@ def setup_harness(bsize=16, workers=0):
     })
     harn = YoloHarn(hyper=hyper)
     harn.config['use_tqdm'] = False
-    harn.intervals['log_iter_train'] = 1
+    harn.intervals['log_iter_train'] = None
     harn.intervals['log_iter_test'] = None
     harn.intervals['log_iter_vali'] = None
     return harn
@@ -946,6 +927,12 @@ if __name__ == '__main__':
     CommandLine:
         srun -c 4 -p priority --gres=gpu:1 \
             python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=rescaled --lr=0.001 --bstep=4 --workers=4
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=new_loss_v2 --lr=0.001 --bstep=4 --workers=4
+
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=eav_run --lr=0.001 --bstep=4 --workers=6
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=pjr_run --lr=0.001 --bstep=4 --workers=6 --orig
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

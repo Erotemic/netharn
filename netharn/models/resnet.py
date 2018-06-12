@@ -79,9 +79,10 @@ class ResNet(nn.Module):
     """
     Example:
         >>> import torch
-        >>> net = ResNet('BasicBlock', [2, 2, 2, 2])
+        >>> net = ResNet([2, 2, 2, 2], block='BasicBlock')
         >>> y = net(torch.randn(1, 3, 32, 32))
-        >>> print(y.size())
+        >>> print(tuple(y.size()))
+        (1, 10)
     """
     def __init__(self, num_blocks, num_classes=10, block='Bottleneck'):
         super(ResNet, self).__init__()
@@ -141,3 +142,12 @@ def ResNet101():
 
 def ResNet152():
     return ResNet('Bottleneck', [3, 8, 36, 3])
+
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python -m netharn.models.resnet all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

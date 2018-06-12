@@ -386,9 +386,10 @@ if __name__ == '__main__':
             # https://pypi.python.org/pypi?%3Aaction=list_classifiers
             'Development Status :: 3 - Alpha',
             'Intended Audience :: Developers',
+            'Intended Audience :: Science/Research',
             'Topic :: Software Development :: Libraries :: Python Modules',
             'Topic :: Utilities',
-            # 'Topic :: DeepLearning',
+            'Topic :: Scientific/Engineering :: Artificial Intelligence',
             # This should be interpreted as Apache License v2.0
             'License :: OSI Approved :: Apache Software License',
             # Supported Python versions

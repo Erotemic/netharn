@@ -7,17 +7,15 @@ Based off RegionLoss from Lightnet:
 
 Speedups
     [ ] - Preinitialize anchor tensors
-
 """
 
-import math
 import torch
 import torch.nn as nn
 import numpy as np  # NOQA
-# import functools
 from torch.autograd import Variable
 from netharn import util
 from netharn.util import profiler
+import ubelt as ub
 
 __all__ = ['RegionLoss']
 
@@ -65,7 +63,7 @@ class RegionLoss(BaseLossWithCudaState):
         thresh (float): minimum iou for a predicted box to be assigned to a target
 
     CommandLine:
-        python ~/code/netharn/netharn/models/yolo2/light_region_loss.py RegionLoss
+        python ~/code/netharn/netharn/models/yolo2/light_region_loss.py RegionLoss:0
 
     Example:
         >>> from netharn.models.yolo2.light_yolo import Yolo
@@ -88,11 +86,16 @@ class RegionLoss(BaseLossWithCudaState):
         >>> ])
         >>> im_data = torch.randn(len(target), 3, Hin, Win)
         >>> output = network.forward(im_data)
-        >>> loss = float(self.forward(output, target))
-        >>> print(f'loss = {loss:.2f}')
-        >>> print(f'output.sum() = {output.sum():.2f}')
-
+        >>> loss = float(self.forward(output, target, seen=0))
+        >>> #print('self.loss_cls = {!r}'.format(self.loss_cls))
+        >>> #print('self.loss_coord = {!r}'.format(self.loss_coord))
+        >>> #print('self.loss_conf = {!r}'.format(self.loss_conf))
+        >>> print('loss = {:.2f}'.format(loss))
+        >>> print('output.sum() = {:.2f}'.format(output.sum()))
         loss = 20.18
+        output.sum() = 2.15
+
+        loss = 8.89
         output.sum() = 2.15
 
     Example:
@@ -106,10 +109,11 @@ class RegionLoss(BaseLossWithCudaState):
         >>> im_data = torch.randn(2, 3, Hin, Win)
         >>> output = network.forward(im_data)
         >>> loss = float(self.forward(output, target))
-        >>> print(f'output.sum() = {output.sum():.2f}')
-        >>> print(f'loss = {loss:.2f}')
-
+        >>> print('loss = {:.2f}'.format(loss))
+        >>> print('output.sum() = {:.2f}'.format(output.sum()))
+        loss = 5.96
         output.sum() = 2.15
+
         loss = 16.47
     """
 
@@ -150,6 +154,8 @@ class RegionLoss(BaseLossWithCudaState):
 
         self.iou_mode = None
 
+        self.ORIG = ub.argflag('--orig')
+
     @profiler.profile
     def forward(self, output, target, seen=0, gt_weights=None):
         """ Compute Region loss.
@@ -177,7 +183,8 @@ class RegionLoss(BaseLossWithCudaState):
             >>> target[..., 0] = 0
             >>> seen = 0
             >>> gt_weights = None
-            >>> self.forward(output, target, seen)
+            >>> self.forward(output, target, seen).item()
+            4.528...
         """
         # Parameters
         nB, nA, nC5, nH, nW = output.data.shape
@@ -202,11 +209,14 @@ class RegionLoss(BaseLossWithCudaState):
         conf = output[:, :, 4:5, :, :].sigmoid()
         if nC > 1:
             # Swaps the dimensions from [B, A, C, H, W] to be [B, A, H, W, C]
-            cls_probs = output[:, :, 5:, :, :].contiguous().view(nB * nA, nC, nH * nW).transpose(1, 2).contiguous().view(nB, nA, nH, nW, nC)
+            cls_probs = output[:, :, 5:, :, :].contiguous().view(
+                nB * nA, nC, nH * nW).transpose(1, 2).contiguous().view(
+                    nB, nA, nH, nW, nC)
 
         with torch.no_grad():
             # Create prediction boxes
-            pred_cxywh = torch.empty(nB * nA * nH * nW, 4, dtype=torch.float32, device=device)
+            pred_cxywh = torch.empty(nB * nA * nH * nW, 4,
+                                     dtype=torch.float32, device=device)
 
             # Grid cell center offsets
             lin_x = torch.linspace(0, nW - 1, nW).repeat(nH, 1).to(device)
@@ -225,18 +235,16 @@ class RegionLoss(BaseLossWithCudaState):
                 pred_cxywh, target, nH, nW, seen=seen, gt_weights=gt_weights)
             coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = _tup
 
-            coord_mask = coord_mask.expand_as(tcoord)
-            conf_mask = conf_mask.sqrt()
-
             if nC > 1:
                 masked_tcls = tcls[cls_mask].view(-1).long()
 
-        tcoord = Variable(tcoord, requires_grad=False)
-        tconf = Variable(tconf, requires_grad=False)
-        coord_mask = Variable(coord_mask, requires_grad=False)
-        conf_mask = Variable(conf_mask, requires_grad=False)
+        # tcoord = Variable(tcoord, requires_grad=False)
+        # tconf = Variable(tconf, requires_grad=False)
+        # coord_mask = Variable(coord_mask, requires_grad=False)
+        # conf_mask = Variable(conf_mask, requires_grad=False)
         if nC > 1:
-            tcls = Variable(tcls, requires_grad=False)
+            # tcls = Variable(tcls, requires_grad=False)
+
             # Swaps the dimensions to be [B, A, H, W, C]
             # (Allowed because 3rd dimension is guarneteed to be 1 here)
             cls_probs_mask = cls_mask.reshape(nB, nA, nH, nW, 1).repeat(1, 1, 1, 1, nC)
@@ -245,35 +253,22 @@ class RegionLoss(BaseLossWithCudaState):
 
         # Compute losses
 
-        # corresponds to delta_region_box
-        """
-        Notes:
-            In the yolo paper the function used to compute loss is
-                loss = coord_scale * (true_x - pred_x) ** 2
+        mse_factor = 0.5 if self.ORIG else 1.0
+        cls_factor = 1.0 if self.ORIG else 2.0
 
-            The derivative of this function wrt true_x is
-                delta = coord_scale * 2 * (true_x - pred_x)
+        # Bounding Box Loss
+        # To be compatible with the original YOLO code we add a seemingly
+        # random multiply by .5 in our MSE computation so the torch autodiff
+        # algorithm produces the same result as darknet.
+        loss_coord = mse_factor * self.coord_scale * self.coord_mse(coord_mask * coord, coord_mask * tcoord) / nB
 
-            However, in the darknet code the derivative is computed as:
-                delta = scale * (true_x - pred_x);
-
-                where scale is:
-                    scale = l.coord_scale * (2 - truth.w * truth.h)
-
-            Therefore, to be compatible with the original code we add a
-            seemingly random multiply by .5 in our MSE computation so the torch
-            autodiff algorithm produces the same result as darknet.
-        """
-        loss_coord = self.coord_scale * 0.5 * self.coord_mse(
-            coord_mask * coord, coord_mask * tcoord) / nB
-
+        # Objectness Loss
         # object_scale and noobject_scale are incorporated in conf_mask.
-        loss_conf = 0.5 * self.conf_mse(conf_mask * conf,
-                                        conf_mask * tconf) / nB
+        loss_conf = mse_factor * self.conf_mse(conf_mask * conf, conf_mask * tconf) / nB
 
+        # Class Loss
         if nC > 1 and masked_cls_probs.numel():
-            loss_cls = self.class_scale * self.cls_critrion(masked_cls_probs,
-                                                            masked_tcls) / nB
+            loss_cls = cls_factor * self.class_scale * self.cls_critrion(masked_cls_probs, masked_tcls) / nB
             self.loss_cls = float(loss_cls.data.cpu().numpy())
         else:
             self.loss_cls = loss_cls = 0
@@ -295,6 +290,9 @@ class RegionLoss(BaseLossWithCudaState):
         Args:
             pred_cxywh (Tensor):   shape [B * A * W * H, 4] in normalized cxywh format
             target (Tensor): shape [B, max(gtannots), 4]
+
+        CommandLine:
+            python ~/code/netharn/netharn/models/yolo2/light_region_loss.py RegionLoss.build_targets:1
 
         Example:
             >>> from netharn.models.yolo2.light_yolo import Yolo
@@ -345,6 +343,8 @@ class RegionLoss(BaseLossWithCudaState):
         # nT = target.shape[1] if not gtempty else 0
         nA = self.num_anchors
 
+        nPixels = nW * nH
+
         if nB == 0:
             # torch does not preserve shapes when any dimension goes to 0
             # fix nB if there is no groundtruth
@@ -373,7 +373,7 @@ class RegionLoss(BaseLossWithCudaState):
         cls_mask = torch.zeros(nB, nA, 1, nH, nW, device=device).byte()
 
         # Default conf_mask to the noobject_scale
-        conf_mask = conf_mask * self.noobject_scale
+        conf_mask.fill_(self.noobject_scale)
 
         # encourage the network to predict boxes centered on the grid cells by
         # setting the default target xs and ys to be (.5, .5) (i.e. the
@@ -387,14 +387,20 @@ class RegionLoss(BaseLossWithCudaState):
             # By default encourage the network to predict no shift
             tcoord[:, :, 0:2, :, :].fill_(0.5)
             # By default encourage the network to predict no scale (in logspace)
-            tcoord[:, :, 0:2, :, :].fill_(0.0)
+            tcoord[:, :, 2:4, :, :].fill_(0.0)
             # In the warmup phase we care about changing the coords to be
             # exactly the anchors if they don't predict anything, but the
-            # weight is only 0.1, set it to 0.1 / self.coord_scale because we
-            # will multiply by coord_scale later
-            coord_mask.fill_(0.1 / self.coord_scale)
+            # weight is only 0.01, set it to 0.01 / self.coord_scale.
+            # Note we will apply the required sqrt later
+            if self.ORIG:
+                coord_mask.fill_((0.01 / self.coord_scale))
+            else:
+                coord_mask.fill_(1)
 
         if gtempty:
+            coord_mask = coord_mask.sqrt()
+            conf_mask = conf_mask.sqrt()
+            coord_mask = coord_mask.expand_as(tcoord)
             return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
 
         # Put this back into a non-flat view
@@ -403,6 +409,8 @@ class RegionLoss(BaseLossWithCudaState):
 
         gt_class = target[..., 0].data
         gt_boxes_norm = util.Boxes(target[..., 1:5], 'cxywh')
+
+        # Put GT boxes into output coordinates
         gt_boxes = gt_boxes_norm.scale([nW, nH])
         # Construct "relative" versions of the true boxes, centered at 0
         # This will allow them to be compared to the anchor boxes.
@@ -411,9 +419,11 @@ class RegionLoss(BaseLossWithCudaState):
 
         # true boxes with a class of -1 are fillers, ignore them
         gt_isvalid = (gt_class >= 0)
+        batch_nT = gt_isvalid.sum(dim=1).cpu().numpy()
 
         # Compute the grid cell for each groundtruth box
-        true_xs, true_ys = gt_boxes.components[0:2]
+        true_xs = gt_boxes.data[..., 0]
+        true_ys = gt_boxes.data[..., 1]
         true_is = true_xs.long().clamp_(0, nW - 1)
         true_js = true_ys.long().clamp_(0, nH - 1)
 
@@ -421,92 +431,172 @@ class RegionLoss(BaseLossWithCudaState):
             # If unspecified give each groundtruth a default weight of 1
             gt_weights = torch.ones_like(target[..., 0], device=device)
 
-        # Undocumented darknet detail: multiply coord weight by two
-        # minus the area of the true box in normalized coordinates.
-        # the square root is because the weight is multiplied on the
-        # inside of the MSE. We get the right loss via:
-        # diferentiate of s * .5 * (sqrt(w) * t - sqrt(w) * x) ** 2 wrt
-        gt_coord_weights = (gt_weights * (2.0 - gt_boxes_norm.area[..., 0])).sqrt()
+        # Undocumented darknet detail: multiply coord weight by two minus the
+        # area of the true box in normalized coordinates.  the square root is
+        # because the weight.
+        if self.ORIG:
+            gt_coord_weights = (gt_weights * (2.0 - gt_boxes_norm.area[..., 0]))
+        else:
+            gt_coord_weights = gt_weights
+        # Pre multiply weights with object scales
+        gt_conf_weights = gt_weights * self.object_scale
+        # Pre threshold classification weights
+        gt_cls_weights = (gt_weights > .5)
 
         # Loop over ground_truths and construct tensors
         for bx in range(nB):
             # Get the actual groundtruth boxes for this batch item
-            flags = gt_isvalid[bx]
-            if not np.any(flags):
+            nT = batch_nT[bx]
+            if nT == 0:
                 continue
 
             # Batch ground truth
-            batch_rel_gt_boxes = rel_gt_boxes[bx][flags]
-            cur_gt_boxes = gt_boxes[bx][flags]
+            cur_rel_gt_boxes = rel_gt_boxes[bx, 0:nT]
+            cur_gt_boxes = gt_boxes[bx, 0:nT]
+            cur_gt_cls = target[bx, 0:nT, 0]
+            # scalars, one for each true object
+            cur_true_is = true_is[bx, 0:nT]
+            cur_true_js = true_js[bx, 0:nT]
+            cur_true_coord_weights = gt_coord_weights[bx, 0:nT]
+            cur_true_conf_weights = gt_conf_weights[bx, 0:nT]
+            cur_true_cls_weights = gt_cls_weights[bx, 0:nT]
+
+            cur_gx, cur_gy, cur_gw, cur_gh = cur_gt_boxes.data.t()
 
             # Batch predictions
             cur_pred_boxes = pred_boxes[bx]
 
             # Assign groundtruth boxes to anchor boxes
-            anchor_ious = self.rel_anchors_boxes.ious(batch_rel_gt_boxes, bias=0)
-            # _, best_ns = anchor_ious.max(dim=0)
-            _, best_anchor_idxs = anchor_ious.max(dim=0)
+            cur_anchor_gt_ious = self.rel_anchors_boxes.ious(cur_rel_gt_boxes, bias=0)
+            _, cur_true_anchor_axs = cur_anchor_gt_ious.max(dim=0)  # best_ns in YOLO
 
+            # Get the anchor (w,h) assigned to each true object
+            cur_true_anchor_w, cur_true_anchor_h = self.anchors[cur_true_anchor_axs].t()
+
+            # Find the IOU of each predicted box with the groundtruth
+            cur_pred_true_ious = cur_pred_boxes.ious(cur_gt_boxes, bias=0)
             # Assign groundtruth boxes to predicted boxes
-            ious = cur_pred_boxes.ious(cur_gt_boxes, bias=0)
-            cur_ious, _ = ious.max(dim=-1)
+            cur_ious, _ = cur_pred_true_ious.max(dim=-1)
 
-            # Set confidence mask of matching detections to 0
+            # Set loss to zero for any predicted boxes that had a high iou with
+            # a groundtruth target (we wont punish them for not being
+            # background), One of these will be selected as the best and be
+            # punished for not predicting the groundtruth value.
             conf_mask[bx].view(-1)[cur_ious.view(-1) > self.thresh] = 0
 
-            for t in range(cur_gt_boxes.shape[0]):
-                gt_box_ = cur_gt_boxes[t]
-                # coord weights are slightly different than other weights
-                weight = gt_weights[bx, t]
-                coord_weight = gt_coord_weights[bx, t]
+            ####
+            # Broadcast the loop over true boxes
+            ####
+            # Convert the true box coordinates to be comparable with pred output
+            cur_tcoord_x = cur_gx - cur_true_is.float()
+            cur_tcoord_y = cur_gy - cur_true_js.float()
+            cur_tcoord_w = (cur_gw / cur_true_anchor_w).log()
+            cur_tcoord_h = (cur_gh / cur_true_anchor_h).log()
 
-                # The assigned (best) anchor index
-                ax = best_anchor_idxs[t].item()
-                anchor_w, anchor_h = self.anchors[ax]
+            iou_raveled_idxs = np.ravel_multi_index([
+                cur_true_anchor_axs, cur_true_js, cur_true_is, np.arange(nT)
+            ], cur_pred_true_ious.shape)
+            # Get the ious with the assigned boxes for each truth
+            cur_true_ious = cur_pred_true_ious.view(-1)[iou_raveled_idxs]
 
-                # Compute this ground truth's grid cell
-                gx, gy, gw, gh = gt_box_.data
-                gi = true_is[bx, t].item()
-                gj = true_js[bx, t].item()
+            # import ubelt
+            # for timer in ubelt.Timerit(100, bestof=10, label='time'):
+            #     with timer:
+            raveled_idxs = np.ravel_multi_index([
+                [bx], cur_true_anchor_axs, [0], cur_true_js, cur_true_is
+            ], coord_mask.shape)
 
-                # The prediction will be punished if it does not match this true box
-                # pred_box_ = cur_pred_boxes[best_n, gj, gi]
+            # --------------------------------------------
+            raveled_idxs_b0 = np.ravel_multi_index([
+                [bx], cur_true_anchor_axs, [0], cur_true_js, cur_true_is
+            ], tcoord.shape)
+            # raveled_idxs_b1 = np.ravel_multi_index([
+            #     [bx], cur_true_anchor_axs, [1], cur_true_js, cur_true_is
+            # ], tcoord.shape)
+            # raveled_idxs_b2 = np.ravel_multi_index([
+            #     [bx], cur_true_anchor_axs, [2], cur_true_js, cur_true_is
+            # ], tcoord.shape)
+            # raveled_idxs_b3 = np.ravel_multi_index([
+            #     [bx], cur_true_anchor_axs, [3], cur_true_js, cur_true_is
+            # ], tcoord.shape)
 
-                # Get the precomputed iou of the truth with this box
-                # corresponding to the assigned anchor and grid cell
-                iou = ious[ax, gj, gi, t].item()
+            raveled_idxs_b1 = raveled_idxs_b0 + nPixels
+            raveled_idxs_b2 = raveled_idxs_b0 + nPixels * 2
+            raveled_idxs_b3 = raveled_idxs_b0 + nPixels * 3
+            # --------------------------------------------
 
-                # Mark that we will care about this prediction with some weight
+            coord_mask.view(-1)[raveled_idxs] = cur_true_coord_weights
+            cls_mask.view(-1)[raveled_idxs] = cur_true_cls_weights
+            conf_mask.view(-1)[raveled_idxs] = cur_true_conf_weights
 
-                # PJReddie delta_region_box:
-                # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L86
-                # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L293
-                # float iou = delta_region_box(
-                #     truth, l.output, l.biases,
-                #     n=best_n, index=box_index, i=i, j=j, w=l.w, h=l.h, delta=l.delta,
-                #     scale=l.coord_scale * (2 - truth.w*truth.h), stride=l.w*l.h);
-                # coord_weight = (weight * (2 - gw * gh / (nW * nH))) ** .5
-                coord_mask[bx, ax, 0, gj, gi] = coord_weight * weight
+            tcoord.view(-1)[raveled_idxs_b0] = cur_tcoord_x
+            tcoord.view(-1)[raveled_idxs_b1] = cur_tcoord_y
+            tcoord.view(-1)[raveled_idxs_b2] = cur_tcoord_w
+            tcoord.view(-1)[raveled_idxs_b3] = cur_tcoord_h
 
-                # PJReddie delta_region_class:
-                # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L112
-                # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L314
-                cls_mask[bx, ax, 0, gj, gi] = int(weight > .5)
+            tcls.view(-1)[raveled_idxs] = cur_gt_cls
+            tconf.view(-1)[raveled_idxs] = cur_true_ious
 
-                conf_mask[bx, ax, 0, gj, gi] = self.object_scale * weight
+            # [cur_true_anchor_axs, cur_true_js, cur_true_is]
 
-                # The true box is converted into coordinates comparable to the
-                # network outputs by:
-                # (1) we center the true box on its assigned grid cell
-                # (2) we divide its width and height by its assigned anchor
-                # (3) we take the log of width and height because the raw
-                #     network wh outputs are in logspace.
-                tcoord[bx, ax, 0, gj, gi] = gx - gi
-                tcoord[bx, ax, 1, gj, gi] = gy - gj
-                tcoord[bx, ax, 2, gj, gi] = math.log(gw / anchor_w)
-                tcoord[bx, ax, 3, gj, gi] = math.log(gh / anchor_h)
-                tconf[bx, ax, 0, gj, gi] = iou
-                tcls[bx, ax, 0, gj, gi] = target[bx, t, 0]
+            # import ubelt
+            # for timer in ubelt.Timerit(100, bestof=10, label='time'):
+            #     with timer:
+            # if False:
+            #     for t in range(cur_gt_boxes.shape[0]):
+            #         coord_weight = cur_true_coord_weights[t]
+            #         cls_weight = cur_true_cls_weights[t]
+            #         conf_weight = cur_true_conf_weights[t]
+            #         # This ground truth's grid cell
+            #         gi = cur_true_is[t].item()
+            #         gj = cur_true_js[t].item()
+
+            #         gcls = cur_gt_cls[t]
+
+            #         # The assigned (best) anchor index
+            #         ax = cur_true_anchor_axs[t].item()
+
+            #         # The prediction will be punished if it does not match this true box
+            #         # pred_box_ = cur_pred_boxes[best_n, gj, gi]
+
+            #         # Get the precomputed iou of the truth with this box
+            #         # corresponding to the assigned anchor and grid cell
+            #         # iou = cur_pred_true_ious[ax, gj, gi, t]
+            #         iou = cur_true_ious[t]
+
+            #         # Mark that we will care about the predicted box with some weight
+            #         coord_mask[bx, ax, 0, gj, gi] = coord_weight
+
+            #         # PJReddie delta_region_class:
+            #         # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L112
+            #         # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L314
+            #         cls_mask[bx, ax, 0, gj, gi] = cls_weight
+
+            #         conf_mask[bx, ax, 0, gj, gi] = conf_weight
+
+            #         # The true box is converted into coordinates comparable to the
+            #         # network outputs by:
+            #         # (1) we center the true box on its assigned grid cell
+            #         # (2) we divide its width and height by its assigned anchor
+            #         # (3) we take the log of width and height because the raw
+            #         #     network wh outputs are in logspace.
+            #         tcoord[bx, ax, 0, gj, gi] = cur_tcoord_x[t]
+            #         tcoord[bx, ax, 1, gj, gi] = cur_tcoord_y[t]
+            #         tcoord[bx, ax, 2, gj, gi] = cur_tcoord_w[t]
+            #         tcoord[bx, ax, 3, gj, gi] = cur_tcoord_h[t]
+            #         tconf[bx, ax, 0, gj, gi] = iou  # if rescore else 1
+            #         tcls[bx, ax, 0, gj, gi] = gcls
+
+        # because coord and conf masks are witin this MSE we need to sqrt them
+        if self.ORIG:
+            coord_mask = coord_mask.sqrt()
+        conf_mask = conf_mask.sqrt()
+        coord_mask = coord_mask.expand_as(tcoord)
+
+        # masked_tcls = tcls[cls_mask].view(-1).long()
+        # cls_probs_mask = cls_mask.reshape(nB, nA, nH, nW, 1).repeat(1, 1, 1, 1, nC)
+        # cls_probs_mask = Variable(cls_probs_mask, requires_grad=False)
+        # masked_cls_probs = cls_probs[cls_probs_mask].view(-1, nC)
 
         return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
 

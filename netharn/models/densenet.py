@@ -48,7 +48,8 @@ class DenseNet(nn.Module):
         >>> net = DenseNet([6, 12, 24, 16], growth_rate=12)
         >>> x = torch.randn(1, 3, 32, 32)
         >>> y = net(x)
-        >>> print(y)
+        >>> print(tuple(y.shape))
+        (1, 10)
     """
     def __init__(self, nblocks, growth_rate=12, reduction=0.5, num_classes=10):
         super(DenseNet, self).__init__()

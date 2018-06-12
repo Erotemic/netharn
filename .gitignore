@@ -110,3 +110,5 @@ netharn/util/nms/gpu_nms.cpp
 netharn/util/cython_boxes.html
 
 profile_output.*
+
+src/
