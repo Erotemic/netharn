@@ -393,7 +393,7 @@ class YoloHarn(nh.FitHarn):
             >>> harn.visualize_prediction(batch, outputs, postout, idx=0, thresh=0.01)
             >>> mplutil.show_if_requested()
         """
-        if harn.current_tag != 'train' and (harn.epoch % 10 == 9 or harn.epoch > 300):
+        if harn.current_tag != 'train':
             # Dont worry about computing mAP on the training set for now
             inputs, labels = batch
             inp_size = np.array(inputs.shape[-2:][::-1])
@@ -423,6 +423,9 @@ class YoloHarn(nh.FitHarn):
         """
         custom callback
 
+        CommandLine:
+            python ~/code/netharn/netharn/examples/yolo_voc.py YoloHarn.on_epoch
+
         Example:
             >>> # DISABLE_DOCTSET
             >>> harn = setup_harness(bsize=4)
@@ -442,8 +445,8 @@ class YoloHarn(nh.FitHarn):
         tag = harn.current_tag
 
         if tag in {'test', 'vali'}:
-            if (harn.epoch % 10 == 9 or harn.epoch > 300):
-                harn._dump_chosen_indices()
+            # if (harn.epoch % 10 == 9 or harn.epoch > 300):
+            harn._dump_chosen_indices()
 
         if harn.batch_confusions:
             y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
@@ -455,6 +458,10 @@ class YoloHarn(nh.FitHarn):
             num_classes = len(loader.dataset.label_names)
             labels = list(range(num_classes))
             aps = nh.metrics.ave_precisions(y, labels, use_07_metric=True)
+
+            new_index = list(ub.take(loader.dataset.label_names, aps.index))
+            aps.index = new_index
+
             harn.debug('aps[{}] = {!r}'.format(tag, aps))
             harn.aps[tag] = aps
             mean_ap = np.nanmean(aps['ap'])
