@@ -1618,32 +1618,47 @@ def autompl():
             set_mpl_backend('Qt5Agg')
 
 
-def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
-           interpolation='nearest', cmap=None, heatmap=False,
-           data_colorbar=False, xlabel=None, redraw_image=True,
-           colorspace='bgr', ax=None, alpha=None, norm=None, **kwargs):
+def imshow(img,
+           fnum=None, pnum=None,
+           xlabel=None, title=None, figtitle=None, ax=None,
+           norm=None, cmap=None, data_colorbar=False,
+           colorspace='bgr',
+           interpolation='nearest', alpha=None,
+           **kwargs):
     r"""
     Args:
-        img (ndarray): image data
+        img (ndarray): image data. Height, Width, and Channel dimensions
+            can either be in standard (H, W, C) format or in (C, H, W) format.
+            If C in [3, 4], we assume data is in the bgr / bgra colorspace by
+            default.
+
+        colorspace (str): if the data is 3-4 channels, this indicates the
+            colorspace 1 channel data is assumed grayscale. 4 channels assumes
+            alpha.
+
+        interpolation (str): either nearest (default), bicubic, bilinear
+
+        norm (bool): if True, normalizes the image intensities to fit in a
+            colormap.
+
+        cmap (Colormap): color map used if data is not starndard image data
+
+        data_colorbar (bool): if True, displays a color scale indicating how
+            colors map to image intensities.
+
         fnum (int): figure number
-        colorspace (str): if the data is 3-4 channels, this indicates the colorspace
-            1 channel data is assumed grayscale. 4 channels assumes alpha.
-        title (str):
-        figtitle (None):
+
         pnum (tuple): plot number
-        interpolation (str): other interpolations = nearest, bicubic, bilinear
-        cmap (None):
-        heatmap (bool):
-        data_colorbar (bool):
-        darken (None):
-        redraw_image (bool): used when calling imshow over and over. if false
-                                doesnt do the image part.
 
-    Returns:
-        tuple: (fig, ax)
+        xlabel (str): sets the label for the x axis
 
-    Kwargs:
-        docla, doclf, projection
+        title (str): set axes title (if ax is not given)
+
+        figtitle (None): set figure title (if ax is not given)
+
+        ax (Axes): axes to draw on (alternative to fnum and pnum)
+
+        **kwargs: docla, doclf, projection
 
     Returns:
         tuple: (fig, ax)
@@ -1659,6 +1674,8 @@ def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
     """
     import matplotlib as mpl
     import matplotlib.pyplot as plt
+    from netharn import util
+
     if ax is not None:
         fig = ax.figure
         nospecial = True
@@ -1666,36 +1683,41 @@ def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
         fig = figure(fnum=fnum, pnum=pnum, title=title, figtitle=figtitle, **kwargs)
         ax = plt.gca()
         nospecial = False
-        #ax.set_xticks([])
-        #ax.set_yticks([])
-        #return fig, ax
-
-    if not redraw_image:
-        return fig, ax
 
     if isinstance(img, six.string_types):
         # Allow for path to image to be specified
-        from netharn import util
         img_fpath = img
         img = util.imread(img_fpath)
 
     plt_imshow_kwargs = {
         'interpolation': interpolation,
-        #'cmap': plt.get_cmap('gray'),
     }
     if alpha is not None:
         plt_imshow_kwargs['alpha'] = alpha
 
     if norm is not None:
         if norm is True:
-            norm = mpl.colors.Normalize()
+            norm = 'linear'
+        if isinstance(norm, six.string_types):
+            norm_choices = {
+                'linear': mpl.colors.Normalize,
+                'log': mpl.colors.LogNorm,
+            }
+            try:
+                norm = norm_choices[norm]()
+            except KeyError:
+                raise KeyError('norm={} not in valid choices: {}'.format(
+                    norm, list(norm_choices)
+                ))
+        if not isinstance(norm, mpl.colors.Normalize):
+            raise TypeError('norm={} must be an instance of {} or in {}'.format(
+                norm, mpl.colors.Normalize, list(norm_choices)))
+
         plt_imshow_kwargs['norm'] = norm
     else:
-        if cmap is None and not heatmap and not nospecial:
+        if cmap is None and not nospecial:
             plt_imshow_kwargs['vmin'] = 0
             plt_imshow_kwargs['vmax'] = 255
-    if heatmap:
-        cmap = 'hot'
 
     # Handle tensor chw format in most cases
     if img.ndim == 3:
@@ -1707,8 +1729,6 @@ def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
     try:
         if len(img.shape) == 3 and (img.shape[2] == 3 or img.shape[2] == 4):
             # img is in a color format
-            from netharn import util
-
             dst_space = 'rgb'
             if img.shape[2] == 4:
                 colorspace += 'a'
@@ -1720,7 +1740,7 @@ def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
                 maxval = imgRGB.max()
                 if maxval > 1.01 and maxval < 256:
                     imgRGB = np.array(imgRGB, dtype=np.uint8)
-            ax.imshow(imgRGB, **plt_imshow_kwargs)
+            cs = ax.imshow(imgRGB, **plt_imshow_kwargs)
 
         elif len(img.shape) == 2 or (len(img.shape) == 3 and img.shape[2] == 1):
             # img is in grayscale
@@ -1735,36 +1755,47 @@ def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
             # for some reason gray floats aren't working right
             if imgGRAY.max() <= 1.01 and imgGRAY.min() >= -1E-9:
                 imgGRAY = (imgGRAY * 255).astype(np.uint8)
-            ax.imshow(imgGRAY, cmap=cmap, **plt_imshow_kwargs)
+            cs = ax.imshow(imgGRAY, cmap=cmap, **plt_imshow_kwargs)
         else:
             raise AssertionError(
-                'unknown image format. img.dtype=%r, img.shape=%r' %
-                (img.dtype, img.shape))
+                'Unknown image format. '
+                'img.dtype={!r}, img.shape={!r}'.format(
+                    img.dtype, img.shape)
+            )
     except TypeError as te:
-        print('[df2] imshow ERROR %r' % (te,))
+        print('[imshow] imshow ERROR %r' % (te,))
         raise
     except Exception as ex:
-        print('!!!!!!!!!!!!!!WARNING!!!!!!!!!!!')
-        print('[df2] type(img) = %r' % type(img))
+        print('!!! WARNING !!!')
+        print('[imshow] type(img) = %r' % type(img))
         if not isinstance(img, np.ndarray):
-            print('!!!!!!!!!!!!!!ERRROR!!!!!!!!!!!')
+            print('!!! ERRROR !!!')
             pass
-            #print('img = %r' % (img,))
-        print('[df2] img.dtype = %r' % (img.dtype,))
-        print('[df2] type(img) = %r' % (type(img),))
-        print('[df2] img.shape = %r' % (img.shape,))
-        print('[df2] imshow ERROR %r' % ex)
+        print('[imshow] img.dtype = %r' % (img.dtype,))
+        print('[imshow] type(img) = %r' % (type(img),))
+        print('[imshow] img.shape = %r' % (img.shape,))
+        print('[imshow] imshow ERROR %r' % ex)
         raise
-    #plt.set_cmap('gray')
     ax.set_xticks([])
     ax.set_yticks([])
 
-    if data_colorbar is True:
-        scores = np.unique(img.flatten())
-        if cmap is None:
-            cmap = 'hot'
-        colors = scores_to_color(scores, cmap)
-        colorbar(scores, colors)
+    if data_colorbar:
+        # Use the axes to supply the colorbar info
+        # Does this mean we can depricate `colorbar`?
+        cbar = fig.colorbar(cs)
+
+        if isinstance(norm, mpl.colors.LogNorm):
+            # References:
+            #    https://github.com/matplotlib/matplotlib/issues/8307
+            cbar.ax.yaxis.set_major_locator(mpl.ticker.LogLocator())  # <- Why? See refs
+            cbar.set_ticks(cbar.ax.yaxis.get_major_locator().tick_values(
+                img.min(), img.max()))
+
+        # scores = np.unique(img.flatten())
+        # if cmap is None:
+        #     cmap = 'hot'
+        # colors = scores_to_color(scores, cmap)
+        # colorbar(scores, colors)
 
     if xlabel is not None:
         ax.set_xlabel(xlabel)
