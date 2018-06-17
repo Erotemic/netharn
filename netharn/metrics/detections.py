@@ -432,6 +432,10 @@ def _group_metrics(group, method):
 
     if method == 'voc2007' or method == 'voc2012':
         group = group.sort_values('score', ascending=False)
+        # if True:
+        #     # ignore "difficult" matches
+        #     group = group[group.weight > 0]
+
         # npos = sum(group.true >= 0)
         npos = group[group.true >= 0].weight.sum()
         dets = group[group.pred > -1]

@@ -187,7 +187,7 @@ class GetBoundingBoxes(object):
         return obj(network_output)
 
     @profiler.profile
-    def _get_boxes(self, output, mode=0):
+    def _get_boxes(self, output, mode=1):
         """
         Returns array of detections for every image in batch
 

@@ -20,6 +20,13 @@ mkinit /code/netharn/netharn/examples/example_test.py --dry
 
 
 def evaluate_model():
+    """
+    import ubelt as ub
+    import sys
+    sys.path.append(ub.truepath('~/code/netharn/netharn/examples/tests'))
+    from test_yolo import *
+    """
+
     from os.path import join
     train_dpath = ub.truepath('~/work/voc_yolo2/fit/nice/pjr_run')
     snapshot_fpath = join(train_dpath, 'torch_snapshots', '_epoch_00000314.pt')
@@ -63,13 +70,13 @@ def evaluate_model():
 
         # Hack while I fix the call
         post = model.module.postprocess
-        boxes = post._get_boxes(outputs.data, mode=0)
-        boxes = [post._nms(box, mode=2) for box in boxes]
+        boxes = post._get_boxes(outputs.data, mode=1)
+        boxes = [post._nms(box, mode=0) for box in boxes]
         postout = [post._clip_boxes(box) for box in boxes]
 
         # NOTE: The bottleneck is the postprocess module BY FAR.
         # The main issue is NMS I think.
-        # postout = model.module.postprocess(outputs, mode=1)
+        # postout = model.module.postprocess(outputs)
 
         all_postout.append(postout)
         all_labels.append(batch_labels)
@@ -158,10 +165,17 @@ def evaluate_model():
     precision, recall, ap = nh.metrics.detections._multiclass_ap(y)
 
     aps = nh.metrics.ave_precisions(y, list(range(20)), method='voc2007')
+    print('mAP[voc07] = {:.4f}'.format(aps['ap'].mean()))
+    aps = nh.metrics.ave_precisions(y, list(range(20)), method='voc2012')
+    print('mAP[voc12] = {:.4f}'.format(aps['ap'].mean()))
+    aps = nh.metrics.ave_precisions(y, list(range(20)), method='sklearn')
+    print('mAP[sklearn] = {:.4f}'.format(aps['ap'].mean()))
+
+    # aps = nh.metrics.ave_precisions(y, list(range(20)), method='voc2007')
     new_index = list(ub.take(loader.dataset.label_names, aps.index))
     aps.index = new_index
     print(aps)
-    print('mAP = {}'.format(aps.mean()))
+    print('mAP = {:.4f}'.format(aps['ap'].mean()))
 
 
 def compare_ap_impl(**kw):
