@@ -144,7 +144,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
 
     Example:
         >>> img = demodata_hsv_image()
-        >>> box = util.Boxes([[.45, .05, .10, .05], [0., 0.0, .199, .199], [.24, .05, .01, .05]], format='xywh').to_tlbr()
+        >>> box = util.Boxes([[.45, .05, .10, .05], [0., 0.0, .199, .199], [.24, .05, .01, .05]], format='tlwh').to_tlbr()
         >>> bboi = box.to_imgaug(shape=img.shape)
         >>> self = Resize((40, 30))
         >>> aug1  = self.augment_image(img)
@@ -152,7 +152,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
 
     Example:
         >>> img = demodata_hsv_image()
-        >>> box = util.Boxes([[450, 50, 100, 50], [0.0, 0, 199, 199], [240, 50, 10, 50]], format='xywh').to_tlbr()
+        >>> box = util.Boxes([[450, 50, 100, 50], [0.0, 0, 199, 199], [240, 50, 10, 50]], format='tlwh').to_tlbr()
         >>> bboi = box.to_imgaug(shape=img.shape)
         >>> imgT = np.ascontiguousarray(img.transpose(1, 0, 2))
         >>> bboiT = box.transpose().to_imgaug(shape=imgT.shape)

@@ -261,9 +261,9 @@ class Yolo(nn.Module):
             >>> #sf = orig_sizes[0].numpy() / (np.array(inp_size) / 32)
             >>> sf = orig_sizes[0].numpy()
             >>> norm_cxywh = util.Boxes(out_boxes.numpy(), 'cxywh')
-            >>> xywh = norm_cxywh.toformat('xywh').scale(sf).data
+            >>> tlwh = norm_cxywh.toformat('tlwh').scale(sf).data
             >>> mplutil.imshow(rgb255, colorspace='rgb')
-            >>> mplutil.draw_boxes(xywh)
+            >>> mplutil.draw_boxes(tlwh)
             >>> mplutil.show_if_requested()
         """
         outputs = []
@@ -297,7 +297,7 @@ def find_anchors(dset):
         >>> from netharn.util import mplutil
         >>> mplutil.figure(doclf=True, fnum=1)
         >>> mplutil.qtensure()  # xdoc: +SKIP
-        >>> mplutil.draw_boxes(show_boxes, box_format='xywh')
+        >>> mplutil.draw_boxes(show_boxes, box_format='tlwh')
         >>> from matplotlib import pyplot as plt
         >>> plt.gca().set_xlim(xy.min() - 1, wh.max() / 2 + 1)
         >>> plt.gca().set_ylim(xy.min() - 1, wh.max() / 2 + 1)

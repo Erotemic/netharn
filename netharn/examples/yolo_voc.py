@@ -578,23 +578,23 @@ class YoloHarn(nh.FitHarn):
             pred_scores = sboxes[:, 4]
             pred_cxs = sboxes[:, 5].astype(np.int)
 
-            true_xywh = undo_letterbox(true_cxywh).toformat('xywh').data
-            pred_xywh = undo_letterbox(pred_cxywh).toformat('xywh').data
+            true_tlwh = undo_letterbox(true_cxywh).toformat('tlwh').data
+            pred_tlwh = undo_letterbox(pred_cxywh).toformat('tlwh').data
 
-            for xywh, cx, score in zip(pred_xywh, pred_cxs, pred_scores):
+            for tlwh, cx, score in zip(pred_tlwh, pred_cxs, pred_scores):
                 pred = {
                     'image_id': gx,
                     'category_id': cx,
-                    'bbox': list(xywh),
+                    'bbox': list(tlwh),
                     'score': score,
                 }
                 predictions.append(pred)
 
-            for xywh, cx, weight in zip(true_xywh, true_cxs, gt_weights):
+            for tlwh, cx, weight in zip(true_tlwh, true_cxs, gt_weights):
                 true = {
                     'image_id': gx,
                     'category_id': cx,
-                    'bbox': list(xywh),
+                    'bbox': list(tlwh),
                     'weight': weight,
                 }
                 truth.append(true)

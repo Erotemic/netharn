@@ -211,8 +211,8 @@ class _BoxConversionMixins(object):
         """
         Changes the internal representation of the bounding box
         """
-        if format == 'xywh':
-            return self.to_xywh(copy=copy)
+        if format == 'tlwh':
+            return self.to_tlwh(copy=copy)
         elif format == 'tlbr':
             return self.to_tlbr(copy=copy)
         elif format == 'cxywh':
@@ -232,8 +232,8 @@ class _BoxConversionMixins(object):
             extent = tlbr[..., [0, 2, 1, 3]]
         return Boxes(extent, 'extent')
 
-    def to_xywh(self, copy=True):
-        if self.format == 'xywh':
+    def to_tlwh(self, copy=True):
+        if self.format == 'tlwh':
             return self.copy() if copy else self
         elif self.format == 'tlbr':
             x1, y1, x2, y2 = self.components
@@ -245,8 +245,8 @@ class _BoxConversionMixins(object):
             y1 = cy - h / 2
         else:
             raise KeyError(self.format)
-        xywh = self._cat([x1, y1, w, h])
-        return Boxes(xywh, 'xywh')
+        tlwh = self._cat([x1, y1, w, h])
+        return Boxes(tlwh, 'tlwh')
 
     def to_cxywh(self, copy=True):
         if self.format == 'cxywh':
@@ -257,7 +257,7 @@ class _BoxConversionMixins(object):
             h = y2 - y1
             cx = (x1 + x2) / 2
             cy = (y1 + y2) / 2
-        elif self.format == 'xywh':
+        elif self.format == 'tlwh':
             x1, y1, w, h = self.components
             cx = x1 + (w / 2)
             cy = y1 + (h / 2)
@@ -277,7 +277,7 @@ class _BoxConversionMixins(object):
             x2 = cx + half_w
             y1 = cy - half_h
             y2 = cy + half_h
-        elif self.format == 'xywh':
+        elif self.format == 'tlwh':
             x1, y1, w, h = self.components
             x2 = x1 + w
             y2 = y1 + h
@@ -347,12 +347,12 @@ class _BoxPropertyMixins(object):
     def area(self):
         """
         Example:
-            >>> Boxes([25, 30, 15, 10], 'xywh').area
+            >>> Boxes([25, 30, 15, 10], 'tlwh').area
             array([150])
-            >>> Boxes([[25, 30, 0, 0]], 'xywh').area
+            >>> Boxes([[25, 30, 0, 0]], 'tlwh').area
             array([[0]])
         """
-        w, h = self.to_xywh().components[-2:]
+        w, h = self.to_tlwh().components[-2:]
         return w * h
 
 
@@ -370,7 +370,7 @@ class _BoxTransformMixins(object):
     """
     def scale(self, factor):
         r"""
-        works with tlbr, cxywh, xywh, xy, or wh formats
+        works with tlbr, cxywh, tlwh, xy, or wh formats
 
         Example:
             >>> # xdoctest: +IGNORE_WHITESPACE
@@ -398,10 +398,10 @@ class _BoxTransformMixins(object):
         """
         Example:
             >>> # xdoctest: +IGNORE_WHITESPACE
-            >>> Boxes([25, 30, 15, 10], 'xywh').shift(10)
-            <Boxes(xywh, array([35., 40., 15., 10.]))>
-            >>> Boxes([25, 30, 15, 10], 'xywh').shift((10, 0))
-            <Boxes(xywh, array([35., 30., 15., 10.]))>
+            >>> Boxes([25, 30, 15, 10], 'tlwh').shift(10)
+            <Boxes(tlwh, array([35., 40., 15., 10.]))>
+            >>> Boxes([25, 30, 15, 10], 'tlwh').shift((10, 0))
+            <Boxes(tlwh, array([35., 30., 15., 10.]))>
             >>> Boxes([25, 30, 15, 10], 'tlbr').shift((10, 5))
             <Boxes(tlbr, array([35., 35., 25., 15.]))>
         """
@@ -418,7 +418,7 @@ class _BoxTransformMixins(object):
         else:
             new_data = boxes.astype(np.float).copy()
         if _numel(new_data) > 0:
-            if self.format in ['xywh', 'cxywh']:
+            if self.format in ['tlwh', 'cxywh']:
                 new_data[..., 0] += tx
                 new_data[..., 1] += ty
             elif self.format in ['tlbr']:
@@ -465,8 +465,8 @@ class _BoxTransformMixins(object):
         """
         Flips the box itself in data coordinates
         """
-        x, y, w, h = self.to_xywh().components
-        self2 = self.__class__(self._cat([y, x, h, w]), format='xywh')
+        x, y, w, h = self.to_tlwh().components
+        self2 = self.__class__(self._cat([y, x, h, w]), format='tlwh')
         self2 = self2.toformat(self.format)
         return self2
 
@@ -484,17 +484,17 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
 
     Example:
         >>> # xdoctest: +IGNORE_WHITESPACE
-        >>> Boxes([25, 30, 15, 10], 'xywh')
-        <Boxes(xywh, array([25, 30, 15, 10]))>
-        >>> Boxes([25, 30, 15, 10], 'xywh').to_xywh()
-        <Boxes(xywh, array([25, 30, 15, 10]))>
-        >>> Boxes([25, 30, 15, 10], 'xywh').to_cxywh()
+        >>> Boxes([25, 30, 15, 10], 'tlwh')
+        <Boxes(tlwh, array([25, 30, 15, 10]))>
+        >>> Boxes([25, 30, 15, 10], 'tlwh').to_tlwh()
+        <Boxes(tlwh, array([25, 30, 15, 10]))>
+        >>> Boxes([25, 30, 15, 10], 'tlwh').to_cxywh()
         <Boxes(cxywh, array([32.5, 35. , 15. , 10. ]))>
-        >>> Boxes([25, 30, 15, 10], 'xywh').to_tlbr()
+        >>> Boxes([25, 30, 15, 10], 'tlwh').to_tlbr()
         <Boxes(tlbr, array([25, 30, 40, 40]))>
-        >>> Boxes([25, 30, 15, 10], 'xywh').scale(2).to_tlbr()
+        >>> Boxes([25, 30, 15, 10], 'tlwh').scale(2).to_tlbr()
         <Boxes(tlbr, array([50., 60., 80., 80.]))>
-        >>> Boxes(torch.FloatTensor([[25, 30, 15, 20]]), 'xywh').scale(.1).to_tlbr()
+        >>> Boxes(torch.FloatTensor([[25, 30, 15, 20]]), 'tlwh').scale(.1).to_tlbr()
         <Boxes(tlbr, tensor([[ 2.5000,  3.0000,  4.0000,  5.0000]]))>
 
     Example:
@@ -503,7 +503,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         >>>     [[1, 2, 3, 4], [4, 5, 6, 7]],
         >>>     [[[1, 2, 3, 4], [4, 5, 6, 7]]],
         >>> ]
-        >>> formats = ['xywh', 'cxywh', 'tlbr']
+        >>> formats = ['tlwh', 'cxywh', 'tlbr']
         >>> for format1 in formats:
         >>>     for data in datas:
         >>>         self = box1 = Boxes(data, format1)
@@ -512,7 +512,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         >>>             back = box2.toformat(format1)
         >>>             assert box1 == back
     """
-    def __init__(self, data, format='xywh'):
+    def __init__(self, data, format='tlwh'):
         CHECKS = False
         if CHECKS:
             if _numel(data) > 0 and data.shape[-1] == 4:
@@ -533,7 +533,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         Tests equality of two Boxes objects
         
         Example:
-            >>> box0 = box1 = Boxes([[1, 2, 3, 4]], 'xywh')
+            >>> box0 = box1 = Boxes([[1, 2, 3, 4]], 'tlwh')
             >>> box2 = Boxes(box0.data, 'tlbr')
             >>> box3 = Boxes([[0, 2, 3, 4]], box0.format)
             >>> box4 = Boxes(box0.data, box2.format)
@@ -554,19 +554,19 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
     __repr__ = ub.NiceRepr.__str__
 
     @classmethod
-    def random(Boxes, num=1, scale=1.0, format='xywh', rng=None, tensor=False):
+    def random(Boxes, num=1, scale=1.0, format='tlwh', rng=None, tensor=False):
         """
         Makes random boxes
 
         Example:
             >>> # xdoctest: +IGNORE_WHITESPACE
             >>> Boxes.random(3, rng=0, scale=100)
-            <Boxes(xywh,
+            <Boxes(tlwh,
                 array([[27, 35, 30, 27],
                        [21, 32, 21, 44],
                        [48, 19, 39, 26]]))>
             >>> Boxes.random(3, rng=0, scale=100, tensor=True)
-            <Boxes(xywh,
+            <Boxes(tlwh,
                 tensor([[ 27,  35,  30,  27],
                         [ 21,  32,  21,  44],
                         [ 48,  19,  39,  26]]))>
@@ -574,16 +574,16 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         from netharn import util
         rng = util.ensure_rng(rng)
 
-        xywh = (rng.rand(num, 4) * scale / 2)
+        tlwh = (rng.rand(num, 4) * scale / 2)
         as_integer = isinstance(scale, int)
         if as_integer:
-            xywh = xywh.astype(np.int)
+            tlwh = tlwh.astype(np.int)
         if tensor:
             if as_integer:
-                xywh = torch.LongTensor(xywh)
+                tlwh = torch.LongTensor(tlwh)
             else:
-                xywh = torch.FloatTensor(xywh)
-        boxes = Boxes(xywh, format='xywh').toformat(format, copy=False)
+                tlwh = torch.FloatTensor(tlwh)
+        boxes = Boxes(tlwh, format='tlwh').toformat(format, copy=False)
         return boxes
 
     def copy(self):
@@ -626,7 +626,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         Compute IOUs between these boxes and another set of boxes
 
         Examples:
-            >>> formats = ['cxywh', 'xywh', 'tlbr']
+            >>> formats = ['cxywh', 'tlwh', 'tlbr']
             >>> istensors = [False, True]
             >>> results = {}
             >>> for format in formats:
@@ -651,7 +651,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         Passthrough method to view or reshape
 
         Example:
-            >>> self = Boxes.random(6, scale=10.0, rng=0, format='xywh', tensor=True)
+            >>> self = Boxes.random(6, scale=10.0, rng=0, format='tlwh', tensor=True)
             >>> assert list(self.view(3, 2, 4).data.shape) == [3, 2, 4]
             >>> self = Boxes.random(6, scale=10.0, rng=0, format='tlbr', tensor=False)
             >>> assert list(self.view(3, 2, 4).data.shape) == [3, 2, 4]

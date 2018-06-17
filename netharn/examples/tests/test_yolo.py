@@ -174,8 +174,14 @@ def evaluate_model():
     # aps = nh.metrics.ave_precisions(y, list(range(20)), method='voc2007')
     new_index = list(ub.take(loader.dataset.label_names, aps.index))
     aps.index = new_index
+    print('SKLEARN APS')
     print(aps)
-    print('mAP = {:.4f}'.format(aps['ap'].mean()))
+
+    aps = nh.metrics.ave_precisions(y, list(range(20)), method='voc2007')
+    new_index = list(ub.take(loader.dataset.label_names, aps.index))
+    aps.index = new_index
+    print('VOC 2007 APS')
+    print(aps)
 
 
 def compare_ap_impl(**kw):

@@ -2327,13 +2327,13 @@ def draw_border(ax, color, lw=2, offset=None, adjust=True):
     return rect
 
 
-def draw_boxes(boxes, box_format='xywh', color='blue', labels=None,
+def draw_boxes(boxes, box_format='tlwh', color='blue', labels=None,
                textkw=None, ax=None):
     """
     Args:
-        boxes (list): list of coordindates in xywh, tlbr, or cxywh format
+        boxes (list): list of coordindates in tlwh, tlbr, or cxywh format
         box_format (str): specify how boxes are formated
-            xywh is the top left x and y pixel width and height
+            tlwh is the top left x and y pixel width and height
             cxywh is the center xy pixel width and height
             tlbr is the top left xy and the bottom right xy
         color (str): edge color of the boxes
@@ -2360,17 +2360,17 @@ def draw_boxes(boxes, box_format='xywh', color='blue', labels=None,
 
     boxes = np.asarray(boxes)
 
-    if box_format == 'xywh':
-        xywh = boxes
+    if box_format == 'tlwh':
+        tlwh = boxes
     elif box_format == 'cxywh':
         cx, cy, w, h = boxes.T[0:4]
         x1 = cx - (w / 2)
         y1 = cy - (h / 2)
-        xywh = np.vstack([x1, y1, w, h]).T
+        tlwh = np.vstack([x1, y1, w, h]).T
     elif box_format == 'tlbr':
         x1, y1 = boxes.T[0:2]
         w, h = boxes.T[2:4] - boxes.T[0:2]
-        xywh = np.vstack([x1, y1, w, h]).T
+        tlwh = np.vstack([x1, y1, w, h]).T
     else:
         raise KeyError(box_format)
 
@@ -2380,7 +2380,7 @@ def draw_boxes(boxes, box_format='xywh', color='blue', labels=None,
     rectkw = dict(ec=edgecolor, fc=facecolor, lw=2, linestyle='solid')
 
     patches = [mpl.patches.Rectangle((x, y), w, h, **rectkw)
-               for x, y, w, h in xywh]
+               for x, y, w, h in tlwh]
     col = mpl.collections.PatchCollection(patches, match_original=True)
     ax.add_collection(col)
 
@@ -2397,7 +2397,7 @@ def draw_boxes(boxes, box_format='xywh', color='blue', labels=None,
         tkw = default_textkw.copy()
         if textkw is not None:
             tkw.update(textkw)
-        for (x1, y1, w, h), label in zip(xywh, labels):
+        for (x1, y1, w, h), label in zip(tlwh, labels):
             texts.append((x1, y1, label, tkw))
 
         for (x1, y1, catname, tkw) in texts:

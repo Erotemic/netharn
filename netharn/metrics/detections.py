@@ -186,6 +186,8 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
             reweighted = overlaps * is_valid.astype(np.float)
             # settings can modify this
             if PREFER_WEIGHTED_TRUTH:
+                # PREFER_WEIGHTED_TRUTH is bugged, doesn't work.
+                # should be trying to ignore difficult gt boxes
                 reweighted = reweighted * cls_true_weights
 
             if np.any(reweighted > 0):
