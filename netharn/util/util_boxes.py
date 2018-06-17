@@ -634,7 +634,8 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>>                        [10,  0, 20, 10],
             >>>                        [20,  0, 30, 10]]), 'tlbr')
             >>> other = Boxes(np.array([6, 2, 20, 10]), 'tlbr')
-            >>> self.ious(other[None, :], bias=1)
+            >>> overlaps = self.ious(other[None, :], bias=1).ravel().round(2)
+            >>> assert np.all(np.isclose(overlaps, [0.21, 0.63, 0.04])), repr(overlaps)
 
         Examples:
             >>> formats = ['cxywh', 'tlwh', 'tlbr']
