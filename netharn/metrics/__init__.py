@@ -13,12 +13,11 @@ else:
     from netharn.metrics import detections
     from netharn.metrics import sklearn_alts
 
-    from netharn.metrics.detections import (ave_precisions, detection_confusions,
-                                            iou_overlap,)
+    from netharn.metrics.detections import (ave_precisions, detection_confusions,)
     from netharn.metrics.sklearn_alts import (class_accuracy_from_confusion,
                                               confusion_matrix,
                                               global_accuracy_from_confusion,)
 
     __all__ = ['ave_precisions', 'class_accuracy_from_confusion',
                'confusion_matrix', 'detection_confusions', 'detections',
-               'global_accuracy_from_confusion', 'iou_overlap', 'sklearn_alts']
+               'global_accuracy_from_confusion', 'sklearn_alts']

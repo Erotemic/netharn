@@ -29,6 +29,7 @@ else:
     from netharn.util import util_resources
     from netharn.util import util_slider
     from netharn.util import util_subextreme
+    from netharn.util import util_tensorboard
 
     from netharn.util.imutil import (CV2_INTERPOLATION_TYPES, adjust_gamma,
                                      atleast_3channels, convert_colorspace,
@@ -40,8 +41,8 @@ else:
                                      overlay_alpha_images, overlay_colorized,
                                      run_length_encoding, wide_strides_1d,)
     from netharn.util.mplutil import (Color, PlotNums, adjust_subplots, aggensure,
-                                      axes_extent, colorbar, colorbar_image,
-                                      copy_figure_to_clipboard,
+                                      autompl, axes_extent, colorbar,
+                                      colorbar_image, copy_figure_to_clipboard,
                                       deterministic_shuffle, dict_intersection,
                                       distinct_colors, distinct_markers,
                                       draw_border, draw_boxes, draw_line_segments,
@@ -51,7 +52,7 @@ else:
                                       render_figure_to_image, reverse_colormap,
                                       save_parts, savefig2, scores_to_cmap,
                                       scores_to_color, set_figtitle,
-                                      show_if_requested,)
+                                      set_mpl_backend, show_if_requested,)
     from netharn.util.nms import (non_max_supression,)
     from netharn.util.profiler import (IS_PROFILING, KernprofParser,
                                        dump_global_profile_report, dynamic_profile,
@@ -89,6 +90,7 @@ else:
     from netharn.util.util_slider import (SlidingIndexDataset, SlidingSlices,
                                           Stitcher,)
     from netharn.util.util_subextreme import (argsubmax, argsubmaxima,)
+    from netharn.util.util_tensorboard import (read_tensorboard_scalars,)
 
     __all__ = ['Boxes', 'CV2_INTERPOLATION_TYPES', 'CacheStamp', 'Color',
                'CumMovingAve', 'ExpMovingAve', 'IS_PROFILING',
@@ -97,13 +99,13 @@ else:
                'RunningStats', 'SlidingIndexDataset', 'SlidingSlices', 'Stitcher',
                'WindowedMovingAve', 'absdev', 'adjust_gamma', 'adjust_subplots',
                'aggensure', 'align_paths', 'apply_grouping', 'argsubmax',
-               'argsubmaxima', 'atleast_3channels', 'atleast_nd', 'axes_extent',
-               'box_ious', 'box_ious_py', 'box_ious_torch', 'check_aligned',
-               'colorbar', 'colorbar_image', 'compact_idstr', 'convert_colorspace',
-               'copy_figure_to_clipboard', 'deterministic_shuffle',
-               'dict_intersection', 'distinct_colors', 'distinct_markers',
-               'draw_border', 'draw_boxes', 'draw_boxes_on_image',
-               'draw_line_segments', 'draw_text_on_image',
+               'argsubmaxima', 'atleast_3channels', 'atleast_nd', 'autompl',
+               'axes_extent', 'box_ious', 'box_ious_py', 'box_ious_torch',
+               'check_aligned', 'colorbar', 'colorbar_image', 'compact_idstr',
+               'convert_colorspace', 'copy_figure_to_clipboard',
+               'deterministic_shuffle', 'dict_intersection', 'distinct_colors',
+               'distinct_markers', 'draw_border', 'draw_boxes',
+               'draw_boxes_on_image', 'draw_line_segments', 'draw_text_on_image',
                'dump_global_profile_report', 'dumpsafe', 'dynamic_profile',
                'ensure_alpha_channel', 'ensure_float01', 'ensure_fnum',
                'ensure_grayscale', 'ensure_rng', 'ensure_ulimit',
@@ -119,14 +121,14 @@ else:
                'overlay_alpha_images', 'overlay_colorized', 'pandas_plot_matrix',
                'profile', 'profile_onthefly', 'profiler', 'putMultiLineText',
                'qtensure', 'random_combinations', 'random_product', 'read_arr',
-               'read_h5arr', 'read_json', 'render_figure_to_image',
-               'reverse_colormap', 'roundrobin', 'run_length_encoding',
-               'save_parts', 'savefig2', 'scores_to_cmap', 'scores_to_color',
-               'set_figtitle', 'shortest_unique_prefixes',
-               'shortest_unique_suffixes', 'show_if_requested', 'shuffle',
-               'stats_dict', 'torch_utils', 'util_averages', 'util_boxes',
-               'util_cachestamp', 'util_cv2', 'util_demodata', 'util_fname',
-               'util_idstr', 'util_io', 'util_iter', 'util_json', 'util_numpy',
-               'util_random', 'util_resources', 'util_slider', 'util_subextreme',
-               'walk_json', 'wide_strides_1d', 'write_arr', 'write_h5arr',
-               'write_json']
+               'read_h5arr', 'read_json', 'read_tensorboard_scalars',
+               'render_figure_to_image', 'reverse_colormap', 'roundrobin',
+               'run_length_encoding', 'save_parts', 'savefig2', 'scores_to_cmap',
+               'scores_to_color', 'set_figtitle', 'set_mpl_backend',
+               'shortest_unique_prefixes', 'shortest_unique_suffixes',
+               'show_if_requested', 'shuffle', 'stats_dict', 'torch_utils',
+               'util_averages', 'util_boxes', 'util_cachestamp', 'util_cv2',
+               'util_demodata', 'util_fname', 'util_idstr', 'util_io', 'util_iter',
+               'util_json', 'util_numpy', 'util_random', 'util_resources',
+               'util_slider', 'util_subextreme', 'util_tensorboard', 'walk_json',
+               'wide_strides_1d', 'write_arr', 'write_h5arr', 'write_json']
