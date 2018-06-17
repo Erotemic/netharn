@@ -512,7 +512,10 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         >>>             back = box2.toformat(format1)
         >>>             assert box1 == back
     """
-    def __init__(self, data, format='tlwh'):
+    def __init__(self, data, format=None):
+        if format is None:
+            print('WARNING: format for Boxes not specified, default to tlwh')
+            format = 'tlwh'
         CHECKS = False
         if CHECKS:
             if _numel(data) > 0 and data.shape[-1] == 4:
@@ -531,7 +534,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
     def __eq__(self, other):
         """
         Tests equality of two Boxes objects
-        
+
         Example:
             >>> box0 = box1 = Boxes([[1, 2, 3, 4]], 'tlwh')
             >>> box2 = Boxes(box0.data, 'tlbr')
@@ -624,6 +627,14 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
     def ious(self, other, bias=0, mode=None):
         """
         Compute IOUs between these boxes and another set of boxes
+
+        Examples:
+            >>> # xdoctest: +IGNORE_WHITESPACE
+            >>> self = Boxes(np.array([[ 0,  0, 10, 10],
+            >>>                        [10,  0, 20, 10],
+            >>>                        [20,  0, 30, 10]]), 'tlbr')
+            >>> other = Boxes(np.array([6, 2, 20, 10]), 'tlbr')
+            >>> self.ious(other[None, :], bias=1)
 
         Examples:
             >>> formats = ['cxywh', 'tlwh', 'tlbr']

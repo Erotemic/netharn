@@ -172,7 +172,11 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
             else:
                 cls_true_weights = true_weights.take(cls_true_idxs, axis=0)
 
-            overlaps = iou_overlap(cls_true_boxes, box, bias=bias)
+            cls_true_boxes_ = util.Boxes(cls_true_boxes, 'tlbr')
+            box_ = util.Boxes(box, 'tlbr')
+            overlaps = cls_true_boxes_.ious(box_[None, :], bias=bias).ravel()
+            # overlaps = iou_overlap(cls_true_boxes, box, bias=bias)
+
             sortx = overlaps.argsort()[::-1]
 
             # choose best score by default
@@ -241,35 +245,35 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
         'weight': y_weight,
         'cx': cxs,
     }
-    # y = pd.DataFrame()
+    # y = pd.DataFrame(y)
     return y
 
 
-def iou_overlap(true_boxes, pred_box, bias=1):
-    """
-    Compute iou of `pred_box` with each `true_box in true_boxes`.
-    Return the index and score of the true box with maximum overlap.
-    Boxes should be in tlbr format.
+# def iou_overlap(true_boxes, pred_box, bias=1):
+#     """
+#     Compute iou of `pred_box` with each `true_box in true_boxes`.
+#     Return the index and score of the true box with maximum overlap.
+#     Boxes should be in tlbr format.
 
-    CommandLine:
-        python -m netharn.metrics.detections iou_overlap
+#     CommandLine:
+#         python -m netharn.metrics.detections iou_overlap
 
-    Example:
-        >>> # xdoctest: +IGNORE_WHITESPACE
-        >>> true_boxes = np.array([[ 0,  0, 10, 10],
-        >>>                        [10,  0, 20, 10],
-        >>>                        [20,  0, 30, 10]])
-        >>> pred_box = np.array([6, 2, 20, 10, .9])
-        >>> overlaps = iou_overlap(true_boxes, pred_box).round(2)
-        >>> assert np.all(np.isclose(overlaps, [0.21, 0.63, 0.04])), repr(overlaps)
-    """
-    # import yolo_utils
-    true_boxes = np.array(true_boxes)
-    pred_box = np.array(pred_box)
-    overlaps = util.box_ious(
-        true_boxes[:, 0:4].astype(np.float),
-        pred_box[None, :][:, 0:4].astype(np.float), bias=bias).ravel()
-    return overlaps
+#     Example:
+#         >>> # xdoctest: +IGNORE_WHITESPACE
+#         >>> true_boxes = np.array([[ 0,  0, 10, 10],
+#         >>>                        [10,  0, 20, 10],
+#         >>>                        [20,  0, 30, 10]])
+#         >>> pred_box = np.array([6, 2, 20, 10, .9])
+#         >>> overlaps = iou_overlap(true_boxes, pred_box).round(2)
+#         >>> assert np.all(np.isclose(overlaps, [0.21, 0.63, 0.04])), repr(overlaps)
+#     """
+#     # import yolo_utils
+#     true_boxes = np.array(true_boxes)
+#     pred_box = np.array(pred_box)
+#     overlaps = util.box_ious(
+#         true_boxes[:, 0:4].astype(np.float),
+#         pred_box[None, :][:, 0:4].astype(np.float), bias=bias).ravel()
+#     return overlaps
 
 
 def _ave_precision(rec, prec, use_07_metric=False):
