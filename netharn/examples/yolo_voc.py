@@ -444,7 +444,7 @@ class YoloHarn(nh.FitHarn):
             loader = harn.loaders[tag]
             num_classes = len(loader.dataset.label_names)
             labels = list(range(num_classes))
-            aps = nh.metrics.ave_precisions(y, labels, use_07_metric=True)
+            aps = nh.metrics.ave_precisions(y, labels, method='voc2012')
 
             new_index = list(ub.take(loader.dataset.label_names, aps.index))
             aps.index = new_index

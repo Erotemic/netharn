@@ -347,9 +347,10 @@ def ave_precisions(y, labels=None, method='voc2007', use_07_metric=None):
         >>> print('mAP = {:.4f}'.format(mAP))
         mAP = 0.5875
     """
-    method = 'sklearn'
     if use_07_metric is True:
         method = 'voc2007'
+    if method not in ['sklearn', 'voc2007', 'voc2012']:
+        raise KeyError(method)
 
     if 'cx' not in y:
         cx = y['true'].copy()
@@ -429,7 +430,7 @@ def _group_metrics(group, method):
         ap = _ave_precision(rec3, prec3, use_07_metric=method == 'voc2007')
         return ap
 
-    if method == 'voc2007':
+    if method == 'voc2007' or method == 'voc2012':
         group = group.sort_values('score', ascending=False)
         # npos = sum(group.true >= 0)
         npos = group[group.true >= 0].weight.sum()

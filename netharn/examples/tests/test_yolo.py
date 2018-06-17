@@ -63,7 +63,7 @@ def evaluate_model():
 
         # Hack while I fix the call
         post = model.module.postprocess
-        boxes = post._get_boxes(outputs.data, mode=1)
+        boxes = post._get_boxes(outputs.data, mode=0)
         boxes = [post._nms(box, mode=2) for box in boxes]
         postout = [post._clip_boxes(box) for box in boxes]
 
@@ -154,10 +154,14 @@ def evaluate_model():
             )
             confusions.append(y)
 
-        y = pd.concat([pd.DataFrame(y) for y in confusions])
-        precision, recall, ap = nh.metrics.detections._multiclass_ap(y)
+    y = pd.concat([pd.DataFrame(y) for y in confusions])
+    precision, recall, ap = nh.metrics.detections._multiclass_ap(y)
 
-        aps = nh.metrics.ave_precisions(y, list(range(num_classes)), use_07_metric=True)
+    aps = nh.metrics.ave_precisions(y, list(range(20)), method='voc2007')
+    new_index = list(ub.take(loader.dataset.label_names, aps.index))
+    aps.index = new_index
+    print(aps)
+    print('mAP = {}'.format(aps.mean()))
 
 
 def compare_ap_impl(**kw):
@@ -304,7 +308,7 @@ def compare_ap_impl(**kw):
 
         num_classes = len(LABELS)
         cls_labels = list(range(num_classes))
-        aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=False)
+        aps = nh.metrics.ave_precisions(y, cls_labels, method='voc2012')
         aps = aps.rename(dict(zip(cls_labels, LABELS)), axis=0)
         mean_ap = np.nanmean(aps['ap'])
 
@@ -631,7 +635,7 @@ def _ln_data_nh_map(ln_model, xpu, harn, num=None):
 
     precision, recall, mean_ap = nh.metrics.detections._multiclass_ap(y)
 
-    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+    aps = nh.metrics.ave_precisions(y, cls_labels, method='voc2007')
     aps = aps.rename(dict(zip(cls_labels, ln_test.LABELS)), axis=0)
     # mean_ap = np.nanmean(aps['ap'])
 
@@ -690,7 +694,7 @@ def _nh_data_nh_map(harn, num=10):
     num_classes = len(ln_test.LABELS)
     cls_labels = list(range(num_classes))
 
-    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+    aps = nh.metrics.ave_precisions(y, cls_labels, method='voc2007')
     aps = aps.rename(dict(zip(cls_labels, ln_test.LABELS)), axis=0)
     # return ap
     return ap, aps
@@ -797,7 +801,7 @@ def _run_quick_test():
     num_classes = len(loader.dataset.label_names)
     cls_labels = list(range(num_classes))
 
-    aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+    aps = nh.metrics.ave_precisions(y, cls_labels, method='voc2007')
     aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
     mean_ap = np.nanmean(aps['ap'])
     max_ap = np.nanmax(aps['ap'])
@@ -805,7 +809,7 @@ def _run_quick_test():
     print('mean_ap = {!r}'.format(mean_ap))
     print('max_ap = {!r}'.format(max_ap))
 
-    aps = nh.metrics.ave_precisions(y[y.score > .01], cls_labels, use_07_metric=True)
+    aps = nh.metrics.ave_precisions(y[y.score > .01], cls_labels, method='voc2007')
     aps = aps.rename(dict(zip(cls_labels, loader.dataset.label_names)), axis=0)
     mean_ap = np.nanmean(aps['ap'])
     max_ap = np.nanmax(aps['ap'])
@@ -1173,12 +1177,12 @@ def _test_with_lnstyle_data():
             print('\nlbl = {!r}'.format(lbl))
             y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
 
-            # aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=True)
+            # aps = nh.metrics.ave_precisions(y, cls_labels, method='voc2007')
             # aps = aps.rename(dict(zip(cls_labels, LABELS)), axis=0)
             # mean_ap = np.nanmean(aps['ap'])
             # print('mean_ap_07 = {:.2f}'.format(mean_ap * 100))
 
-            # aps = nh.metrics.ave_precisions(y, cls_labels, use_07_metric=False)
+            # aps = nh.metrics.ave_precisions(y, cls_labels, method='voc2012')
             # aps = aps.rename(dict(zip(cls_labels, LABELS)), axis=0)
             # mean_ap = np.nanmean(aps['ap'])
             # print('mean_ap_12 = {:.2f}'.format(mean_ap * 100))
