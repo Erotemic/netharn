@@ -301,11 +301,21 @@ def _ave_precision(rec, prec, use_07_metric=False):
 
         # and sum (\Delta recall) * prec
         ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+
+    if False:
+        # sklearn metric
+        ap = -np.sum(np.diff(rec[::-1]) * np.array(prec[::-1])[:-1])
     return ap
 
 
-def ave_precisions(y, labels=None, use_07_metric=False):
+def ave_precisions(y, labels=None, method='voc2007', use_07_metric=None):
     """
+
+    Args:
+        y (pd.DataFrame): pre-measured frames of predictions, truth,
+            weight and class.
+        method (str): either voc2007 or sklearn
+
     Example:
         >>> y_true = [1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4,-1,-1,-1]
         >>> y_pred = [1, 3,-1, 2,-1, 1, 2, 1,-1, 3, 3, 3, 3, 3, 4, 4, 3, 1, 1]
@@ -337,33 +347,9 @@ def ave_precisions(y, labels=None, use_07_metric=False):
         >>> print('mAP = {:.4f}'.format(mAP))
         mAP = 0.5875
     """
-    def group_metrics(group):
-        # compute metrics on a per class basis
-        if group is None:
-            return np.nan
-        group = group.sort_values('score', ascending=False)
-        npos = sum(group.true >= 0)
-        dets = group[group.pred > -1]
-        if npos == 0:
-            return np.nan
-        if len(dets) == 0:
-            if npos == 0:
-                return np.nan
-            return 0.0
-        tp = (dets.pred == dets.true).values.astype(np.uint8)
-        fp = 1 - tp
-        fp = np.cumsum(fp)
-        tp = np.cumsum(tp)
-
-        eps = np.finfo(np.float64).eps
-        if npos == 0:
-            rec = 1
-        else:
-            rec = tp / npos
-        prec = tp / np.maximum(tp + fp, eps)
-
-        ap = _ave_precision(rec, prec, use_07_metric=use_07_metric)
-        return ap
+    method = 'sklearn'
+    if use_07_metric is True:
+        method = 'voc2007'
 
     if 'cx' not in y:
         cx = y['true'].copy()
@@ -381,11 +367,92 @@ def ave_precisions(y, labels=None, use_07_metric=False):
     for cx in labels:
         # for cx, group in cx_to_group.items():
         group = cx_to_group.get(cx, None)
-        ap = group_metrics(group)
+        ap = _group_metrics(group, method)
         class_aps.append((cx, ap))
 
     ave_precs = pd.DataFrame(class_aps, columns=['cx', 'ap'])
     return ave_precs
+
+
+def _group_metrics(group, method):
+    # compute metrics on a per class basis
+    if group is None:
+        return np.nan
+
+    # References [Manning2008] and [Everingham2010] present alternative
+    # variants of AP that interpolate the precision-recall curve. Currently,
+    # average_precision_score does not implement any interpolated variant
+    # http://scikit-learn.org/stable/modules/model_evaluation.html
+
+    # g2 = group[group.weight > 0]
+    # prec2, rec2, thresh = sklearn.metrics.precision_recall_curve(
+    #     (g2.true > -1).values,
+    #     g2.score.values,
+    #     sample_weight=g2.weight.values)
+    # ap2 = _ave_precision(rec2, prec2, use_07_metric=use_07_metric)
+    # print('ap2 = {!r}'.format(ap2))
+
+    if method == 'sklearn':
+        # In the future, we should simply use the sklearn version
+        # which gives nice easy to reproduce results.
+        import sklearn.metrics
+        df = group
+        ap = sklearn.metrics.average_precision_score(
+            y_true=(df['true'].values == df['pred'].values).astype(np.int),
+            y_score=df['score'].values,
+            sample_weight=df['weight'].values,
+        )
+        return ap
+
+    if False and method == 'voc2007':
+        import sklearn.metrics
+
+        # The VOC scoring is weird, and does not conform to sklearn We
+        # overcount the number of trues and use unweighted PR curves instead of
+        # simply using the weighted variant (that albiet gives lower scores)
+        npos = group[group.true >= 0].weight.sum()
+        dets = group[group.pred > -1]
+
+        fps, tps, thresholds = sklearn.metrics.ranking._binary_clf_curve(
+            (dets.pred == dets.true).values, dets.score.values,
+            sample_weight=None)
+
+        precision = tps / (tps + fps)
+        recall = tps / npos
+
+        last_ind = tps.searchsorted(tps[-1])
+        sl = slice(last_ind, None, -1)
+        prec3 = np.r_[precision[sl], 1]
+        rec3 = np.r_[recall[sl], 0]
+        # thre3 = thresholds[sl]
+
+        ap = _ave_precision(rec3, prec3, use_07_metric=method == 'voc2007')
+        return ap
+
+    if method == 'voc2007':
+        group = group.sort_values('score', ascending=False)
+        # npos = sum(group.true >= 0)
+        npos = group[group.true >= 0].weight.sum()
+        dets = group[group.pred > -1]
+        if npos > 0 and len(dets) > 0:
+            tp = (dets.pred == dets.true).values.astype(np.int)
+            fp = 1 - tp
+            fp_cum = np.cumsum(fp)
+            tp_cum = np.cumsum(tp)
+
+            eps = np.finfo(np.float64).eps
+            rec = 1 if npos == 0 else tp_cum / npos
+            prec = tp_cum / np.maximum(tp_cum + fp_cum, eps)
+
+            ap = _ave_precision(rec, prec, use_07_metric=(method == 'voc2007'))
+            return ap
+        else:
+            if npos == 0:
+                return np.nan
+            if len(dets) == 0:
+                if npos == 0:
+                    return np.nan
+                return 0.0
 
 
 if __name__ == '__main__':

@@ -114,7 +114,9 @@ class GetBoundingBoxes(object):
             %timeit self(output.data, mode=1)
             %timeit self(output.data, mode=2)
         """
-        boxes = self._get_boxes(network_output.data, mode=mode)
+        # boxes = self._get_boxes(network_output.data, mode=mode)
+        # mode1 is the same as 0, just lots faster
+        boxes = self._get_boxes(network_output.data, mode=1)
         boxes = [self._nms(box, mode=mode) for box in boxes]
 
         # force all boxes to be inside the image

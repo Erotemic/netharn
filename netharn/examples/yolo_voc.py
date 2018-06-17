@@ -62,19 +62,6 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             self.base_wh + (self.factor * i) for i in range(*scales)])
         self.multi_scale_out_size = self.multi_scale_inp_size // self.factor
 
-        # Original YOLO Anchors
-        if ub.argflag('--orig'):
-            self.anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
-                                       (6.63, 11.38), (9.42, 5.11),
-                                       (16.62, 10.52)],
-                                      dtype=np.float)
-        else:
-            # Lightnet Anchors
-            self.anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
-                                     (5.05587, 8.09892), (9.47112, 4.84053),
-                                     (11.2364, 10.0071)])
-
-        self.num_anchors = len(self.anchors)
         self.augmenter = None
 
         if 'train' in split:
@@ -492,7 +479,6 @@ class YoloHarn(nh.FitHarn):
 
         bsize = len(targets)
         for bx in range(bsize):
-            postitem = asnumpy(postout[bx])
             target = asnumpy(targets[bx]).reshape(-1, 5)
             true_cxywh = target[:, 1:5]
             true_cxs = target[:, 0]
@@ -511,6 +497,7 @@ class YoloHarn(nh.FitHarn):
             bg_weight = float(asnumpy(bg_weights[bx]))
 
             # Unpack postprocessed predictions
+            postitem = asnumpy(postout[bx])
             sboxes = postitem.reshape(-1, 6)
             pred_cxywh = sboxes[:, 0:4]
             pred_scores = sboxes[:, 4]
@@ -839,6 +826,18 @@ def setup_harness(bsize=16, workers=0):
             90: lr * 0.01 / simulated_bsize,
         }
 
+    # Original YOLO Anchors
+    if ub.argflag('--orig'):
+        anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
+                              (6.63, 11.38), (9.42, 5.11),
+                              (16.62, 10.52)],
+                             dtype=np.float)
+    else:
+        # Lightnet Anchors
+        anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
+                            (5.05587, 8.09892), (9.47112, 4.84053),
+                            (11.2364, 10.0071)])
+
     hyper = nh.HyperParams(**{
         'nice': nice,
         'workdir': ub.truepath('~/work/voc_yolo2'),
@@ -854,7 +853,7 @@ def setup_harness(bsize=16, workers=0):
 
         'model': (light_yolo.Yolo, {
             'num_classes': datasets['train'].num_classes,
-            'anchors': datasets['train'].anchors,
+            'anchors': anchors,
             'conf_thresh': 0.001,
             # nms_thresh=0.5 to reproduce original yolo
             # nms_thresh=0.4 to reproduce lightnet
@@ -863,7 +862,7 @@ def setup_harness(bsize=16, workers=0):
 
         'criterion': (light_region_loss.RegionLoss, {
             'num_classes': datasets['train'].num_classes,
-            'anchors': datasets['train'].anchors,
+            'anchors': anchors,
             'object_scale': 5.0,
             'noobject_scale': 1.0,
             'class_scale': 1.0,

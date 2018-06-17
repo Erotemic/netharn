@@ -19,6 +19,147 @@ mkinit /code/netharn/netharn/examples/example_test.py --dry
 # </AUTOGEN_INIT>
 
 
+def evaluate_model():
+    from os.path import join
+    train_dpath = ub.truepath('~/work/voc_yolo2/fit/nice/pjr_run')
+    snapshot_fpath = join(train_dpath, 'torch_snapshots', '_epoch_00000314.pt')
+
+    anchors = np.asarray([(1.08, 1.19), (3.42, 4.41), (6.63, 11.38),
+                          (9.42, 5.11), (16.62, 10.52)], dtype=np.float)
+
+    from netharn.examples.yolo_voc import YoloVOCDataset, light_yolo
+    import netharn as nh
+    model = light_yolo.Yolo(**{
+        'num_classes': 20,
+        'anchors': anchors,
+        'conf_thresh': 0.001,
+        'nms_thresh': 0.5
+    })
+
+    dataset = YoloVOCDataset(years=[2007], split='test')
+    loader = dataset.make_loader(batch_size=16, num_workers=4, shuffle=False,
+                                 pin_memory=True)
+
+    xpu = nh.XPU.cast('auto')
+    model = xpu.mount(model)
+
+    snapshot = xpu.load(snapshot_fpath)
+    model.load_state_dict(snapshot['model_state_dict'])
+
+    all_postout = []
+    all_labels = []
+
+    for raw_batch in ub.ProgIter(loader, desc='predict'):
+        batch_inputs, batch_labels = raw_batch
+        inputs = xpu.variable(batch_inputs)
+
+        # Run data through the model
+        labels = {k: xpu.variable(d) for k, d in batch_labels.items()}
+        outputs = model(inputs)
+
+        # Postprocess outputs into box predictions in 01 space
+        inp_size = np.array(inputs.shape[-2:][::-1])
+        assert np.array_equal(inp_size, (416, 416))
+
+        # Hack while I fix the call
+        post = model.module.postprocess
+        boxes = post._get_boxes(outputs.data, mode=1)
+        boxes = [post._nms(box, mode=2) for box in boxes]
+        postout = [post._clip_boxes(box) for box in boxes]
+
+        # NOTE: The bottleneck is the postprocess module BY FAR.
+        # The main issue is NMS I think.
+        # postout = model.module.postprocess(outputs, mode=1)
+
+        all_postout.append(postout)
+        all_labels.append(batch_labels)
+
+    # References:
+    #    https://github.com/rbgirshick/py-faster-rcnn/blob/master/lib/datasets/voc_eval.py
+
+    confusions = []
+    for postout, labels in ub.ProgIter(list(zip(all_postout, all_labels))):
+
+        targets = labels['targets']
+        gt_weights = labels['gt_weights']
+        bg_weights = labels['bg_weights']
+        orig_sizes = labels['orig_sizes']
+        # indices = labels['indices']
+
+        def asnumpy(tensor):
+            return tensor.data.cpu().numpy()
+
+        def unpack_truth(bx):
+            target = asnumpy(targets[bx]).reshape(-1, 5)
+            true_cxywh = target[:, 1:5]
+            true_cxs = target[:, 0]
+            true_weight = asnumpy(gt_weights[bx])
+
+            # Remove padded truth
+            flags = true_cxs != -1
+            true_cxywh = true_cxywh[flags]
+            true_cxs = true_cxs[flags]
+            true_weight = true_weight[flags]
+
+            true_boxes = nh.util.Boxes(true_cxywh, 'cxywh')
+            return true_boxes, true_cxs, true_weight
+
+        def unpack_pred(bx):
+            # Unpack postprocessed predictions
+            postitem = asnumpy(postout[bx])
+            sboxes = postitem.reshape(-1, 6)
+            pred_cxywh = sboxes[:, 0:4]
+            pred_scores = sboxes[:, 4]
+            pred_cxs = sboxes[:, 5].astype(np.int)
+
+            pred_boxes = nh.util.Boxes(pred_cxywh, 'cxywh')
+            return pred_boxes, pred_cxs, pred_scores
+
+        bsize = len(targets)
+        for bx in range(bsize):
+            orig_size = asnumpy(orig_sizes[bx])
+            # gx = int(asnumpy(indices[bx]))
+            # how much do we care about the background in this image?
+            bg_weight = float(asnumpy(bg_weights[bx]))
+
+            true_boxes_norm, true_cxs, true_weight = unpack_truth(bx)
+            pred_boxes_norm, pred_cxs, pred_scores = unpack_pred(bx)
+
+            # true_boxes = true_boxes.scale(inp_size)
+            # pred_boxes = pred_boxes.scale(inp_size)
+
+            # Undo letterbox to move back to original input shapes
+            letterbox = dataset.letterbox
+            true_boxes = letterbox._boxes_letterbox_invert(true_boxes_norm.scale(inp_size), orig_size, inp_size)
+            pred_boxes = letterbox._boxes_letterbox_invert(pred_boxes_norm.scale(inp_size), orig_size, inp_size)
+
+            orig_w, orig_h = orig_size
+            pred_boxes = pred_boxes.clip(0, 0, orig_w, orig_h)
+            flags = (pred_boxes.area > 0).ravel()
+
+            pred_scores = pred_scores[flags]
+            pred_cxs = pred_cxs[flags]
+            pred_boxes = pred_boxes.compress(flags)
+
+            y = nh.metrics.detection_confusions(
+                true_boxes=true_boxes.to_tlbr().data,
+                true_cxs=true_cxs,
+                true_weights=true_weight,
+                pred_boxes=pred_boxes.to_tlbr().data,
+                pred_scores=pred_scores,
+                pred_cxs=pred_cxs,
+                bg_weight=bg_weight,
+                bg_cls=-1,
+                ovthresh=.5,
+            )
+            confusions.append(y)
+
+        y = pd.concat([pd.DataFrame(y) for y in confusions])
+        precision, recall, ap = nh.metrics.detections._multiclass_ap(y)
+
+        aps = nh.metrics.ave_precisions(y, list(range(num_classes)), use_07_metric=True)
+
+
 def compare_ap_impl(**kw):
     """
     Compare computation of AP between netharn and brambox

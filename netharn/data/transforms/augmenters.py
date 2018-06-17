@@ -307,17 +307,19 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
 
         """
         shift, scale, embed_size = self._letterbox_transform(orig_size, target_size)
-        new_boxes = boxes.scale(scale).shift(shift)
+        new_boxes = boxes.scale(scale).translate(shift)
         return new_boxes
 
     def _boxes_letterbox_invert(self, boxes, orig_size, target_size):
         """
-        Undo the letterbox transform for these bounding boxes
+        Undo the letterbox transform for these bounding boxes. Moves
+        the box from `target_size` coordinatse (which are probably square)
+        to `orig_size` coordinates (which are probably nto square).
 
         Args:
-            boxes (util.Boxes) : boxes to rework
+            boxes (util.Boxes) : boxes to rework in `target_size` coordinates
             orig_size : original wh of the image
-            target_size : network input wh
+            target_size : network input wh (i.e. inp_size)
 
         Example:
             >>> target_size = (416, 416)
@@ -329,7 +331,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             >>> assert np.allclose(cxywh_norm2.data, cxywh_norm.data)
         """
         shift, scale, embed_size = self._letterbox_transform(orig_size, target_size)
-        new_boxes = boxes.shift(-shift).scale(1.0 / scale)
+        new_boxes = boxes.translate(-shift).scale(1.0 / scale)
         return new_boxes
 
     def _letterbox_transform(self, orig_size, target_size):
@@ -339,8 +341,14 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         scale should be applied before the shift.
 
         Args:
-            inp_size : network input wh
             orig_size : original wh of the image
+            target_size : network input wh
+
+        Example:
+            >>> Resize(None)._letterbox_transform([5, 10], [10, 10])
+            (array([2, 0]), array([1., 1.]), array([ 5, 10]))
+            >>> Resize(None)._letterbox_transform([10, 5], [10, 10])
+            (array([0, 2]), array([1., 1.]), array([10,  5]))
         """
         # determine if width or the height should be used as the scale factor.
         orig_size = np.array(orig_size)
@@ -350,7 +358,9 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
 
         # Whats the closest integer size we can resize to?
         embed_size = np.round(orig_size * sf).astype(np.int)
-        # Determine how much padding we need for the top left side
+        # Determine how much padding we need for the top/left side
+        # Note: the right/bottom side might need an extra pixel of padding
+        # depending on rounding issues.
         shift = np.round((target_size - embed_size) / 2).astype(np.int)
 
         scale = embed_size / orig_size
