@@ -31,8 +31,11 @@ def evaluate_model():
     train_dpath = ub.truepath('~/work/voc_yolo2/fit/nice/pjr_run')
     snapshot_fpath = join(train_dpath, 'torch_snapshots', '_epoch_00000314.pt')
 
-    anchors = np.asarray([(1.08, 1.19), (3.42, 4.41), (6.63, 11.38),
-                          (9.42, 5.11), (16.62, 10.52)], dtype=np.float)
+    # anchors = np.asarray([(1.08, 1.19), (3.42, 4.41), (6.63, 11.38),
+    #                       (9.42, 5.11), (16.62, 10.52)], dtype=np.float)
+    anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
+                        (5.05587, 8.09892), (9.47112, 4.84053),
+                        (11.2364, 10.0071)])
 
     from netharn.examples.yolo_voc import YoloVOCDataset, light_yolo
     import netharn as nh
