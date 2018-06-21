@@ -826,17 +826,10 @@ def setup_harness(bsize=16, workers=0):
             90: lr * 0.01 / simulated_bsize,
         }
 
-    # Original YOLO Anchors
-    if ub.argflag('--orig'):
-        anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
-                              (6.63, 11.38), (9.42, 5.11),
-                              (16.62, 10.52)],
-                             dtype=np.float)
-    else:
-        # Lightnet Anchors
-        anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
-                            (5.05587, 8.09892), (9.47112, 4.84053),
-                            (11.2364, 10.0071)])
+    # Anchors
+    anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
+                        (5.05587, 8.09892), (9.47112, 4.84053),
+                        (11.2364, 10.0071)])
 
     hyper = nh.HyperParams(**{
         'nice': nice,
