@@ -883,7 +883,9 @@ def render_figure_to_image(fig, dpi=None, transparent=None, **savekw):
     extent = mpl.transforms.Bbox.union(axes_extents)
     with io.BytesIO() as stream:
         # This call takes 23% - 15% of the time depending on settings
-        fig.savefig(stream, bbox_inches=extent, dpi=dpi,
+        # fig.savefig(stream, bbox_inches=extent, dpi=dpi,
+        #             transparent=transparent, **savekw)
+        fig.savefig(stream, bbox_inches='tight', dpi=dpi,
                     transparent=transparent, **savekw)
         # fig.savefig(stream, **savekw)
         stream.seek(0)
