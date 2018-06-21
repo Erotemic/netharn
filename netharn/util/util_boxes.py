@@ -634,7 +634,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>>                        [10,  0, 20, 10],
             >>>                        [20,  0, 30, 10]]), 'tlbr')
             >>> other = Boxes(np.array([6, 2, 20, 10]), 'tlbr')
-            >>> overlaps = self.ious(other[None, :], bias=1).ravel().round(2)
+            >>> overlaps = self.ious(other, bias=1).round(2)
             >>> assert np.all(np.isclose(overlaps, [0.21, 0.63, 0.04])), repr(overlaps)
 
         Examples:
@@ -653,9 +653,17 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>> from functools import partial
             >>> assert ub.allsame(results.values(), partial(np.allclose, atol=1e-07))
         """
+        other_is_1d = (len(other.shape) == 1)
+        if other_is_1d:
+            # `box_ious` expect 2d input
+            other = other[None, :]
+
         self_tlbr = self.to_tlbr(copy=False)
         other_tlbr = other.to_tlbr(copy=False)
         ious = box_ious(self_tlbr.data, other_tlbr.data, bias=bias, mode=mode)
+
+        if other_is_1d:
+            ious = ious[..., 0]
         return ious
 
     def view(self, *shape):

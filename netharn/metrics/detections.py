@@ -108,10 +108,11 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
         >>> y = pd.DataFrame(y)
         >>> print(y)  # xdoc: +IGNORE_WANT
            cx  pred  score  true  weight
-        0   1     1 0.5000     1       1.0
-        1   0     0 0.5000    -1       1.0
-        2   0    -1 0.0000     0       1.0
-        3   1    -1 0.0000     1       0.9
+        0   1     1 0.5000     1  1.0000
+        1   0     0 0.5000    -1  1.0000
+        2   0     0 0.5000     0  0.0000
+        3   0    -1 0.0000     0  1.0000
+        4   1    -1 0.0000     1  0.9000
 
     Example:
         >>> true_boxes = np.array([[ 0,  0, 10, 10],
@@ -174,8 +175,7 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
 
             cls_true_boxes_ = util.Boxes(cls_true_boxes, 'tlbr')
             box_ = util.Boxes(box, 'tlbr')
-            overlaps = cls_true_boxes_.ious(box_[None, :], bias=bias).ravel()
-            # overlaps = iou_overlap(cls_true_boxes, box, bias=bias)
+            overlaps = cls_true_boxes_.ious(box_, bias=bias)
 
             sortx = overlaps.argsort()[::-1]
 
@@ -249,40 +249,12 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
     return y
 
 
-# def iou_overlap(true_boxes, pred_box, bias=1):
-#     """
-#     Compute iou of `pred_box` with each `true_box in true_boxes`.
-#     Return the index and score of the true box with maximum overlap.
-#     Boxes should be in tlbr format.
-
-#     CommandLine:
-#         python -m netharn.metrics.detections iou_overlap
-
-#     Example:
-#         >>> # xdoctest: +IGNORE_WHITESPACE
-#         >>> true_boxes = np.array([[ 0,  0, 10, 10],
-#         >>>                        [10,  0, 20, 10],
-#         >>>                        [20,  0, 30, 10]])
-#         >>> pred_box = np.array([6, 2, 20, 10, .9])
-#         >>> overlaps = iou_overlap(true_boxes, pred_box).round(2)
-#         >>> assert np.all(np.isclose(overlaps, [0.21, 0.63, 0.04])), repr(overlaps)
-#     """
-#     # import yolo_utils
-#     true_boxes = np.array(true_boxes)
-#     pred_box = np.array(pred_box)
-#     overlaps = util.box_ious(
-#         true_boxes[:, 0:4].astype(np.float),
-#         pred_box[None, :][:, 0:4].astype(np.float), bias=bias).ravel()
-#     return overlaps
-
-
-def _ave_precision(rec, prec, use_07_metric=False):
+def _ave_precision(rec, prec, method='voc2007'):
     """ ap = voc_ap(rec, prec, [use_07_metric])
     Compute VOC AP given precision and recall.
-    If use_07_metric is true, uses the
-    VOC 07 11 point method (default:False).
+    If method == voc2007, uses the VOC 07 11 point method (default:False).
     """
-    if use_07_metric:
+    if method == 'voc2007':
         # 11 point metric
         ap = 0.
         for t in np.arange(0., 1.1, 0.1):
@@ -291,7 +263,7 @@ def _ave_precision(rec, prec, use_07_metric=False):
             else:
                 p = np.max(prec[rec >= t])
             ap = ap + p / 11.
-    else:
+    elif method == 'voc2012':
         # correct AP calculation
         # first append sentinel values at the end
         mrec = np.concatenate(([0.], rec, [1.]))
@@ -314,7 +286,7 @@ def _ave_precision(rec, prec, use_07_metric=False):
     return ap
 
 
-def ave_precisions(y, labels=None, method='voc2007', use_07_metric=None):
+def ave_precisions(y, labels=None, method='voc2007'):
     """
 
     Args:
@@ -323,6 +295,7 @@ def ave_precisions(y, labels=None, method='voc2007', use_07_metric=None):
         method (str): either voc2007 or sklearn
 
     Example:
+        >>> # xdoc: +IGNORE_WANT
         >>> y_true = [1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4,-1,-1,-1]
         >>> y_pred = [1, 3,-1, 2,-1, 1, 2, 1,-1, 3, 3, 3, 3, 3, 4, 4, 3, 1, 1]
         >>> y = pd.DataFrame.from_dict({
@@ -331,8 +304,8 @@ def ave_precisions(y, labels=None, method='voc2007', use_07_metric=None):
         >>> })
         >>> y['score'] = 0.99
         >>> y['weight'] = 1.0
-        >>> ave_precs = ave_precisions(y, use_07_metric=True)
-        >>> print(ave_precs)  # xdoc: +IGNORE_WANT
+        >>> ave_precs = ave_precisions(y, method='voc2007')
+        >>> print(ave_precs)
            cx     ap
         0   1 0.2727
         1   2 0.1364
@@ -342,8 +315,8 @@ def ave_precisions(y, labels=None, method='voc2007', use_07_metric=None):
         >>> print('mAP = {:.4f}'.format(mAP))
         mAP = 0.6023
         >>> # -----------------
-        >>> ave_precs = ave_precisions(y, use_07_metric=False)
-        >>> print(ave_precs)  # xdoc: +IGNORE_WANT
+        >>> ave_precs = ave_precisions(y, method='voc2012')
+        >>> print(ave_precs)
            cx     ap
         0   1 0.2500
         1   2 0.1000
@@ -353,8 +326,6 @@ def ave_precisions(y, labels=None, method='voc2007', use_07_metric=None):
         >>> print('mAP = {:.4f}'.format(mAP))
         mAP = 0.5875
     """
-    if use_07_metric is True:
-        method = 'voc2007'
     if method not in ['sklearn', 'voc2007', 'voc2012']:
         raise KeyError(method)
 
@@ -396,7 +367,7 @@ def _group_metrics(group, method):
     #     (g2.true > -1).values,
     #     g2.score.values,
     #     sample_weight=g2.weight.values)
-    # ap2 = _ave_precision(rec2, prec2, use_07_metric=use_07_metric)
+    # ap2 = _ave_precision(rec2, prec2, method=method)
     # print('ap2 = {!r}'.format(ap2))
 
     if method == 'sklearn':
@@ -433,7 +404,7 @@ def _group_metrics(group, method):
         rec3 = np.r_[recall[sl], 0]
         # thre3 = thresholds[sl]
 
-        ap = _ave_precision(rec3, prec3, use_07_metric=method == 'voc2007')
+        ap = _ave_precision(rec3, prec3, method=method)
         return ap
 
     if method == 'voc2007' or method == 'voc2012':
@@ -455,7 +426,7 @@ def _group_metrics(group, method):
             rec = 1 if npos == 0 else tp_cum / npos
             prec = tp_cum / np.maximum(tp_cum + fp_cum, eps)
 
-            ap = _ave_precision(rec, prec, use_07_metric=(method == 'voc2007'))
+            ap = _ave_precision(rec, prec, method=method)
             return ap
         else:
             if npos == 0:

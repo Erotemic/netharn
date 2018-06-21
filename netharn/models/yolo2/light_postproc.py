@@ -35,7 +35,7 @@ class GetBoundingBoxes(object):
         self.nms_thresh = nms_thresh
 
     @profiler.profile
-    def __call__(self, network_output, mode=0):
+    def __call__(self, network_output, mode=0, box_mode=2):
         """ Compute bounding boxes after thresholding and nms
 
             network_output (torch.autograd.Variable): Output tensor from the lightnet network
@@ -61,7 +61,7 @@ class GetBoundingBoxes(object):
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> import ubelt
             >>> output = torch.randn(16, 5, 5 + 20, 9, 9)
-            >>> output = output.cuda()
+            >>> output = output.to(0)
             >>> for timer in ubelt.Timerit(21, bestof=3, label='mode0+gpu'):
             >>>     output_ = output.clone()
             >>>     with timer:
@@ -74,7 +74,7 @@ class GetBoundingBoxes(object):
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> import ubelt
             >>> output = torch.randn(16, 5, 5 + 20, 9, 9)
-            >>> output = output.cuda()
+            >>> output = output.to(0)
             >>> for timer in ubelt.Timerit(21, bestof=3, label='mode1+gpu'):
             >>>     output_ = output.clone()
             >>>     with timer:
@@ -99,7 +99,7 @@ class GetBoundingBoxes(object):
             >>>         self(output_, mode=1)
             >>> #
             >>> if torch.cuda.is_available():
-            >>>     output = output.cuda()
+            >>>     output = output.to(0)
             >>>     for timer in ubelt.Timerit(21, bestof=3, label='mode0+gpu'):
             >>>         output_ = output.clone()
             >>>         with timer:
@@ -116,7 +116,7 @@ class GetBoundingBoxes(object):
         """
         # boxes = self._get_boxes(network_output.data, mode=mode)
         # mode1 is the same as 0, just lots faster
-        boxes = self._get_boxes(network_output.data, mode=1)
+        boxes = self._get_boxes(network_output.data, box_mode=box_mode)
         boxes = [self._nms(box, mode=mode) for box in boxes]
 
         # force all boxes to be inside the image
@@ -187,12 +187,12 @@ class GetBoundingBoxes(object):
         return obj(network_output)
 
     @profiler.profile
-    def _get_boxes(self, output, mode=1):
+    def _get_boxes(self, output, box_mode=2):
         """
         Returns array of detections for every image in batch
 
         CommandLine:
-            python ~/code/netharn/netharn/models/yolo2/light_postproc.py GetBoundingBoxes._get_boxes
+            python ~/code/netharn/netharn/box_models/yolo2/light_postproc.py GetBoundingBoxes._get_boxes
 
         Examples:
             >>> import torch
@@ -209,33 +209,42 @@ class GetBoundingBoxes(object):
         Benchmark:
             >>> from netharn.models.yolo2.light_postproc import *
             >>> import torch
+            >>> import netharn as nh
             >>> torch.random.manual_seed(0)
             >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
             >>> output = torch.randn(16, 5, 5 + 20, 9, 9)
-            >>> from netharn import XPU
-            >>> output = XPU.cast('auto').move(output)
-            >>> for timer in ub.Timerit(100, bestof=10, label='mode 0'):
+            >>> xpu = nh.XPU.cast('auto')
+            >>> output = xpu.move(output)
+            >>> for timer in ub.Timerit(100, bestof=10, label='box_mode 0'):
             >>>     output_ = output.clone()
             >>>     with timer:
-            >>>         boxes0 = self._get_boxes(output_.data, mode=0)
-            >>> for timer in ub.Timerit(100, bestof=10, label='mode 1'):
+            >>>         boxes0 = self._get_boxes(output_.data, box_mode=0)
+            >>>         xpu.synchronize()
+            >>> for timer in ub.Timerit(100, bestof=10, label='box_mode 1'):
             >>>     output_ = output.clone()
             >>>     with timer:
-            >>>         boxes1 = self._get_boxes(output_.data, mode=1)
+            >>>         boxes1 = self._get_boxes(output_.data, box_mode=1)
+            >>>         xpu.synchronize()
+            >>> for timer in ub.Timerit(100, bestof=10, label='box_mode 2'):
+            >>>     output_ = output.clone()
+            >>>     with timer:
+            >>>         boxes2 = self._get_boxes(output_.data, box_mode=2)
+            >>>         xpu.synchronize()
             >>> for b0, b1 in zip(boxes0, boxes1):
             >>>     assert np.all(b0.cpu() == b1.cpu())
-            >>> from lightnet.data.postprocess import GetBoundingBoxes as GetBoundingBoxesOrig
-            >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
-            >>> post = GetBoundingBoxesOrig(anchors=anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
+            >>> from lightnet.data.transform._postprocess import GetBoundingBoxes as GetBoundingBoxesOrig
+            >>> post = GetBoundingBoxesOrig(anchors=anchors, num_classes=20, conf_thresh=.14)
             >>> for timer in ub.Timerit(100, bestof=10, label='original'):
-            >>>     output_ = output.clone()
+            >>>     output_ = output.clone().view(16, 5 * (5 + 20), 9, 9)
             >>>     with timer:
-            >>>         boxes3 = post._get_boxes(output_.data)
+            >>>         boxes3 = post(output_.data)
+            >>>         xpu.synchronize()
             >>> # Check that the output is the same
+            >>> for b2, b3 in zip(boxes2, boxes3):
+            >>>     assert np.all(b2.cpu() == b3.cpu())
             >>> for b0, b3 in zip(boxes0, boxes3):
-            >>>     b3_ = torch.Tensor(b3)
-            >>>     assert np.all(b0.cpu() == b3_.cpu())
+            >>>     assert np.all(b0.cpu() == b3.cpu())
         """
         # dont modify inplace
         output = output.clone()
@@ -253,11 +262,11 @@ class GetBoundingBoxes(object):
         lin_y = torch.linspace(0, h - 1, h).repeat(w, 1).t().contiguous().view(h * w)
         anchor_w = self.anchors[:, 0].contiguous().view(1, self.num_anchors, 1)
         anchor_h = self.anchors[:, 1].contiguous().view(1, self.num_anchors, 1)
-        if output.is_cuda:
-            lin_x = lin_x.cuda(output.device)
-            lin_y = lin_y.cuda(output.device)
-            anchor_w = anchor_w.cuda(output.device)
-            anchor_h = anchor_h.cuda(output.device)
+
+        lin_x = lin_x.to(output.device)
+        lin_y = lin_y.to(output.device)
+        anchor_w = anchor_w.to(output.device)
+        anchor_h = anchor_h.to(output.device)
 
         # -1 == 5+num_classes (we can drop feature maps if 1 class)
         output_ = output.view(bsize, self.num_anchors, -1, h * w)
@@ -278,7 +287,7 @@ class GetBoundingBoxes(object):
 
         # Save detection if conf*class_conf is higher than threshold
 
-        if mode == 0:
+        if box_mode == 0:
             output_ = output_.cpu()
             cls_max = cls_max.cpu()
             cls_max_idx = cls_max_idx.cpu()
@@ -298,7 +307,7 @@ class GetBoundingBoxes(object):
                             ])
                 box_batch = torch.Tensor(box_batch)
                 boxes.append(box_batch)
-        elif mode == 1 or mode == 2:
+        elif box_mode == 1 :
             # Save detection if conf*class_conf is higher than threshold
             flags = cls_max > self.conf_thresh
             flat_flags = flags.view(-1)
@@ -308,8 +317,10 @@ class GetBoundingBoxes(object):
 
             # number of potential detections per batch
             item_size = np.prod(flags.shape[1:])
-            slices = [slice((item_size * i), (item_size * (i + 1)))
-                      for i in range(bsize)]
+            slices = [
+                slice((item_size * i), (item_size * (i + 1)))
+                for i in range(bsize)
+            ]
             # number of detections per batch (prepended with a zero)
             n_dets = torch.stack(
                 [flat_flags[0].long() * 0] + [flat_flags[sl].long().sum() for sl in slices])
@@ -325,8 +336,11 @@ class GetBoundingBoxes(object):
             scores = flat_class_max[flat_flags]
             cls_idxs = flat_class_idx[flat_flags]
 
-            filtered_dets = torch.cat([coords, scores[:, None],
-                                       cls_idxs[:, None].float()], dim=1)
+            filtered_dets = torch.cat([
+                coords,
+                scores[:, None],
+                cls_idxs[:, None].float()
+            ], dim=1)
 
             boxes2 = []
             for lx, rx in zip(filtered_split_idxs, filtered_split_idxs[1:]):
@@ -334,6 +348,36 @@ class GetBoundingBoxes(object):
                 boxes2.append(batch_box)
 
             boxes = boxes2
+        elif box_mode == 2:
+            # Newst lightnet code, which is based on my mode1 code
+            score_thresh = cls_max > self.conf_thresh
+            score_thresh_flat = score_thresh.view(-1)
+
+            if score_thresh.sum() == 0:
+                boxes = []
+                for i in range(bsize):
+                    boxes.append(torch.Tensor([]))
+                return boxes
+
+            # Mask select boxes > conf_thresh
+            coords = output_.transpose(2, 3)[..., 0:4]
+            coords = coords[score_thresh[..., None].expand_as(coords)].view(-1, 4)
+            scores = cls_max[score_thresh]
+            idx = cls_max_idx[score_thresh]
+            detections = torch.cat([coords, scores[:, None], idx[:, None].float()], dim=1)
+
+            # Get indexes of splits between images of batch
+            max_det_per_batch = len(self.anchors) * h * w
+            slices = [slice(max_det_per_batch * i, max_det_per_batch * (i + 1)) for i in range(bsize)]
+            det_per_batch = torch.IntTensor([score_thresh_flat[s].int().sum() for s in slices])
+            split_idx = torch.cumsum(det_per_batch, dim=0)
+
+            # Group detections per image of batch
+            boxes = []
+            start = 0
+            for end in split_idx:
+                boxes.append(detections[start: end])
+                start = end
 
         return boxes
 
@@ -382,7 +426,7 @@ class GetBoundingBoxes(object):
                 with timer:
                     self._nms(boxes, mode=1)
 
-            boxes = boxes.cuda()
+            boxes = boxes.to()
             import ubelt
             for timer in ubelt.Timerit(100, bestof=10, label='nms0+gpu'):
                 with timer:
@@ -403,7 +447,7 @@ class GetBoundingBoxes(object):
 
         if mode == 0:
             # if torch.cuda.is_available:
-            #     boxes = boxes.cuda()
+            #     boxes = boxes.to(0)
             keep = _nms_torch(tlbr_tensor, scores, nms_thresh=self.nms_thresh)
             keep = sorted(keep)
         elif mode == 1:

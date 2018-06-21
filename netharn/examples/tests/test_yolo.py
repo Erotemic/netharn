@@ -87,53 +87,54 @@ def evaluate_model():
     # References:
     #    https://github.com/rbgirshick/py-faster-rcnn/blob/master/lib/datasets/voc_eval.py
 
+    def asnumpy(tensor):
+        return tensor.data.cpu().numpy()
+
+    def unpack_truth(targets, gt_weights, bx):
+        target = asnumpy(targets[bx]).reshape(-1, 5)
+        true_cxywh = target[:, 1:5]
+        true_cxs = target[:, 0]
+        true_weight = asnumpy(gt_weights[bx])
+
+        # Remove padded truth
+        flags = true_cxs != -1
+        true_cxywh = true_cxywh[flags]
+        true_cxs = true_cxs[flags]
+        true_weight = true_weight[flags]
+
+        true_boxes = nh.util.Boxes(true_cxywh, 'cxywh')
+        return true_boxes, true_cxs, true_weight
+
+    def unpack_pred(postout, bx):
+        # Unpack postprocessed predictions
+        postitem = asnumpy(postout[bx])
+        sboxes = postitem.reshape(-1, 6)
+        pred_cxywh = sboxes[:, 0:4]
+        pred_scores = sboxes[:, 4]
+        pred_cxs = sboxes[:, 5].astype(np.int)
+
+        pred_boxes = nh.util.Boxes(pred_cxywh, 'cxywh')
+        return pred_boxes, pred_cxs, pred_scores
+
+    class_to_dets = ub.ddict(list)
+
     confusions = []
     for postout, labels in ub.ProgIter(list(zip(all_postout, all_labels))):
-
         targets = labels['targets']
         gt_weights = labels['gt_weights']
         bg_weights = labels['bg_weights']
         orig_sizes = labels['orig_sizes']
-        # indices = labels['indices']
-
-        def asnumpy(tensor):
-            return tensor.data.cpu().numpy()
-
-        def unpack_truth(bx):
-            target = asnumpy(targets[bx]).reshape(-1, 5)
-            true_cxywh = target[:, 1:5]
-            true_cxs = target[:, 0]
-            true_weight = asnumpy(gt_weights[bx])
-
-            # Remove padded truth
-            flags = true_cxs != -1
-            true_cxywh = true_cxywh[flags]
-            true_cxs = true_cxs[flags]
-            true_weight = true_weight[flags]
-
-            true_boxes = nh.util.Boxes(true_cxywh, 'cxywh')
-            return true_boxes, true_cxs, true_weight
-
-        def unpack_pred(bx):
-            # Unpack postprocessed predictions
-            postitem = asnumpy(postout[bx])
-            sboxes = postitem.reshape(-1, 6)
-            pred_cxywh = sboxes[:, 0:4]
-            pred_scores = sboxes[:, 4]
-            pred_cxs = sboxes[:, 5].astype(np.int)
-
-            pred_boxes = nh.util.Boxes(pred_cxywh, 'cxywh')
-            return pred_boxes, pred_cxs, pred_scores
+        indices = labels['indices']
 
         bsize = len(targets)
         for bx in range(bsize):
             orig_size = asnumpy(orig_sizes[bx])
-            # gx = int(asnumpy(indices[bx]))
+            gx = int(asnumpy(indices[bx]))
             # how much do we care about the background in this image?
             bg_weight = float(asnumpy(bg_weights[bx]))
 
-            true_boxes_norm, true_cxs, true_weight = unpack_truth(bx)
-            pred_boxes_norm, pred_cxs, pred_scores = unpack_pred(bx)
+            true_boxes_norm, true_cxs, true_weight = unpack_truth(targets, gt_weights, bx)
+            pred_boxes_norm, pred_cxs, pred_scores = unpack_pred(postout, bx)
 
             # true_boxes = true_boxes.scale(inp_size)
             # pred_boxes = pred_boxes.scale(inp_size)
@@ -151,6 +152,13 @@ def evaluate_model():
             pred_cxs = pred_cxs[flags]
             pred_boxes = pred_boxes.compress(flags)
 
+            # --- VOC FORMAT ---
+            for box, score, cx in zip(pred_boxes, pred_scores, pred_cxs):
+                from os.path import basename, splitext
+                imgid = splitext(basename(dataset.gpaths[gx]))[0]
+                class_to_dets[cx].append(list(ub.flatten([[imgid], [score], box.data])))
+            # --- /VOC FORMAT ---
+
             y = nh.metrics.detection_confusions(
                 true_boxes=true_boxes.to_tlbr().data,
                 true_cxs=true_cxs,
@@ -163,6 +171,14 @@ def evaluate_model():
                 ovthresh=.5,
             )
             confusions.append(y)
+
+    for cx, dets in class_to_dets.items():
+        lbl = dataset.label_names[cx]
+        fname = 'comp3_det_test_{}.txt'.format(lbl)
+        fpath = join(dataset.devkit_dpath, 'results', 'VOC2007', 'Main', fname)
+        with open(fpath, 'w') as file:
+            text = '\n'.join([' '.join(list(map(str, det))) for det in dets])
+            file.write(text)
 
     y = pd.concat([pd.DataFrame(y) for y in confusions])
     precision, recall, ap = nh.metrics.detections._multiclass_ap(y)

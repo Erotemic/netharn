@@ -429,6 +429,13 @@ class XPU(ub.NiceRepr):
         else:
             return storage
 
+    def synchronize(xpu):
+        """
+        Should be used when benchmarking performance of GPU implementaions
+        """
+        if xpu.is_gpu():
+            torch.cuda.synchronize()
+
 
 def find_unused_gpu(min_memory=0):
     """
