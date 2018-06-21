@@ -35,7 +35,7 @@ class GetBoundingBoxes(object):
         self.nms_thresh = nms_thresh
 
     @profiler.profile
-    def __call__(self, network_output, mode=0, box_mode=1):
+    def __call__(self, network_output, mode=0, box_mode=2):
         """ Compute bounding boxes after thresholding and nms
 
             network_output (torch.autograd.Variable): Output tensor from the lightnet network
@@ -187,7 +187,7 @@ class GetBoundingBoxes(object):
         return obj(network_output)
 
     @profiler.profile
-    def _get_boxes(self, output, box_mode=1):
+    def _get_boxes(self, output, box_mode=2):
         """
         Returns array of detections for every image in batch
 
@@ -234,10 +234,9 @@ class GetBoundingBoxes(object):
             >>> for b0, b1 in zip(boxes0, boxes1):
             >>>     assert np.all(b0.cpu() == b1.cpu())
             >>> from lightnet.data.transform._postprocess import GetBoundingBoxes as GetBoundingBoxesOrig
-            >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
             >>> post = GetBoundingBoxesOrig(anchors=anchors, num_classes=20, conf_thresh=.14)
             >>> for timer in ub.Timerit(100, bestof=10, label='original'):
-            >>>     output_ = output.clone()
+            >>>     output_ = output.clone().view(16, 5 * (5 + 20), 9, 9)
             >>>     with timer:
             >>>         boxes3 = post(output_.data)
             >>>         xpu.synchronize()
@@ -350,6 +349,7 @@ class GetBoundingBoxes(object):
 
             boxes = boxes2
         elif box_mode == 2:
+            # Newst lightnet code, which is based on my mode1 code
             score_thresh = cls_max > self.conf_thresh
             score_thresh_flat = score_thresh.view(-1)
 

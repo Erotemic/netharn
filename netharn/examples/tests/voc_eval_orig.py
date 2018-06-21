@@ -259,7 +259,7 @@ def evaluate_model():
 
         # Hack while I fix the call
         post = model.module.postprocess
-        boxes = post._get_boxes(outputs.data, mode=1)
+        boxes = post._get_boxes(outputs.data, box_mode=2)
         boxes = [post._nms(box, mode=0) for box in boxes]
         postout = [post._clip_boxes(box) for box in boxes]
 
