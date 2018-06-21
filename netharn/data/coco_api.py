@@ -417,6 +417,14 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
         self.dataset = data
         self.img_root = img_root
 
+        self.anns = None
+        self.imgs = None
+        self.cats = None
+        self.gid_to_aids = None
+        self.cid_to_gids = None
+        self.cid_to_aids = None
+        self.name_to_cat = None
+
         if autofix:
             self._run_fixes()
 

@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 import cv2
+import itertools as it
 import pandas as pd
 import numpy as np
 import six
@@ -749,7 +750,6 @@ def axes_extent(axs, pad=0.0):
     Get the full extent of a group of axes, including axes labels, tick labels,
     and titles.
     """
-    import itertools as it
     import matplotlib as mpl
     def axes_parts(ax):
         yield ax
@@ -774,6 +774,19 @@ def axes_extent(axs, pad=0.0):
 
 
 def extract_axes_extents(fig, combine=False, pad=0.0):
+    """
+    Extracts the extent of each axes item in inches. The main purpose of this
+    is to set `bbox_inches` in `fig.savefig`, such that only the important data
+    is visualized.
+
+    Args:
+        fig (Figure): the figure
+        combine (bool): if True returns the union of each extent
+        pad (float): additional padding around each axes
+
+    Returns:
+        matplotlib.transforms.Bbox or list of matplotlib.transforms.Bbox
+    """
     # Make sure we draw the axes first so we can
     # extract positions from the text objects
     import matplotlib as mpl
@@ -803,11 +816,11 @@ def extract_axes_extents(fig, combine=False, pad=0.0):
             # extent = extent_
             axes_extents_.append(extent)
         axes_extents = mpl.transforms.Bbox.union(axes_extents_)
+        # if True:
+        #     axes_extents.x0 = 0
+        #     # axes_extents.y1 = 0
     else:
         axes_extents = axes_extents_
-    # if True:
-    #     axes_extents.x0 = 0
-    #     # axes_extents.y1 = 0
     return axes_extents
 
 
@@ -835,7 +848,34 @@ def adjust_subplots(left=None, right=None, bottom=None, top=None, wspace=None,
     fig.subplots_adjust(**adjust_dict)
 
 
-def render_figure_to_image(fig, **savekw):
+def render_figure_to_image(fig, dpi=None, transparent=None, **savekw):
+    """
+    Saves a figure as an image in memory.
+
+    Args:
+        fig (matplotlib.figure.Figure): figure to save
+
+        dpi (int or str, Optional):
+            The resolution in dots per inch.  If *None* it will default to the
+            value ``savefig.dpi`` in the matplotlibrc file.  If 'figure' it
+            will set the dpi to be the value of the figure.
+
+        transparent (bool):
+            If *True*, the axes patches will all be transparent; the
+            figure patch will also be transparent unless facecolor
+            and/or edgecolor are specified via kwargs.
+
+        **savekw: other keywords passed to `fig.savefig`. Valid keywords
+            include: facecolor, edgecolor, orientation, papertype, format,
+            pad_inches, frameon.
+
+    Returns:
+        np.ndarray: an image in BGR or BGRA format.
+
+    Notes:
+        Be sure to use `fig.set_size_inches` to an appropriate size before
+        calling this function.
+    """
     import io
     import cv2
     import matplotlib as mpl
@@ -843,7 +883,8 @@ def render_figure_to_image(fig, **savekw):
     extent = mpl.transforms.Bbox.union(axes_extents)
     with io.BytesIO() as stream:
         # This call takes 23% - 15% of the time depending on settings
-        fig.savefig(stream, bbox_inches=extent, **savekw)
+        fig.savefig(stream, bbox_inches=extent, dpi=dpi,
+                    transparent=transparent, **savekw)
         # fig.savefig(stream, **savekw)
         stream.seek(0)
         data = np.fromstring(stream.getvalue(), dtype=np.uint8)
@@ -2107,6 +2148,144 @@ def scores_to_color(score_list, cmap_='hot', logscale=False, reverse_cmap=False,
     return colors
 
 
+def interpolated_colormap(colors, resolution=64, space='lch-ab'):
+    """
+    Interpolates between colors in `space` to create a smooth listed colormap
+
+    Args:
+        colors (list or dict): list of colors or color objects and
+            where in the map they should appear.
+
+        resolution (int): number of discrete items in the colormap
+
+        space (str): colorspace to interpolate in, using a CIE-LAB space will
+            result in a perceptually uniform interpolation. HSV also works
+            well.
+
+    References:
+        http://stackoverflow.com/questions/12073306/customize-colorbar-in-matplotlib
+
+    CommandLine:
+        python -m netharn.util.mplutil interpolated_colormap
+
+    Example:
+        >>> # DISABLE_DOCTEST
+        >>> colors = [
+        >>>     (0.0, Color('green')),
+        >>>     (0.5, Color('gray')),
+        >>>     (1.0, Color('red')),
+        >>> ]
+        >>> space = 'lab'
+        >>> #resolution = 16 + 1
+        >>> resolution = 256 + 1
+        >>> cmap = interpolated_colormap(colors, resolution, space)
+        >>> # xdoc: +REQUIRES(--show)
+        >>> import pylab
+        >>> from matplotlib import pyplot as plt
+        >>> a = np.linspace(0, 1, resolution).reshape(1, -1)
+        >>> pylab.imshow(a, aspect='auto', cmap=cmap, interpolation='nearest')  # , origin="lower")
+        >>> plt.grid(False)
+        >>> show_if_requested()
+    """
+    import colorsys
+    import matplotlib as mpl
+
+    colors_inputs = colors
+
+    if isinstance(colors_inputs, dict):
+        colors_inputs = [(f, c) for f, c in sorted(colors_inputs.items())]
+    else:
+        if len(colors_inputs[0]) != 2:
+            fracs = np.linspace(0, 1, len(colors_inputs))
+            colors_inputs = list(zip(fracs, colors_inputs))
+
+    print('colors_inputs = {!r}'.format(colors_inputs))
+    colors = [Color(c) for f, c in colors_inputs]
+    fracs = [f for f, c in colors_inputs]
+
+    basis = np.linspace(0, 1, resolution)
+    fracs = np.array(fracs)
+    indices = np.searchsorted(fracs, basis)
+    indices = np.maximum(indices, 1)
+    cpool = []
+
+    from colormath import color_conversions
+    # FIXME: need to ensure monkeypatch for networkx 2.0 in colormath
+    # color_conversions._conversion_manager = color_conversions.GraphConversionManager()
+    from colormath import color_objects
+    def new_convertor(target_obj):
+        source_obj = color_objects.sRGBColor
+        def to_target(src_tup):
+            src_tup = src_tup[0:3]
+            src_co = source_obj(*src_tup)
+            target_co = color_conversions.convert_color(src_co, target_obj)
+            target_tup = target_co.get_value_tuple()
+            return target_tup
+
+        def from_target(target_tup):
+            target_co = target_obj(*target_tup)
+            src_co = color_conversions.convert_color(target_co, source_obj)
+            src_tup = src_co.get_value_tuple()
+            return src_tup
+        return to_target, from_target
+
+    def from_hsv(rgb):
+        return colorsys.rgb_to_hsv(*rgb[0:3])
+
+    def to_hsv(hsv):
+        return colorsys.hsv_to_rgb(*hsv[0:3].tolist())
+
+    classnames = {
+        # 'AdobeRGBColor',
+        # 'BaseRGBColor',
+        'cmk': 'CMYColor',
+        'cmyk': 'CMYKColor',
+        'hsl': 'HSLColor',
+        'hsv': 'HSVColor',
+        'ipt': 'IPTColor',
+        'lch-ab': 'LCHabColor',
+        'lch-uv': 'LCHuvColor',
+        'lab': 'LabColor',
+        'luv': 'LuvColor',
+        # 'SpectralColor',
+        'xyz':  'XYZColor',
+        # 'sRGBColor',
+        'xyy': 'xyYColor'
+    }
+
+    conversions = {k: new_convertor(getattr(color_objects, v))
+                   for k, v in classnames.items()}
+
+    from_rgb, to_rgb = conversions['hsv']
+    from_rgb, to_rgb = conversions['xyz']
+    from_rgb, to_rgb = conversions['lch-uv']
+    from_rgb, to_rgb = conversions['lch-ab']
+    from_rgb, to_rgb = conversions[space]
+    # from_rgb, to_rgb = conversions['lch']
+    # from_rgb, to_rgb = conversions['lab']
+    # from_rgb, to_rgb = conversions['lch-uv']
+
+    for idx2, b in zip(indices, basis):
+        idx1 = idx2 - 1
+        f1 = fracs[idx1]
+        f2 = fracs[idx2]
+
+        c1 = colors[idx1].as01('rgb')
+        c2 = colors[idx2].as01('rgb')
+        # from_rgb, to_rgb = conversions['lch']
+        h1 = np.array(from_rgb(c1))
+        h2 = np.array(from_rgb(c2))
+        alpha = (b - f1) / (f2 - f1)
+        new_h = h1 * (1 - alpha) + h2 * (alpha)
+        new_c = np.clip(to_rgb(new_h), 0, 1)
+        # print('new_c = %r' % (new_c,))
+        cpool.append(new_c)
+
+    cpool = np.array(cpool)
+    cmap = mpl.colors.ListedColormap(cpool, 'indexed')
+    return cmap
+
+
 def reverse_colormap(cmap):
     """
     References:
@@ -2165,14 +2344,12 @@ class PlotNums(object):
         replacement for make_pnum_nextgen
 
         Example:
-            >>> import itertools as it
             >>> pnum_ = PlotNums(nSubplots=9)
             >>> pnum_list = list( (pnum_() for _ in it.count()) )
             >>> result = ('pnum_list = %s' % (ub.repr2(pnum_list),))
             >>> print(result)
 
         Example:
-            >>> import itertools as it
             >>> for nRows, nCols, nSubplots in it.product([None, 3], [None, 3], [None, 9]):
             >>>     start = 0
             >>>     pnum_ = PlotNums(nRows, nCols, nSubplots, start)
@@ -2513,6 +2690,10 @@ class Color(ub.NiceRepr):
     """
     move to colorutil?
 
+    Args:
+        space (str): colorspace of wrapped color.
+            Assume RGB if not specified and it cannot be inferred
+
     Example:
         >>> from netharn.util.mplutil import *
         >>> print(Color('g'))
@@ -2527,7 +2708,13 @@ class Color(ub.NiceRepr):
         >>> print(Color([1, 1, 1], alpha=255, space='lab'))
     """
     def __init__(self, color, alpha=None, space=None):
-        if isinstance(color, Color):
+        try:
+            # Hack for ipython reload
+            is_color_cls = color.__class__.__name__ == 'Color'
+        except Exception:
+            is_color_cls = isinstance(color, Color)
+
+        if is_color_cls:
             assert alpha is None
             assert space is None
             space = color.space
