@@ -5,8 +5,8 @@
 # --------------------------------------------------------
 
 import xml.etree.ElementTree as ET
-import os
-from six.moves import cPickle
+import os  # NOQA
+from six.moves import cPickle  # NOQA
 import numpy as np
 
 
@@ -147,7 +147,7 @@ def voc_eval(detpath,
 
     # sort by confidence
     sorted_ind = np.argsort(-confidence)
-    sorted_scores = np.sort(-confidence)
+    # sorted_scores = np.sort(-confidence)  #
     BB = BB[sorted_ind, :]
     image_ids = [image_ids[x] for x in sorted_ind]
 
@@ -211,6 +211,8 @@ def evaluate_model():
     import sys
     sys.path.append(ub.truepath('~/code/netharn/netharn/examples/tests'))
     from test_yolo import *
+
+    rsync -avPR xxx:work/voc_yolo2/fit/nice/pjr_run/torch_snapshots/_epoch_00000314.pt ~/work/voc_yolo2/fit/nice/pjr_run/torch_snapshots/_epoch_00000314.pt
     """
 
     from os.path import join
@@ -329,7 +331,7 @@ def evaluate_model():
                 from os.path import basename, splitext
                 gpath = dataset.gpaths[gx]
                 imgid = splitext(basename(gpath))[0]
-                class_to_dets[cx].append(list(ub.flatten([[imgid], [score], box.data])))
+                class_to_dets[cx].append(list(ub.flatten([[imgid], [score], box.to_tlbr().data])))
 
     detpath = join(dataset.devkit_dpath, 'results', 'VOC2007', 'Main', 'comp3_det_test_{}.txt')
     for cx, dets in class_to_dets.items():
@@ -348,9 +350,167 @@ def evaluate_model():
         imagesetfile = join(dataset.devkit_dpath, 'VOC2007', 'ImageSets', 'Main', '{}_test.txt').format(classname)
 
         rec, prec, ap = voc_eval(detpath, annopath, imagesetfile, classname,
-                                 cachedir, ovthresh=0.5, use_07_metric=True)
+                                 cachedir, ovthresh=0.5, use_07_metric=False)
         class_aps[classname] = ap
         class_curve[classname] = (rec, prec)
 
     mAP = np.mean(list(class_aps.values()))
     print('mAP = {!r}'.format(mAP))
+    # I'm gettin 0.694 !? WHY? Too Low, should be in the .76ish range
+
+
+def evaluate_lightnet_model():
+    """
+    Try to evaulate the model using the exact same VOC scoring metric
+
+    import ubelt as ub
+    import sys
+    sys.path.append(ub.truepath('~/code/netharn/netharn/examples/tests'))
+    from test_yolo import *
+    """
+    import os  # NOQA
+    import netharn as nh
+    import ubelt as ub
+    import lightnet as ln
+    import torch
+    ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
+
+    xpu = nh.XPU.cast('auto')
+
+    ln_weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/final.pt')
+    ln_weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
+
+    # Lightnet model, postprocess, and lightnet weights
+    ln_model = ln.models.Yolo(ln_test.CLASSES, ln_weights_fpath,
+                              ln_test.CONF_THRESH, ln_test.NMS_THRESH)
+    ln_model = xpu.move(ln_model)
+    ln_model.eval()
+
+    TESTFILE = ub.truepath('~/code/lightnet/examples/yolo-voc/data/test.pkl')
+    os.chdir(ub.truepath('~/code/lightnet/examples/yolo-voc/'))
+    ln_dset = ln_test.CustomDataset(TESTFILE, ln_model)
+    ln_loader = torch.utils.data.DataLoader(
+        ln_dset, batch_size=8, shuffle=False, drop_last=False, num_workers=0,
+        pin_memory=True, collate_fn=ln.data.list_collate,
+    )
+
+    # ----------------------
+    # Postprocessing to transform yolo outputs into detections
+    # Basic difference here is the implementation of NMS
+    ln_postprocess = ln.data.transform.util.Compose(ln_model.postprocess.copy())
+
+    # ----------------------
+    # Define helper functions to deal with bramboxes
+    detection_to_brambox = ln.data.transform.TensorToBrambox(ln_test.NETWORK_SIZE,
+                                                             ln_test.LABELS)
+    # hack so forward call behaves like it does in test
+    ln_model.postprocess.append(detection_to_brambox)
+
+    # ----------------------
+    def img_to_box(ln_loader, boxes, offset):
+        gname_lut = ln_loader.dataset.keys
+        return {gname_lut[offset + k]: v for k, v in enumerate(boxes)}
+
+    with torch.no_grad():
+        anno = {}
+        ln_det = {}
+
+        moving_ave = nh.util.util_averages.CumMovingAve()
+
+        prog = ub.ProgIter(ln_loader, desc='')
+        for bx, ln_raw_batch in enumerate(prog):
+            ln_raw_inputs, ln_bramboxes = ln_raw_batch
+
+            # Convert brambox into components understood by netharn
+            ln_inputs = xpu.variable(ln_raw_inputs)
+
+            ln_model.loss.seen = 1000000
+            ln_outputs = ln_model._forward(ln_inputs)
+
+            ln_loss_bram = ln_model.loss(ln_outputs, ln_bramboxes)
+            moving_ave.update(ub.odict([
+                ('loss_bram', float(ln_loss_bram.sum())),
+            ]))
+
+            # Display progress information
+            average_losses = moving_ave.average()
+            description = ub.repr2(average_losses, nl=0, precision=2, si=True)
+            prog.set_description(description, refresh=False)
+
+            # nh_outputs and ln_outputs should be the same, so no need to
+            # differentiate between them here.
+            ln_postout = ln_postprocess(ln_outputs.clone())
+
+            ln_brambox_postout = detection_to_brambox([x.clone() for x in ln_postout])
+
+            # out, loss = ln_model.forward(ln_inputs, ln_bramboxes)
+
+            # Record data scored by brambox
+            offset = len(anno)
+            anno.update(img_to_box(ln_loader, ln_bramboxes, offset))
+            ln_det.update(img_to_box(ln_loader, ln_brambox_postout, offset))
+
+    import brambox.boxes as bbb
+    # Compute mAP using brambox / lightnet
+    pr = bbb.pr(ln_det, anno)
+
+    ln_mAP = round(bbb.ap(*pr) * 100, 2)
+    print('\nln_mAP = {!r}'.format(ln_mAP))
+
+    devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit/')
+
+    # Convert bramboxes to VOC style data for eval
+    class_to_dets = ub.ddict(list)
+    for gpath, bb_dets in ub.ProgIter(list(ln_det.items())):
+
+        from PIL import Image
+        from os.path import join
+        pil_image = Image.open(join(devkit_dpath, gpath) + '.jpg')
+        img_size = pil_image.size
+        bb_dets = ln.data.transform.ReverseLetterbox.apply([bb_dets], ln_test.NETWORK_SIZE, img_size)[0]
+        for det in bb_dets:
+            from os.path import basename, splitext
+            imgid = splitext(basename(gpath))[0]
+            score = det.confidence
+            tlwh = [
+                max(det.x_top_left, 0),
+                max(det.y_top_left, 0),
+                min(det.x_top_left + det.width, img_size[0]),
+                min(det.y_top_left + det.height, img_size[1])]
+            # See: /home/joncrall/data/VOC/VOCdevkit/devkit_doc.pdf
+            # Each line is formatted as:
+            # <image identifier> <confidence> <left> <top> <right> <bottom>
+            class_to_dets[det.class_label].append(
+                list(ub.flatten([[imgid], [score], tlwh])))
+
+    # Calculate Original VOC measure
+    from os.path import join
+    results_path = join(devkit_dpath, 'results', 'VOC2007', 'Main')
+    detpath = join(results_path, 'comp3_det_test_{}.txt')
+    for lbl, dets in class_to_dets.items():
+        fpath = detpath.format(lbl)
+        with open(fpath, 'w') as file:
+            text = '\n'.join([' '.join(list(map(str, det))) for det in dets])
+            file.write(text)
+
+    class_aps = {}
+    class_curve = {}
+
+    import sys
+    sys.path.append('/home/joncrall/code/netharn/netharn/examples/tests')
+    from voc_eval_orig import voc_eval
+
+    annopath = join(devkit_dpath, 'VOC2007', 'Annotations', '{}.xml')
+    for classname in ub.ProgIter(list(class_to_dets.keys())):
+        cachedir = None
+        imagesetfile = join(devkit_dpath, 'VOC2007', 'ImageSets', 'Main', '{}_test.txt').format(classname)
+
+        rec, prec, ap = voc_eval(detpath, annopath, imagesetfile, classname,
+                                 cachedir, ovthresh=0.5, use_07_metric=True)
+        class_aps[classname] = ap
+        class_curve[classname] = (rec, prec)
+
+    mAP = np.mean(list(class_aps.values()))
+    print('Official* VOC mAP = {!r}'.format(mAP))
+    # I get 0.71091 without 07 metric
+    # I get 0.73164 without 07 metric
