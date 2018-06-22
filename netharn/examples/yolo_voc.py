@@ -80,9 +80,6 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         # the aspect ratio.
         self.letterbox = nh.data.transforms.Resize(None, mode='letterbox')
 
-    def __len__(self):
-        return 16 * 5
-
     @profiler.profile
     def __getitem__(self, index):
         """
