@@ -466,6 +466,8 @@ class RegionLoss(BaseLossWithCudaState):
             # Batch predictions
             cur_pred_boxes = pred_boxes[bx]
 
+            # NOTE: IOU computation is the bottleneck in this function
+
             # Assign groundtruth boxes to anchor boxes
             cur_anchor_gt_ious = self.rel_anchors_boxes.ious(cur_rel_gt_boxes, bias=0)
             _, cur_true_anchor_axs = cur_anchor_gt_ious.max(dim=0)  # best_ns in YOLO

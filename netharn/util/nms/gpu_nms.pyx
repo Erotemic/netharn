@@ -27,7 +27,7 @@ cdef extern from "gpu_nms.hpp" nogil:
 @cython.cdivision(True)
 @cython.wraparound(False)
 def gpu_nms(np.ndarray[np.float32_t, ndim=2] dets, np.float thresh,
-            np.float bias=0, np.int32_t device_id=0):
+            np.float bias=0.0, np.int32_t device_id=0):
     cdef int boxes_num = dets.shape[0]
     cdef int boxes_dim = dets.shape[1]
     cdef int num_out

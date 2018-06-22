@@ -153,8 +153,8 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
 
     # sort predictions by descending score
     sortx = pred_scores.argsort()[::-1]
-    pred_boxes  = pred_boxes.take(sortx, axis=0)
-    pred_cxs    = pred_cxs.take(sortx, axis=0)
+    pred_boxes = pred_boxes.take(sortx, axis=0)
+    pred_cxs = pred_cxs.take(sortx, axis=0)
     pred_scores = pred_scores.take(sortx, axis=0)
 
     for cx, box, score in zip(pred_cxs, pred_boxes, pred_scores):
@@ -173,6 +173,7 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
             else:
                 cls_true_weights = true_weights.take(cls_true_idxs, axis=0)
 
+            # TODO: make this more efficient
             cls_true_boxes_ = util.Boxes(cls_true_boxes, 'tlbr')
             box_ = util.Boxes(box, 'tlbr')
             overlaps = cls_true_boxes_.ious(box_, bias=bias)

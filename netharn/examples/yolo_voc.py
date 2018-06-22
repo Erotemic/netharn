@@ -350,12 +350,14 @@ class YoloHarn(nh.FitHarn):
 
         inputs, labels = batch
         outputs = harn.model(inputs)
-        # torch.cuda.synchronize()
+        # if ub.argflag('--profile'):
+        #     torch.cuda.synchronize()
         target = labels['targets']
         gt_weights = labels['gt_weights']
         loss = harn.criterion(outputs, target, seen=n_seen,
                               gt_weights=gt_weights)
-        # torch.cuda.synchronize()
+        # if ub.argflag('--profile'):
+        #     torch.cuda.synchronize()
         return outputs, loss
 
     @profiler.profile
@@ -390,6 +392,8 @@ class YoloHarn(nh.FitHarn):
 
             try:
                 postout = harn.model.module.postprocess(outputs)
+                # if ub.argflag('--profile'):
+                #     torch.cuda.synchronize()
             except Exception as ex:
                 harn.error('\n\n\n')
                 harn.error('ERROR: FAILED TO POSTPROCESS OUTPUTS')
@@ -435,8 +439,8 @@ class YoloHarn(nh.FitHarn):
         tag = harn.current_tag
 
         if tag in {'test', 'vali'}:
-            # if (harn.epoch % 10 == 9 or harn.epoch > 300):
-            harn._dump_chosen_indices()
+            if (harn.epoch % 10 == 5 or harn.epoch > 300):
+                harn._dump_chosen_indices()
 
         if harn.batch_confusions:
             y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
@@ -935,6 +939,9 @@ if __name__ == '__main__':
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=eav_run --lr=0.001 --bstep=4 --workers=6
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=6 --orig
 
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=fixed_nms --lr=0.001 --bstep=4 --workers=6 --orig
+
+        # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
     """

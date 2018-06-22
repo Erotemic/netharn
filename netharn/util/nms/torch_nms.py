@@ -1,8 +1,8 @@
-# import torch
-# import numpy as np
+import torch
+import numpy as np
 
 
-def torch_nms(tlbr, scores, classes=None, thresh=.5, fast=False):
+def torch_nms(tlbr, scores, classes=None, thresh=.5, bias=0, fast=False):
     """
     Non maximum suppression implemented with pytorch tensors
 
@@ -56,30 +56,31 @@ def torch_nms(tlbr, scores, classes=None, thresh=.5, fast=False):
         return []
 
     # Sort coordinates by descending score
-    scores, order = scores.sort(0, descending=True)
+    ordered_scores, order = scores.sort(0, descending=True)
 
     from netharn import util
     boxes = util.Boxes(tlbr[order], 'tlbr')
-    ious = boxes.ious(boxes, bias=1)
+    ious = boxes.ious(boxes, bias=bias)
 
-    if False:
-        x1, y1, x2, y2 = tlbr[order].split(1, 1)
+    # if False:
+    #     x1, y1, x2, y2 = tlbr[order].split(1, 1)
 
-        # Compute dx and dy between each pair of boxes (these mat contain every pair twice...)
-        dx = (x2.min(x2.t()) - x1.max(x1.t())).clamp_(min=0)
-        dy = (y2.min(y2.t()) - y1.max(y1.t())).clamp_(min=0)
+    #     # Compute dx and dy between each pair of boxes (these mat contain every pair twice...)
+    #     dx = (x2.min(x2.t()) - x1.max(x1.t())).clamp_(min=0)
+    #     dy = (y2.min(y2.t()) - y1.max(y1.t())).clamp_(min=0)
 
-        # Compute iou
-        intersections = dx * dy
-        areas = (x2 - x1) * (y2 - y1)
-        unions = (areas + areas.t()) - intersections
-        ious = intersections / unions
+    #     # Compute iou
+    #     intersections = dx * dy
+    #     areas = (x2 - x1) * (y2 - y1)
+    #     unions = (areas + areas.t()) - intersections
+    #     ious = intersections / unions
 
     # Filter based on iou (and class)
     conflicting = (ious > thresh).triu(1)
 
     if classes is not None:
-        same_class = (classes.unsqueeze(0) == classes.unsqueeze(1))
+        ordered_classes = classes[order]
+        same_class = (ordered_classes.unsqueeze(0) == ordered_classes.unsqueeze(1))
         conflicting = (conflicting & same_class)
     # Now we have a 2D matrix where conflicting[i, j] indicates if box[i]
     # conflicts with box[j]. For each box[i] we want to only keep the first
@@ -98,23 +99,85 @@ def torch_nms(tlbr, scores, classes=None, thresh=.5, fast=False):
         # conflicts. Say we have boxes A, B, and C, where A conflicts with B,
         # B conflicts with C but A does not conflict with C. The fact that we
         # use A should mean that C is not longer conflicted.
-        n_conflicts_post = n_conflicts.cpu()
-        conflicting = conflicting.cpu()
 
-        keep_len = len(n_conflicts_post) - 1
-        for i in range(1, keep_len):
-            if n_conflicts_post[i] > 0:
-                n_conflicts_post -= conflicting[i]
+        if True:
+            # Marginally faster. best=618.2 us
+            ordered_keep = np.zeros(len(conflicting), dtype=np.uint8)
+            supress = np.zeros(len(conflicting), dtype=np.bool)
+            for i, row in enumerate(conflicting.cpu().numpy() > 0):
+                if not supress[i]:
+                    ordered_keep[i] = 1
+                    supress[row] = 1
+            ordered_keep = torch.ByteTensor(ordered_keep).to(tlbr.device)
+        else:
+            # Marginally slower: best=1.382 ms,
+            n_conflicts_post = n_conflicts.cpu()
+            conflicting = conflicting.cpu()
 
-        n_conflicts = n_conflicts_post.to(n_conflicts.device)
+            keep_len = len(n_conflicts_post) - 1
+            for i in range(1, keep_len):
+                if n_conflicts_post[i] > 0:
+                    n_conflicts_post -= conflicting[i]
 
-    # Now we can simply keep any box that has no conflicts.
-    ordered_keep = (n_conflicts == 0)
+            n_conflicts = n_conflicts_post.to(n_conflicts.device)
+            ordered_keep = (n_conflicts == 0)
+    else:
+        # Now we can simply keep any box that has no conflicts.
+        ordered_keep = (n_conflicts == 0)
 
     # Unsort, so keep is aligned with input boxes
     keep = ordered_keep.new(*ordered_keep.size())
     keep.scatter_(0, order, ordered_keep)
     return keep
+
+
+def test_class_torch():
+    import numpy as np
+    import torch
+    import netharn as nh
+    import ubelt as ub
+    # from netharn.util.nms.torch_nms import torch_nms
+    # from netharn.util import non_max_supression
+
+    thresh = .5
+
+    num = 500
+    rng = nh.util.ensure_rng(0)
+    cpu_boxes = nh.util.Boxes.random(num, scale=400.0, rng=rng, format='tlbr', tensor=True)
+    cpu_tlbr = cpu_boxes.to_tlbr().data
+    # cpu_scores = torch.Tensor(rng.rand(len(cpu_tlbr)))
+    # make all scores unique to ensure comparability
+    cpu_scores = torch.Tensor(np.linspace(0, 1, len(cpu_tlbr)))
+    cpu_cls = torch.LongTensor(rng.randint(0, 10, len(cpu_tlbr)))
+
+    tlbr = cpu_boxes.to_tlbr().data.to('cuda')
+    scores = cpu_scores.to('cuda')
+    classes = cpu_cls.to('cuda')
+
+    keep1 = []
+    for idxs in ub.group_items(range(len(classes)), classes.cpu().numpy()).values():
+        # cls_tlbr = tlbr.take(idxs, axis=0)
+        # cls_scores = scores.take(idxs, axis=0)
+        cls_tlbr = tlbr[idxs]
+        cls_scores = scores[idxs]
+        cls_keep = torch_nms(cls_tlbr, cls_scores, thresh=thresh, bias=0)
+        keep1.extend(list(ub.compress(idxs, cls_keep.cpu().numpy())))
+    keep1 = sorted(keep1)
+
+    keep_ = torch_nms(tlbr, scores, classes=classes, thresh=thresh, bias=0)
+    keep2 = np.where(keep_.cpu().numpy())[0].tolist()
+
+    keep3 = nh.util.non_max_supression(tlbr.cpu().numpy(),
+                                       scores.cpu().numpy(),
+                                       classes=classes.cpu().numpy(),
+                                       thresh=thresh, bias=0, impl='gpu')
+
+    print(len(keep1))
+    print(len(keep2))
+    print(len(keep3))
+
+    print(set(keep1) - set(keep2))
+    print(set(keep2) - set(keep1))
 
 
 def _benchmark():
@@ -129,7 +192,6 @@ def _benchmark():
         https://gitlab.com/EAVISE/lightnet/blob/master/lightnet/data/transform/_postprocess.py#L116
 
     """
-
     import torch
     import numpy as np
     import netharn as nh
@@ -149,7 +211,7 @@ def _benchmark():
 
     xdata = [10, 20, 40, 80, 100, 200, 300, 400, 500, 600, 700, 1000, 1500, max_boxes]
     # xdata = [10, 20, 40, 80, 100, 200, 300, 400, 500]
-    # xdata = [10, 100, 500]
+    xdata = [10, 100, 500]
 
     rng = nh.util.ensure_rng(0)
 
@@ -225,16 +287,16 @@ def _benchmark():
             ydata[t1.label].append(t1.min())
             outputs[t1.label] = sorted(keep)
 
-            from lightnet.data.transform._postprocess import NonMaxSupression
-            t1 = ub.Timerit(N, bestof=bestof, label='lightnet-fast(gpu)')
-            for timer in t1:
-                with timer:
-                    ln_output = NonMaxSupression._nms(gpu_ln_boxes, nms_thresh=thresh, class_nms=False, fast=True)
-                    torch.cuda.synchronize()
-            # convert lightnet NMS output to keep for consistency
-            keep = _ln_output_to_keep(ln_output, gpu_ln_boxes)
-            ydata[t1.label].append(t1.min())
-            outputs[t1.label] = sorted(keep)
+            if False:
+                t1 = ub.Timerit(N, bestof=bestof, label='lightnet-fast(gpu)')
+                for timer in t1:
+                    with timer:
+                        ln_output = NonMaxSupression._nms(gpu_ln_boxes, nms_thresh=thresh, class_nms=False, fast=True)
+                        torch.cuda.synchronize()
+                # convert lightnet NMS output to keep for consistency
+                keep = _ln_output_to_keep(ln_output, gpu_ln_boxes)
+                ydata[t1.label].append(t1.min())
+                outputs[t1.label] = sorted(keep)
 
         if measure_cpu:
             t1 = ub.Timerit(N, bestof=bestof, label='torch(cpu)')

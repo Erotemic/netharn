@@ -35,7 +35,7 @@ class GetBoundingBoxes(object):
         self.nms_thresh = nms_thresh
 
     @profiler.profile
-    def __call__(self, network_output, mode=0, box_mode=2):
+    def __call__(self, network_output, nms_mode=0, box_mode=2):
         """ Compute bounding boxes after thresholding and nms
 
             network_output (torch.autograd.Variable): Output tensor from the lightnet network
@@ -65,7 +65,7 @@ class GetBoundingBoxes(object):
             >>> for timer in ubelt.Timerit(21, bestof=3, label='mode0+gpu'):
             >>>     output_ = output.clone()
             >>>     with timer:
-            >>>         self(output_, mode=0)
+            >>>         self(output_, nms_mode=0)
 
         Script:
             >>> import torch
@@ -78,7 +78,7 @@ class GetBoundingBoxes(object):
             >>> for timer in ubelt.Timerit(21, bestof=3, label='mode1+gpu'):
             >>>     output_ = output.clone()
             >>>     with timer:
-            >>>         self(output_, mode=1)
+            >>>         self(output_, nms_mode=1)
 
         Benchmark:
             >>> import torch
@@ -91,33 +91,33 @@ class GetBoundingBoxes(object):
             >>> for timer in ubelt.Timerit(21, bestof=3, label='mode0+cpu'):
             >>>     output_ = output.clone()
             >>>     with timer:
-            >>>         self(output_, mode=0)
+            >>>         self(output_, nms_mode=0)
             >>> #
             >>> for timer in ubelt.Timerit(21, bestof=3, label='mode1+cpu'):
             >>>     output_ = output.clone()
             >>>     with timer:
-            >>>         self(output_, mode=1)
+            >>>         self(output_, nms_mode=1)
             >>> #
             >>> if torch.cuda.is_available():
             >>>     output = output.to(0)
             >>>     for timer in ubelt.Timerit(21, bestof=3, label='mode0+gpu'):
             >>>         output_ = output.clone()
             >>>         with timer:
-            >>>             self(output_, mode=0)
+            >>>             self(output_, nms_mode=0)
             >>>     #
             >>>     for timer in ubelt.Timerit(21, bestof=3, label='mode1+gpu'):
             >>>         output_ = output.clone()
             >>>         with timer:
-            >>>             self(output_, mode=1)
+            >>>             self(output_, nms_mode=1)
 
-            %timeit self(output.data, mode=0)
-            %timeit self(output.data, mode=1)
-            %timeit self(output.data, mode=2)
+            %timeit self(output.data, nms_mode=0)
+            %timeit self(output.data, nms_mode=1)
+            %timeit self(output.data, nms_mode=2)
         """
-        # boxes = self._get_boxes(network_output.data, mode=mode)
+        # boxes = self._get_boxes(network_output.data, nms_mode=nms_mode)
         # mode1 is the same as 0, just lots faster
         boxes = self._get_boxes(network_output.data, box_mode=box_mode)
-        boxes = [self._nms(box, mode=mode) for box in boxes]
+        boxes = [self._nms(box, nms_mode=nms_mode) for box in boxes]
 
         # force all boxes to be inside the image
         boxes = [self._clip_boxes(box) for box in boxes]
@@ -382,12 +382,14 @@ class GetBoundingBoxes(object):
         return boxes
 
     @profiler.profile
-    def _nms(self, boxes, mode=0):
+    def _nms(self, cxywh_score_cls, nms_mode=0):
         """ Non maximum suppression.
         Source: https://www.pyimagesearch.com/2015/02/16/faster-non-maximum-suppression-python/
 
         Args:
-          boxes (tensor): Bounding boxes from get_detections
+          cxywh_score_cls (tensor): Bounding boxes and scores from
+              get_detections. Assumes columns 0:4 are cx, cy, w, h, Column 4 is
+              confidence, and column 5 is class id.
 
         Return:
           (tensor): Pruned boxes
@@ -403,9 +405,9 @@ class GetBoundingBoxes(object):
             >>> output = torch.randn(8, 5, 5 + 20, 9, 9)
             >>> boxes_ = self._get_boxes(output.data)
             >>> boxes = torch.Tensor(boxes_[0])
-            >>> ans0 = self._nms(boxes, mode=0)
-            >>> ans1 = self._nms(boxes, mode=1)
-            >>> ans2 = self._nms(boxes, mode=2)
+            >>> ans0 = self._nms(boxes, nms_mode=0)
+            >>> ans1 = self._nms(boxes, nms_mode=1)
+            >>> ans2 = self._nms(boxes, nms_mode=2)
 
         Ignore:
             >>> from netharn import util
@@ -420,100 +422,210 @@ class GetBoundingBoxes(object):
             import ubelt
             for timer in ubelt.Timerit(100, bestof=10, label='nms0+cpu'):
                 with timer:
-                    self._nms(boxes, mode=0)
+                    self._nms(boxes, nms_mode=0)
 
             for timer in ubelt.Timerit(100, bestof=10, label='nms1+cpu'):
                 with timer:
-                    self._nms(boxes, mode=1)
+                    self._nms(boxes, nms_mode=1)
 
             boxes = boxes.to()
             import ubelt
             for timer in ubelt.Timerit(100, bestof=10, label='nms0+gpu'):
                 with timer:
-                    self._nms(boxes, mode=0)
+                    self._nms(boxes, nms_mode=0)
 
             for timer in ubelt.Timerit(100, bestof=10, label='nms1+gpu'):
                 with timer:
-                    self._nms(boxes, mode=1)
+                    self._nms(boxes, nms_mode=1)
         """
-        if boxes.numel() == 0:
-            return boxes
+        if cxywh_score_cls.numel() == 0:
+            return cxywh_score_cls
 
-        a = boxes[:, :2]
-        b = boxes[:, 2:4]
+        a = cxywh_score_cls[:, :2]
+        b = cxywh_score_cls[:, 2:4]
         # convert to tlbr
         tlbr_tensor = torch.cat([a - b / 2, a + b / 2], 1)
-        scores = boxes[:, 4]
+        scores = cxywh_score_cls[:, 4]
 
-        if mode == 0:
+        if nms_mode == 0:
             # if torch.cuda.is_available:
             #     boxes = boxes.to(0)
-            keep = _nms_torch(tlbr_tensor, scores, nms_thresh=self.nms_thresh)
-            keep = sorted(keep)
-        elif mode == 1:
+            from netharn.util.nms.torch_nms import torch_nms
+            cls_tensor = cxywh_score_cls[:, 5]
+            keep = torch_nms(tlbr_tensor, scores, classes=cls_tensor,
+                             thresh=self.nms_thresh, bias=0)
+            return cxywh_score_cls[keep]
+            # keep = _nms_torch(tlbr_tensor, scores, nms_thresh=self.nms_thresh)
+            # keep = sorted(keep)
+        elif nms_mode == 1:
             # Dont group by classes, just NMS
             tlbr_np = tlbr_tensor.cpu().numpy().astype(np.float32)
             scores_np = scores.cpu().numpy().astype(np.float32)
-            keep = util.non_max_supression(tlbr_np, scores_np,
-                                           self.nms_thresh)
+            keep = util.non_max_supression(tlbr_np, scores_np, self.nms_thresh,
+                                           bias=0)
             keep = sorted(keep)
-        elif mode == 2:
+        elif nms_mode == 2:
             # Group and use NMS
             tlbr_np = tlbr_tensor.cpu().numpy().astype(np.float32)
             scores_np = scores.cpu().numpy().astype(np.float32)
-            classes_np = boxes[..., 5].cpu().numpy().astype(np.int)
-            keep = []
-            for idxs in ub.group_items(range(len(classes_np)), classes_np).values():
-                cls_tlbr_np = tlbr_np.take(idxs, axis=0)
-                cls_scores_np = scores_np.take(idxs, axis=0)
-                cls_keep = util.non_max_supression(cls_tlbr_np, cls_scores_np,
-                                                   self.nms_thresh)
-                keep.extend(list(ub.take(idxs, cls_keep)))
+            classes_np = cxywh_score_cls[:, 5].cpu().numpy().astype(np.int)
+
+            keep = util.non_max_supression(tlbr_np, scores_np, self.nms_thresh,
+                                           classes=classes_np, bias=0)
+            # keep = []
+            # for idxs in ub.group_items(range(len(classes_np)), classes_np).values():
+            #     cls_tlbr_np = tlbr_np.take(idxs, axis=0)
+            #     cls_scores_np = scores_np.take(idxs, axis=0)
+            #     cls_keep = util.non_max_supression(cls_tlbr_np, cls_scores_np,
+            #                                        self.nms_thresh, bias=0)
+            #     keep.extend(list(ub.take(idxs, cls_keep)))
+            keep = sorted(keep)
+        elif nms_mode == 3:
+            # Group and use NMS
+            classes_np = cxywh_score_cls[:, 5].cpu().numpy().astype(np.int)
+            keep = util.non_max_supression(tlbr_tensor, scores,
+                                           self.nms_thresh, classes=classes_np,
+                                           bias=0, impl='torch')
+            # keep = []
+            # for idxs in ub.group_items(range(len(classes_np)), classes_np).values():
+            #     cls_tlbr_np = tlbr_np.take(idxs, axis=0)
+            #     cls_scores_np = scores_np.take(idxs, axis=0)
+            #     cls_keep = util.non_max_supression(cls_tlbr_np, cls_scores_np,
+            #                                        self.nms_thresh, bias=0)
+            #     keep.extend(list(ub.take(idxs, cls_keep)))
             keep = sorted(keep)
         else:
-            raise KeyError(mode)
-        return boxes[torch.LongTensor(keep)]
+            raise KeyError(nms_mode)
+        return cxywh_score_cls[torch.LongTensor(keep)]
 
 
-def _nms_torch(tlbr_tensor, scores, nms_thresh=.5):
-    x1 = tlbr_tensor[:, 0]
-    y1 = tlbr_tensor[:, 1]
-    x2 = tlbr_tensor[:, 2]
-    y2 = tlbr_tensor[:, 3]
+def benchmark_nms_version():
+    """
+        python -m netharn.models.yolo2.light_postproc benchmark_nms_version
+    """
+    # Build random test boxes and scores
+    from lightnet.data.transform._postprocess import NonMaxSupression
+    import netharn as nh
+    num = 16 * 16 * 5
+    rng = nh.util.ensure_rng(0)
+    cpu_boxes = nh.util.Boxes.random(num, scale=416.0, rng=rng, format='tlbr', tensor=True)
+    cpu_tlbr = cpu_boxes.to_tlbr().data
+    # cpu_scores = torch.Tensor(rng.rand(len(cpu_tlbr)))
+    # make all scores unique to ensure comparability
+    cpu_scores = torch.Tensor(np.linspace(0, 1, len(cpu_tlbr)))
+    cpu_cls = torch.LongTensor(rng.randint(0, 20, len(cpu_tlbr)))
 
-    areas = ((x2 - x1) * (y2 - y1))
-    _, order = scores.sort(0, descending=True)
+    # Format boxes in lightnet format
+    cxywh_score_cls = torch.cat([cpu_boxes.to_cxywh().data,
+                                 cpu_scores[:, None],
+                                 cpu_cls.float()[:, None]], dim=-1)
 
-    keep = []
-    while order.numel() > 0:
-        if order.numel() == 1:
-            if torch.__version__.startswith('0.3'):
-                i = order[0]
-            else:
-                i = order.item()
-            i = order.item()
-            keep.append(i)
-            break
+    gpu = torch.device('cuda', 0)
+    gpu_ln_boxes = cxywh_score_cls.to(gpu)
 
-        i = order[0].item()
-        keep.append(i)
+    thresh = .5
 
-        xx1 = x1[order[1:]].clamp(min=x1[i])
-        yy1 = y1[order[1:]].clamp(min=y1[i])
-        xx2 = x2[order[1:]].clamp(max=x2[i])
-        yy2 = y2[order[1:]].clamp(max=y2[i])
+    def _ln_output_to_keep(ln_output, ln_boxes):
+        keep = []
+        for row in ln_output:
+            # Find the index that we kept
+            idxs = np.where(np.all(np.isclose(ln_boxes, row), axis=1))[0]
+            assert len(idxs) == 1
+            keep.append(idxs[0])
+        assert np.all(np.isclose(ln_boxes[keep], ln_output))
+        return keep
 
-        w = (xx2 - xx1).clamp(min=0)
-        h = (yy2 - yy1).clamp(min=0)
-        inter = w * h
+    N = 12
+    bestof = 3
 
-        iou = inter / (areas[i] + areas[order[1:]] - inter)
+    t1 = ub.Timerit(N, bestof=bestof, label='lightnet()')
+    for timer in t1:
+        with timer:
+            ln_output = NonMaxSupression._nms(gpu_ln_boxes, nms_thresh=thresh,
+                                              class_nms=True, fast=False)
+            torch.cuda.synchronize()
+    ln_keep = _ln_output_to_keep(ln_output, gpu_ln_boxes)
 
-        ids = (iou <= nms_thresh).nonzero().squeeze()
-        if ids.numel() == 0:
-            break
-        order = order[ids + 1]
-    return keep
+    anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
+    self = GetBoundingBoxes(anchors=anchors, num_classes=20, conf_thresh=.01, nms_thresh=thresh)
+
+    t1 = ub.Timerit(N, bestof=bestof, label='netharn(mode0)')
+    for timer in t1:
+        with timer:
+            nh_output = self._nms(gpu_ln_boxes, nms_mode=0)
+            torch.cuda.synchronize()
+    nh_keep_0 = _ln_output_to_keep(nh_output, gpu_ln_boxes)
+
+    t1 = ub.Timerit(N, bestof=bestof, label='netharn(mode1)')
+    for timer in t1:
+        with timer:
+            nh_output = self._nms(gpu_ln_boxes, nms_mode=1)
+            torch.cuda.synchronize()
+    nh_keep_1 = _ln_output_to_keep(nh_output, gpu_ln_boxes)
+
+    t1 = ub.Timerit(N, bestof=bestof, label='netharn(mode2)')
+    for timer in t1:
+        with timer:
+            nh_output = self._nms(gpu_ln_boxes, nms_mode=2)
+            torch.cuda.synchronize()
+    nh_keep_2 = _ln_output_to_keep(nh_output, gpu_ln_boxes)
+
+    t1 = ub.Timerit(N, bestof=bestof, label='netharn(mode3)')
+    for timer in t1:
+        with timer:
+            nh_output = self._nms(gpu_ln_boxes, nms_mode=3)
+            torch.cuda.synchronize()
+    nh_keep_3 = _ln_output_to_keep(nh_output, gpu_ln_boxes)
+
+    nh_keep_0 == nh_keep_2
+    nh_keep_0 == nh_keep_3
+
+    print('ln_keep = {!r}'.format(len(ln_keep)))
+    print('len(nh_keep_0) = {!r}'.format(len(nh_keep_0)))
+    print('len(nh_keep_1) = {!r}'.format(len(nh_keep_1)))
+    print('len(nh_keep_2) = {!r}'.format(len(nh_keep_2)))
+    print('len(nh_keep_3) = {!r}'.format(len(nh_keep_3)))
+
+
+# def _nms_torch(tlbr_tensor, scores, nms_thresh=.5):
+#     x1 = tlbr_tensor[:, 0]
+#     y1 = tlbr_tensor[:, 1]
+#     x2 = tlbr_tensor[:, 2]
+#     y2 = tlbr_tensor[:, 3]
+
+#     areas = ((x2 - x1) * (y2 - y1))
+#     _, order = scores.sort(0, descending=True)
+
+#     keep = []
+#     while order.numel() > 0:
+#         if order.numel() == 1:
+#             if torch.__version__.startswith('0.3'):
+#                 i = order[0]
+#             else:
+#                 i = order.item()
+#             i = order.item()
+#             keep.append(i)
+#             break
+
+#         i = order[0].item()
+#         keep.append(i)
+
+#         xx1 = x1[order[1:]].clamp(min=x1[i])
+#         yy1 = y1[order[1:]].clamp(min=y1[i])
+#         xx2 = x2[order[1:]].clamp(max=x2[i])
+#         yy2 = y2[order[1:]].clamp(max=y2[i])
+
+#         w = (xx2 - xx1).clamp(min=0)
+#         h = (yy2 - yy1).clamp(min=0)
+#         inter = w * h
+
+#         iou = inter / (areas[i] + areas[order[1:]] - inter)
+
+#         ids = (iou <= nms_thresh).nonzero().squeeze()
+#         if ids.numel() == 0:
+#             break
+#         order = order[ids + 1]
+#     return keep
 
 
 if __name__ == '__main__':

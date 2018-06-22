@@ -1,9 +1,13 @@
 import torch
 import numpy as np
+import ubelt as ub
 from netharn.util.nms import py_nms
+from netharn.util import profiler
+from netharn.util.nms import torch_nms
 
 _impls = {}
 _impls['py'] = py_nms.py_nms
+_impls['torch'] = torch_nms.torch_nms
 _automode = 'py'
 try:
     from netharn.util.nms import cpu_nms
@@ -22,7 +26,9 @@ except Exception:
     pass
 
 
-def non_max_supression(tlbr, scores, thresh, bias=0.0, impl='auto'):
+@profiler.profile
+def non_max_supression(tlbr, scores, thresh, bias=0.0, classes=None,
+                       impl='auto'):
     """
     Non-Maximum Suppression
 
@@ -30,9 +36,12 @@ def non_max_supression(tlbr, scores, thresh, bias=0.0, impl='auto'):
         tlbr (ndarray): Nx4 boxes in tlbr format
         scores (ndarray): score for each bbox
         thresh (float): iou threshold
-        impl (str): implementation can be auto, python, cpu, or gpu
         bias (float): bias for iou computation either 0 or 1
            (hint: choosing 1 is wrong computer vision community)
+        classes (ndarray or None): integer classes. If specified NMS is done
+            on a perclass basis.
+        impl (str): implementation can be auto, python, cpu, or gpu
+
 
     CommandLine:
         python ~/code/netharn/netharn/util/nms/nms_core.py nms
@@ -70,20 +79,38 @@ def non_max_supression(tlbr, scores, thresh, bias=0.0, impl='auto'):
     """
     if tlbr.shape[0] == 0:
         return []
+
     if impl == 'auto':
         impl = _automode
-    if impl == 'py':
-        keep = py_nms.py_nms(tlbr, scores, thresh, bias=float(bias))
+
+    if classes is not None:
+        keep = []
+        for idxs in ub.group_items(range(len(classes)), classes).values():
+            # cls_tlbr = tlbr.take(idxs, axis=0)
+            # cls_scores = scores.take(idxs, axis=0)
+            cls_tlbr = tlbr[idxs]
+            cls_scores = scores[idxs]
+            cls_keep = non_max_supression(cls_tlbr, cls_scores, thresh=thresh,
+                                          bias=bias, impl=impl)
+            keep.extend(list(ub.take(idxs, cls_keep)))
+        return keep
     else:
-        # TODO: it would be nice to be able to pass torch tensors here
-        nms = _impls[impl]
-        dets = np.hstack((tlbr, scores[:, np.newaxis])).astype(np.float32)
-        if impl == 'gpu':
-            device = torch.cuda.current_device()
-            keep = nms(dets, thresh, bias=float(bias), device_id=device)
+        if impl == 'py':
+            keep = py_nms.py_nms(tlbr, scores, thresh, bias=float(bias))
+        elif impl == 'torch':
+            flags = torch_nms.torch_nms(tlbr, scores, thresh=thresh,
+                                        bias=float(bias))
+            keep = np.where(flags.cpu().numpy())[0]
         else:
-            keep = nms(dets, thresh, bias=float(bias))
-    return keep
+            # TODO: it would be nice to be able to pass torch tensors here
+            nms = _impls[impl]
+            dets = np.hstack((tlbr, scores[:, np.newaxis])).astype(np.float32)
+            if impl == 'gpu':
+                device = torch.cuda.current_device()
+                keep = nms(dets, thresh, bias=float(bias), device_id=device)
+            else:
+                keep = nms(dets, thresh, bias=float(bias))
+        return keep
 
 
 # TODO: soft nms
