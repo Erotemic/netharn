@@ -54,6 +54,9 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         value (Number): Random number between 1,value is used to shift the
             value; 50% chance to get 1/dValue in stead of dValue
 
+    CommandLine:
+        python -m netharn.data.transforms.augmenters HSVShift --show
+
     Example:
         >>> self = HSVShift(0.1, 1.5, 1.5)
         >>> img = demodata_hsv_image()
@@ -62,16 +65,17 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         >>> assert np.all(det.augment_image(img) == det.augment_image(img))
         >>> # xdoc: +REQUIRES(--show)
         >>> from netharn.util import mplutil
+        >>> import ubelt as ub
         >>> mplutil.autompl()
         >>> mplutil.figure(doclf=True, fnum=1)
-        >>> self = HSVShift(0.1, 1.5, 1.5)
-        >>> pnums = mplutil.PlotNums(8, 8)
+        >>> self = HSVShift(0.5, 1.5, 1.5)
+        >>> pnums = mplutil.PlotNums(5, 5)
         >>> random_state = self.random_state
         >>> mplutil.imshow(img, colorspace='rgb', pnum=pnums[0], title='orig')
-        >>> import ubelt as ub
         >>> for i in range(1, len(pnums)):
         >>>     aug = self.augment_image(img)
-        >>>     mplutil.imshow(aug, colorspace='rgb', pnum=pnums[i], title='aug: {}'.format(ub.repr2(self._prev_params, nl=0, precision=4)))
+        >>>     title = 'aug: {}'.format(ub.repr2(self._prev_params, nl=0, precision=3))
+        >>>     mplutil.imshow(aug, colorspace='rgb', pnum=pnums[i], title=title)
         >>> mplutil.show_if_requested()
     """
     def __init__(self, hue, sat, val, input_colorspace='rgb'):

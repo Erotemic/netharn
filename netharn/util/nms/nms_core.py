@@ -10,6 +10,7 @@ try:
     _impls['cpu'] = cpu_nms.cpu_nms
     _automode = 'cpu'
 except Exception:
+    raise
     pass
 try:
     if torch.cuda.is_available():
@@ -17,10 +18,11 @@ try:
         _impls['gpu'] = gpu_nms.gpu_nms
         _automode = 'gpu'
 except Exception:
+    raise
     pass
 
 
-def non_max_supression(tlbr, scores, thresh, impl='auto'):
+def non_max_supression(tlbr, scores, thresh, bias=0.0, impl='auto'):
     """
     Non-Maximum Suppression
 
@@ -29,6 +31,8 @@ def non_max_supression(tlbr, scores, thresh, impl='auto'):
         scores (ndarray): score for each bbox
         thresh (float): iou threshold
         impl (str): implementation can be auto, python, cpu, or gpu
+        bias (float): bias for iou computation either 0 or 1
+           (hint: choosing 1 is wrong computer vision community)
 
     CommandLine:
         python ~/code/netharn/netharn/util/nms/nms_core.py nms
@@ -69,15 +73,16 @@ def non_max_supression(tlbr, scores, thresh, impl='auto'):
     if impl == 'auto':
         impl = _automode
     if impl == 'py':
-        keep = py_nms.py_nms(tlbr, scores, thresh)
+        keep = py_nms.py_nms(tlbr, scores, thresh, bias=float(bias))
     else:
+        # TODO: it would be nice to be able to pass torch tensors here
         nms = _impls[impl]
         dets = np.hstack((tlbr, scores[:, np.newaxis])).astype(np.float32)
         if impl == 'gpu':
             device = torch.cuda.current_device()
-            keep = nms(dets, thresh, device_id=device)
+            keep = nms(dets, thresh, bias=float(bias), device_id=device)
         else:
-            keep = nms(dets, thresh)
+            keep = nms(dets, thresh, bias=float(bias))
     return keep
 
 

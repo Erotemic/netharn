@@ -42,7 +42,8 @@ def box_ious(boxes1, boxes2, bias=0, mode=None):
     """
     if mode == 'torch' or torch.is_tensor(boxes1):
         # TODO: add tests for equality with other methods or show why it should
-        # be different
+        # be different.
+        # NOTE: this is done in boxes.ious
         return box_ious_torch(boxes1, boxes2, bias)
     if mode is None:
         mode = 'py' if bbox_ious_c is None else 'c'

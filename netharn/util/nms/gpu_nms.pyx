@@ -21,13 +21,13 @@ cimport numpy as np
 assert sizeof(int) == sizeof(np.int32_t)
 
 cdef extern from "gpu_nms.hpp" nogil:
-    void _nms(int*, int*, float*, int, int, float, int)
+    void _nms(int*, int*, float*, int, int, float, float, int)
 
 @cython.boundscheck(False)
 @cython.cdivision(True)
 @cython.wraparound(False)
 def gpu_nms(np.ndarray[np.float32_t, ndim=2] dets, np.float thresh,
-            np.int32_t device_id=0):
+            np.float bias=0, np.int32_t device_id=0):
     cdef int boxes_num = dets.shape[0]
     cdef int boxes_dim = dets.shape[1]
     cdef int num_out
@@ -44,11 +44,12 @@ def gpu_nms(np.ndarray[np.float32_t, ndim=2] dets, np.float thresh,
     cdef int* num_out_ptr = &num_out
 
     cdef float thresh_ = thresh
+    cdef float bias_ = bias
     cdef int device_id_ = device_id
 
     with nogil:
         _nms(keep0_ptr, num_out_ptr, det_00_ptr, boxes_num, 
-             boxes_dim, thresh_, device_id_)
+             boxes_dim, thresh_, bias_, device_id_)
 
     keep = keep[:num_out]
     return list(order[keep])

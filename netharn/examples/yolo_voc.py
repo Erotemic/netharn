@@ -70,7 +70,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             augmentors = [
                 # Order used in lightnet is hsv, rc, rf, lb
                 # lb is applied externally to augmenters
-                HSVShift(hue=0.1, sat=1.5, val=1.5),  # TODO: double check that this works correctly
+                HSVShift(hue=0.1, sat=1.5, val=1.5),
                 iaa.Crop(percent=(0, .2)),
                 iaa.Fliplr(p=.5),
             ]
@@ -79,6 +79,9 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         # Used to resize images to the appropriate inp_size without changing
         # the aspect ratio.
         self.letterbox = nh.data.transforms.Resize(None, mode='letterbox')
+
+    def __len__(self):
+        return 16 * 5
 
     @profiler.profile
     def __getitem__(self, index):
@@ -885,7 +888,7 @@ def setup_harness(bsize=16, workers=0):
             'minimize': ['loss'],
             'maximize': ['mAP'],
             'patience': 314,
-            'max_epoch': 314,
+            'max_epoch': 314 if not ub.argflag('--profile') else 1,
         }),
 
         'augment': datasets['train'].augmenter,
@@ -929,9 +932,11 @@ if __name__ == '__main__':
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=new_loss_v2 --lr=0.001 --bstep=4 --workers=4
 
-
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=eav_run --lr=0.001 --bstep=4 --workers=6
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=6 --orig
+
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

@@ -21,17 +21,18 @@
 #define DIVUP(m,n) ((m) / (n) + ((m) % (n) > 0))
 int const threadsPerBlock = sizeof(unsigned long long) * 8;
 
-__device__ inline float devIoU(float const * const a, float const * const b) {
+__device__ inline float devIoU(float const * const a, float const * const b, float bias) {
   float left = max(a[0], b[0]), right = min(a[2], b[2]);
   float top = max(a[1], b[1]), bottom = min(a[3], b[3]);
-  float width = max(right - left + 1, 0.f), height = max(bottom - top + 1, 0.f);
+  float width = max(right - left + bias, 0.f), height = max(bottom - top + bias, 0.f);
   float interS = width * height;
-  float Sa = (a[2] - a[0] + 1) * (a[3] - a[1] + 1);
-  float Sb = (b[2] - b[0] + 1) * (b[3] - b[1] + 1);
+  float Sa = (a[2] - a[0] + 1) * (a[3] - a[1] + bias);
+  float Sb = (b[2] - b[0] + 1) * (b[3] - b[1] + bias);
   return interS / (Sa + Sb - interS);
 }
 
 __global__ void nms_kernel(const int n_boxes, const float nms_overlap_thresh,
+                           const float bias,
                            const float *dev_boxes, unsigned long long *dev_mask) {
   const int row_start = blockIdx.y;
   const int col_start = blockIdx.x;
@@ -68,7 +69,7 @@ __global__ void nms_kernel(const int n_boxes, const float nms_overlap_thresh,
       start = threadIdx.x + 1;
     }
     for (i = start; i < col_size; i++) {
-      if (devIoU(cur_box, block_boxes + i * 5) > nms_overlap_thresh) {
+      if (devIoU(cur_box, block_boxes + i * 5, bias) > nms_overlap_thresh) {
         t |= 1ULL << i;
       }
     }
@@ -89,7 +90,7 @@ void _set_device(int device_id) {
 }
 
 void _nms(int* keep_out, int* num_out, const float* boxes_host, int boxes_num,
-          int boxes_dim, float nms_overlap_thresh, int device_id) {
+          int boxes_dim, float nms_overlap_thresh, float bias, int device_id) {
   _set_device(device_id);
 
   float* boxes_dev = NULL;
@@ -112,6 +113,7 @@ void _nms(int* keep_out, int* num_out, const float* boxes_host, int boxes_num,
   dim3 threads(threadsPerBlock);
   nms_kernel<<<blocks, threads>>>(boxes_num,
                                   nms_overlap_thresh,
+                                  bias,
                                   boxes_dev,
                                   mask_dev);
 
