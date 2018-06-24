@@ -326,12 +326,18 @@ def find_anchors(dset):
     return anchors
 
 
-def demo_voc_weights():
+def demo_voc_weights(key='lightnet'):
     """
     Demo weights for Pascal VOC dataset
     """
     import ubelt as ub
-    url = 'https://gitlab.com/EAVISE/lightnet/raw/master/examples/yolo-voc/lightnet_weights.pt'
+
+    if key == 'lightnet':
+        url = 'https://gitlab.com/EAVISE/lightnet/raw/master/examples/yolo-voc/lightnet_weights.pt'
+    elif key == 'darknet':
+        url = 'https://pjreddie.com/media/files/yolo-voc.weights'
+    else:
+        raise KeyError(key)
     fpath = ub.grabdata(url, appname='netharn')
     # import lightnet
     # from os.path import dirname, join

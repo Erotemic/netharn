@@ -70,7 +70,8 @@ def voc_eval(detpath,
              classname,
              cachedir,
              ovthresh=0.5,
-             use_07_metric=False):
+             use_07_metric=False,
+             bias=1):
     """rec, prec, ap = voc_eval(detpath,
                                 annopath,
                                 imagesetfile,
@@ -168,14 +169,14 @@ def voc_eval(detpath,
             iymin = np.maximum(BBGT[:, 1], bb[1])
             ixmax = np.minimum(BBGT[:, 2], bb[2])
             iymax = np.minimum(BBGT[:, 3], bb[3])
-            iw = np.maximum(ixmax - ixmin + 1., 0.)
-            ih = np.maximum(iymax - iymin + 1., 0.)
+            iw = np.maximum(ixmax - ixmin + bias, 0.)
+            ih = np.maximum(iymax - iymin + bias, 0.)
             inters = iw * ih
 
             # union
-            uni = ((bb[2] - bb[0] + 1.) * (bb[3] - bb[1] + 1.) +
-                   (BBGT[:, 2] - BBGT[:, 0] + 1.) *
-                   (BBGT[:, 3] - BBGT[:, 1] + 1.) - inters)
+            uni = ((bb[2] - bb[0] + bias) * (bb[3] - bb[1] + bias) +
+                   (BBGT[:, 2] - BBGT[:, 0] + bias) *
+                   (BBGT[:, 3] - BBGT[:, 1] + bias) - inters)
 
             overlaps = inters / uni
             ovmax = np.max(overlaps)
@@ -380,6 +381,9 @@ def evaluate_lightnet_model():
     ln_weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/final.pt')
     ln_weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
 
+    from netharn.models.yolo2 import light_yolo
+    # ln_weights_fpath = nh.models.yolo2.light_yolo.demo_voc_weights('darknet')
+
     # Lightnet model, postprocess, and lightnet weights
     ln_model = ln.models.Yolo(ln_test.CLASSES, ln_weights_fpath,
                               ln_test.CONF_THRESH, ln_test.NMS_THRESH)
@@ -455,7 +459,7 @@ def evaluate_lightnet_model():
     pr = bbb.pr(ln_det, anno)
 
     ln_mAP = round(bbb.ap(*pr) * 100, 2)
-    print('\nln_mAP = {!r}'.format(ln_mAP))
+    print('\nBrambox multiclass AP = {!r}'.format(ln_mAP))
 
     devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit/')
 
@@ -493,24 +497,25 @@ def evaluate_lightnet_model():
             text = '\n'.join([' '.join(list(map(str, det))) for det in dets])
             file.write(text)
 
-    class_aps = {}
-    class_curve = {}
-
     import sys
     sys.path.append('/home/joncrall/code/netharn/netharn/examples/tests')
     from voc_eval_orig import voc_eval
 
-    annopath = join(devkit_dpath, 'VOC2007', 'Annotations', '{}.xml')
-    for classname in ub.ProgIter(list(class_to_dets.keys())):
-        cachedir = None
-        imagesetfile = join(devkit_dpath, 'VOC2007', 'ImageSets', 'Main', '{}_test.txt').format(classname)
+    for bias in [0.0, 1.0]:
+        for use_07_metric in [True, False]:
+            class_aps = {}
+            class_curve = {}
+            annopath = join(devkit_dpath, 'VOC2007', 'Annotations', '{}.xml')
+            for classname in ub.ProgIter(list(class_to_dets.keys())):
+                cachedir = None
+                imagesetfile = join(devkit_dpath, 'VOC2007', 'ImageSets', 'Main', '{}_test.txt').format(classname)
 
-        rec, prec, ap = voc_eval(detpath, annopath, imagesetfile, classname,
-                                 cachedir, ovthresh=0.5, use_07_metric=True)
-        class_aps[classname] = ap
-        class_curve[classname] = (rec, prec)
+                rec, prec, ap = voc_eval(detpath, annopath, imagesetfile, classname,
+                                         cachedir, ovthresh=0.5, use_07_metric=use_07_metric, bias=bias)
+                class_aps[classname] = ap
+                class_curve[classname] = (rec, prec)
 
-    mAP = np.mean(list(class_aps.values()))
-    print('Official* VOC mAP = {!r}'.format(mAP))
+            mAP = np.mean(list(class_aps.values()))
+            print('Official* bias={} {} VOC mAP = {!r}'.format(bias, '2007' if use_07_metric else '2012', mAP))
     # I get 0.71091 without 07 metric
     # I get 0.73164 without 07 metric

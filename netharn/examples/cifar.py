@@ -77,6 +77,15 @@ def train():
     DenseNet121 |    95.04%  |  94.47%  |
     DPN92       |    95.16%  |  94.92%  |
 
+    My measurements running kuangliu's code
+
+
+          model |  kuangliu  |
+    ---------------------------
+    ResNet50    |    95.370% | <- wtf?
+    DenseNet121 |            |
+    DPN92       |            |
+
      reports the following test accuracies for these models:
 
 

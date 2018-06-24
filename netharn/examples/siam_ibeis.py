@@ -36,7 +36,7 @@ class SiameseLP(torch.nn.Module):
         >>> self = SiameseLP()
     """
 
-    def __init__(self, p=2, branch=None, input_shape=(1, 3, 224, 224)):
+    def __init__(self, p=2, branch=None, input_shape=(1, 3, 416, 416)):
         super(SiameseLP, self).__init__()
         if branch is None:
             self.branch = torchvision.models.resnet50(pretrained=True)
@@ -316,49 +316,92 @@ class RandomBalancedIBEISSample(torch.utils.data.Dataset):
         return img1, img2, label
 
 
-def randomized_ibeis_dset(dbname, dim=224):
+def randomized_ibeis_dset(dbname, dim=416):
     """
     CommandLine:
         xdoctest ~/code/netharn/netharn/examples/siam_ibeis.py randomized_ibeis_dset --show
 
     Example:
-        >>> datasets = randomized_ibeis_dset('PZ_MTEST')
+        >>> dbname = 'PZ_MTEST'
+        >>> datasets = randomized_ibeis_dset(dbname)
         >>> # xdoctest: +REQUIRES(--show)
         >>> nh.util.qtensure()
         >>> self = datasets['train']
         >>> self.show_sample()
         >>> nh.util.show_if_requested()
     """
-    import math
     from ibeis.algo.verif import vsone
     pblm = vsone.OneVsOneProblem.from_empty(dbname)
 
-    pccs = list(pblm.infr.positive_components())
-    pcc_freq = list(map(len, pccs))
-    freq_grouped = ub.group_items(pccs, pcc_freq)
-
     # Simpler very randomized sample strategy
-    train_pccs = []
-    vali_pccs = []
-    test_pccs = []
+    pcc_sets = {
+        'train': set(),
+        'vali': set(),
+        'test': set(),
+    }
 
     vali_frac = .1
     test_frac = .1
+    train_frac = 1 - (vali_frac + test_frac)
 
+    category_probs = ub.odict([
+        ('train', train_frac),
+        ('test', test_frac),
+        ('vali', vali_frac),
+    ])
+
+    # Gather all PCCs
+    pccs = list(map(frozenset, pblm.infr.positive_components()))
+
+    # Group PCCs by the number of annotations they contain
+    pcc_freq = list(map(len, pccs))
+    freq_grouped = ub.group_items(pccs, pcc_freq)
+
+    rng = nh.util.ensure_rng(989540621)
+
+    # Perform splits over these groups so test / train / vali roughly see the
+    # same proportion of differently sized PCCs
     for i, group in freq_grouped.items():
-        group = nh.util.shuffle(group, rng=432232 + i)
-        n_test = 0 if len(group) == 1 else math.ceil(len(group) * test_frac)
-        test, learn = group[:n_test], group[n_test:]
-        n_vali = 0 if len(group) == 1 else math.ceil(len(learn) * vali_frac)
-        vali, train = group[:n_vali], group[-n_vali:]
-        train_pccs.extend(train)
-        test_pccs.extend(test)
-        vali_pccs.extend(vali)
+        # Each PCC in this group has a probability of going into the
+        # either test / train / or vali split
+        choices = rng.choice(list(category_probs.keys()),
+                             p=list(category_probs.values()), size=len(group))
+        for key, group in zip(choices, group):
+            pcc_sets[key].add(group)
 
-    test_dataset = RandomBalancedIBEISSample(pblm, test_pccs, dim=dim)
-    train_dataset = RandomBalancedIBEISSample(pblm, train_pccs, dim=dim,
+    if __debug__:
+        # Ensure sets of PCCs are disjoint!
+        intersections = {}
+        for key1, key2 in it.combinations(pcc_sets.keys(), 2):
+            isect = pcc_sets[key1].intersection(pcc_sets[key2])
+            intersections[(key1, key2)] = isect
+        num_isects = ub.map_vals(len, intersections)
+        if any(num_isects.values()):
+            msg = 'Splits are not disjoint: {}'.format(ub.repr2(
+                num_isects, sk=1))
+            print(msg)
+            raise AssertionError(msg)
+
+    if True:
+        num_pccs = ub.map_vals(len, pcc_sets)
+        total = sum(num_pccs.values())
+        fracs = {k: v / total for k, v in num_pccs.items()}
+        print('Splits use the following fractions of data: {}'.format(
+            ub.repr2(fracs, precision=4)))
+
+        for key, want in category_probs.items():
+            got = fracs[key]
+            absdiff = abs(want - got)
+            if absdiff > 0.1:
+                raise AssertionError(
+                    'Sampled fraction of {} for {!r} is significantly '
+                    'different than what was requested: {}'.format(
+                        got, key, want))
+
+    test_dataset = RandomBalancedIBEISSample(pblm, pcc_sets['test'], dim=dim)
+    train_dataset = RandomBalancedIBEISSample(pblm, pcc_sets['train'], dim=dim,
                                               augment=False)
-    vali_dataset = RandomBalancedIBEISSample(pblm, vali_pccs, dim=dim,
+    vali_dataset = RandomBalancedIBEISSample(pblm, pcc_sets['vali'], dim=dim,
                                              augment=False)
 
     datasets = {
@@ -493,7 +536,7 @@ def setup_harness(**kwargs):
         }),
 
         'optimizer': (torch.optim.SGD, {
-            'lr': lr / 10,
+            'lr': lr * 0.1,
             'weight_decay': decay,
             'momentum': 0.9,
             'nesterov': True,
@@ -503,11 +546,11 @@ def setup_harness(**kwargs):
 
         'scheduler': (nh.schedulers.ListedLR, {
             'points': {
-                0:  lr / 10,
-                1:  lr,
+                0:  lr * 0.1,
+                1:  lr * 1.0,
                 59: lr * 1.1,
-                60: lr / 10,
-                90: lr / 100,
+                60: lr * 0.1,
+                90: lr * 0.01,
             },
             'interpolate': True
         }),
@@ -619,7 +662,7 @@ def main():
             python examples/siam_ibeis.py --dbname PZ_MTEST --workers=0 --dim=32 --xpu=gpu0
 
             # test that running at a large size works
-            python examples/siam_ibeis.py --dbname PZ_MTEST --workers=2 --dim=512 --xpu=gpu0
+            python examples/siam_ibeis.py --dbname PZ_MTEST --workers=2 --dim=416 --xpu=gpu0
 
         # Real Run:
         python examples/siam_ibeis.py --dbname GZ_Master1 --workers=2 --dim=512 --xpu=gpu0
