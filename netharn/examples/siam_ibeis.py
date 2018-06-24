@@ -508,6 +508,10 @@ def setup_harness(**kwargs):
     for k, v in datasets.items():
         print('* len({}) = {}'.format(k, len(v)))
 
+    if workers > 0:
+        import cv2
+        cv2.setNumThreads(0)
+
     loaders = {
         key:  torch.utils.data.DataLoader(
             dset, batch_size=bsize, num_workers=workers,
