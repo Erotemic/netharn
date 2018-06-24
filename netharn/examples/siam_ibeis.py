@@ -340,8 +340,8 @@ def randomized_ibeis_dset(dbname, dim=416):
         'test': set(),
     }
 
-    vali_frac = .1
-    test_frac = .1
+    vali_frac = .2
+    test_frac = .2
     train_frac = 1 - (vali_frac + test_frac)
 
     category_probs = ub.odict([
@@ -350,24 +350,17 @@ def randomized_ibeis_dset(dbname, dim=416):
         ('vali', vali_frac),
     ])
 
-    # Gather all PCCs
-    pccs = list(map(frozenset, pblm.infr.positive_components()))
-
-    # Group PCCs by the number of annotations they contain
-    pcc_freq = list(map(len, pccs))
-    freq_grouped = ub.group_items(pccs, pcc_freq)
-
     rng = nh.util.ensure_rng(989540621)
 
-    # Perform splits over these groups so test / train / vali roughly see the
-    # same proportion of differently sized PCCs
-    for i, group in freq_grouped.items():
-        # Each PCC in this group has a probability of going into the
-        # either test / train / or vali split
-        choices = rng.choice(list(category_probs.keys()),
-                             p=list(category_probs.values()), size=len(group))
-        for key, group in zip(choices, group):
-            pcc_sets[key].add(group)
+    # Gather all PCCs
+    pccs = sorted(map(frozenset, pblm.infr.positive_components()))
+
+    # Each PCC in this group has a probability of going into the
+    # either test / train / or vali split
+    choices = rng.choice(list(category_probs.keys()),
+                         p=list(category_probs.values()), size=len(pccs))
+    for key, pcc in zip(choices, pccs):
+        pcc_sets[key].add(pcc)
 
     if __debug__:
         # Ensure sets of PCCs are disjoint!
