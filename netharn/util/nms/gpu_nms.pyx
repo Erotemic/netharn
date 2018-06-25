@@ -26,13 +26,16 @@ cdef extern from "gpu_nms.hpp" nogil:
 @cython.boundscheck(False)
 @cython.cdivision(True)
 @cython.wraparound(False)
-def gpu_nms(np.ndarray[np.float32_t, ndim=2] dets, np.float thresh,
-            np.float bias=0.0, np.int32_t device_id=0):
+def gpu_nms(np.ndarray[np.float32_t, ndim=2] dets,
+            np.ndarray[np.float32_t, ndim=1] scores,
+            np.float thresh, 
+            np.float bias=0.0,
+            np.int32_t device_id=0):
     cdef int boxes_num = dets.shape[0]
     cdef int boxes_dim = dets.shape[1]
     cdef int num_out
     cdef np.ndarray[np.int32_t, ndim=1] keep = np.zeros(boxes_num, dtype=np.int32)
-    cdef np.ndarray[np.float32_t, ndim=1] scores = dets[:, 4]
+    # cdef np.ndarray[np.float32_t, ndim=1] scores = dets[:, 4]
     cdef np.ndarray[np.int_t, ndim=1] order = scores.argsort()[::-1]
     cdef np.ndarray[np.float32_t, ndim=2] sorted_dets = dets[order, :]
 

@@ -47,6 +47,11 @@ def non_max_supression(tlbr, scores, thresh, bias=0.0, classes=None,
         python ~/code/netharn/netharn/util/nms/nms_core.py nms:0
         python ~/code/netharn/netharn/util/nms/nms_core.py nms:1
 
+    References:
+        https://github.com/facebookresearch/Detectron/blob/master/detectron/utils/cython_nms.pyx
+        https://www.pyimagesearch.com/2015/02/16/faster-non-maximum-suppression-python/
+        https://github.com/bharatsingh430/soft-nms/blob/master/lib/nms/cpu_nms.pyx <- TODO
+
     Example:
         >>> dets = np.array([
         >>>     [0, 0, 100, 100],
@@ -67,12 +72,15 @@ def non_max_supression(tlbr, scores, thresh, bias=0.0, classes=None,
         >>>     [100, 100, 10, 10],
         >>>     [10, 10, 100, 100],
         >>>     [50, 50, 100, 100],
+        >>>     [100, 100, 150, 101],
+        >>>     [120, 100, 180, 101],
+        >>>     [150, 100, 200, 101],
         >>> ], dtype=np.float32)
-        >>> scores = np.array([.1, .5, .9, .1])
-        >>> thresh = .5
+        >>> scores = np.linspace(0, 1, len(dets))
+        >>> thresh = .2
         >>> solutions = {}
         >>> for impl in _impls:
-        >>>     solutions[impl] = non_max_supression(dets, scores, thresh, impl=impl)
+        >>>     solutions[impl] = sorted(non_max_supression(dets, scores, thresh, impl=impl))
         >>> print('solutions = {}'.format(ub.repr2(solutions, nl=1)))
         >>> assert ub.allsame(solutions.values())
     """
@@ -97,18 +105,25 @@ def non_max_supression(tlbr, scores, thresh, bias=0.0, classes=None,
         if impl == 'py':
             keep = py_nms.py_nms(tlbr, scores, thresh, bias=float(bias))
         elif impl == 'torch':
+            was_tensor = torch.is_tensor(tlbr)
+            if not was_tensor:
+                tlbr = torch.Tensor(tlbr)
+                scores = torch.Tensor(scores)
             flags = torch_nms.torch_nms(tlbr, scores, thresh=thresh,
                                         bias=float(bias))
             keep = np.where(flags.cpu().numpy())[0]
         else:
             # TODO: it would be nice to be able to pass torch tensors here
             nms = _impls[impl]
-            dets = np.hstack((tlbr, scores[:, np.newaxis])).astype(np.float32)
+            tlbr = tlbr.astype(np.float32)
+            scores = scores.astype(np.float32)
+            # dets = np.hstack((tlbr, scores[:, None])).astype(np.float32)
             if impl == 'gpu':
+                # HACK: we should parameterize which device is used
                 device = torch.cuda.current_device()
-                keep = nms(dets, thresh, bias=float(bias), device_id=device)
+                keep = nms(tlbr, scores, thresh, bias=float(bias), device_id=device)
             else:
-                keep = nms(dets, thresh, bias=float(bias))
+                keep = nms(tlbr, scores, thresh, bias=float(bias))
         return keep
 
 

@@ -48,24 +48,26 @@ __global__ void nms_kernel(const int n_boxes,
   const int col_size =
         min(n_boxes - col_start * threadsPerBlock, threadsPerBlock);
 
-  __shared__ float block_boxes[threadsPerBlock * 5];
+  const int nCols = 4;  // number of columns is 4 (used to be 5 when score was in the data)
+
+  __shared__ float block_boxes[threadsPerBlock * nCols];
   if (threadIdx.x < col_size) {
-    block_boxes[threadIdx.x * 5 + 0] =
-        dev_boxes[(threadsPerBlock * col_start + threadIdx.x) * 5 + 0];
-    block_boxes[threadIdx.x * 5 + 1] =
-        dev_boxes[(threadsPerBlock * col_start + threadIdx.x) * 5 + 1];
-    block_boxes[threadIdx.x * 5 + 2] =
-        dev_boxes[(threadsPerBlock * col_start + threadIdx.x) * 5 + 2];
-    block_boxes[threadIdx.x * 5 + 3] =
-        dev_boxes[(threadsPerBlock * col_start + threadIdx.x) * 5 + 3];
-    block_boxes[threadIdx.x * 5 + 4] =
-        dev_boxes[(threadsPerBlock * col_start + threadIdx.x) * 5 + 4];
+    block_boxes[threadIdx.x * nCols + 0] =
+        dev_boxes[(threadsPerBlock * col_start + threadIdx.x) * nCols + 0];
+    block_boxes[threadIdx.x * nCols + 1] =
+        dev_boxes[(threadsPerBlock * col_start + threadIdx.x) * nCols + 1];
+    block_boxes[threadIdx.x * nCols + 2] =
+        dev_boxes[(threadsPerBlock * col_start + threadIdx.x) * nCols + 2];
+    block_boxes[threadIdx.x * nCols + 3] =
+        dev_boxes[(threadsPerBlock * col_start + threadIdx.x) * nCols + 3];
+    /*block_boxes[threadIdx.x * nCols + 4] =                             */
+    /*    dev_boxes[(threadsPerBlock * col_start + threadIdx.x) * nCols + 4];*/
   }
   __syncthreads();
 
   if (threadIdx.x < row_size) {
     const int cur_box_idx = threadsPerBlock * row_start + threadIdx.x;
-    const float *cur_box = dev_boxes + cur_box_idx * 5;
+    const float *cur_box = dev_boxes + cur_box_idx * nCols;
     int i = 0;
     unsigned long long t = 0;
     int start = 0;
@@ -75,7 +77,7 @@ __global__ void nms_kernel(const int n_boxes,
     }
     for (i = start; i < col_size; i++) 
     {
-      if (devIoU(cur_box, block_boxes + i * 5, bias) > nms_overlap_thresh) 
+      if (devIoU(cur_box, block_boxes + i * nCols, bias) > nms_overlap_thresh) 
       {
         t |= 1ULL << i;
       }
