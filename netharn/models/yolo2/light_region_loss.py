@@ -154,7 +154,7 @@ class RegionLoss(BaseLossWithCudaState):
 
         self.iou_mode = None
 
-        self.ORIG = ub.argflag('--orig')
+        self.ORIG = not ub.argflag('--eav')
 
     @profiler.profile
     def forward(self, output, target, seen=0, gt_weights=None):
