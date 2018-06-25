@@ -402,7 +402,7 @@ def randomized_ibeis_dset(dbname, dim=416):
         'vali': vali_dataset,
         'test': test_dataset,
     }
-    datasets.pop('test', None)  # dont test for now (speed consideration)
+    # datasets.pop('test', None)  # dont test for now (speed consideration)
     return datasets
 
 
@@ -411,6 +411,10 @@ class SiamHarness(nh.FitHarn):
     Define how to process a batch, compute loss, and evaluate validation
     metrics.
     """
+
+    def __init__(harn, *args, **kw):
+        super().__init__(*args, **kw)
+        harn.batch_confusions = []
 
     def prepare_batch(harn, raw_batch):
         """
@@ -443,34 +447,71 @@ class SiamHarness(nh.FitHarn):
         # Distance
         POS_LABEL = 1  # NOQA
         NEG_LABEL = 0  # NOQA
-        is_pos = (label_tensor == POS_LABEL)
+        # is_pos = (label_tensor == POS_LABEL)
 
-        pos_dists = l2_dist_tensor[is_pos]
-        neg_dists = l2_dist_tensor[~is_pos]
+        # pos_dists = l2_dist_tensor[is_pos]
+        # neg_dists = l2_dist_tensor[~is_pos]
 
         # Average positive / negative distances
-        pos_dist = pos_dists.sum() / max(1, len(pos_dists))
-        neg_dist = neg_dists.sum() / max(1, len(neg_dists))
+        # pos_dist = pos_dists.sum() / max(1, len(pos_dists))
+        # neg_dist = neg_dists.sum() / max(1, len(neg_dists))
 
         # accuracy
-        margin = harn.hyper.criterion_params['margin']
-        pred_pos_flags = (l2_dist_tensor <= margin).long()
+        # margin = harn.hyper.criterion_params['margin']
+        # pred_pos_flags = (l2_dist_tensor <= margin).long()
 
-        pred = pred_pos_flags
+        # pred = pred_pos_flags
+        # n_correct = (pred == label_tensor).sum()
+        # fraction_correct = n_correct / len(label_tensor)
 
-        n_correct = (pred == label_tensor).sum()
-        fraction_correct = n_correct / len(label_tensor)
+        # Record metrics for epoch scores
+        y_true = label_tensor.cpu().numpy()
+        y_dist = l2_dist_tensor.cpu().numpy()
+        # y_pred = pred.cpu().numpy()
+        harn.batch_confusions.append((y_true, y_dist))
 
-        metrics = {
-            'accuracy': float(fraction_correct),
-            'pos_dist': float(pos_dist),
-            'neg_dist': float(neg_dist),
-        }
-        return metrics
+        # metrics = {
+        #     'accuracy': float(fraction_correct),
+        #     'pos_dist': float(pos_dist),
+        #     'neg_dist': float(neg_dist),
+        # }
+        # return metrics
 
     def on_epoch(harn):
         """ custom callback """
-        pass
+        from sklearn import metrics
+        margin = harn.hyper.criterion_params['margin']
+
+        y_true = np.hstack([p[0] for p in harn.batch_confusions])
+        y_dist = np.hstack([p[1] for p in harn.batch_confusions])
+
+        y_pred = (y_dist <= margin).astype(y_true.dtype)
+
+        POS_LABEL = 1  # NOQA
+        NEG_LABEL = 0  # NOQA
+        pos_dist = np.nanmean(y_dist[y_true == POS_LABEL])
+        neg_dist = np.nanmean(y_dist[y_true == NEG_LABEL])
+
+        # Transform distance into a probability-like space
+        y_probs = torch.sigmoid(torch.Tensor(-(y_dist - margin))).numpy()
+
+        brier = y_probs - y_true
+
+        accuracy = (y_pred == y_pred).mean()
+        mcc = metrics.matthews_corrcoef(y_true, y_pred)
+        brier = ((y_probs - y_true) ** 2).mean()
+
+        epoch_metrics = {
+            'mcc': mcc,
+            'brier': brier,
+            'accuracy': accuracy,
+            'pos_dist': pos_dist,
+            'neg_dist': neg_dist,
+        }
+
+        # Clear scores for next epoch
+        harn.batch_confusions.clear()
+        return epoch_metrics
 
 
 def setup_harness(**kwargs):
@@ -662,7 +703,7 @@ def main():
             python examples/siam_ibeis.py --dbname PZ_MTEST --workers=6 --dim=416 --xpu=gpu0
 
         # Real Run:
-        python examples/siam_ibeis.py --dbname GZ_Master1 --workers=6 --dim=512 --xpu=gpu0 --bsize=10
+        python examples/siam_ibeis.py --dbname GZ_Master1 --workers=6 --dim=512 --xpu=gpu0 --bsize=10 --lr=0.0001 --nice=gzrun
 
     Notes:
         # Some database names
