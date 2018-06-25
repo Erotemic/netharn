@@ -1,6 +1,5 @@
 # from os.path import join, normpath, dirname
-from os.path import dirname
-from os.path import join
+from os.path import dirname, join, normpath
 import ubelt as ub
 from netharn import util
 
@@ -90,7 +89,8 @@ class Folders(object):
 
         # input_dname = 'input_' + input_id
         # verbose_dpath = join(self.hyper.workdir, 'fit', 'link', 'arch', arch, input_dname, train_id)
-        hashed_dpath = join(self.hyper.workdir, 'fit', 'runs', train_hashid)
+        hashed_dpath = normpath(
+                join(self.hyper.workdir, 'fit', 'runs', train_hashid))
 
         # setup a cannonical and a linked symlink dir
         train_dpath = hashed_dpath
@@ -98,7 +98,8 @@ class Folders(object):
 
         # also setup a "nice" custom name, which may conflict, but oh well
         if hyper.nice:
-            nice_dpath = join(self.hyper.workdir, 'fit', 'nice', hyper.nice)
+            nice_dpath = normpath(
+                    join(self.hyper.workdir, 'fit', 'nice', hyper.nice))
         else:
             nice_dpath = None
 
@@ -160,15 +161,17 @@ class Folders(object):
             ub.symlink(train_info['train_dpath'], train_info['nice_dpath'],
                        overwrite=True, verbose=3)
 
-        print('+=========')
-        # print('hyper_strid = {!r}'.format(params.hyper_id()))
-        # print('train_init_id = {!r}'.format(train_info['input_id']))
-        # print('arch = {!r}'.format(train_info['arch_id']))
-        # print('train_hyper_hashid = {!r}'.format(train_info['train_hyper_hashid']))
-        print('hyper = {}'.format(ub.repr2(train_info['hyper'], nl=3)))
-        print('train_hyper_id_brief = {!r}'.format(train_info['train_hyper_id_brief']))
-        print('train_id = {!r}'.format(train_info['train_id']))
-        print('+=========')
+        verbose = 0
+        if verbose:
+            print('+=========')
+            # print('hyper_strid = {!r}'.format(params.hyper_id()))
+            # print('train_init_id = {!r}'.format(train_info['input_id']))
+            # print('arch = {!r}'.format(train_info['arch_id']))
+            # print('train_hyper_hashid = {!r}'.format(train_info['train_hyper_hashid']))
+            print('hyper = {}'.format(ub.repr2(train_info['hyper'], nl=3)))
+            print('train_hyper_id_brief = {!r}'.format(train_info['train_hyper_id_brief']))
+            print('train_id = {!r}'.format(train_info['train_id']))
+            print('+=========')
         return train_info
 
 if __name__ == '__main__':

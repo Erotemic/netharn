@@ -2,7 +2,43 @@ import numpy as np
 import torch.optim.lr_scheduler
 
 
-class _LRScheduler2(torch.optim.lr_scheduler._LRScheduler):
+class _LRScheduler(torch.optim.lr_scheduler._LRScheduler):
+    """
+    Fixes call to epoch 0 twice
+
+    See:
+        https://github.com/pytorch/pytorch/issues/8837
+    """
+    def __init__(self, optimizer, last_epoch=-1):
+        if not isinstance(optimizer, torch.optim.lr_scheduler.Optimizer):
+            raise TypeError('{} is not an Optimizer'.format(
+                type(optimizer).__name__))
+        self.optimizer = optimizer
+        if last_epoch == -1:
+            for group in optimizer.param_groups:
+                group.setdefault('initial_lr', group['lr'])
+        else:
+            for i, group in enumerate(optimizer.param_groups):
+                if 'initial_lr' not in group:
+                    raise KeyError("param 'initial_lr' is not specified "
+                                   "in param_groups[{}] when resuming an optimizer".format(i))
+        self.base_lrs = list(map(lambda group: group['initial_lr'], optimizer.param_groups))
+        self.last_epoch = last_epoch
+        self.step(last_epoch)  # The major change is to remove the +1
+
+    def get_lr(self):
+        raise NotImplementedError
+
+    def step(self, epoch=None):
+        # epoch is really last epoch
+        if epoch is None:
+            epoch = self.last_epoch + 1
+        self.last_epoch = epoch
+        for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
+            param_group['lr'] = lr
+
+
+class _LRScheduler2(_LRScheduler):
     """ Add a bit of extra functionality to the base torch LR scheduler """
 
     def current_lrs(self):
@@ -19,11 +55,16 @@ class ListedLR(_LRScheduler2):
 
     Args:
         optimizer (Optimizer): Wrapped optimizer.
-        points (dict): Mapping from epoch number to a learning rate
+        points (dict): Mapping from epoch number to a learning rate.
+            The epoch number indicates which epoch will be given a certain
+            learning rate. Therefore if epoch 0 has a learning rate of 0.1 then
+            that is what the LR will be set to BEFORE running epoch 0.
+            Likewise if epoch 1 has a learning rate of 1.0, then AFTER epoch 0
+            but BEFORE epoch 1, the learning rate will be set to 1.0.
         last_epoch (int): The index of last epoch. Default: -1.
 
     CommandLine:
-        python ~/code/netharn/netharn/schedulers/listed.py ListedLR
+        python ~/code/netharn/netharn/schedulers/listed.py ListedLR:1
 
     Example:
         >>> # Assuming optimizer has two groups.
@@ -41,22 +82,41 @@ class ListedLR(_LRScheduler2):
         >>> lrs = [self._get_epoch_lr(epoch) for epoch in range(0, 11)]
         >>> print(ub.repr2(list(ub.flatten(lrs)), precision=3, nl=0))
         [0.010, 0.015, 0.020, 0.100, 0.083, 0.067, 0.050, 0.042, 0.033, 0.025, 0.025]
+
+    Example:
+        >>> # Assuming optimizer has two groups.
+        >>> import ubelt as ub
+        >>> import netharn as nh
+        >>> model = nh.models.ToyNet2d()
+        >>> optimizer = torch.optim.SGD(model.parameters(), lr=0)
+        >>> points = {0: 1, 2: 2}
+        >>> self = ListedLR(optimizer, points)
+        >>> lrs = []
+        >>> for i in range(5):
+        >>>     lrs.append(self.get_lr())
+        >>>     self.step()
+        >>> print(list(ub.flatten(lrs)))
+        [1, 1, 2, 2, 2]
     """
 
     def __init__(self, optimizer, points, interpolate=False,
                  last_epoch=-1):
-        self.optimizer = optimizer
         if not isinstance(points, dict):
             raise TypeError(points)
         self.interpolate = interpolate
         self.points = points
-        self.last_epoch = last_epoch
+
+        # self.optimizer = optimizer
+        # self.last_epoch = last_epoch
+
         # epochs where the lr changes
         self.key_epochs = sorted(self.points.keys())
+
         super(ListedLR, self).__init__(optimizer, last_epoch)
 
     def get_lr(self):
-        return self._get_epoch_lr(self.last_epoch)
+        lr = self._get_epoch_lr(self.last_epoch + 1)
+        return lr
 
     def _get_epoch_lr(self, epoch):
         """ return lr based on the epoch """
@@ -64,8 +124,7 @@ class ListedLR(_LRScheduler2):
         points = self.points
         base_lrs = self.base_lrs
 
-        if epoch < 0:
-            epoch = 0
+        assert epoch >= 0
 
         if epoch in key_epochs:
             prev_key_epoch = epoch

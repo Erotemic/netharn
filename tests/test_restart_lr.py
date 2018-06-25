@@ -2,10 +2,14 @@ import ubelt as ub
 import netharn as nh
 
 
+class Failpoint(Exception):
+    pass
+
+
 class MyHarn(nh.FitHarn):
     def _run_epoch(harn, loader, tag, learn=False):
         if harn.epoch == harn.failpoint:
-            raise Exception('Stop Training')
+            raise Failpoint
         # Overload run_epoch to do nothing
         epoch_metrics = {'loss': 3}
         return epoch_metrics
@@ -13,13 +17,12 @@ class MyHarn(nh.FitHarn):
 
 def test_restart_lr():
     size = 3
-    max_epoch = 100
     datasets = {
         'train': nh.data.ToyData2d(size=size, border=1, n=256, rng=0),
         'vali': nh.data.ToyData2d(size=size, border=1, n=128, rng=1),
     }
 
-    lr = 0.0001
+    lr = 1.0
 
     hyper = {
         # --- data first
@@ -30,28 +33,21 @@ def test_restart_lr():
         'xpu'         : nh.XPU.cast('cpu'),
         # --- algorithm second
         'model'       : (nh.models.ToyNet2d, {}),
-        'optimizer'   : (nh.optimizers.SGD, {
-            'lr': lr / 10,
-            'momentum': 0.9,
-        }),
+        'optimizer'   : (nh.optimizers.SGD, {'lr': 99}),
         'criterion'   : (nh.criterions.FocalLoss, {}),
-        'initializer' : (nh.initializers.KaimingNormal, {
-            'param': 0,
-        }),
+        'initializer' : (nh.initializers.NoOp, {}),
         'scheduler': (nh.schedulers.ListedLR, {
             'points': {
-                0:  lr / 10,
-                1:  lr,
-                59: lr * 1.1,
-                60: lr / 10,
-                90: lr / 100,
+                0:  lr * 0.10,
+                1:  lr * 1.00,
+                9:  lr * 1.10,
+                10: lr * 0.10,
+                13: lr * 0.01,
             },
             'interpolate': True
         }),
         'dynamics'   : {'batch_step': 4},
-        'monitor'     : (nh.Monitor, {
-            'max_epoch': max_epoch,
-        }),
+        'monitor'    : (nh.Monitor, {'max_epoch': 13}),
     }
     harn = MyHarn(hyper=hyper)
     harn.config['use_tqdm'] = 0
@@ -60,9 +56,9 @@ def test_restart_lr():
 
     # Cause the harness to fail
     try:
-        harn.failpoint = 30
+        harn.failpoint = 5
         harn.run()
-    except Exception as ex:
+    except Failpoint as ex:
         pass
     failpoint_lrs = harn._current_lrs()
 
@@ -79,3 +75,10 @@ def test_restart_lr():
     harn.run()
 
     assert restart_lrs == failpoint_lrs
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python ~/code/netharn/tests/test_restart_lr.py
+    """
+    test_restart_lr()

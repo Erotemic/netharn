@@ -186,6 +186,7 @@ class InitializeMixin:
             ub.ensuredir(harn.train_dpath)
 
         if reset == 'delete':
+            print('RESET HARNESS BY DELETING TRAINING DIR')
             ub.delete(harn.train_dpath)
             ub.ensuredir(harn.train_dpath)
 
@@ -209,6 +210,7 @@ class InitializeMixin:
                 harn.snapshot_dpath))
         else:
             harn.warn('harn.train_dpath is None, all computation is in memory')
+
         harn._initialized = True
 
     def setup_paths(harn):
@@ -281,16 +283,16 @@ class InitializeMixin:
         harn.xpu.set_as_default()
 
         if harn.hyper.criterion_cls:
-            harn.log('Criterion: {}'.format(harn.hyper.criterion_cls.__name__))
+            harn.debug('Criterion: {}'.format(harn.hyper.criterion_cls.__name__))
         else:
-            harn.log('Criterion: Custom')
+            harn.debug('Criterion: Custom')
 
-        harn.log('Optimizer: {}'.format(harn.hyper.optimizer_cls.__name__))
+        harn.debug('Optimizer: {}'.format(harn.hyper.optimizer_cls.__name__))
 
         if harn.hyper.scheduler_cls:
-            harn.log('Scheduler: {}'.format(harn.hyper.scheduler_cls.__name__))
+            harn.debug('Scheduler: {}'.format(harn.hyper.scheduler_cls.__name__))
         else:
-            harn.log('No Scheduler')
+            harn.debug('No Scheduler')
 
         harn.debug('Making loaders')
         harn.datasets = harn.hyper.datasets
@@ -306,22 +308,23 @@ class InitializeMixin:
         harn.initializer = harn.hyper.make_initializer()
 
         n_params = util.number_of_parameters(harn.model)
-        harn.log('Model has {!r} parameters'.format(n_params))
+        harn.debug('Model has {!r} parameters'.format(n_params))
 
         harn.criterion = harn.hyper.make_criterion()
-        harn.log('Move {} model to {}'.format(harn.criterion, harn.xpu))
+        harn.debug('Move {} model to {}'.format(harn.criterion, harn.xpu))
         harn.criterion = harn.xpu.move(harn.criterion)
 
-        harn.log('Make optimizer')
+        harn.debug('Make optimizer')
         harn.optimizer = harn.hyper.make_optimizer(harn.model.parameters())
 
-        harn.log('Make scheduler')
+        harn.debug('Make scheduler')
+        # Note: this will usually overwrite any default LR in the optimizer
         harn.scheduler = harn.hyper.make_scheduler(harn.optimizer)
 
-        harn.log('Make monitor')
+        harn.debug('Make monitor')
         harn.monitor = harn.hyper.make_monitor()
 
-        harn.log('Make dynamics')
+        harn.debug('Make dynamics')
         harn.dynamics = harn.hyper.dynamics.copy()
 
     def reset_weights(harn):
@@ -342,9 +345,9 @@ class InitializeMixin:
         else:
             harn.warn('initializer was not specified')
 
-        if not harn.dry:
-            for group in harn.optimizer.param_groups:
-                group.setdefault('initial_lr', group['lr'])
+        for group in harn.optimizer.param_groups:
+            # print('group[lr] = {!r}'.format(group['lr']))
+            group.setdefault('initial_lr', group['lr'])
 
     def resume_from_previous_snapshots(harn):
         """
@@ -415,7 +418,7 @@ class ProgMixin:
 
     def _update_main_prog_desc(harn):
         lrs = harn._current_lrs()
-        lr_str = ','.join(['{:.2g}'.format(lr) for lr in lrs])
+        lr_str = ','.join(['{:.4g}'.format(lr) for lr in lrs])
         desc = 'epoch lr:{} │ {}'.format(lr_str, harn.monitor.message())
         harn.debug(desc)
         harn.main_prog.set_description(desc, refresh=False)
@@ -439,7 +442,12 @@ class LogMixin:
     def debug(harn, msg):
         if harn.flog:
             msg = strip_ansi(msg)
-            harn.flog.debug(msg)
+            # Encode to prevent errors on windows terminals
+            # On windows there is a sometimes a UnicodeEncodeError: For more details see: https://wiki.python.org/moin/PrintFails
+            harn.flog.debug(msg.encode('utf8'))
+            # except UnicodeEncodeError:
+            #     stripped = ''.join(c if ord(c) < 128 else ' ' for c in msg)
+            #     harn.flog.debug('[UnicodeEncodeError]: ' + stripped)
 
     def error(harn, msg):
         print(msg)
@@ -571,12 +579,9 @@ class SnapshotMixin:
         safe_fpath = join(harn.snapshot_dpath, save_fname)
         harn.debug('Saving snapshot to {}'.format(safe_fpath))
         snapshot_state = harn.get_snapshot_state()
-        if harn.dry:
-            harn.debug('Dry run, not saving to {}'.format(safe_fpath))
-        else:
-            torch.save(snapshot_state, safe_fpath)
-            harn.debug('Snapshot saved to {}'.format(safe_fpath))
-            return safe_fpath
+        torch.save(snapshot_state, safe_fpath)
+        harn.debug('Snapshot saved to {}'.format(safe_fpath))
+        return safe_fpath
 
     def backtrack_weights(harn, epoch):
         """
@@ -602,11 +607,8 @@ class ScheduleMixin:
         optim_lrs = {group['lr'] for group in harn.optimizer.param_groups}
 
         if harn.scheduler is None:
-            if harn.optimizer is None:
-                assert harn.dry
-                lrs = [.01]
-            else:
-                lrs = set(map(lambda group: group['lr'], harn.optimizer.param_groups))
+            assert harn.optimizer is not None
+            lrs = set(map(lambda group: group['lr'], harn.optimizer.param_groups))
         elif hasattr(harn.scheduler, '_current_lrs'):
             lrs = set(harn.scheduler._current_lrs())
         elif hasattr(harn.scheduler, 'get_lr'):
@@ -616,6 +618,9 @@ class ScheduleMixin:
             lrs = {group['lr'] for group in harn.scheduler.optimizer.param_groups}
 
         if optim_lrs != lrs:
+            harn.error('optim_lrs = {!r}'.format(optim_lrs))
+            harn.error('lrs = {!r}'.format(lrs))
+            harn.error('epoch = {!r}'.format(harn.epoch))
             raise AssertionError('optimizer and scheduler are out of sync')
         return lrs
 
@@ -714,7 +719,8 @@ class CoreMixin:
             #     harn.warn('Need a validation set to use nh.Monitor')
             if harn.scheduler:
                 if harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
-                    raise ValueError('need a validataion dataset to use ReduceLROnPlateau')
+                    raise ValueError(
+                            'need a validataion dataset to use ReduceLROnPlateau')
 
         # keep track of moving metric averages across epochs
         harn._run_metrics = {
@@ -793,16 +799,15 @@ class CoreMixin:
             if harn.check_interval('cleanup', harn.epoch):
                 harn.cleanup_snapshots()
 
-        harn.main_prog.update(1)
-
         # check for termination
         if harn._check_termination():
             raise StopTraining()
+        else:
+            # change learning rate (modified optimizer inplace)
+            harn._step_scheduler(improved)
 
-        # change learning rate (modified optimizer inplace)
-        harn._step_scheduler(improved)
-
-        harn._update_main_prog_desc()
+            harn._update_main_prog_desc()
+            harn.main_prog.update(1)
 
     @profiler.profile
     def _run_epoch(harn, loader, tag, learn=False):
@@ -1144,8 +1149,6 @@ class FitHarn(*MIXINS):
         harn._initialized = False
         harn.flog = None
         harn.tlog = None
-
-        harn.dry = None
 
         # Track current epoch number
         harn.epoch = 0

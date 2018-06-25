@@ -4,6 +4,7 @@ import ubelt as ub
 from netharn.util.nms import py_nms
 from netharn.util import profiler
 from netharn.util.nms import torch_nms
+import warnings
 
 _impls = {}
 _impls['py'] = py_nms.py_nms
@@ -14,16 +15,14 @@ try:
     _impls['cpu'] = cpu_nms.cpu_nms
     _automode = 'cpu'
 except Exception:
-    raise
-    pass
+    warnings.warn('cpu_nms is not available')
 try:
     if torch.cuda.is_available():
         from netharn.util.nms import gpu_nms
         _impls['gpu'] = gpu_nms.gpu_nms
         _automode = 'gpu'
 except Exception:
-    raise
-    pass
+    warnings.warn('gpu_nms is not available')
 
 
 @profiler.profile
