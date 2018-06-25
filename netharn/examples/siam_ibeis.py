@@ -462,9 +462,9 @@ class SiamHarness(nh.FitHarn):
         fraction_correct = n_correct / len(label_tensor)
 
         metrics = {
-            'accuracy': fraction_correct,
-            'pos_dist': pos_dist,
-            'neg_dist': neg_dist,
+            'accuracy': float(fraction_correct),
+            'pos_dist': float(pos_dist),
+            'neg_dist': float(neg_dist),
         }
         return metrics
 
@@ -484,7 +484,7 @@ def setup_harness(**kwargs):
     """
     nice = kwargs.get('nice', 'untitled')
     bsize = int(kwargs.get('bsize', 6))
-    bstep = int(kwargs.get('bstep', 4))
+    bstep = int(kwargs.get('bstep', 1))
     workers = int(kwargs.get('workers', 0))
     decay = float(kwargs.get('decay', 0.0005))
     lr = float(kwargs.get('lr', 0.001))
@@ -620,7 +620,7 @@ def _auto_argparse(func):
     return parser
 
 
-def fit(dbname='PZ_MTEST', nice='untitled', dim=416, bsize=6, bstep=4,
+def fit(dbname='PZ_MTEST', nice='untitled', dim=416, bsize=6, bstep=1,
         lr=0.001, decay=0.0005, workers=0, xpu='cpu'):
     """
     Train a siamese chip descriptor for animal identification.
@@ -659,10 +659,10 @@ def main():
             python examples/siam_ibeis.py --dbname PZ_MTEST --workers=0 --dim=32 --xpu=gpu0
 
             # test that running at a large size works
-            python examples/siam_ibeis.py --dbname PZ_MTEST --workers=2 --dim=416 --xpu=gpu0
+            python examples/siam_ibeis.py --dbname PZ_MTEST --workers=6 --dim=416 --xpu=gpu0
 
         # Real Run:
-        python examples/siam_ibeis.py --dbname GZ_Master1 --workers=2 --dim=512 --xpu=gpu0
+        python examples/siam_ibeis.py --dbname GZ_Master1 --workers=6 --dim=512 --xpu=gpu0 --bsize=10
 
     Notes:
         # Some database names
