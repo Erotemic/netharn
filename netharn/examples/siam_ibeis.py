@@ -497,7 +497,7 @@ class SiamHarness(nh.FitHarn):
 
         brier = y_probs - y_true
 
-        accuracy = (y_pred == y_pred).mean()
+        accuracy = (y_true == y_pred).mean()
         mcc = metrics.matthews_corrcoef(y_true, y_pred)
         brier = ((y_probs - y_true) ** 2).mean()
 
@@ -594,8 +594,8 @@ def setup_harness(**kwargs):
         }),
 
         'monitor': (nh.Monitor, {
-            'minimize': ['loss', 'pos_dist'],
-            'maximize': ['accuracy', 'neg_dist'],
+            'minimize': ['loss', 'pos_dist', 'brier'],
+            'maximize': ['accuracy', 'neg_dist', 'mcc'],
             'patience': 160,
             'max_epoch': 160,
         }),
