@@ -436,6 +436,10 @@ class YoloHarn(nh.FitHarn):
         tag = harn.current_tag
 
         if tag in {'test', 'vali'}:
+            if harn.epoch < 100:
+                # Dont bother testing the early iterations
+                return
+
             if (harn.epoch % 10 == 5 or harn.epoch > 300):
                 harn._dump_chosen_indices()
 
@@ -794,7 +798,7 @@ def setup_harness(bsize=16, workers=0):
     # Pascal 2007 test has 4952 images
     # In the original YOLO, one batch is 64 images, therefore:
     #
-    # ONE EPOCH is 16551 / 64 = 259 iterations.
+    # ONE EPOCH is 16551 / 64 = 258.609375 = 259 iterations.
     #
     # From the original YOLO VOC v2 config
     # https://github.com/pjreddie/darknet/blob/master/cfg/yolov2-voc.cfg
@@ -812,14 +816,16 @@ def setup_harness(bsize=16, workers=0):
     #
     # >>> np.array([250, 25000, 35000]) / 259
     # [  1,  98, 137]
-    # >>> np.array([1000, 40000, 60000, 80200]) / 259
-    # array(4, 157, 235, 314])
-    if ub.argflag('--orig'):
+    # >>> np.array([1000, 40000, 60000, 80200]) / 258.609375
+    # array([  3.86683584, 154.67343363, 232.01015044, 310.12023443])
+    # -> Round
+    # array(4, 157, 232, 310])
+    if not ub.argflag('--eav'):
         lr_step_points = {
             0:   lr * 0.1 / simulated_bsize,  # burnin
             4:   lr * 1.0 / simulated_bsize,
-            157: lr * 0.1 / simulated_bsize,
-            235: lr * 0.01 / simulated_bsize,
+            155: lr * 0.1 / simulated_bsize,
+            232: lr * 0.01 / simulated_bsize,
         }
     else:
         lr_step_points = {
@@ -854,7 +860,7 @@ def setup_harness(bsize=16, workers=0):
             'conf_thresh': 0.001,
             # nms_thresh=0.5 to reproduce original yolo
             # nms_thresh=0.4 to reproduce lightnet
-            'nms_thresh': 0.5 if ub.argflag('--orig') else 0.4
+            'nms_thresh': 0.5 if not ub.argflag('--eav') else 0.4
         }),
 
         'criterion': (light_region_loss.RegionLoss, {
@@ -938,9 +944,10 @@ if __name__ == '__main__':
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=fixed_nms --lr=0.001 --bstep=4 --workers=6 --orig
 
-        # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=fixed_lrs --lr=0.001 --bstep=4 --workers=6 --orig
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
+        # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
+        # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

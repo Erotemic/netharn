@@ -71,23 +71,15 @@ def train():
     The following is a table of kuangliu's reported accuracy and our measured
     accuracy for each model.
 
-          model |  kuangliu  |    ours  |
-    -------------------------------------
-    ResNet50    |    93.62%  |  95.72%  |  <- how did that happen?
-    DenseNet121 |    95.04%  |  94.47%  |
-    DPN92       |    95.16%  |  94.92%  |
+    The first column is kuangliu's reported accuracy, the second column is me
+    running kuangliu's code, and the final column is using my own training
+    harness (handles logging and whatnot) called netharn.
 
-    My measurements running kuangliu's code
-
-
-          model |  kuangliu  |
-    ---------------------------
-    ResNet50    |    95.370% | <- wtf?
-    DenseNet121 |            |
-    DPN92       |            |
-
-     reports the following test accuracies for these models:
-
+          model |  kuangliu  | rerun-kuangliu  |  netharn |
+    -------------------------------------------------------
+    ResNet50    |    93.62%  |         95.370% |  95.72%  |  <- how did that happen?
+    DenseNet121 |    95.04%  |         95.420% |  94.47%  |
+    DPN92       |    95.16%  |         95.410% |  94.92%  |
 
     """
     import random
