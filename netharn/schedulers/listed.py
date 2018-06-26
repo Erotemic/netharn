@@ -157,6 +157,42 @@ class ListedLR(_LRScheduler2):
                 epoch_lrs = [new_lr for _ in base_lrs]
         return epoch_lrs
 
+
+class Exponential(_LRScheduler2):
+    """
+    Decay learning rate by a factor of `gamma` every `stepsize` epochs.
+
+    This class exists in torch, but lacks the stepsize parameter
+
+    Example:
+        >>> import ubelt as ub
+        >>> import netharn as nh
+        >>> model = nh.models.ToyNet2d()
+        >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+        >>> self = Exponential(optimizer, gamma=0.01, stepsize=2)
+        >>> rates = np.array([self._get_epoch_lr(i) for i in range(6)]).T[0]
+        >>> target = np.array([1E-3, 1E-3, 1E-5, 1E-5, 1E-7, 1E-7])
+        >>> assert np.allclose(target, rates)
+    """
+    def __init__(self, optimizer, gamma=0.1, stepsize=100):
+        self.gamma = gamma
+        self.stepsize = stepsize
+        super().__init__(optimizer)
+
+    def get_lr(self):
+        """
+        If optimizer is specified, its learning rate is modified inplace.
+        """
+        new_lrs = self._get_epoch_lr(self.last_epoch + 1)
+        return new_lrs
+
+    def _get_epoch_lr(self, epoch):
+        """ return lr based on the epoch """
+        n_decays = epoch // self.stepsize
+        new_lrs = [lr * (self.gamma ** n_decays) for lr in self.base_lrs]
+        return new_lrs
+
+
 if __name__ == '__main__':
     """
     CommandLine:

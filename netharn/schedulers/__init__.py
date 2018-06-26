@@ -9,5 +9,7 @@ if __DYNAMIC__:
 else:
     # <AUTOGEN_INIT>
     from netharn.schedulers import listed
-    from netharn.schedulers.listed import (ListedLR,)
-    __all__ = ['listed', 'ListedLR']
+
+    from netharn.schedulers.listed import (Exponential, ListedLR,)
+
+    __all__ = ['Exponential', 'ListedLR', 'listed']

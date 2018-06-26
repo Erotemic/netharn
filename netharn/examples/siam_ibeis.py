@@ -582,8 +582,9 @@ def setup_harness(**kwargs):
 
         'initializer': (nh.initializers.NoOp, {}),
 
-        'scheduler': (torch.optim.lr_scheduler.ExponentialLR, {
+        'scheduler': (nh.schedulers.Exponential, {
             'gamma': 0.99,
+            'stepsize': 2,
         }),
         # 'scheduler': (nh.schedulers.ListedLR, {
         #     'points': {
