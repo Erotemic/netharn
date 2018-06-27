@@ -436,9 +436,9 @@ class YoloHarn(nh.FitHarn):
         tag = harn.current_tag
 
         if tag in {'test', 'vali'}:
-            if harn.epoch < 100:
-                # Dont bother testing the early iterations
-                return
+            # if harn.epoch < 100:
+            #     # Dont bother testing the early iterations
+            #     return
 
             if (harn.epoch % 10 == 5 or harn.epoch > 300):
                 harn._dump_chosen_indices()
@@ -954,7 +954,8 @@ if __name__ == '__main__':
         # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
         # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=eav_run2 --lr=0.001 --bstep=4 --workers=0 --eav
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=eav_run2 --lr=0.001 --bstep=4 --workers=8 --eav
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=8 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=8
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
