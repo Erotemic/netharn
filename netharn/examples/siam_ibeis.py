@@ -574,7 +574,7 @@ def setup_harness(**kwargs):
         }),
 
         'optimizer': (torch.optim.SGD, {
-            'lr': lr * 0.1,
+            'lr': lr,
             'weight_decay': decay,
             'momentum': 0.9,
             'nesterov': True,
@@ -582,22 +582,23 @@ def setup_harness(**kwargs):
 
         'initializer': (nh.initializers.NoOp, {}),
 
-        'scheduler': (nh.schedulers.ListedLR, {
-            'points': {
-                0:  lr * 0.1,
-                1:  lr * 1.0,
-                59: lr * 1.1,
-                60: lr * 0.1,
-                90: lr * 0.01,
-            },
-            'interpolate': True
+        'scheduler': (torch.optim.lr_scheduler.ExponentialLR, {
+            'gamma': 0.99,
         }),
+        # 'scheduler': (nh.schedulers.ListedLR, {
+        #     'points': {
+        #         1:   lr * 1.0,
+        #         19:  lr * 1.1,
+        #         20:  lr * 0.1,
+        #     },
+        #     'interpolate': True
+        # }),
 
         'monitor': (nh.Monitor, {
             'minimize': ['loss', 'pos_dist', 'brier'],
             'maximize': ['accuracy', 'neg_dist', 'mcc'],
-            'patience': 160,
-            'max_epoch': 160,
+            'patience': 40,
+            'max_epoch': 40,
         }),
 
         'augment': datasets['train'].augmenter,
@@ -703,7 +704,8 @@ def main():
             python examples/siam_ibeis.py --dbname PZ_MTEST --workers=6 --dim=416 --xpu=gpu0
 
         # Real Run:
-        python examples/siam_ibeis.py --dbname GZ_Master1 --workers=6 --dim=512 --xpu=gpu0 --bsize=10 --lr=0.0001 --nice=gzrun
+        python examples/siam_ibeis.py --dbname GZ_Master1 --workers=6 --dim=512 --xpu=gpu0 --bsize=10 --lr=0.00001 --nice=gzrun
+        python examples/siam_ibeis.py --dbname GZ_Master1 --workers=6 --dim=512 --xpu=gpu0 --bsize=6 --lr=0.001 --nice=gzrun
 
     Notes:
         # Some database names
