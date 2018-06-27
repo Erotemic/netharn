@@ -20,6 +20,7 @@ else:
     from netharn.util import util_cv2
     from netharn.util import util_demodata
     from netharn.util import util_fname
+    from netharn.util import util_groups
     from netharn.util import util_idstr
     from netharn.util import util_io
     from netharn.util import util_iter
@@ -47,8 +48,9 @@ else:
                                       distinct_colors, distinct_markers,
                                       draw_border, draw_boxes, draw_line_segments,
                                       ensure_fnum, extract_axes_extents, figure,
-                                      imshow, legend, make_heatmask, multi_plot,
-                                      next_fnum, pandas_plot_matrix, qtensure,
+                                      imshow, interpolated_colormap, legend,
+                                      make_heatmask, multi_plot, next_fnum,
+                                      pandas_plot_matrix, qtensure,
                                       render_figure_to_image, reverse_colormap,
                                       save_parts, savefig2, scores_to_cmap,
                                       scores_to_color, set_figtitle,
@@ -73,6 +75,9 @@ else:
     from netharn.util.util_fname import (align_paths, check_aligned, dumpsafe,
                                          shortest_unique_prefixes,
                                          shortest_unique_suffixes,)
+    from netharn.util.util_groups import (apply_grouping, group_consecutive,
+                                          group_consecutive_indices, group_indices,
+                                          group_items,)
     from netharn.util.util_idstr import (compact_idstr, make_idstr,
                                          make_short_idstr,)
     from netharn.util.util_io import (read_arr, read_h5arr, write_arr,
@@ -81,8 +86,7 @@ else:
     from netharn.util.util_json import (JSONEncoder, NumpyAwareJSONEncoder,
                                         NumpyEncoder, read_json, walk_json,
                                         write_json,)
-    from netharn.util.util_numpy import (apply_grouping, atleast_nd, group_indices,
-                                         group_items, isect_flags,
+    from netharn.util.util_numpy import (atleast_nd, isect_flags,
                                          iter_reduce_ufunc,)
     from netharn.util.util_random import (ensure_rng, random_combinations,
                                           random_product, shuffle,)
@@ -112,9 +116,10 @@ else:
                'extract_axes_extents', 'figure', 'find_parent_class',
                'find_pattern_above_row', 'find_pyclass_above_row',
                'get_num_channels', 'grab_test_image', 'grab_test_imgpath',
-               'grad_context', 'group_indices', 'group_items', 'image_slices',
-               'imread', 'imscale', 'imshow', 'imutil', 'imwrite', 'isect_flags',
-               'iter_reduce_ufunc', 'legend', 'load_image_paths',
+               'grad_context', 'group_consecutive', 'group_consecutive_indices',
+               'group_indices', 'group_items', 'image_slices', 'imread', 'imscale',
+               'imshow', 'imutil', 'imwrite', 'interpolated_colormap',
+               'isect_flags', 'iter_reduce_ufunc', 'legend', 'load_image_paths',
                'make_channels_comparable', 'make_heatmask', 'make_idstr',
                'make_short_idstr', 'mplutil', 'multi_plot', 'next_fnum', 'nms',
                'non_max_supression', 'number_of_parameters',
@@ -128,7 +133,8 @@ else:
                'shortest_unique_prefixes', 'shortest_unique_suffixes',
                'show_if_requested', 'shuffle', 'stats_dict', 'torch_utils',
                'util_averages', 'util_boxes', 'util_cachestamp', 'util_cv2',
-               'util_demodata', 'util_fname', 'util_idstr', 'util_io', 'util_iter',
-               'util_json', 'util_numpy', 'util_random', 'util_resources',
-               'util_slider', 'util_subextreme', 'util_tensorboard', 'walk_json',
-               'wide_strides_1d', 'write_arr', 'write_h5arr', 'write_json']
+               'util_demodata', 'util_fname', 'util_groups', 'util_idstr',
+               'util_io', 'util_iter', 'util_json', 'util_numpy', 'util_random',
+               'util_resources', 'util_slider', 'util_subextreme',
+               'util_tensorboard', 'walk_json', 'wide_strides_1d', 'write_arr',
+               'write_h5arr', 'write_json']

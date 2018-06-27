@@ -186,9 +186,13 @@ class InitializeMixin:
             ub.ensuredir(harn.train_dpath)
 
         if reset == 'delete':
-            print('RESET HARNESS BY DELETING TRAINING DIR')
-            ub.delete(harn.train_dpath)
-            ub.ensuredir(harn.train_dpath)
+            print('RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR')
+            for path in glob.glob(join(harn.train_dpath, '*')):
+                ub.delete(path)
+            # Reinitialize so we recall harn.setup_paths() and any child class
+            # impelemntation of harn.initalize.
+            harn.initialize(reset=False)
+            return
 
         harn.setup_loggers()
 
@@ -444,7 +448,10 @@ class LogMixin:
             msg = strip_ansi(msg)
             # Encode to prevent errors on windows terminals
             # On windows there is a sometimes a UnicodeEncodeError: For more details see: https://wiki.python.org/moin/PrintFails
-            harn.flog.debug(msg.encode('utf8'))
+            if sys.platform.startswith('win32'):
+                harn.flog.debug(msg.encode('utf8'))
+            else:
+                harn.flog.debug(msg)
             # except UnicodeEncodeError:
             #     stripped = ''.join(c if ord(c) < 128 else ' ' for c in msg)
             #     harn.flog.debug('[UnicodeEncodeError]: ' + stripped)

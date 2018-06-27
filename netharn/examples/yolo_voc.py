@@ -812,6 +812,9 @@ def setup_harness(bsize=16, workers=0):
     # However, the LIGHTNET values are
     #   LR_STEPS = [250, 25000, 35000]
     #
+    # The DARNKET STEPS ARE:
+    #   DN_STEPS = 1000, 40000, 60000, 80200
+    #
     # Based in this, the iter to batch conversion is
     #
     # >>> np.array([250, 25000, 35000]) / 259

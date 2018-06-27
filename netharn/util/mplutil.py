@@ -131,7 +131,7 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
         if key in kwargs:
             val_list = kwargs[key]
         elif key + '_list' in kwargs:
-            warnings.warn('*_list is depricated, just use kwarg {}'.format(key))
+            # warnings.warn('*_list is depricated, just use kwarg {}'.format(key))
             val_list = kwargs[key + '_list']
         elif key + 's' in kwargs:
             # hack, multiple ways to do something
