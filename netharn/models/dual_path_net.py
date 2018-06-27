@@ -10,10 +10,11 @@ __all__ = ['DPN']
 
 class Bottleneck(nn.Module):
     """
-
     Maintains a dense channel and a residual channel.
     First
 
+
+    Multiple Bottleneck "Blocks" make a Layer
 
     Args:
         last_planes (int): total number of input channels
@@ -26,13 +27,13 @@ class Bottleneck(nn.Module):
         groups (int): number of groups for grouped convolutions
 
     Example:
-        last_planes = 64
-        in_planes = 96
-        out_planes = 256
-        dense_depth = 16
-        stride = 1
-
-
+        >>> last_planes = 64
+        >>> in_planes = 96
+        >>> out_planes = 256
+        >>> dense_depth = 16
+        >>> stride = 1
+        >>> self = Bottleneck(last_planes, in_planes, out_planes, dense_depth, stride, first_layer=True)
+        >>> x = inputs = torch.ones(1, last_planes, 5, 7)
 
     """
     def __init__(self, last_planes, in_planes, out_planes, dense_depth, stride,
@@ -74,16 +75,17 @@ class Bottleneck(nn.Module):
         # Identity on all layers (within the block) but the first
         # On the first layer in the block, do a strided 1x1 to map to the
         # appropriate feature size.
-        x = self.shortcut(x)
+        x_ = self.shortcut(x)
         d = self.out_planes
+
+        residuals = out[:, :d, ...]
+        new_depth = out[:, d:, ...]
 
         out = torch.cat([
             # Residual channel
-            x[:, :d, :, :] + out[:, :d, :, :],
+            x_[:, :d, ...] + residuals,
             # Dense Channel
-            x[:, d:, :, :],
-            out[:, d:, :, :]
-        ], 1)
+            x_[:, d:, ...], new_depth], dim=1)
         out = F.relu(out)
         return out
 

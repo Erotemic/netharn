@@ -10,7 +10,7 @@ numpy
 
 sortedcontainers
 tqdm
-h5py
+h5py >= 2.8.0
 bayesian-optimization
 torchvision
 pandas
@@ -33,7 +33,6 @@ opencv-python
 pyqt5
 
 imgaug>=0.2.6
-# -e git+https://github.com/aleju/imgaug.git@master#egg=imgaug
 
 
 # line_profiler

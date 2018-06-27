@@ -436,9 +436,9 @@ class YoloHarn(nh.FitHarn):
         tag = harn.current_tag
 
         if tag in {'test', 'vali'}:
-            if harn.epoch < 100:
-                # Dont bother testing the early iterations
-                return
+            # if harn.epoch < 100:
+            #     # Dont bother testing the early iterations
+            #     return
 
             if (harn.epoch % 10 == 5 or harn.epoch > 300):
                 harn._dump_chosen_indices()
@@ -812,6 +812,9 @@ def setup_harness(bsize=16, workers=0):
     # However, the LIGHTNET values are
     #   LR_STEPS = [250, 25000, 35000]
     #
+    # The DARNKET STEPS ARE:
+    #   DN_STEPS = 1000, 40000, 60000, 80200
+    #
     # Based in this, the iter to batch conversion is
     #
     # >>> np.array([250, 25000, 35000]) / 259
@@ -825,16 +828,18 @@ def setup_harness(bsize=16, workers=0):
             0:   lr * 0.1 / simulated_bsize,  # burnin
             4:   lr * 1.0 / simulated_bsize,
             155: lr * 0.1 / simulated_bsize,
-            232: lr * 0.01 / simulated_bsize,
+            233: lr * 0.01 / simulated_bsize,
         }
+        max_epoch = 311
     else:
         lr_step_points = {
             # dividing by batch size was one of those unpublished details
-            0:  lr * 0.1 / simulated_bsize,
-            1:  lr * 1.0 / simulated_bsize,
-            60: lr * 0.1 / simulated_bsize,
-            90: lr * 0.01 / simulated_bsize,
+            0:   lr * 0.1 / simulated_bsize,
+            1:   lr * 1.0 / simulated_bsize,
+            97:  lr * 0.1 / simulated_bsize,
+            136: lr * 0.01 / simulated_bsize,
         }
+        max_epoch = 175
 
     # Anchors
     anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
@@ -894,8 +899,8 @@ def setup_harness(bsize=16, workers=0):
         'monitor': (nh.Monitor, {
             'minimize': ['loss'],
             'maximize': ['mAP'],
-            'patience': 314,
-            'max_epoch': 314 if not ub.argflag('--profile') else 1,
+            'patience': max_epoch,
+            'max_epoch': max_epoch,
         }),
 
         'augment': datasets['train'].augmenter,
@@ -939,15 +944,18 @@ if __name__ == '__main__':
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=new_loss_v2 --lr=0.001 --bstep=4 --workers=4
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=eav_run --lr=0.001 --bstep=4 --workers=6
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=6 --orig
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=eav_run --lr=0.001 --bstep=4 --workers=6 --eav
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=6
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=fixed_nms --lr=0.001 --bstep=4 --workers=6 --orig
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=fixed_nms --lr=0.001 --bstep=4 --workers=6
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=fixed_lrs --lr=0.001 --bstep=4 --workers=6 --orig
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=fixed_lrs --lr=0.001 --bstep=4 --workers=6
 
         # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
         # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=eav_run2 --lr=0.001 --bstep=4 --workers=8 --eav
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=8 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=8
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
