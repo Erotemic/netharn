@@ -316,6 +316,11 @@ class OutputShapeFor(object):
         return output_shape
 
     @staticmethod
+    @compute_type(nn.GroupNorm)
+    def groupnorm(module, input_shape):
+        return input_shape
+
+    @staticmethod
     @compute_type(nn.BatchNorm1d)
     def batchnorm1d(module, input_shape):
         return input_shape
