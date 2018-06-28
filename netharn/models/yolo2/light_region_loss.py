@@ -92,10 +92,10 @@ class RegionLoss(BaseLossWithCudaState):
         >>> #print('self.loss_conf = {!r}'.format(self.loss_conf))
         >>> print('loss = {:.2f}'.format(loss))
         >>> print('output.sum() = {:.2f}'.format(output.sum()))
-        loss = 20.18
+        loss = 8.79
         output.sum() = 2.15
 
-        loss = 8.89
+        loss = 20.18
         output.sum() = 2.15
 
     Example:
@@ -111,6 +111,9 @@ class RegionLoss(BaseLossWithCudaState):
         >>> loss = float(self.forward(output, target))
         >>> print('loss = {:.2f}'.format(loss))
         >>> print('output.sum() = {:.2f}'.format(output.sum()))
+        loss = 5.86
+        output.sum() = 2.15
+
         loss = 5.96
         output.sum() = 2.15
 
@@ -184,6 +187,8 @@ class RegionLoss(BaseLossWithCudaState):
             >>> seen = 0
             >>> gt_weights = None
             >>> self.forward(output, target, seen).item()
+            2.374...
+
             4.528...
         """
         # Parameters

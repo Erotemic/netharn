@@ -213,18 +213,28 @@ def evaluate_model():
     sys.path.append(ub.truepath('~/code/netharn/netharn/examples/tests'))
     from test_yolo import *
 
-    rsync -avPR xxx:work/voc_yolo2/fit/nice/pjr_run/torch_snapshots/_epoch_00000314.pt ~/work/voc_yolo2/fit/nice/pjr_run/torch_snapshots/_epoch_00000314.pt
+    REMOTE=xxx
+    rsync -avPR $REMOTE:work/voc_yolo2/fit/nice/pjr_run/torch_snapshots/_epoch_00000314.pt ~/work/voc_yolo2/fit/nice/pjr_run/torch_snapshots/_epoch_00000314.pt
+
+
+    mkdir -p $HOME/work/voc_yolo2/fit/nice/fixed_lrs/torch_snapshots
+    rsync -avPR $REMOTE:work/voc_yolo2/fit/nice/fixed_lrs/torch_snapshots/./_epoch_00000314.pt $HOME/work/voc_yolo2/fit/nice/fixed_lrs/torch_snapshots/.
     """
 
     from os.path import join
     from netharn.examples.yolo_voc import YoloVOCDataset, light_yolo
     import ubelt as ub
     import netharn as nh
-    train_dpath = ub.truepath('~/work/voc_yolo2/fit/nice/pjr_run')
-    snapshot_fpath = join(train_dpath, 'torch_snapshots', '_epoch_00000314.pt')
+    # train_dpath = ub.truepath('~/work/voc_yolo2/fit/nice/pjr_run')
+    # anchors = np.asarray([(1.08, 1.19), (3.42, 4.41), (6.63, 11.38),
+    #                       (9.42, 5.11), (16.62, 10.52)], dtype=np.float)
 
-    anchors = np.asarray([(1.08, 1.19), (3.42, 4.41), (6.63, 11.38),
-                          (9.42, 5.11), (16.62, 10.52)], dtype=np.float)
+    train_dpath = ub.truepath('~/work/voc_yolo2/fit/nice/fixed_lrs')
+    anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
+                        (5.05587, 8.09892), (9.47112, 4.84053),
+                        (11.2364, 10.0071)])
+
+    snapshot_fpath = join(train_dpath, 'torch_snapshots', '_epoch_00000314.pt')
 
     model = light_yolo.Yolo(**{
         'num_classes': 20,
@@ -261,7 +271,7 @@ def evaluate_model():
         # Hack while I fix the call
         post = model.module.postprocess
         boxes = post._get_boxes(outputs.data, box_mode=2)
-        boxes = [post._nms(box, mode=0) for box in boxes]
+        boxes = [post._nms(box) for box in boxes]
         postout = [post._clip_boxes(box) for box in boxes]
 
         all_postout.append(postout)
@@ -345,19 +355,49 @@ def evaluate_model():
     class_aps = {}
     class_curve = {}
 
+    import sys
+    sys.path.append('/home/joncrall/code/netharn/netharn/examples/tests')
+    from voc_eval_orig import voc_eval
+
     annopath = join(dataset.devkit_dpath, 'VOC2007', 'Annotations', '{}.xml')
     for classname in dataset.label_names:
         cachedir = None
         imagesetfile = join(dataset.devkit_dpath, 'VOC2007', 'ImageSets', 'Main', '{}_test.txt').format(classname)
 
         rec, prec, ap = voc_eval(detpath, annopath, imagesetfile, classname,
-                                 cachedir, ovthresh=0.5, use_07_metric=False)
+                                 cachedir, ovthresh=0.5, use_07_metric=False,
+                                 bias=1)
         class_aps[classname] = ap
         class_curve[classname] = (rec, prec)
 
     mAP = np.mean(list(class_aps.values()))
     print('mAP = {!r}'.format(mAP))
     # I'm gettin 0.694 !? WHY? Too Low, should be in the .76ish range
+    # Now I'm getting
+    """
+    Netharn:
+        mAP = 0.7014818238794197
+        'aeroplane'   : 0.71467,
+        'bicycle'     : 0.79683,
+        'bird'        : 0.72047,
+        'boat'        : 0.58781,
+        'bottle'      : 0.41089,
+        'bus'         : 0.77103,
+        'car'         : 0.78624,
+        'cat'         : 0.86605,
+        'chair'       : 0.47570,
+        'cow'         : 0.72119,
+        'diningtable' : 0.72532,
+        'dog'         : 0.84651,
+        'horse'       : 0.83273,
+        'motorbike'   : 0.77517,
+        'person'      : 0.72981,
+        'pottedplant' : 0.38090,
+        'sheep'       : 0.67960,
+        'sofa'        : 0.67424,
+        'train'       : 0.84316,
+        'tvmonitor'   : 0.69121
+    """
 
 
 def evaluate_lightnet_model():
@@ -382,7 +422,7 @@ def evaluate_lightnet_model():
     ln_weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
 
     from netharn.models.yolo2 import light_yolo
-    # ln_weights_fpath = nh.models.yolo2.light_yolo.demo_voc_weights('darknet')
+    ln_weights_fpath = nh.models.yolo2.light_yolo.demo_voc_weights('darknet')
 
     # Lightnet model, postprocess, and lightnet weights
     ln_model = ln.models.Yolo(ln_test.CLASSES, ln_weights_fpath,
@@ -501,21 +541,98 @@ def evaluate_lightnet_model():
     sys.path.append('/home/joncrall/code/netharn/netharn/examples/tests')
     from voc_eval_orig import voc_eval
 
-    for bias in [0.0, 1.0]:
-        for use_07_metric in [True, False]:
-            class_aps = {}
-            class_curve = {}
-            annopath = join(devkit_dpath, 'VOC2007', 'Annotations', '{}.xml')
-            for classname in ub.ProgIter(list(class_to_dets.keys())):
-                cachedir = None
-                imagesetfile = join(devkit_dpath, 'VOC2007', 'ImageSets', 'Main', '{}_test.txt').format(classname)
+    use_07_metric = False
+    bias = 1.0
+    # for bias in [0.0, 1.0]:
+    # for use_07_metric in [True, False]:
+    class_aps = {}
+    class_curve = {}
+    annopath = join(devkit_dpath, 'VOC2007', 'Annotations', '{}.xml')
+    for classname in ub.ProgIter(list(class_to_dets.keys())):
+        cachedir = None
+        imagesetfile = join(devkit_dpath, 'VOC2007', 'ImageSets', 'Main', '{}_test.txt').format(classname)
 
-                rec, prec, ap = voc_eval(detpath, annopath, imagesetfile, classname,
-                                         cachedir, ovthresh=0.5, use_07_metric=use_07_metric, bias=bias)
-                class_aps[classname] = ap
-                class_curve[classname] = (rec, prec)
+        rec, prec, ap = voc_eval(detpath, annopath, imagesetfile, classname,
+                                 cachedir, ovthresh=0.5, use_07_metric=use_07_metric, bias=bias)
+        class_aps[classname] = ap
+        class_curve[classname] = (rec, prec)
 
-            mAP = np.mean(list(class_aps.values()))
-            print('Official* bias={} {} VOC mAP = {!r}'.format(bias, '2007' if use_07_metric else '2012', mAP))
+    mAP = np.mean(list(class_aps.values()))
+    print('Official* bias={} {} VOC mAP = {!r}'.format(bias, '2007' if use_07_metric else '2012', mAP))
     # I get 0.71091 without 07 metric
     # I get 0.73164 without 07 metric
+
+    """
+    Lightnet:
+        'aeroplane'   : 0.7738,
+        'bicycle'     : 0.8326,
+        'bird'        : 0.7505,
+        'boat'        : 0.6202,
+        'bottle'      : 0.4614,
+        'bus'         : 0.8078,
+        'car'         : 0.8052,
+        'cat'         : 0.8857,
+        'chair'       : 0.5385,
+        'cow'         : 0.7768,
+        'diningtable' : 0.7556,
+        'dog'         : 0.8545,
+        'horse'       : 0.8401,
+        'motorbike'   : 0.8144,
+        'person'      : 0.7608,
+        'pottedplant' : 0.4640,
+        'sheep'       : 0.7398,
+        'sofa'        : 0.7334,
+        'train'       : 0.8697,
+        'tvmonitor'   : 0.7533,
+    """
+
+    """
+    Official* bias=1.0 2012 VOC mAP = 0.7670408107201542
+    Darknet:
+        'aeroplane'   : 0.7597,
+        'bicycle'     : 0.8412,
+        'bird'        : 0.7705,
+        'boat'        : 0.6360,
+        'bottle'      : 0.4902,
+        'bus'         : 0.8164,
+        'car'         : 0.8444,
+        'cat'         : 0.8926,
+        'chair'       : 0.5902,
+        'cow'         : 0.8184,
+        'diningtable' : 0.7728,
+        'dog'         : 0.8612,
+        'horse'       : 0.8759,
+        'motorbike'   : 0.8467,
+        'person'      : 0.7855,
+        'pottedplant' : 0.5117,
+        'sheep'       : 0.7889,
+        'sofa'        : 0.7584,
+        'train'       : 0.8997,
+        'tvmonitor'   : 0.7806,
+    """
+
+    """
+                       DARKNET    LIGHTNET    NETHARN
+        'aeroplane'   : 0.7597,    0.7738,    0.71467
+        'bicycle'     : 0.8412,    0.8326,    0.79683
+        'bird'        : 0.7705,    0.7505,    0.72047
+        'boat'        : 0.6360,    0.6202,    0.58781
+        'bottle'      : 0.4902,    0.4614,    0.41089
+        'bus'         : 0.8164,    0.8078,    0.77103
+        'car'         : 0.8444,    0.8052,    0.78624
+        'cat'         : 0.8926,    0.8857,    0.86605
+        'chair'       : 0.5902,    0.5385,    0.47570
+        'cow'         : 0.8184,    0.7768,    0.72119
+        'diningtable' : 0.7728,    0.7556,    0.72532
+        'dog'         : 0.8612,    0.8545,    0.84651
+        'horse'       : 0.8759,    0.8401,    0.83273
+        'motorbike'   : 0.8467,    0.8144,    0.77517
+        'person'      : 0.7855,    0.7608,    0.72981
+        'pottedplant' : 0.5117,    0.4640,    0.38090
+        'sheep'       : 0.7889,    0.7398,    0.67960
+        'sofa'        : 0.7584,    0.7334,    0.67424
+        'train'       : 0.8997,    0.8697,    0.84316
+        'tvmonitor'   : 0.7806,    0.7533,    0.69121
+        ---------------------------------------------
+              mAP        0.767      0.731      0.7015
+    """
