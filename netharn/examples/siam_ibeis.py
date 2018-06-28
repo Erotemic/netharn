@@ -340,8 +340,8 @@ def randomized_ibeis_dset(dbname, dim=416):
         'test': set(),
     }
 
-    vali_frac = .2
-    test_frac = .2
+    vali_frac = .0
+    test_frac = .1
     train_frac = 1 - (vali_frac + test_frac)
 
     category_probs = ub.odict([
