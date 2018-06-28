@@ -349,6 +349,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             target_size : network input wh
 
         Example:
+            >>> # xdoctest: +IGNORE_WHITESPACE
             >>> Resize(None)._letterbox_transform([5, 10], [10, 10])
             (array([2, 0]), array([1., 1.]), array([ 5, 10]))
             >>> Resize(None)._letterbox_transform([10, 5], [10, 10])
