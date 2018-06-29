@@ -212,10 +212,15 @@ class _BoxConversionMixins(object):
     Methods for converting between different bounding box formats
     """
 
+    format_aliases = {
+        'xywh': 'tlwh',
+    }
+
     def toformat(self, format, copy=True):
         """
         Changes the internal representation of the bounding box
         """
+        format = self.format_aliases.get(format, format)
         if format == 'tlwh':
             return self.to_tlwh(copy=copy)
         elif format == 'tlbr':
@@ -252,6 +257,8 @@ class _BoxConversionMixins(object):
             raise KeyError(self.format)
         tlwh = self._cat([x1, y1, w, h])
         return Boxes(tlwh, 'tlwh')
+
+    to_xywh = to_tlwh
 
     def to_cxywh(self, copy=True):
         if self.format == 'cxywh':
@@ -521,6 +528,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         if format is None:
             print('WARNING: format for Boxes not specified, default to tlwh')
             format = 'tlwh'
+        format = self.format_aliases.get(format, format)
         CHECKS = False
         if CHECKS:
             if _numel(data) > 0 and data.shape[-1] == 4:
