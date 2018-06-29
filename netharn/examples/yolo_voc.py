@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+References:
+    https://blog.paperspace.com/how-to-implement-a-yolo-object-detector-in-pytorch/
+"""
 from __future__ import absolute_import, division, print_function, unicode_literals
 import os
 import torch

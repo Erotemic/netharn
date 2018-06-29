@@ -180,19 +180,20 @@ class InitializeMixin:
         Uses the hyper parameters to initialize the necessary resources and
         restart from previously
         """
+        if reset == 'delete':
+            print('RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR')
+            if harn.train_dpath is None:
+                # Need to determine which path needs deletion.
+                harn.setup_paths()
+            for path in glob.glob(join(harn.train_dpath, '*')):
+                ub.delete(path)
+        elif reset:
+            print('RESET HARNESS BY RESTARTING FROM EPOCH 0')
+
         if harn.train_dpath is None:
             harn.setup_paths()
         else:
             ub.ensuredir(harn.train_dpath)
-
-        if reset == 'delete':
-            print('RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR')
-            for path in glob.glob(join(harn.train_dpath, '*')):
-                ub.delete(path)
-            # Reinitialize so we recall harn.setup_paths() and any child class
-            # impelemntation of harn.initalize.
-            harn.initialize(reset=False)
-            return
 
         harn.setup_loggers()
 
@@ -203,6 +204,8 @@ class InitializeMixin:
         assert harn.monitor is not None, 'required module'
 
         try:
+            if reset:
+                raise CannotResume
             harn.resume_from_previous_snapshots()
         except CannotResume:
             harn.reset_weights()
@@ -469,17 +472,57 @@ class LogMixin:
         print(msg)
 
     def log_value(harn, key, value, n_iter):
+        """
+        Records a scalar value to the logfile and tensorboard if available
+
+        Args:
+            key (str): identifier for your plot, good practice to include
+               dataset tag and if it is an epoch or iter measurement.
+            value (float): a scalar value
+            n_iter (int): the current epoch or iteration number.
+        """
         if harn.tlog:
             harn.tlog.log_value(key, value, n_iter)
         harn.debug('log_value({}, {}, {}'.format(key, value, n_iter))
 
     def log_histogram(harn, key, value, n_iter):
+        """
+        Records a histogram to tensorboard if available
+
+        Args:
+            key (str): identifier for your plot, good practice to include
+               dataset tag and if it is an epoch or iter measurement.
+            value (ndarray or tuple): either an array of data to compute
+               histogram on, or a tuple of bins and counts.
+            n_iter (int): the current epoch or iteration number.
+        """
         if harn.tlog:
+            # is this necessary?
+            # if isinstance(value, np.ndarray):
+            #     bins, counts = np.histogram(value)
+            #     value = (bins, counts)
             harn.tlog.log_histogram(key, value, n_iter)
+            harn.debug(
+                'log histogram to tensorboard: {}, {}'.format(key, n_iter))
+        else:
+            harn.warn('cannot log histogram: {}, {}'.format(key, n_iter))
 
     def log_images(harn, key, value, n_iter):
+        """
+        Record an image to tensorboard if available
+
+        Args:
+            key (str): identifier for your plot, good practice to include
+               dataset tag and if it is an epoch or iter measurement.
+            value (ndarray): an image
+            n_iter (int): the current epoch or iteration number.
+        """
         if harn.tlog:
             harn.tlog.log_images(key, value, n_iter)
+            harn.debug(
+                'log image to tensorboard: {}, {}'.format(key, n_iter))
+        else:
+            harn.warn('cannot log image: {}, {}'.format(key, n_iter))
 
 
 @register_mixin

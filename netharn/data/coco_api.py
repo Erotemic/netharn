@@ -3,6 +3,37 @@
 Extended MS-COCO API. Currently only supports keypoints and bounding boxes.
 
 Extends the format to also include line annotations.
+
+Dataset Spec:
+    dataset = {
+        'categories': [
+            {
+                'id': int, 'name': str,
+                'supercategory': str  # optional
+            },
+            ...
+        ],
+        'images': [
+            {'id': int, 'file_name': str},
+            ...
+        ],
+        'annotations': [
+            {
+                'id': int,
+                'image_id': int,
+                'category_id': int,
+                'bbox': [tl_x, tl_y, w, h],  # optional
+            },
+            ...
+        ],
+        'licenses': [],
+        'info': [],
+    }
+
+Extras:
+    We allow each annotation to specify a fine_category_id which specifies the
+    most specific category that the annotation can be labeled as. Assumes
+    categories are tree-structures.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import warnings
@@ -392,7 +423,7 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
         >>> self = CocoDataset(dataset, tag='demo')
         >>> self._run_fixes()
         >>> # xdoctest: +REQUIRES(--show)
-        >>> self.show_annotation(gid=2)
+        >>> self.show_image(gid=2)
         >>> from matplotlib import pyplot as plt
         >>> plt.show()
     """
@@ -585,10 +616,15 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
     @classmethod
     def union(CocoDataset, *others, **kw):
         """
-        Merges multiple `CocoDataset` items into one. Does not retain old ids.
+        Merges multiple `CocoDataset` items into one. Names and associations
+        are retained, but ids may be different.
 
         TODO: are supercategories broken?
         """
+        # if hasattr(CocoDataset, '__class__'):
+        #     # This is an instance not an object
+        #     return CocoDataset.__class__.union(CocoDataset, *others, **kw)
+
         def _coco_union(relative_dsets):
             """ union of dictionary based data structure """
             merged = ub.odict([
@@ -616,8 +652,8 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
                 # Add the licenses / info into the merged dataset
                 # Licenses / info are unused in our datas, so this might not be
                 # correct
-                merged['licenses'].extend(old_dset['licenses'])
-                merged['info'].extend(old_dset['info'])
+                merged['licenses'].extend(old_dset.get('licenses', []))
+                merged['info'].extend(old_dset.get('info', []))
 
                 # Add the categories into the merged dataset
                 for old_cat in old_dset['categories']:
@@ -704,8 +740,8 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
         """
         new_dataset = ub.odict([(k, []) for k in self.dataset])
         new_dataset['categories'] = self.dataset['categories']
-        new_dataset['info'] = self.dataset['info']
-        new_dataset['licenses'] = self.dataset['licenses']
+        new_dataset['info'] = self.dataset.get('info', [])
+        new_dataset['licenses'] = self.dataset.get('licenses', [])
 
         sub_gids = sorted(set(sub_gids))
         sub_aids = sorted([aid for gid in sub_gids
@@ -738,9 +774,15 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
                 img['width'] = w
                 img['height'] = h
 
-    def show_annotation(self, primary_aid=None, gid=None):
+    def show_image(self, gid=None, aids=None, aid=None):
         """
         Use matplotlib to show an image with annotations overlaid
+
+        Args:
+            gid (int): image to show
+            aids (list): aids to highlight within the image
+            aid (int): a specific aid to focus on. If gid is not give,
+                look up gid based on this aid.
 
         Ignore:
             >>> from netharn.util import mplutil
@@ -751,14 +793,20 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
         from PIL import Image
 
         if gid is None:
-            primary_ann = self.anns[primary_aid]
+            primary_ann = self.anns[aid]
             gid = primary_ann['image_id']
+
+        highlight_aids = set()
+        if aid is not None:
+            highlight_aids.add(aid)
+        if aids is not None:
+            highlight_aids.update(aids)
 
         img = self.imgs[gid]
         aids = self.gid_to_aids.get(img['id'], [])
 
         # Collect annotation overlays
-        segments = []
+        colored_segments = ub.ddict(list)
         keypoints = []
         rects = []
         texts = []
@@ -785,15 +833,21 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
             }
             texts.append((x1, y1, catname, textkw))
 
-            color = 'orange' if aid == primary_aid else 'blue'
+            color = 'orange' if aid in highlight_aids else 'blue'
             if 'bbox' in ann:
                 [x, y, w, h] = ann['bbox']
                 rect = mpl.patches.Rectangle((x, y), w, h, facecolor='none',
                                              edgecolor=color)
                 rects.append(rect)
+            if 'obox' in ann:
+                # Oriented bounding box
+                segs = np.array(ann['obox']).reshape(-1, 3)[:, 0:2]
+                for pt1, pt2 in ub.iter_window(segs, wrap=True):
+                    colored_segments[color].append([pt1, pt2])
             if 'line' in ann:
                 x1, y1, x2, y2 = ann['line']
-                segments.append([(x1, y1), (x2, y2)])
+                pt1, pt2 = (x1, y1), (x2, y2)
+                colored_segments[color].append([pt1, pt2])
             if 'keypoints' in ann:
                 kpts = np.array(ann['keypoints']).reshape(-1, 3)
                 xys = kpts.T[0:2].T
@@ -810,8 +864,8 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
         for (x1, y1, catname, textkw) in texts:
             ax.text(x1, y1, catname, **textkw)
 
-        if segments:
-            line_col = mpl.collections.LineCollection(segments, 2, color='b')
+        for color, segments in colored_segments.items():
+            line_col = mpl.collections.LineCollection(segments, 2, color=color)
             ax.add_collection(line_col)
 
         rect_col = mpl.collections.PatchCollection(rects, match_original=True)
@@ -820,11 +874,40 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
             xs, ys = np.vstack(keypoints).T
             ax.plot(xs, ys, 'bo')
 
-    def rename_categories(self, mapper):
+    def category_graph(self):
+        """
+            >>> self = CocoDataset(demo_coco_data(), tag='demo')
+            >>> graph = self.category_graph()
+
+            import graphid
+            import netharn as nh
+            nh.util.autompl()
+            graphid.util.show_nx(graph)
+        """
+        import networkx as nx
+        graph = nx.DiGraph()
+        for cat in self.dataset['categories']:
+            graph.add_node(cat['name'])
+            if 'supercategory' in cat:
+                graph.add_edge(cat['supercategory'], cat['name'])
+        return graph
+
+    def rename_categories(self, mapper, strict=False, preserve=False):
         """
         Create a coarser categorization
 
-        Mapper can be a dict or a function that maps old names to new names.
+        Args:
+            mapper (dict or Function): maps old names to new names.
+            strict (bool): if True, fails if mapper doesnt map all classes
+            preserve (bool): if True, preserve old categories as supercatgories
+                FIXME: Broken
+
+        Example:
+            >>> self = CocoDataset(demo_coco_data(), tag='demo')
+            >>> self.rename_categories({'astronomer': 'person', 'astronaut': 'person', 'mouth': 'person', 'helmet': 'hat'}, preserve=0)
+            >>> self.rename_categories({'person': 'obj', 'hat': 'obj'}, preserve=0)
+            >>> assert 'hat' in self.name_to_cat
+            >>> assert 'helmet' not in self.name_to_cat
         """
         new_cats = []
         old_cats = self.dataset['categories']
@@ -835,19 +918,44 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
             mapper = mapper.__getitem__
 
         for old_cat in old_cats:
-            new_name = mapper(old_cat['name'])
+            try:
+                new_name = mapper(old_cat['name'])
+            except KeyError:
+                if strict:
+                    raise
+                new_name = old_cat['name']
+
+            old_cat['supercategory'] = new_name
+
             if new_name in new_name_to_cat:
+                # Multiple old categories are mapped to this new one
                 new_cat = new_name_to_cat[new_name]
             else:
-                new_cat = ub.odict([
-                    ('id', len(new_cats) + 1),
-                    ('name', new_name),
-                ])
+                if old_cat['name'] == new_name:
+                    # new name is an existing category
+                    new_cat = old_cat.copy()
+                    new_cat['id'] = len(new_cats) + 1
+                else:
+                    # new name is a entirely new category
+                    new_cat = ub.odict([
+                        ('id', len(new_cats) + 1),
+                        ('name', new_name),
+                    ])
                 new_name_to_cat[new_name] = new_cat
                 new_cats.append(new_cat)
 
             old_to_new_id[old_cat['id']] = new_cat['id']
-            old_cat['supercategory'] = new_name
+
+        if preserve:
+            raise NotImplementedError
+            # for old_cat in old_cats:
+            #     # Ensure all old cats are preserved
+            #     if old_cat['name'] not in new_name_to_cat:
+            #         new_cat = old_cat.copy()
+            #         new_cat['id'] = len(new_cats) + 1
+            #         new_name_to_cat[new_name] = new_cat
+            #         new_cats.append(new_cat)
+            #         old_to_new_id[old_cat['id']] = new_cat['id']
 
         # self.dataset['fine_categories'] = old_cats
         self.dataset['categories'] = new_cats
@@ -855,8 +963,15 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
         for ann in self.dataset['annotations']:
             old_id = ann['category_id']
             new_id = old_to_new_id[old_id]
-            ann['category_id'] = new_id
-            # ann['fine_category_id'] = old_id
+
+            if old_id != new_id:
+                ann['category_id'] = new_id
+                # See if the annotation already has a fine-grained category If
+                # not, then use the old id as its current fine-grained
+                # granularity
+                fine_id = ann.get('fine_category_id', None)
+                if fine_id is None:
+                    ann['fine_category_id'] = old_id
 
         self._build_index()
 
