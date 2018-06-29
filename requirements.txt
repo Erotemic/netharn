@@ -41,3 +41,5 @@ imgaug>=0.2.6
 
 # onnx
 # tensorboard
+
+easydict>=1.7

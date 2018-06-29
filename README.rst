@@ -22,3 +22,16 @@ See the netharn/examples folder for example usage (currently only ``yolo_voc.py`
    :target: https://ci.appveyor.com/project/Erotemic/netharn/branch/master
 .. |Pypi| image:: https://img.shields.io/pypi/v/netharn.svg
    :target: https://pypi.python.org/pypi/netharn
+
+
+Developer Setup:
+================
+
+::
+    sudo apt-get install python3 python-dev python3-dev \
+     build-essential libssl-dev libffi-dev \
+     libxml2-dev libxslt1-dev zlib1g-dev \
+     python-pip
+
+    ./run_developer_setup.sh
+

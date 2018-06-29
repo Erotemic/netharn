@@ -11,6 +11,7 @@ else:
     # <AUTOGEN_INIT>
     from netharn.models import densenet
     from netharn.models import dual_path_net
+    from netharn.models import faster_rcnn
     from netharn.models import resnet
     from netharn.models import toynet
 
@@ -20,4 +21,4 @@ else:
     from netharn.models.toynet import (ToyNet1d, ToyNet2d,)
 
     __all__ = ['DPN', 'DenseNet', 'ResNet', 'ToyNet1d', 'ToyNet2d', 'densenet',
-               'dual_path_net', 'resnet', 'toynet']
+               'dual_path_net', 'faster_rcnn', 'resnet', 'toynet']
