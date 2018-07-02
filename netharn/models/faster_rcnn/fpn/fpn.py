@@ -150,17 +150,6 @@ class FPN(nn.Module):
         # roi_level.fill_(5)
         if cfg.POOLING_MODE == 'crop':
             raise NotImplementedError
-            # pdb.set_trace()
-            # pooled_feat_anchor = _crop_pool_layer(base_feat, rois.view(-1, 5))
-            # NOTE: need to add pyrmaid
-            # grid_xy = _affine_grid_gen(
-            #     rois, base_feat.size()[2:], self.grid_size)
-            # grid_yx = torch.stack(
-            #     [grid_xy.data[:, :, :, 1], grid_xy.data[:, :, :, 0]], 3).contiguous()
-            # roi_pool_feat = self.RCNN_roi_crop(
-            #     base_feat, Variable(grid_yx).detach())
-            # if cfg.CROP_RESIZE_WITH_MAX_POOL:
-            #     roi_pool_feat = F.max_pool2d(roi_pool_feat, 2, 2)
 
         elif cfg.POOLING_MODE == 'align':
             roi_pool_feats = []

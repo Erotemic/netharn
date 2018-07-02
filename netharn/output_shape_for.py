@@ -49,6 +49,23 @@ class OutputShapeFor(object):
         #     print('{}.output_shape = {}'.format(str(self._func.__name__), output_shape))
         return output_shape
 
+    def _check_consistency(self, input_shape):
+        """
+        Test function to check that expected shape is equal to computed shape
+        """
+        expected_output_shape = list(self(input_shape))
+        inputs = torch.randn(input_shape)
+        with torch.no_grad():
+            outputs = self.module(inputs)
+        computed_output_shape = list(outputs.shape)
+        if computed_output_shape != expected_output_shape:
+            raise AssertionError(
+                'computed shape {!r} != expected shape {!r}'.format(
+                    computed_output_shape,
+                    expected_output_shape,
+                )
+            )
+
     @staticmethod
     @compute_type(nn.UpsamplingBilinear2d)
     def UpsamplingBilinear2d(module, input_shape):
