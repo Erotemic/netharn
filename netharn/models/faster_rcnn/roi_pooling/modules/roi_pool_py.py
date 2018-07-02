@@ -5,6 +5,10 @@ import numpy as np
 
 
 class RoIPool(nn.Module):
+    """
+    NOTE:
+        This is redundant with ~/code/netharn/netharn/layers/roi_pooling/roi_pool_c.py
+    """
     def __init__(self, pooled_height, pooled_width, spatial_scale):
         super(RoIPool, self).__init__()
         self.pooled_width = int(pooled_width)
@@ -45,4 +49,3 @@ class RoIPool(nn.Module):
                             torch.max(data[:, hstart:hend, wstart:wend], 1)[0], 2)[0].view(-1)
 
         return outputs
-

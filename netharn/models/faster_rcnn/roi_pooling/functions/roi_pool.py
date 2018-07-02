@@ -1,9 +1,20 @@
 # import torch
 from torch.autograd import Function
+from .._ext import roi_pooling
 # import pdb
 
 
 class RoIPoolFunction(Function):
+    """
+    TODO: Need docs on params, and an example
+
+    NOTE:
+        This is redundant with ~/code/netharn/netharn/layers/roi_pooling/roi_pool_c.py
+
+    Example:
+        >>> from netharn.models.faster_rcnn.roi_pooling.functions.roi_pool import *
+        >>> ctx = RoIPoolFunction(10, 10, 1)
+    """
     def __init__(ctx, pooled_height, pooled_width, spatial_scale):
         ctx.pooled_width = pooled_width
         ctx.pooled_height = pooled_height
@@ -19,7 +30,6 @@ class RoIPoolFunction(Function):
         ctx.argmax = features.new(
             num_rois, num_channels, ctx.pooled_height, ctx.pooled_width).zero_().int()
         ctx.rois = rois
-        from netharn.models.faster_rcnn.roi_pooling.functions.roi_pool import roi_pooling
         if not features.is_cuda:
             _features = features.permute(0, 2, 3, 1)
             roi_pooling.roi_pooling_forward(ctx.pooled_height, ctx.pooled_width, ctx.spatial_scale,
@@ -36,7 +46,6 @@ class RoIPoolFunction(Function):
         grad_input = grad_output.new(
             batch_size, num_channels, data_height, data_width).zero_()
 
-        from netharn.models.faster_rcnn.roi_pooling.functions.roi_pool import roi_pooling
         roi_pooling.roi_pooling_backward_cuda(ctx.pooled_height, ctx.pooled_width, ctx.spatial_scale,
                                               grad_output, ctx.rois, grad_input, ctx.argmax)
 

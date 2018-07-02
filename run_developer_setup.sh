@@ -12,6 +12,6 @@ python setup.py build_ext --inplace
 cd ~/code/netharn/netharn/models/faster_rcnn/roi_align
 ./make.sh
 cd ~/code/netharn/netharn/models/faster_rcnn/roi_pooling
-./make.sh
+python build.py
 cd ~/code/netharn/netharn/models/faster_rcnn/roi_crop
 ./make.sh

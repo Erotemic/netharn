@@ -6,17 +6,26 @@
 # --------------------------------------------------------
 r"""
 CommandLine:
-    python ~/code/netharn/netharn/models/faster_rcnn/rpn/generate_anchors.py __doc__
+    xdoctest ~/code/netharn/netharn/models/faster_rcnn/rpn/generate_anchors.py __doc__
 
-Example:
-    >>> # xdoctest: +IGNORE_WANT
+Example::
     >>> import ubelt as ub
+    >>> # xdoctest: +IGNORE_WANT
     >>> with ub.Timer(label='generate_anchors'):
     >>>     anchors = generate_anchors()
     tic('generate_anchors')
     ...toc('generate_anchors')=0.0003s
-    >>> # print(ub.hz_cat(['anchors = ', ub.repr2(anchors, nl=1)])
-
+    >>> # xdoctest: -IGNORE_WANT
+    >>> print(ub.hzcat(['anchors = ', ub.repr2(anchors, nl=1)]))
+    anchors = np.array([[ -84.,  -40.,   99.,   55.],
+                        [-176.,  -88.,  191.,  103.],
+                        [-360., -184.,  375.,  199.],
+                        [ -56.,  -56.,   71.,   71.],
+                        [-120., -120.,  135.,  135.],
+                        [-248., -248.,  263.,  263.],
+                        [ -36.,  -80.,   51.,   95.],
+                        [ -80., -168.,   95.,  183.],
+                        [-168., -344.,  183.,  359.]], dtype=np.float64)
 """
 
 import numpy as np
@@ -115,15 +124,6 @@ def _scale_enum(anchor, scales):
     anchors = _mkanchors(ws, hs, x_ctr, y_ctr)
     return anchors
 
-
-# if __name__ == '__main__':
-#     import time
-#     t = time.time()
-#     a = generate_anchors()
-#     print(time.time() - t)
-#     print(a)
-#     from IPython import embed
-#     embed()
 
 ############################################################
 #  Anchors
@@ -230,11 +230,3 @@ def generate_anchors_all_pyramids(scales, ratios, feature_shapes, feature_stride
 #     for i in range(len(scales)):
 #         anchors.append(generate_anchors_single_pyramid(scales[i], ratios))
 #     return np.concatenate(anchors, axis=0)
-
-if __name__ == '__main__':
-    """
-    CommandLine:
-        python -m netharn.models.faster_rcnn.rpn.generate_anchors all
-    """
-    import xdoctest
-    xdoctest.doctest_module(__file__)

@@ -4,6 +4,10 @@ from ._ext import roi_pooling
 
 
 class RoIPoolFunction(Function):
+    """
+    NOTE:
+        This is redundant with ~/code/netharn/netharn/models/faster_rcnn/roi_pooling/functions/roi_pool.py
+    """
     def __init__(self, pooled_height, pooled_width, spatial_scale):
         self.pooled_width = int(pooled_width)
         self.pooled_height = int(pooled_height)

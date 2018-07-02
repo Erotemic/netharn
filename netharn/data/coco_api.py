@@ -903,6 +903,7 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin):
                 FIXME: Broken
 
         Example:
+            >>> # DISABLE_DOCTEST
             >>> self = CocoDataset(demo_coco_data(), tag='demo')
             >>> self.rename_categories({'astronomer': 'person', 'astronaut': 'person', 'mouth': 'person', 'helmet': 'hat'}, preserve=0)
             >>> self.rename_categories({'person': 'obj', 'hat': 'obj'}, preserve=0)
