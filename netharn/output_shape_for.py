@@ -58,11 +58,27 @@ class OutputShapeFor(object):
         """
         Test function to check that expected shape is equal to computed shape
         """
-        expected_output_shape = list(self(input_shape))
+        # Run the output shape computation
+        expected_output_shape = self(input_shape)
+        if isinstance(expected_output_shape, tuple):
+            expected_output_shape = list(expected_output_shape)
+
+        # Create dummy inputs and send them through the network
         inputs = torch.randn(input_shape)
         with torch.no_grad():
+            self.module.eval()
             outputs = self.module(inputs)
-        computed_output_shape = list(outputs.shape)
+
+        if isinstance(outputs, dict):
+            assert isinstance(expected_output_shape, dict), (
+                'if outputs is a dict output shape must be a corresponding dict')
+            computed_output_shape = {k: v.shape for k, v in outputs.items()}
+        elif isinstance(outputs, tuple):
+            # Allow outputs to be a tuple of tensors
+            computed_output_shape = [list(o.shape) for o in outputs]
+        else:
+            computed_output_shape = list(outputs.shape)
+
         if computed_output_shape != expected_output_shape:
             raise AssertionError(
                 'computed shape {!r} != expected shape {!r}'.format(
@@ -70,6 +86,7 @@ class OutputShapeFor(object):
                     expected_output_shape,
                 )
             )
+        return expected_output_shape
 
     @staticmethod
     @compute_type(nn.UpsamplingBilinear2d)
