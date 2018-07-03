@@ -214,6 +214,8 @@ def _rectify_dynamics(arg, kw):
     dynamics = {
         # batch_step simulates larger batch sizes
         'batch_step': arg.pop('batch_step', 1),
+        # Clips gradients
+        'grad_norm_max': arg.pop('grad_norm_max', None),
     }
     if not isinstance(dynamics['batch_step'], int):
         raise ValueError('batch_step must be an integer')
