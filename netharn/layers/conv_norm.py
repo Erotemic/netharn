@@ -1,7 +1,7 @@
 import ubelt as ub
 import torch
-from netharn import util
 from netharn.output_shape_for import OutputShapeFor
+from netharn import util
 
 
 def rectify_nonlinearity(key=ub.NoParam, dim=2):
@@ -146,8 +146,8 @@ class _ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
         else:
             raise ValueError(dim)
 
-        norm = util.rectify_normalizer(out_channels, norm, dim=dim)
-        noli = util.rectify_nonlinearity(noli, dim=dim)
+        norm = rectify_normalizer(out_channels, norm, dim=dim)
+        noli = rectify_nonlinearity(noli, dim=dim)
 
         self.add_module('conv', conv)
         if norm:
