@@ -13,7 +13,6 @@ else:
     from netharn.util import mplutil
     from netharn.util import nms
     from netharn.util import profiler
-    from netharn.util import torch_utils
     from netharn.util import util_averages
     from netharn.util import util_boxes
     from netharn.util import util_cachestamp
@@ -31,6 +30,7 @@ else:
     from netharn.util import util_slider
     from netharn.util import util_subextreme
     from netharn.util import util_tensorboard
+    from netharn.util import util_torch
 
     from netharn.util.imutil import (CV2_INTERPOLATION_TYPES, adjust_gamma,
                                      atleast_3channels, convert_colorspace,
@@ -61,7 +61,6 @@ else:
                                        find_parent_class, find_pattern_above_row,
                                        find_pyclass_above_row, profile,
                                        profile_onthefly,)
-    from netharn.util.torch_utils import (grad_context, number_of_parameters,)
     from netharn.util.util_averages import (CumMovingAve, ExpMovingAve,
                                             InternalRunningStats, MovingAve,
                                             RunningStats, WindowedMovingAve,
@@ -95,18 +94,21 @@ else:
                                           Stitcher,)
     from netharn.util.util_subextreme import (argsubmax, argsubmaxima,)
     from netharn.util.util_tensorboard import (read_tensorboard_scalars,)
+    from netharn.util.util_torch import (ModuleMixin, grad_context,
+                                         number_of_parameters,
+                                         rectify_nonlinearity, rectify_normalizer,)
 
     __all__ = ['Boxes', 'CV2_INTERPOLATION_TYPES', 'CacheStamp', 'Color',
                'CumMovingAve', 'ExpMovingAve', 'IS_PROFILING',
                'InternalRunningStats', 'JSONEncoder', 'KernprofParser',
-               'MovingAve', 'NumpyAwareJSONEncoder', 'NumpyEncoder', 'PlotNums',
-               'RunningStats', 'SlidingIndexDataset', 'SlidingSlices', 'Stitcher',
-               'WindowedMovingAve', 'absdev', 'adjust_gamma', 'adjust_subplots',
-               'aggensure', 'align_paths', 'apply_grouping', 'argsubmax',
-               'argsubmaxima', 'atleast_3channels', 'atleast_nd', 'autompl',
-               'axes_extent', 'box_ious', 'box_ious_py', 'box_ious_torch',
-               'check_aligned', 'colorbar', 'colorbar_image', 'compact_idstr',
-               'convert_colorspace', 'copy_figure_to_clipboard',
+               'ModuleMixin', 'MovingAve', 'NumpyAwareJSONEncoder', 'NumpyEncoder',
+               'PlotNums', 'RunningStats', 'SlidingIndexDataset', 'SlidingSlices',
+               'Stitcher', 'WindowedMovingAve', 'absdev', 'adjust_gamma',
+               'adjust_subplots', 'aggensure', 'align_paths', 'apply_grouping',
+               'argsubmax', 'argsubmaxima', 'atleast_3channels', 'atleast_nd',
+               'autompl', 'axes_extent', 'box_ious', 'box_ious_py',
+               'box_ious_torch', 'check_aligned', 'colorbar', 'colorbar_image',
+               'compact_idstr', 'convert_colorspace', 'copy_figure_to_clipboard',
                'deterministic_shuffle', 'dict_intersection', 'distinct_colors',
                'distinct_markers', 'draw_border', 'draw_boxes',
                'draw_boxes_on_image', 'draw_line_segments', 'draw_text_on_image',
@@ -127,14 +129,15 @@ else:
                'profile', 'profile_onthefly', 'profiler', 'putMultiLineText',
                'qtensure', 'random_combinations', 'random_product', 'read_arr',
                'read_h5arr', 'read_json', 'read_tensorboard_scalars',
+               'rectify_nonlinearity', 'rectify_normalizer',
                'render_figure_to_image', 'reverse_colormap', 'roundrobin',
                'run_length_encoding', 'save_parts', 'savefig2', 'scores_to_cmap',
                'scores_to_color', 'set_figtitle', 'set_mpl_backend',
                'shortest_unique_prefixes', 'shortest_unique_suffixes',
-               'show_if_requested', 'shuffle', 'stats_dict', 'torch_utils',
-               'util_averages', 'util_boxes', 'util_cachestamp', 'util_cv2',
-               'util_demodata', 'util_fname', 'util_groups', 'util_idstr',
-               'util_io', 'util_iter', 'util_json', 'util_numpy', 'util_random',
-               'util_resources', 'util_slider', 'util_subextreme',
-               'util_tensorboard', 'walk_json', 'wide_strides_1d', 'write_arr',
-               'write_h5arr', 'write_json']
+               'show_if_requested', 'shuffle', 'stats_dict', 'util_averages',
+               'util_boxes', 'util_cachestamp', 'util_cv2', 'util_demodata',
+               'util_fname', 'util_groups', 'util_idstr', 'util_io', 'util_iter',
+               'util_json', 'util_numpy', 'util_random', 'util_resources',
+               'util_slider', 'util_subextreme', 'util_tensorboard', 'util_torch',
+               'walk_json', 'wide_strides_1d', 'write_arr', 'write_h5arr',
+               'write_json']

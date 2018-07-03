@@ -4,8 +4,10 @@ Dual Path Networks in PyTorch.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+# from netharn.output_shape_for import OutputShapeFor
+from netharn.layers import ConvNorm2d
 
-__all__ = ['DPN']
+# __all__ = ['DPN']
 
 
 class Bottleneck(nn.Module):
@@ -42,19 +44,31 @@ class Bottleneck(nn.Module):
         self.out_planes = out_planes
         self.dense_depth = dense_depth
 
-        self.conv1 = nn.Conv2d(last_planes, in_planes,
-                               kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(in_planes)
+        # self.conv1 = nn.Conv2d(last_planes, in_planes,
+        #                        kernel_size=1, bias=False)
+        # self.bn1 = nn.BatchNorm2d(in_planes)
 
-        self.conv2 = nn.Conv2d(in_planes, in_planes, kernel_size=3,
-                               stride=stride, padding=1, groups=groups,
-                               bias=False)
+        # self.conv2 = nn.Conv2d(in_planes, in_planes, kernel_size=3,
+        #                        stride=stride, padding=1, groups=groups,
+        #                        bias=False)
 
-        self.bn2 = nn.BatchNorm2d(in_planes)
+        # self.bn2 = nn.BatchNorm2d(in_planes)
 
-        self.conv3 = nn.Conv2d(in_planes, out_planes +
-                               dense_depth, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(out_planes + dense_depth)
+        # self.conv3 = nn.Conv2d(in_planes, out_planes +
+        #                        dense_depth, kernel_size=1, bias=False)
+        # self.bn3 = nn.BatchNorm2d(out_planes + dense_depth)
+
+        self.conv1 = ConvNorm2d(last_planes, in_planes, kernel_size=1,
+                                bias=False, norm='batch', noli='relu')
+
+        self.conv2 = ConvNorm2d(in_planes, in_planes, kernel_size=3,
+                                stride=stride, padding=1, groups=groups,
+                                bias=False, norm='batch', noli='relu')
+
+        # Last conv is not given a ReLU
+        self.conv3 = ConvNorm2d(in_planes, out_planes + dense_depth,
+                                kernel_size=1, bias=False, norm='batch',
+                                noli=None)
 
         self.shortcut = nn.Sequential()
         if first_layer:
@@ -65,12 +79,17 @@ class Bottleneck(nn.Module):
             )
 
     def forward(self, x):
-        # 1x1 conv
-        out = F.relu(self.bn1(self.conv1(x)))
-        # 3x3 strided grouped conv
-        out = F.relu(self.bn2(self.conv2(out)))
-        # 1x1 conv
-        out = self.bn3(self.conv3(out))
+        out = x
+        # 1x1 conv + bn + relu
+        out = self.conv1(out)
+        # 3x3 strided grouped conv + bn + relu
+        out = self.conv2(out)
+        # 1x1 conv + bn
+        out = self.conv3(out)
+
+        # out = F.relu(self.bn1(self.conv1(x)))
+        # out = F.relu(self.bn2(self.conv2(out)))
+        # out = self.bn3(self.conv3(out))
 
         # Identity on all layers (within the block) but the first
         # On the first layer in the block, do a strided 1x1 to map to the
@@ -177,3 +196,11 @@ def DPN92():
 
 
 # test()
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python -m netharn.models.dual_path_net all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
