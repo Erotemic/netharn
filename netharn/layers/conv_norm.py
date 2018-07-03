@@ -118,7 +118,7 @@ class _ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
     Backbone convolution component. The convolution hapens first, normalization
     and nonlinearity happen after the convolution.
 
-    CONV[->NORM][->RELU]
+    CONV[->NORM][->NOLI]
 
     Args:
         norm (str, dict, nn.Module): Type of normalizer,
@@ -168,7 +168,7 @@ class ConvNorm1d(_ConvNormNd):
     Backbone convolution component. The convolution hapens first, normalization
     and nonlinearity happen after the convolution.
 
-    CONV[->NORM][->RELU]
+    CONV[->NORM][->NOLI]
 
     Args:
         norm (str, dict, nn.Module): Type of normalizer,
@@ -197,7 +197,7 @@ class ConvNorm2d(_ConvNormNd):
     Backbone convolution component. The convolution hapens first, normalization
     and nonlinearity happen after the convolution.
 
-    CONV[->NORM][->RELU]
+    CONV[->NORM][->NOLI]
 
     Args:
         norm (str, dict, nn.Module): Type of normalizer,
@@ -226,7 +226,7 @@ class ConvNorm3d(_ConvNormNd):
     Backbone convolution component. The convolution hapens first, normalization
     and nonlinearity happen after the convolution.
 
-    CONV[->NORM][->RELU]
+    CONV[->NORM][->NOLI]
 
     Args:
         norm (str, dict, nn.Module): Type of normalizer,
