@@ -2,13 +2,18 @@ import math
 import torch
 import torch.nn as nn
 import torchvision
+try:
+    from netharn.device import DataSerial
+except ImportError:
+    DataSerial = None
 
 REGISTERED_OUTPUT_SHAPE_TYPES = []
 
 
 def compute_type(type):
     def _wrap(func):
-        REGISTERED_OUTPUT_SHAPE_TYPES.append((type, func))
+        if type is not None:
+            REGISTERED_OUTPUT_SHAPE_TYPES.append((type, func))
         return func
     return _wrap
 
@@ -519,6 +524,16 @@ class OutputShapeFor(object):
                     else:
                         assert output_shape[i] == v, 'inconsistent dims {}'.format(input_shapes)
         return output_shape
+
+    @staticmethod
+    @compute_type(DataSerial)
+    def data_serial(module, *args, **kw):
+        return OutputShapeFor(module.module)(*args, **kw)
+
+    @staticmethod
+    @compute_type(torch.nn.DataParallel)
+    def data_parallel(module, *args, **kw):
+        return OutputShapeFor(module.module)(*args, **kw)
 
 
 def ensure_iterablen(scalar, n):
