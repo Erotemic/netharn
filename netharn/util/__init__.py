@@ -95,8 +95,7 @@ else:
     from netharn.util.util_subextreme import (argsubmax, argsubmaxima,)
     from netharn.util.util_tensorboard import (read_tensorboard_scalars,)
     from netharn.util.util_torch import (ModuleMixin, grad_context,
-                                         number_of_parameters,
-                                         rectify_nonlinearity, rectify_normalizer,)
+                                         number_of_parameters,)
 
     __all__ = ['Boxes', 'CV2_INTERPOLATION_TYPES', 'CacheStamp', 'Color',
                'CumMovingAve', 'ExpMovingAve', 'IS_PROFILING',
@@ -129,7 +128,6 @@ else:
                'profile', 'profile_onthefly', 'profiler', 'putMultiLineText',
                'qtensure', 'random_combinations', 'random_product', 'read_arr',
                'read_h5arr', 'read_json', 'read_tensorboard_scalars',
-               'rectify_nonlinearity', 'rectify_normalizer',
                'render_figure_to_image', 'reverse_colormap', 'roundrobin',
                'run_length_encoding', 'save_parts', 'savefig2', 'scores_to_cmap',
                'scores_to_color', 'set_figtitle', 'set_mpl_backend',
