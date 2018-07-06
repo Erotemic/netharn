@@ -1,5 +1,4 @@
 import numpy as np
-import ubelt as ub
 import torch
 
 
@@ -16,6 +15,7 @@ def number_of_parameters(model, trainable=True):
     Returns number of trainable parameters in a torch module
 
     Example:
+        >>> import netharn as nh
         >>> model = nh.models.ToyNet2d()
         >>> number_of_parameters(model)
         824

@@ -307,15 +307,16 @@ class InitializeMixin:
 
         harn.debug('Making model')
         harn.model = harn.hyper.make_model()
+
+        n_params = util.number_of_parameters(harn.model)
+        harn.log('Model has {!r} parameters'.format(n_params))
+
         harn.log('Mounting {} model on {}'.format(
             harn.model.__class__.__name__, harn.xpu))
         harn.model = harn.xpu.mount(harn.model)
 
         harn.debug('Making initializer')
         harn.initializer = harn.hyper.make_initializer()
-
-        n_params = util.number_of_parameters(harn.model)
-        harn.debug('Model has {!r} parameters'.format(n_params))
 
         harn.criterion = harn.hyper.make_criterion()
         harn.debug('Move {} model to {}'.format(harn.criterion, harn.xpu))
@@ -442,9 +443,22 @@ class ProgMixin:
 
 @register_mixin
 class LogMixin:
+
+    def _ensure_prog_newline(harn):
+        # Try and make sure the progress bar does not clobber log outputs.
+        # Only available with progiter. Not sure how to do with tqdm.
+        try:
+            if harn.epoch_prog is not None:
+                harn.epoch_prog.ensure_newline()
+            if harn.main_prog is not None:
+                harn.main_prog.ensure_newline()
+        except AttributeError:
+            pass
+
     def log(harn, msg):
-        harn.debug(msg)
+        harn._ensure_prog_newline()
         print(msg)
+        harn.debug(msg)
 
     def debug(harn, msg):
         if harn.flog:
@@ -460,16 +474,18 @@ class LogMixin:
             #     harn.flog.debug('[UnicodeEncodeError]: ' + stripped)
 
     def error(harn, msg):
+        harn._ensure_prog_newline()
         print(msg)
         if harn.flog:
             msg = strip_ansi(msg)
             harn.flog.error(msg)
 
     def warn(harn, msg):
+        harn._ensure_prog_newline()
+        print(msg)
         if harn.flog:
             msg = strip_ansi(msg)
             harn.flog.warn(msg)
-        print(msg)
 
     def log_value(harn, key, value, n_iter):
         """
@@ -887,6 +903,7 @@ class CoreMixin:
         prog = harn._make_prog(desc=desc, total=len(loader), disable=not
                                harn.config['show_prog'], position=position,
                                leave=True, dynamic_ncols=True)
+        harn.epoch_prog = prog
         harn._update_prog_postfix(prog)
 
         if isinstance(prog, ub.ProgIter):
@@ -931,7 +948,15 @@ class CoreMixin:
                     prog.update(harn.intervals['display_' + tag])
                     harn._update_prog_postfix(prog)
 
+        # do a final step when bstep > 1, so the last few batches arent skipped
+        if harn.dynamics['batch_step'] > 1:
+            if any(param.grad is not None
+                   for name, param in harn.model.named_parameters()):
+                harn.optimizer.step()
+                harn.optimizer.zero_grad()
+
         prog.close()
+        harn.epoch_prog = None
 
         # record a True average for the entire batch
         epoch_metrics = epoch_moving_metrics.average()
@@ -964,18 +989,50 @@ class CoreMixin:
             # approximates a batch size of (bsize * bstep) if step > 1,
             bstep = harn.dynamics['batch_step']
             if (bx + 1) % bstep == 0:
-                # NOTE: the last few batches might be skipped if bstep > 1
-                # harn.log("STEP")
+                if harn.dynamics['grad_norm_max']:
+                    total_norm = torch.nn.utils.clip_grad_norm_(
+                        harn.model.parameters(),
+                        max_norm=harn.dynamics['grad_norm_max'],
+                        norm_type=float('inf'),
+                    )
+                    if total_norm > harn.dynamics['grad_norm_max'] * 100:
+                        harn.warn('WARNING grad norm is too high: total_norm = {!r}'.format(total_norm))
+                if False:
+                    # if harn._check_weights_and_recover():
+                    #     loss[:] = -1
+                    #     harn.optimizer.zero_grad()
+                    # else:
+                    harn._check_gradients(batch, loss)
+                # harn.debug("STEP")
                 harn.optimizer.step()
                 harn.optimizer.zero_grad()
 
         return outputs, loss
 
     def _on_batch(harn, bx, batch, outputs, loss):
-        if torch.__version__.startswith('0.3'):
-            loss_value = float(loss.data.cpu().sum())
-        else:
-            loss_value = float(loss.data.cpu().item())
+        loss_value = float(loss.data.cpu().item())
+        harn._check_loss(loss_value)
+        metrics_dict = {
+            'loss': loss_value,
+        }
+        custom_metrics = harn.on_batch(batch, outputs, loss)
+        _disjoint_dict_update(metrics_dict, custom_metrics)
+
+        return metrics_dict
+
+    def _check_gradients(harn, batch=None, loss=None):
+        all_grads = ub.odict()
+        for name, parameter in harn.model.named_parameters():
+            if parameter.grad is not None:
+                grads = parameter.grad.data.cpu().numpy()
+                all_grads[name] = grads
+
+        for key, value in all_grads.items():
+            if np.any(~np.isfinite(value)):
+                raise TrainingDiverged(
+                    'NON-FINITE GRAD {}.grad = {!r}'.format(key, value))
+
+    def _check_loss(harn, loss_value):
         if not np.isfinite(loss_value):
             harn.warn('WARNING: got inf loss, setting loss to a large value')
             loss_value = harn.config['large_loss'] * 10
@@ -985,22 +1042,33 @@ class CoreMixin:
                 # if the loss is getting large, check if the weights are ok
                 harn._check_divergence()
 
-        metrics_dict = {
-            'loss': loss_value,
-        }
-        custom_metrics = harn.on_batch(batch, outputs, loss)
-        _disjoint_dict_update(metrics_dict, custom_metrics)
-
-        return metrics_dict
+    # def _check_weights_and_recover(harn):
+    #     modified = False
+    #     state = harn.model.module.state_dict()
+    #     for key, value in state.items():
+    #         stats = util.stats_dict(value.cpu().numpy())
+    #         print('stats = {!r}'.format(stats))
+    #         if stats['max'] > 2e6:
+    #             modified = True
+    #             harn.warn('HACKED RECOVER FROM DIVERGE CASE')
+    #             value.normal_()
+    #     return modified
 
     def _check_divergence(harn):
         # Eventually we may need to remove
         # num_batches_tracked once 0.5.0 lands
         state = harn.model.module.state_dict()
-        weights = sum(v.sum() for v in state.values())
-        if not np.isfinite(weights):
+        sums = ub.map_vals(torch.sum, state)
+        weight_sum = sum(sums.values())
+        if not np.isfinite(weight_sum):
+            flags = [not np.isfinite(s) for s in sums.values()]
+            bad_layers = ub.odict(zip(
+                ub.compress(sums.keys(), flags),
+                ub.compress(sums.values(), flags)
+            ))
+            harn.error('NON-FINITE WEIGHTS: {}'.format(ub.repr2(bad_layers, nl=1)))
             raise TrainingDiverged(
-                'NON-FINITE WEIGHTS weights = {!r}'.format(weights))
+                'NON-FINITE WEIGHTS weights.sum() = {!r}'.format(weight_sum))
 
 
 @register_mixin
@@ -1181,6 +1249,7 @@ class FitHarn(*MIXINS):
         harn.hyper = hyper
 
         harn.main_prog = None
+        harn.epoch_prog = None
 
         harn.datasets = None
         harn.loaders = None
@@ -1190,7 +1259,12 @@ class FitHarn(*MIXINS):
         harn.scheduler = None
         harn.monitor = None
         harn.criterion = None
-        harn.dynamics = {'batch_step': 1}
+
+        # Note: these default values are actually stored in hyperparams
+        harn.dynamics = {
+            'batch_step': 1,
+            'grad_norm_max': None,
+        }
 
         harn.paths = None
         harn.train_dpath = train_dpath

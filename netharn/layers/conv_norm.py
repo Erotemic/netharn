@@ -1,7 +1,8 @@
 import ubelt as ub
 import torch
-from netharn import util
 from netharn.output_shape_for import OutputShapeFor
+from netharn import util
+import math
 
 
 def rectify_nonlinearity(key=ub.NoParam, dim=2):
@@ -77,7 +78,9 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
         if key == 'batch':
             key = {'type': 'batch'}
         elif key == 'group':
-            key = {'type': 'group', 'num_groups': 32}
+            key = {'type': 'group', 'num_groups': ('gcd', min(in_channels, 32))}
+        elif key == 'batch+group':
+            key = {'type': 'batch+group'}
         else:
             raise KeyError(key)
     elif isinstance(key, dict):
@@ -97,15 +100,22 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
             cls = torch.nn.BatchNorm3d
         else:
             raise ValueError(dim)
-
     elif norm_type == 'group':
         in_channels_key = 'num_channels'
-        key['num_groups'] = min(in_channels, key['num_groups'])
+        if isinstance(key['num_groups'], tuple):
+            if key['num_groups'][0] == 'gcd':
+                key['num_groups'] = math.gcd(
+                    key['num_groups'][1], in_channels)
         if in_channels % key['num_groups'] != 0:
             raise AssertionError(
                 'Cannot divide n_inputs {} by num groups {}'.format(
                     in_channels, key['num_groups']))
         cls = torch.nn.GroupNorm
+    elif norm_type == 'batch+group':
+        return torch.nn.Sequential(
+            rectify_normalizer(in_channels, 'batch', dim=dim),
+            rectify_normalizer(in_channels, ub.dict_union({'type': 'group'}, key), dim=dim),
+        )
     else:
         raise KeyError('unknown type: {}'.format(key))
     assert in_channels_key not in key
@@ -146,8 +156,8 @@ class _ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
         else:
             raise ValueError(dim)
 
-        norm = util.rectify_normalizer(out_channels, norm, dim=dim)
-        noli = util.rectify_nonlinearity(noli, dim=dim)
+        norm = rectify_normalizer(out_channels, norm, dim=dim)
+        noli = rectify_nonlinearity(noli, dim=dim)
 
         self.add_module('conv', conv)
         if norm:

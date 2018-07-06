@@ -1,5 +1,8 @@
 """
 Dual Path Networks in PyTorch.
+
+References:
+    https://github.com/kuangliu/pytorch-cifar/blob/master/models/dpn.py
 """
 import torch
 import torch.nn as nn
