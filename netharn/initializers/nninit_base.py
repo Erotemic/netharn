@@ -2,6 +2,7 @@ from torch.autograd import Variable
 import numpy as np
 import torch
 import ubelt as ub
+from netharn.util.util_torch import trainable_layers
 
 
 class _BaseInitializer(object):
@@ -94,53 +95,6 @@ def apply_initializer(input, func, funckw):
         model = input
         for item in trainable_layers(model):
             apply_initializer(item, func, funckw)
-
-
-def trainable_layers(model, names=False):
-    """
-    Example:
-        >>> from netharn import initializers
-        >>> import torchvision
-        >>> model = torchvision.models.AlexNet()
-        >>> list(initializers.trainable_layers(model, names=True))
-    """
-    if names:
-        stack = [('', '', model)]
-        while stack:
-            prefix, basename, item = stack.pop()
-            name = '.'.join([p for p in [prefix, basename] if p])
-            if isinstance(item, torch.nn.modules.conv._ConvNd):
-                yield name, item
-            elif isinstance(item, torch.nn.modules.batchnorm._BatchNorm):
-                yield name, item
-            elif hasattr(item, 'reset_parameters'):
-                yield name, item
-
-            child_prefix = name
-            for child_basename, child_item in list(item.named_children())[::-1]:
-                stack.append((child_prefix, child_basename, child_item))
-    else:
-        queue = [model]
-        while queue:
-            item = queue.pop(0)
-            # TODO: need to put all trainable layer types here
-            # (I think this is just everything with reset_parameters)
-            if isinstance(item, torch.nn.modules.conv._ConvNd):
-                yield item
-            elif isinstance(item, torch.nn.modules.batchnorm._BatchNorm):
-                yield item
-            elif hasattr(item, 'reset_parameters'):
-                yield item
-            # if isinstance(input, torch.nn.modules.Linear):
-            #     yield item
-            # if isinstance(input, torch.nn.modules.Bilinear):
-            #     yield item
-            # if isinstance(input, torch.nn.modules.Embedding):
-            #     yield item
-            # if isinstance(input, torch.nn.modules.EmbeddingBag):
-            #     yield item
-            for child in item.children():
-                queue.append(child)
 
 
 def load_partial_state(model, model_state_dict, initializer=None):
