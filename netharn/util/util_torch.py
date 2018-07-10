@@ -50,14 +50,15 @@ class grad_context(object):
             return False
 
 
-def DisableBatchNorm(object):
+class DisableBatchNorm(object):
     def __init__(self, model, enabled=True):
         self.model = model
         self.enabled = enabled
-        self.previous_state = {}
+        self.previous_state = None
 
     def __enter__(self):
         if self.enabled:
+            self.previous_state = {}
             for name, layer in trainable_layers(self.model, names=True):
                 if isinstance(layer, torch.nn.modules.batchnorm._BatchNorm):
                     self.previous_state[name] = layer.training
@@ -65,7 +66,7 @@ def DisableBatchNorm(object):
         return self
 
     def __exit__(self, *args):
-        if self.enabled:
+        if self.previous_state:
             for name, layer in trainable_layers(self.model, names=True):
                 if name in self.previous_state:
                     layer.training = self.previous_state[name]
