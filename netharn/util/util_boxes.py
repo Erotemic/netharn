@@ -17,16 +17,17 @@ def box_ious(boxes1, boxes2, bias=0, mode=None):
 
     Example:
         >>> # xdoctest: +IGNORE_WHITESPACE
+        >>> from netharn.util.util_boxes import *
         >>> boxes1 = Boxes.random(5, scale=10.0, rng=0, format='tlbr').data
         >>> boxes2 = Boxes.random(7, scale=10.0, rng=1, format='tlbr').data
         >>> ious = box_ious(boxes1, boxes2)
         >>> print(ub.repr2(ious.tolist(), precision=2))
         [
-            [0.00, 0.00, 0.28, 0.00, 0.00, 0.20, 0.01],
-            [0.00, 0.00, 0.50, 0.00, 0.04, 0.06, 0.00],
-            [0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
-            [0.00, 0.00, 0.02, 0.00, 0.00, 0.00, 0.00],
-            [0.00, 0.00, 0.19, 0.03, 0.00, 0.00, 0.00],
+            [0.00, 0.00, 0.00, 0.00, 0.00, 0.01, 0.01],
+            [0.00, 0.00, 0.00, 0.00, 0.00, 0.02, 0.01],
+            [0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.02],
+            [0.32, 0.02, 0.01, 0.07, 0.24, 0.12, 0.55],
+            [0.00, 0.00, 0.00, 0.11, 0.00, 0.12, 0.04],
         ]
 
     Example:
@@ -200,6 +201,7 @@ class _BoxConversionMixins(object):
 
     format_aliases = {
         'xywh': 'tlwh',
+        # 'tlwh': 'xywh',
     }
 
     def toformat(self, format, copy=True):
@@ -615,9 +617,9 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>> anchors = np.array([[.5, .5], [.3, .3]])
             >>> Boxes.random(3, rng=0, scale=100, anchors=anchors)
             <Boxes(tlwh,
-                array([[23, 24, 51, 50],
-                       [48, 41, 30, 28],
-                       [29, 27, 34, 28]]))>
+                array([[ 2, 13, 51, 51],
+                       [32, 51, 32, 36],
+                       [36, 28, 23, 26]]))>
         """
         from netharn import util
         rng = util.ensure_rng(rng)
@@ -641,7 +643,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             anchor_xs = rng.randint(0, len(anchors), size=num)
             base_whs = anchors[anchor_xs]
             rand_whs = np.clip(
-                base_whs * np.exp(np.random.randn(num, 2) * anchor_std), 0, 1)
+                base_whs * np.exp(rng.randn(num, 2) * anchor_std), 0, 1)
             # Allow cxy to vary within the allowed range
             min_cxy = rand_whs / 2
             max_cxy = (1 - min_cxy)

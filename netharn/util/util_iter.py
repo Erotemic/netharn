@@ -7,6 +7,9 @@ def roundrobin(iterables):
     useful if you only intend to extract a fixed number of items from the
     resulting iterable. Startup is instantainous.
 
+    References:
+        https://docs.python.org/3.8/library/itertools.html
+
     Args:
         iterables : an iterable of iterables
 

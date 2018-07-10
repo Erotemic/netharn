@@ -81,4 +81,7 @@ if __name__ == '__main__':
     CommandLine:
         python ~/code/netharn/tests/test_restart_lr.py
     """
+    import warnings
+    warnings.filterwarnings('error')
+
     test_restart_lr()

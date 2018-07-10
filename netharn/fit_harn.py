@@ -97,7 +97,8 @@ __all__ = ['FitHarn']
 MIXINS = []
 
 
-class StopTraining(StopIteration):
+# class StopTraining(StopIteration):
+class StopTraining(Exception):
     """
     Signals that training should terminate
     """

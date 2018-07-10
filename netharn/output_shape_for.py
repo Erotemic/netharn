@@ -10,6 +10,9 @@ except ImportError:
 REGISTERED_OUTPUT_SHAPE_TYPES = []
 
 
+SHAPE_CLS = tuple  # We exepct shapes to be specified as this class
+
+
 def compute_type(type):
     def _wrap(func):
         if type is not None:
@@ -60,8 +63,8 @@ class OutputShapeFor(object):
         """
         # Run the output shape computation
         expected_output_shape = self(input_shape)
-        if isinstance(expected_output_shape, tuple):
-            expected_output_shape = list(expected_output_shape)
+        # if isinstance(expected_output_shape, list):
+        #     expected_output_shape = SHAPE_CLS(expected_output_shape)
 
         # Create dummy inputs and send them through the network
         inputs = torch.randn(input_shape)
@@ -72,14 +75,19 @@ class OutputShapeFor(object):
         if isinstance(outputs, dict):
             assert isinstance(expected_output_shape, dict), (
                 'if outputs is a dict output shape must be a corresponding dict')
-            computed_output_shape = {k: v.shape for k, v in outputs.items()}
+            dict_cls = outputs.__class__  # handle odict
+            computed_output_shape = dict_cls([
+                (k, SHAPE_CLS(v.shape)) for k, v in outputs.items()])
         elif isinstance(outputs, tuple):
             # Allow outputs to be a tuple of tensors
-            computed_output_shape = [list(o.shape) for o in outputs]
+            computed_output_shape = [SHAPE_CLS(o.shape) for o in outputs]
         else:
-            computed_output_shape = list(outputs.shape)
+            computed_output_shape = SHAPE_CLS(outputs.shape)
 
         if computed_output_shape != expected_output_shape:
+            import ubelt as ub
+            print('expected_output_shape = {}'.format(ub.repr2(expected_output_shape, nl=0)))
+            print('computed_output_shape = {}'.format(ub.repr2(computed_output_shape, nl=0)))
             raise AssertionError(
                 'computed shape {!r} != expected shape {!r}'.format(
                     computed_output_shape,
@@ -109,7 +117,7 @@ class OutputShapeFor(object):
         (N, C, H_in, W_in) = input_shape
         H_out = math.floor(H_in * module.scale_factor)
         W_out = math.floor(W_in  * module.scale_factor)
-        output_shape = (N, C, H_out, W_out)
+        output_shape = SHAPE_CLS([N, C, H_out, W_out])
         return output_shape
 
     @staticmethod
@@ -145,7 +153,7 @@ class OutputShapeFor(object):
         else:
             DIMS_out = ensure_iterablen(module.size, len(DIMS_in))
 
-        output_shape = tuple([N, C] + DIMS_out)
+        output_shape = SHAPE_CLS([N, C] + DIMS_out)
         return output_shape
 
     @staticmethod
@@ -244,7 +252,7 @@ class OutputShapeFor(object):
             (D_in - 1) * stride[i] - 2 * padding[i] + kernel_size[i] + output_padding[i]
             for i, D_in in enumerate(DIMS_in)
         ]
-        output_shape = tuple([N, C_out] + DIMS_out)
+        output_shape = SHAPE_CLS([N, C_out] + DIMS_out)
         return output_shape
 
     @staticmethod
@@ -276,7 +284,7 @@ class OutputShapeFor(object):
             math.floor((D_in  + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1)
             for i, D_in in enumerate(DIMS_in)
         ]
-        output_shape = tuple([N, C_out] + DIMS_out)
+        output_shape = SHAPE_CLS([N, C_out] + DIMS_out)
         return output_shape
 
     @staticmethod
@@ -313,7 +321,7 @@ class OutputShapeFor(object):
             math.floor((D_in  + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1)
             for i, D_in in enumerate(DIMS_in)
         ]
-        output_shape = tuple([N, C] + DIMS_out)
+        output_shape = SHAPE_CLS([N, C] + DIMS_out)
         return output_shape
 
     @staticmethod
@@ -337,7 +345,7 @@ class OutputShapeFor(object):
             math.floor((D_in + 2 * padding[i] - kernel_size[i]) / stride[i] + 1)
             for i, D_in in enumerate(DIMS_in)
         ]
-        output_shape = tuple([N, C] + DIMS_out)
+        output_shape = SHAPE_CLS([N, C] + DIMS_out)
         return output_shape
 
     @staticmethod
@@ -352,7 +360,7 @@ class OutputShapeFor(object):
         """
         N, *other, in_feat = input_shape
         output_shape = [N] + other + [module.out_features]
-        return output_shape
+        return SHAPE_CLS(output_shape)
 
     @staticmethod
     @compute_type(nn.GroupNorm)
@@ -517,8 +525,7 @@ class OutputShapeFor(object):
     @staticmethod
     @compute_type(torch.cat)
     def cat(input_shapes, dim=0):
-        r"""
-
+        """
         Example:
             >>> from netharn.output_shape_for import *
             >>> input_shape1 = (1, 3, 256, 256)
@@ -526,7 +533,7 @@ class OutputShapeFor(object):
             >>> input_shapes = [input_shape1, input_shape2]
             >>> output_shape = OutputShapeFor(torch.cat)(input_shapes, dim=1)
             >>> print('output_shape = {!r}'.format(output_shape))
-            output_shape = [1, 7, 256, 256]
+            output_shape = (1, 7, 256, 256)
         """
         n_dims = max(map(len, input_shapes))
         assert n_dims == min(map(len, input_shapes))
@@ -540,7 +547,7 @@ class OutputShapeFor(object):
                         output_shape[i] += v
                     else:
                         assert output_shape[i] == v, 'inconsistent dims {}'.format(input_shapes)
-        return output_shape
+        return SHAPE_CLS(output_shape)
 
     @staticmethod
     @compute_type(DataSerial)
