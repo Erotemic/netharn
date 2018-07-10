@@ -65,8 +65,7 @@ else:
                                             InternalRunningStats, MovingAve,
                                             RunningStats, WindowedMovingAve,
                                             absdev, stats_dict,)
-    from netharn.util.util_boxes import (Boxes, box_ious, box_ious_py,
-                                         box_ious_torch,)
+    from netharn.util.util_boxes import (Boxes, box_ious,)
     from netharn.util.util_cachestamp import (CacheStamp,)
     from netharn.util.util_cv2 import (draw_boxes_on_image, draw_text_on_image,
                                        putMultiLineText,)
@@ -105,12 +104,12 @@ else:
                'Stitcher', 'WindowedMovingAve', 'absdev', 'adjust_gamma',
                'adjust_subplots', 'aggensure', 'align_paths', 'apply_grouping',
                'argsubmax', 'argsubmaxima', 'atleast_3channels', 'atleast_nd',
-               'autompl', 'axes_extent', 'box_ious', 'box_ious_py',
-               'box_ious_torch', 'check_aligned', 'colorbar', 'colorbar_image',
-               'compact_idstr', 'convert_colorspace', 'copy_figure_to_clipboard',
-               'deterministic_shuffle', 'dict_intersection', 'distinct_colors',
-               'distinct_markers', 'draw_border', 'draw_boxes',
-               'draw_boxes_on_image', 'draw_line_segments', 'draw_text_on_image',
+               'autompl', 'axes_extent', 'box_ious', 'check_aligned', 'colorbar',
+               'colorbar_image', 'compact_idstr', 'convert_colorspace',
+               'copy_figure_to_clipboard', 'deterministic_shuffle',
+               'dict_intersection', 'distinct_colors', 'distinct_markers',
+               'draw_border', 'draw_boxes', 'draw_boxes_on_image',
+               'draw_line_segments', 'draw_text_on_image',
                'dump_global_profile_report', 'dumpsafe', 'dynamic_profile',
                'ensure_alpha_channel', 'ensure_float01', 'ensure_fnum',
                'ensure_grayscale', 'ensure_rng', 'ensure_ulimit',

@@ -3,9 +3,9 @@ import torch
 import ubelt as ub
 
 try:
-    from netharn.util.cython_boxes import bbox_ious_c
+    from netharn.util.cython_boxes import bbox_ious_c as _bbox_ious_c
 except ImportError:
-    bbox_ious_c = None
+    _bbox_ious_c = None
 
 
 def box_ious(boxes1, boxes2, bias=0, mode=None):
@@ -32,7 +32,7 @@ def box_ious(boxes1, boxes2, bias=0, mode=None):
     Example:
         >>> boxes1 = Boxes.random(5, scale=10.0, rng=0, format='tlbr').data
         >>> boxes2 = Boxes.random(7, scale=10.0, rng=1, format='tlbr').data
-        >>> if bbox_ious_c is not None:
+        >>> if _bbox_ious_c is not None:
         >>>     ious_c = box_ious(boxes1, boxes2, bias=0, mode='c')
         >>>     ious_py = box_ious(boxes1, boxes2, bias=0, mode='py')
         >>>     assert np.all(np.isclose(ious_c, ious_py))
@@ -44,64 +44,30 @@ def box_ious(boxes1, boxes2, bias=0, mode=None):
         if torch.is_tensor(boxes1):
             mode = 'torch'
         else:
-            mode = 'py' if bbox_ious_c is None else 'c'
+            mode = 'py' if _bbox_ious_c is None else 'c'
 
     if mode == 'torch' or torch.is_tensor(boxes1):
         # TODO: add tests for equality with other methods or show why it should
         # be different.
         # NOTE: this is done in boxes.ious
-        return box_ious_torch(boxes1, boxes2, bias)
+        return _box_ious_torch(boxes1, boxes2, bias)
     elif mode == 'c':
-        return bbox_ious_c(boxes1.astype(np.float32),
-                           boxes2.astype(np.float32), bias)
+        return _bbox_ious_c(boxes1.astype(np.float32),
+                            boxes2.astype(np.float32), bias)
     elif mode == 'py':
-        return box_ious_py(boxes1, boxes2, bias)
+        return _box_ious_py(boxes1, boxes2, bias)
     else:
         raise KeyError(mode)
 
 
-# def light_bbox_ious_cxywh_bias0(boxes1, boxes2):
-#     """ Compute IOU between all boxes from ``boxes1`` with all boxes from ``boxes2``.
-
-#     Notes:
-#         Accepts cxywh format and the bias is 0
-
-#     Args:
-#         boxes1 (torch.Tensor): List of bounding boxes
-#         boxes2 (torch.Tensor): List of bounding boxes
-
-#     Note:
-#         List format: [[xc, yc, w, h],...]
-
-#     Example:
-#         >>> boxes1 = Boxes.random(5, scale=10.0, rng=0, format='cxywh', tensor=True).data
-#         >>> boxes2 = Boxes.random(7, scale=10.0, rng=1, format='cxywh', tensor=True).data
-#         >>> bias = 1
-#         >>> ious = light_bbox_ious(boxes1, boxes2)
-#     """
-#     b1x1, b1y1 = (boxes1[:, :2] - (boxes1[:, 2:4] / 2)).split(1, 1)
-#     b1x2, b1y2 = (boxes1[:, :2] + (boxes1[:, 2:4] / 2)).split(1, 1)
-#     b2x1, b2y1 = (boxes2[:, :2] - (boxes2[:, 2:4] / 2)).split(1, 1)
-#     b2x2, b2y2 = (boxes2[:, :2] + (boxes2[:, 2:4] / 2)).split(1, 1)
-
-#     dx = (b1x2.min(b2x2.t()) - b1x1.max(b2x1.t())).clamp(min=0)
-#     dy = (b1y2.min(b2y2.t()) - b1y1.max(b2y1.t())).clamp(min=0)
-#     intersections = dx * dy
-
-#     areas1 = (b1x2 - b1x1) * (b1y2 - b1y1)
-#     areas2 = (b2x2 - b2x1) * (b2y2 - b2y1)
-#     unions = (areas1 + areas2.t()) - intersections
-#     return intersections / unions
-
-
-def box_ious_torch(boxes1, boxes2, bias=1):
+def _box_ious_torch(boxes1, boxes2, bias=0):
     """
     Example:
         >>> boxes1 = Boxes.random(5, scale=10.0, rng=0, format='tlbr', tensor=True).data
         >>> boxes2 = Boxes.random(7, scale=10.0, rng=1, format='tlbr', tensor=True).data
         >>> bias = 0
-        >>> ious = box_ious_torch(boxes1, boxes2, bias)
-        >>> ious_np = box_ious_py(boxes1.numpy(), boxes2.numpy(), bias)
+        >>> ious = _box_ious_torch(boxes1, boxes2, bias)
+        >>> ious_np = _box_ious_py(boxes1.numpy(), boxes2.numpy(), bias)
         >>> assert np.all(ious_np == ious.numpy())
 
     Benchmark:
@@ -120,7 +86,7 @@ def box_ious_torch(boxes1, boxes2, bias=1):
             t1 = ubelt.Timerit(N, bestof=10, label='time-torch-cpu')
             for timer in t1:
                 with timer:
-                    box_ious_torch(boxes1, boxes2, bias)
+                    _box_ious_torch(boxes1, boxes2, bias)
             ydata['cpu'].append(t1.ave_secs)
 
             boxes1 = boxes1.cuda()
@@ -128,7 +94,7 @@ def box_ious_torch(boxes1, boxes2, bias=1):
             t2 = ubelt.Timerit(N, bestof=10, label='time-torch-gpu')
             for timer in t2:
                 with timer:
-                    box_ious_torch(boxes1, boxes2, bias)
+                    _box_ious_torch(boxes1, boxes2, bias)
                     torch.cuda.synchronize()
             ydata['gpu'].append(t2.ave_secs)
 
@@ -137,7 +103,7 @@ def box_ious_torch(boxes1, boxes2, bias=1):
             t3 = ubelt.Timerit(N, bestof=10, label='time-numpy')
             for timer in t3:
                 with timer:
-                    box_ious_py(boxes1, boxes2, bias)
+                    _box_ious_py(boxes1, boxes2, bias)
             ydata['numpy'].append(t3.ave_secs)
 
         nh.util.mplutil.qtensure()
@@ -175,7 +141,7 @@ def box_ious_torch(boxes1, boxes2, bias=1):
     return ious
 
 
-def box_ious_py(boxes1, boxes2, bias=1):
+def _box_ious_py(boxes1, boxes2, bias=0):
     """
     This is the fastest python implementation of bbox_ious I found
     """
@@ -205,6 +171,26 @@ def box_ious_py(boxes1, boxes2, bias=1):
     union_areas = (areas_sum - inter_areas)
     ious = inter_areas / union_areas
     return ious
+
+
+def _isect_areas(boxes1, boxes2, bias=0):
+    """
+    Returns only the area of the intersection
+    """
+    x_maxs = np.minimum(boxes1[:, 2][:, None], boxes2[:, 2])
+    x_mins = np.maximum(boxes1[:, 0][:, None], boxes2[:, 0])
+
+    iws = np.maximum(x_maxs - x_mins + bias, 0)
+    # note: it would be possible to significantly reduce the computation by
+    # filtering any box pairs where iws <= 0. Not sure how to do with numpy.
+
+    y_maxs = np.minimum(boxes1[:, 3][:, None], boxes2[:, 3])
+    y_mins = np.maximum(boxes1[:, 1][:, None], boxes2[:, 1])
+
+    ihs = np.maximum(y_maxs - y_mins + bias, 0)
+
+    inter_areas = iws * ihs
+    return inter_areas
 
 
 class _BoxConversionMixins(object):
@@ -354,6 +340,42 @@ class _BoxPropertyMixins(object):
     @property
     def shape(self):
         return self.data.shape
+
+    @property
+    def width(self):
+        """
+        Example:
+            >>> Boxes([25, 30, 15, 10], 'tlwh').width
+            array([15])
+            >>> Boxes([[25, 30, 0, 0]], 'tlwh').width
+            array([[0]])
+        """
+        w = self.to_tlwh().components[2]
+        return w
+
+    @property
+    def height(self):
+        """
+        Example:
+            >>> Boxes([25, 30, 15, 10], 'tlwh').height
+            array([10])
+            >>> Boxes([[25, 30, 0, 0]], 'tlwh').height
+            array([[0]])
+        """
+        h = self.to_tlwh().components[3]
+        return h
+
+    @property
+    def aspect_ratio(self):
+        """
+        Example:
+            >>> Boxes([25, 30, 15, 10], 'tlwh').aspect_ratio
+            array([1.5])
+            >>> Boxes([[25, 30, 0, 0]], 'tlwh').aspect_ratio
+            array([[nan]])
+        """
+        with np.errstate(divide='ignore', invalid='ignore'):
+            return self.width / self.height
 
     @property
     def area(self):
@@ -560,6 +582,9 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         """
         return np.array_equal(self.data, other.data) and self.format == other.format
 
+    def __len__(self):
+        return len(self.data)
+
     def __nice__(self):
         # return self.format + ', shape=' + str(list(self.data.shape))
         data_repr = repr(self.data)
@@ -570,7 +595,8 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
     __repr__ = ub.NiceRepr.__str__
 
     @classmethod
-    def random(Boxes, num=1, scale=1.0, format='tlwh', rng=None, tensor=False):
+    def random(Boxes, num=1, scale=1.0, format='tlwh', rng=None, tensor=False,
+               anchors=None, anchor_std=1.0 / 6):
         """
         Makes random boxes
 
@@ -578,28 +604,61 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>> # xdoctest: +IGNORE_WHITESPACE
             >>> Boxes.random(3, rng=0, scale=100)
             <Boxes(tlwh,
-                array([[27, 35, 30, 27],
-                       [21, 32, 21, 44],
-                       [48, 19, 39, 26]]))>
+                array([[54, 54,  6, 17],
+                       [42, 64,  1, 25],
+                       [79, 38, 17, 14]]))>
             >>> Boxes.random(3, rng=0, scale=100, tensor=True)
             <Boxes(tlwh,
-                tensor([[ 27,  35,  30,  27],
-                        [ 21,  32,  21,  44],
-                        [ 48,  19,  39,  26]]))>
+                tensor([[ 54,  54,   6,  17],
+                        [ 42,  64,   1,  25],
+                        [ 79,  38,  17,  14]]))>
+            >>> anchors = np.array([[.5, .5], [.3, .3]])
+            >>> Boxes.random(3, rng=0, scale=100, anchors=anchors)
+            <Boxes(tlwh,
+                array([[23, 24, 51, 50],
+                       [48, 41, 30, 28],
+                       [29, 27, 34, 28]]))>
         """
         from netharn import util
         rng = util.ensure_rng(rng)
-
-        tlwh = (rng.rand(num, 4) * scale / 2)
         as_integer = isinstance(scale, int)
+
+        if anchors is None:
+            tlbr = rng.rand(num, 4)
+
+            tl_x = np.minimum(tlbr[:, 0], tlbr[:, 2])
+            tl_y = np.minimum(tlbr[:, 1], tlbr[:, 3])
+            br_x = np.maximum(tlbr[:, 0], tlbr[:, 2])
+            br_y = np.maximum(tlbr[:, 1], tlbr[:, 3])
+
+            tlbr[:, 0] = tl_x
+            tlbr[:, 1] = tl_y
+            tlbr[:, 2] = br_x
+            tlbr[:, 3] = br_y
+        else:
+            assert np.all(anchors <= 1.0)
+            assert np.all(anchors > 0.0)
+            anchor_xs = rng.randint(0, len(anchors), size=num)
+            base_whs = anchors[anchor_xs]
+            rand_whs = np.clip(
+                base_whs * np.exp(np.random.randn(num, 2) * anchor_std), 0, 1)
+            # Allow cxy to vary within the allowed range
+            min_cxy = rand_whs / 2
+            max_cxy = (1 - min_cxy)
+            rel_cxy = rng.rand(num, 2) * .99
+            rand_cxwy = rel_cxy * (max_cxy - min_cxy) + min_cxy
+            cxywh = np.hstack([rand_cxwy, rand_whs])
+            tlbr = Boxes(cxywh, 'cxywh').to_tlbr().data
+
+        tlbr = tlbr * scale
         if as_integer:
-            tlwh = tlwh.astype(np.int)
+            tlbr = tlbr.astype(np.int)
         if tensor:
             if as_integer:
-                tlwh = torch.LongTensor(tlwh)
+                tlbr = torch.LongTensor(tlbr)
             else:
-                tlwh = torch.FloatTensor(tlwh)
-        boxes = Boxes(tlwh, format='tlwh').toformat(format, copy=False)
+                tlbr = torch.FloatTensor(tlbr)
+        boxes = Boxes(tlbr, format='tlbr').toformat(format, copy=False)
         return boxes
 
     def copy(self):
@@ -622,12 +681,32 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
 
         Example:
             >>> self = Boxes([[25, 30, 15, 10]], 'tlbr')
-            >>> flags = [False]
+            >>> self.compress([True])
+            <Boxes(tlbr, array([[25, 30, 15, 10]]))>
+            >>> self.compress([False])
+            <Boxes(tlbr, array([], shape=(0, 4), dtype=int64))>
         """
         if len(self.data.shape) != 2:
             raise ValueError('data must be 2d got {}d'.format(len(self.data.shape)))
         self2 = self if inplace else self.copy()
         self2.data = self2.data.compress(flags, axis=axis)
+        return self2
+
+    def take(self, idxs, axis=0, inplace=False):
+        """
+        Filters boxes based on a boolean criterion
+
+        Example:
+            >>> self = Boxes([[25, 30, 15, 10]], 'tlbr')
+            >>> self.take([0])
+            <Boxes(tlbr, array([[25, 30, 15, 10]]))>
+            >>> self.take([])
+            <Boxes(tlbr, array([], shape=(0, 4), dtype=int64))>
+        """
+        if len(self.data.shape) != 2:
+            raise ValueError('data must be 2d got {}d'.format(len(self.data.shape)))
+        self2 = self if inplace else self.copy()
+        self2.data = self2.data.take(idxs, axis=axis)
         return self2
 
     def numpy(self):
@@ -651,6 +730,18 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>> assert np.all(np.isclose(overlaps, [0.21, 0.63, 0.04])), repr(overlaps)
 
         Examples:
+            >>> # xdoctest: +IGNORE_WHITESPACE
+            >>> Boxes(np.empty(0), 'tlwh').ious(Boxes(np.empty(4), 'tlwh')).shape
+            (0,)
+            >>> #Boxes(np.empty(4), 'tlwh').ious(Boxes(np.empty(0), 'tlwh')).shape
+            >>> Boxes(np.empty((0, 4)), 'tlwh').ious(Boxes(np.empty((0, 4)), 'tlwh')).shape
+            (0, 0)
+            >>> Boxes(np.empty((1, 4)), 'tlwh').ious(Boxes(np.empty((0, 4)), 'tlwh')).shape
+            (1, 0)
+            >>> Boxes(np.empty((0, 4)), 'tlwh').ious(Boxes(np.empty((1, 4)), 'tlwh')).shape
+            (0, 1)
+
+        Examples:
             >>> formats = ['cxywh', 'tlwh', 'tlbr']
             >>> istensors = [False, True]
             >>> results = {}
@@ -666,18 +757,55 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>> from functools import partial
             >>> assert ub.allsame(results.values(), partial(np.allclose, atol=1e-07))
         """
+
         other_is_1d = (len(other.shape) == 1)
         if other_is_1d:
             # `box_ious` expect 2d input
             other = other[None, :]
 
-        self_tlbr = self.to_tlbr(copy=False)
-        other_tlbr = other.to_tlbr(copy=False)
-        ious = box_ious(self_tlbr.data, other_tlbr.data, bias=bias, mode=mode)
+        # self_is_1d = (len(self.shape) == 1)
+        # if self_is_1d:
+        #     self = self[None, :]
+
+        if len(other) == 0 or len(self) == 0:
+            ious = np.empty((len(self), len(other)))
+        else:
+            self_tlbr = self.to_tlbr(copy=False)
+            other_tlbr = other.to_tlbr(copy=False)
+
+            ious = box_ious(self_tlbr.data, other_tlbr.data, bias=bias, mode=mode)
 
         if other_is_1d:
             ious = ious[..., 0]
+
+        # if self_is_1d:
+        #     ious = ious[0, ...]
         return ious
+
+    def isect_area(self, other, bias=0):
+        """
+        Intersection part of intersection over union computation
+
+        Examples:
+            >>> # xdoctest: +IGNORE_WHITESPACE
+            >>> self = Boxes.random(5, scale=10.0, rng=0, format='tlbr')
+            >>> other = Boxes.random(3, scale=10.0, rng=1, format='tlbr')
+            >>> isect = self.isect_area(other, bias=0)
+            >>> ious_v1 = isect / ((self.area + other.area.T) - isect)
+            >>> ious_v2 = self.ious(other, bias=0)
+            >>> assert np.allclose(ious_v1, ious_v2)
+        """
+        other_is_1d = (len(other.shape) == 1)
+        if other_is_1d:
+            # `box_ious` expect 2d input
+            other = other[None, :]
+        self_tlbr = self.to_tlbr(copy=False)
+        other_tlbr = other.to_tlbr(copy=False)
+
+        isect = _isect_areas(self_tlbr.data, other_tlbr.data)
+        if other_is_1d:
+            isect = isect[..., 0]
+        return isect
 
     def view(self, *shape):
         """

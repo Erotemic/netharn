@@ -38,7 +38,7 @@ class CacheStamp(object):
         >>> import ubelt as ub
         >>> from os.path import join
         >>> # Stamp the computation of expensive-to-compute.txt
-        >>> dpath = ub.ensure_app_cache_dir('netharn', 'test-cache-stemp')
+        >>> dpath = ub.ensure_app_cache_dir('netharn', 'test-cache-stamp')
         >>> product = join(dpath, 'expensive-to-compute.txt')
         >>> self = CacheStamp('somedata', 'someconfig', dpath, product)
         >>> if self.expired():
