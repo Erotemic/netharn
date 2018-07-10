@@ -61,6 +61,7 @@ def DisableBatchNorm(object):
             for name, layer in trainable_layers(self.model, names=True):
                 if isinstance(layer, torch.nn.modules.batchnorm._BatchNorm):
                     self.previous_state[name] = layer.training
+                    layer.training = False
 
     def __exit__(self, *args):
         if self.enabled:
