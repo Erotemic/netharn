@@ -2501,7 +2501,7 @@ def draw_border(ax, color, lw=2, offset=None, adjust=True):
     rect = ax.add_patch(rect)
     rect.set_clip_on(False)
     rect.set_fill(False)
-    rect.set_edgecolor(color)
+    rect.set_edgecolor(Color(color).as01('rgb'))
     return rect
 
 

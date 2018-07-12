@@ -141,20 +141,15 @@ class _ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
                  groups=1):
         super().__init__()
 
-        if dim == 1:
-            conv = torch.nn.Conv1d(in_channels, out_channels,
-                                   kernel_size=kernel_size, padding=padding,
-                                   stride=stride, groups=groups, bias=bias)
-        elif dim == 2:
-            conv = torch.nn.Conv2d(in_channels, out_channels,
-                                   kernel_size=kernel_size, padding=padding,
-                                   stride=stride, groups=groups, bias=bias)
-        elif dim == 3:
-            conv = torch.nn.Conv3d(in_channels, out_channels,
-                                   kernel_size=kernel_size, padding=padding,
-                                   stride=stride, groups=groups, bias=bias)
-        else:
-            raise ValueError(dim)
+        conv_cls = {
+            1: torch.nn.Conv1d,
+            2: torch.nn.Conv2d,
+            3: torch.nn.Conv3d,
+        }[dim]
+
+        conv = conv_cls(in_channels, out_channels, kernel_size=kernel_size,
+                        padding=padding, stride=stride, groups=groups,
+                        bias=bias)
 
         norm = rectify_normalizer(out_channels, norm, dim=dim)
         noli = rectify_nonlinearity(noli, dim=dim)
