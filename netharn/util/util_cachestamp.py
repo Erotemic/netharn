@@ -1,4 +1,3 @@
-from os.path import exists
 import ubelt as ub
 
 CacheStamp = ub.CacheStamp
