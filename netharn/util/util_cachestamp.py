@@ -42,7 +42,8 @@ class CacheStamp(object):
         >>> # Stamp the computation of expensive-to-compute.txt
         >>> dpath = ub.ensure_app_cache_dir('netharn', 'test-cache-stamp')
         >>> product = join(dpath, 'expensive-to-compute.txt')
-        >>> self = CacheStamp('somedata', 'someconfig', dpath, product)
+        >>> self = CacheStamp('somedata', cfgstr='someconfig', dpath=dpath,
+        ...                   product=product)
         >>> if self.expired():
         >>>     ub.writeto(product, 'very expensive')
         >>>     self.renew()
