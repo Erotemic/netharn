@@ -145,7 +145,7 @@ class TorchExtension(object):
                 cu_sources=' '.join(cu_sources),
                 extra=extra,
             )
-            info = ub.cmd(command, verbout=1, verbose=2)
+            info = ub.cmd(command, verbose=2)
             if info['ret'] != 0:
                 raise Exception('Failed to build extension ' + self.name)
 
