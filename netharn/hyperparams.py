@@ -57,6 +57,10 @@ from torch.optim.optimizer import required
 import torch.utils.data as torch_data
 
 
+def _hash_data(data):
+    return ub.hash_data(data, hasher='sha512', base='abc', types=True)
+
+
 def _rectify_class(lookup, arg, kw):
     if arg is None:
         return None, {}
@@ -527,7 +531,7 @@ class HyperParams(object):
         elif isinstance(hyper.augment, ub.odict):
             # already specified in json format
             try:
-                ub.hash_data(hyper.augment)
+                _hash_data(hyper.augment)
             except TypeError:
                 raise TypeError('NOT IN ORDERED JSON FORMAT hyper.augment={}'.format(hyper.augment))
             augment_json = hyper.augment
@@ -565,7 +569,7 @@ class HyperParams(object):
                 else:
                     raise TypeError('Specify augment in json format')
                 try:
-                    ub.hash_data(augment_json)
+                    _hash_data(augment_json)
                 except TypeError:
                     print('FAILED TO PRODUCE JSON FORMAT for hyper.augment={}'.format(hyper.augment))
                     raise
@@ -598,7 +602,7 @@ class HyperParams(object):
 
             if request_hash:
                 param_str = util.make_idstr(params)
-                param_str = ub.hash_data(param_str)[0:6]
+                param_str = _hash_data(param_str)[0:6]
             elif request_short:
                 param_str = util.make_short_idstr(params)
             else:

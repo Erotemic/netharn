@@ -36,6 +36,9 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
                 # can append _list to any of these
                 # these can be dictionaries if ydata was also a dict
 
+                xscale in [linear, log, logit, symlog]
+                yscale in [linear, log, logit, symlog]
+
                 plot_kw_keys = ['label', 'color', 'marker', 'markersize',
                     'markeredgewidth', 'linewidth', 'linestyle']
                 any plot_kw key can be a scalar (corresponding to all ydatas),
@@ -495,8 +498,8 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
 
-    xscale          = kwargs.get('xscale', None)
-    yscale          = kwargs.get('yscale', None)
+    xscale = kwargs.get('xscale', None)
+    yscale = kwargs.get('yscale', None)
     if yscale is not None:
         ax.set_yscale(yscale)
     if xscale is not None:

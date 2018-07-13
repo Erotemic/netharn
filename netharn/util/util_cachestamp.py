@@ -6,6 +6,8 @@ class CacheStamp(object):
     """
     Quickly determine if a computation that writes a file has been done.
 
+    DEPRICATE: has been integrated into ubelt
+
     Writes a file that marks that a procedure has been done by writing a
     "stamp" file to disk. Removing the stamp file will force recomputation.
     However, removing or changing the result of the computation may not trigger
