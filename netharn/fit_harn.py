@@ -702,7 +702,11 @@ class ScheduleMixin:
             return True
         return False
 
-    def _step_scheduler(harn, improved=None):
+    def _step_scheduler_batch(harn, bx):
+        if getattr(harn.scheduler, '__batchaware__', False):
+            harn.scheduler.step_batch(bx=bx)
+
+    def _step_scheduler_epoch(harn, improved=None):
         """
         helper function to change the learning rate that handles the way that
         different schedulers might be used.
@@ -871,7 +875,7 @@ class CoreMixin:
             raise StopTraining()
         else:
             # change learning rate (modified optimizer inplace)
-            harn._step_scheduler(improved)
+            harn._step_scheduler_epoch(improved)
 
             harn._update_main_prog_desc()
             harn.main_prog.update(1)
@@ -948,6 +952,9 @@ class CoreMixin:
 
                     prog.update(harn.intervals['display_' + tag])
                     harn._update_prog_postfix(prog)
+
+                # Some schedulers update every batch
+                harn._step_scheduler_batch(bx)
 
         # do a final step when bstep > 1, so the last few batches arent skipped
         if harn.dynamics['batch_step'] > 1:
