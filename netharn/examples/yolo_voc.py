@@ -829,8 +829,9 @@ def setup_harness(bsize=16, workers=0):
     # array(4, 157, 232, 310])
     if not ub.argflag('--eav'):
         lr_step_points = {
-            0:   lr * 0.1 / simulated_bsize,  # burnin
-            4:   lr * 1.0 / simulated_bsize,
+            # 0:   lr * 0.1 / simulated_bsize,  # burnin
+            # 4:   lr * 1.0 / simulated_bsize,
+            0:   lr * 1.0 / simulated_bsize,
             155: lr * 0.1 / simulated_bsize,
             233: lr * 0.01 / simulated_bsize,
         }
@@ -838,8 +839,8 @@ def setup_harness(bsize=16, workers=0):
     else:
         lr_step_points = {
             # dividing by batch size was one of those unpublished details
-            0:   lr * 0.1 / simulated_bsize,
-            1:   lr * 1.0 / simulated_bsize,
+            # 0:   lr * 0.1 / simulated_bsize,
+            0:   lr * 1.0 / simulated_bsize,
             97:  lr * 0.1 / simulated_bsize,
             136: lr * 0.01 / simulated_bsize,
         }
