@@ -193,6 +193,82 @@ class Exponential(_LRScheduler2):
         return new_lrs
 
 
+class BatchLR(_LRScheduler2):
+    __batchaware__ = True
+
+    def __init__(self, optimizer, points, interpolate=False,
+                 last_epoch=-1):
+        if not isinstance(points, dict):
+            raise TypeError(points)
+        self.interpolate = interpolate
+        self.points = points
+
+        # self.optimizer = optimizer
+        # self.last_epoch = last_epoch
+
+        # epochs where the lr changes
+        self.key_epochs = sorted(self.points.keys())
+
+        super(ListedLR, self).__init__(optimizer, last_epoch)
+
+        self.bx = 0
+
+    def step_batch(self, bx=None):
+        if bx is None:
+            self.bx += 1
+        else:
+            self.bx = bx
+
+    def step(self, *a, **kw):
+        self.bx = 0
+        return super().step(*a, **kw)
+
+    step_epoch = step
+
+    def get_lr(self):
+        lr = self._get_epoch_lr(self.last_epoch + 1, self.bx)
+        return lr
+
+    def _get_epoch_lr(self, epoch, bx):
+        """ return lr based on the epoch """
+        key_epochs = self.key_epochs
+        points = self.points
+        base_lrs = self.base_lrs
+
+        assert epoch >= 0
+
+        if epoch in key_epochs:
+            prev_key_epoch = epoch
+            next_key_epoch = epoch
+        else:
+            idx = np.searchsorted(key_epochs, epoch, 'left') - 1
+            prev_key_epoch = key_epochs[idx]
+            if idx < len(key_epochs) - 1:
+                next_key_epoch = key_epochs[idx + 1]
+            else:
+                next_key_epoch = prev_key_epoch
+
+        if self.interpolate:
+            if next_key_epoch == prev_key_epoch:
+                new_lr = points[next_key_epoch]
+            else:
+                prev_lr = points[next_key_epoch]
+                next_lr = points[prev_key_epoch]
+
+                alpha = (epoch - prev_key_epoch) / (next_key_epoch - prev_key_epoch)
+
+                new_lr = alpha * prev_lr + (1 - alpha) * next_lr
+
+            epoch_lrs = [new_lr for _ in base_lrs]
+        else:
+            if epoch < prev_key_epoch:
+                epoch_lrs = base_lrs
+            else:
+                new_lr = points[prev_key_epoch]
+                epoch_lrs = [new_lr for _ in base_lrs]
+        return epoch_lrs
+
+
 if __name__ == '__main__':
     """
     CommandLine:

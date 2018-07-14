@@ -1,45 +1,63 @@
-Cython
-cffi
-psutil
+# For C Extensions
+# ================
+# not sure if this works on windows
+Cython >= 0.28.4
+cffi >= 1.11.5
 
-ubelt
-xdoctest
 
-pygtrie
-numpy
+# Misc
+# ====
+easydict >= 1.7
+psutil >= 5.4.6
+six >= 1.11.0
 
-sortedcontainers
-tqdm
-h5py >= 2.8.0
-bayesian-optimization
-torchvision
-pandas
-tensorboard_logger
-parse
-sympy
-Pillow
-matplotlib
-six
-protobuf
 
-pytest
-pytest-cov
+# Testing
+# =======
+# testing comes first
+xdoctest >= 0.5.1
+pytest >= 3.6.3
+pytest-cov >= 2.5.1
 coverage >= 4.3.4
-tqdm
 
+
+# Core 
+# ====
+# These are absolutely required
+torch >= 0.4.0
+numpy >= 1.14.5
+ubelt >= 0.4.0
+
+
+# Optional(ish)
+# =============
+# With a little work they might actually be optional
+
+parse >= 1.8.4
+tqdm >= 4.23.4
+pandas >= 0.23.3
+Pillow >= 5.2.0
+opencv-python >= 3.4.1
+torchvision >= 0.2.1
+pyqt5  # >= 5.11.2
+matplotlib >= 2.2.2
+h5py >= 2.8.0
+imgaug >= 0.2.6
+pygtrie >= 2.2
+protobuf >= 3.6.0
+tensorboard_logger >= 0.1.0  # actually optional
+
+
+# Other
+# =====
+# I like these packages, but I'm not using them
+
+# sympy
 # xxhash
-
-opencv-python
-pyqt5
-
-imgaug>=0.2.6
-
-
+# bayesian-optimization
 # line_profiler
 # scipy
 # scikit-image
-
 # onnx
-# tensorboard
-
-easydict>=1.7
+# sortedcontainers
+# tensorboard >= 1.8.0

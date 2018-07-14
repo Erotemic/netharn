@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-CommandLine:
-    python ~/code/netharn/netharn/fit_harn.py __doc__
-
 Notes:
     when profiling ensure CUDA_LAUNCH_BLOCKING=1
 
@@ -23,44 +20,94 @@ TODO:
     [x] - move logs to a logs folder. Keep a single master log in the root
     [ ] - Why didnt the best_snapshot.pt get saved in the most recent yolo run?
 
+CommandLine:
+    xdoctest netharn.fit_harn __doc__:0
+
+Notes:
+    In the following example we demonstrate how to use netharn to train a model
+    to solve a toy problem.
+
+    In this toy problem, we do not extend the nh.FitHarn object, so we are
+    using the default behavior of ``run_batch``. The default ``on_batch``, and
+    ``on_epoch`` do nothing, so only loss will be the only measurement of
+    performance.
+
+    For further examples please see the examples directory. These example show
+    how to extend nh.FitHarn to measure performance wrt a particular problem.
+    The MNIST and CIFAR examples are the most simple. The YOLO example is more
+    complex.  The IBEIS example depends on non-public data / software, but can
+    still be useful to look at.  Its complexity is more than CIFAR but less
+    than YOLO.
+
+
 Example:
     >>> import netharn as nh
-    >>> size = 3
-    >>> max_epoch = 10
-    >>> datasets = {
-    >>>     'train': nh.data.ToyData2d(size=size, border=1, n=256, rng=0),
-    >>>     'vali': nh.data.ToyData2d(size=size, border=1, n=128, rng=1),
-    >>> }
-    >>> hyper = {
-    >>>     # --- Data First
-    >>>     'datasets'    : datasets,
-    >>>     'nice'        : 'demo',
+    >>> hyper = nh.HyperParams(**{
+    >>>     # ================
+    >>>     # Environment Components
     >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/demo'),
-    >>>     'loaders'     : {'batch_size': 64},
+    >>>     'nice'        : 'demo',
     >>>     'xpu'         : nh.XPU.cast('auto'),
-    >>>     # --- Algorithm Second
+    >>>     # workdir is a directory where intermediate results can be saved
+    >>>     # nice symlinks <workdir>/fit/nice/<nice> -> ../runs/<hashid>
+    >>>     # XPU auto select a gpu if idle and VRAM>6GB else a cpu
+    >>>     # ================
+    >>>     # Data Components
+    >>>     'datasets'    : {  # dict of plain ol torch.data.Dataset instances
+    >>>         'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
+    >>>         'test': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+    >>>     },
+    >>>     'loaders'     : {'batch_size': 64}, # DataLoader instances or kw
+    >>>     # ================
+    >>>     # Algorithm Components
+    >>>     # Note the (cls, kw) tuple formatting
     >>>     'model'       : (nh.models.ToyNet2d, {}),
     >>>     'optimizer'   : (nh.optimizers.SGD, {
     >>>         'lr': 0.0001
     >>>     }),
-    >>>     'criterion'   : (nh.criterions.CrossEntropyLoss, {}),
-    >>>     #'criterion'   : (nh.criterions.FocalLoss, {}),
+    >>>     # focal loss is usually better than nh.criterions.CrossEntropyLoss
+    >>>     'criterion'   : (nh.criterions.FocalLoss, {}),
     >>>     'initializer' : (nh.initializers.KaimingNormal, {
     >>>         'param': 0,
     >>>     }),
+    >>>     # these may receive an overhaul soon
     >>>     'scheduler'   : (nh.schedulers.ListedLR, {
     >>>         'points': {0: .0001, 2: .01, 5: .015, 6: .005, 9: .001},
     >>>         'interpolate': True,
     >>>     }),
-    >>>     'dynamics'   : {'batch_step': 4},
     >>>     'monitor'     : (nh.Monitor, {
-    >>>         'max_epoch': max_epoch,
+    >>>         'max_epoch': 10,
     >>>     }),
-    >>> }
+    >>>     # dynamics are a config option that modify the behavior of the main
+    >>>     # training loop. These parameters effect the learned model.
+    >>>     'dynamics'   : {'batch_step': 4},
+    >>> })
     >>> harn = FitHarn(hyper)
-    >>> harn.config['use_tqdm'] = 1
+    >>> # non-algorithmic behavior configs (do not change learned models)
+    >>> harn.config['prog_backend'] = 'tqdm'  # I prefer progiter (I may be biased)
+    >>> # start training.
     >>> harn.initialize(reset='delete')
-    >>> harn.run()
+    >>> harn.run()  # note: run calls initialize it hasn't already been called.
+    >>> # xdoc: +IGNORE_WANT
+    RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR
+    Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/olqtvpde -> /home/joncrall/.cache/netharn/demo/fit/nice/demo
+    .... already exists
+    .... and points to the right place
+    Initializing tensorboard (dont forget to start the tensorboard server)
+    Model has 824 parameters
+    Mounting ToyNet2d model on GPU(0)
+    Initializing new model
+     * harn.train_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/olqtvpde'
+     * harn.nice_dpath = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
+    Snapshots will save to harn.snapshot_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/olqtvpde/torch_snapshots'
+    dont forget to start:
+        tensorboard --logdir /home/joncrall/.cache/netharn/demo/fit/nice
+    begin training
+    epoch lr:0.001 │ vloss is unevaluated: 100%|███████████████████████| 10/10 [00:00<00:00, 15.11it/s, wall=Jul:07 EST]10 [00:00<?, ?it/s]
+    train x64 │ loss:0.186 │: 100%|████████████████████████████████████████████████████████| 8/8 [00:00<00:00, 276.93it/s, wall=Jul:07 EST]
+    test x64 │ loss:0.159 │: 100%|█████████████████████████████████████████████████████████| 4/4 [00:00<00:00, 482.91it/s, wall=Jul:07 EST]
+
+
 """
 import glob
 import itertools as it
@@ -267,9 +314,9 @@ class InitializeMixin:
             # ub.symlink(flog_fpath, flog_link, overwrite=True)
 
         if tensorboard_logger:
-            train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
-            harn.log('dont forget to start: tensorboard --logdir ' + train_base)
-            harn.log('Initializing tensorboard')
+            # train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
+            # harn.log('dont forget to start:\n    tensorboard --logdir ' + train_base)
+            harn.log('Initializing tensorboard (dont forget to start the tensorboard server)')
             harn.tlog = tensorboard_logger.Logger(harn.train_dpath,
                                                      flush_secs=2)
         else:
@@ -702,7 +749,11 @@ class ScheduleMixin:
             return True
         return False
 
-    def _step_scheduler(harn, improved=None):
+    def _step_scheduler_batch(harn, bx):
+        if getattr(harn.scheduler, '__batchaware__', False):
+            harn.scheduler.step_batch(bx=bx)
+
+    def _step_scheduler_epoch(harn, improved=None):
         """
         helper function to change the learning rate that handles the way that
         different schedulers might be used.
@@ -756,6 +807,10 @@ class CoreMixin:
         """
         if not harn._initialized:
             harn.initialize()
+
+        if tensorboard_logger:
+            train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
+            harn.log('dont forget to start:\n    tensorboard --logdir ' + train_base)
 
         harn.log('begin training')
 
@@ -871,7 +926,7 @@ class CoreMixin:
             raise StopTraining()
         else:
             # change learning rate (modified optimizer inplace)
-            harn._step_scheduler(improved)
+            harn._step_scheduler_epoch(improved)
 
             harn._update_main_prog_desc()
             harn.main_prog.update(1)
@@ -948,6 +1003,9 @@ class CoreMixin:
 
                     prog.update(harn.intervals['display_' + tag])
                     harn._update_prog_postfix(prog)
+
+                # Some schedulers update every batch
+                harn._step_scheduler_batch(bx)
 
         # do a final step when bstep > 1, so the last few batches arent skipped
         if harn.dynamics['batch_step'] > 1:
