@@ -455,7 +455,11 @@ class ProgMixin:
         return Prog(**kw)
 
     def _batch_msg(harn, metric_dict, batch_size):
-        bs = 'x{}'.format(batch_size)
+        if harn.scheduler and getattr(harn.scheduler, '__batchaware__', False):
+            lr = harn.scheduler.get_lr()
+            bs = 'x{} @ {:.4g}'.format(batch_size, lr)
+        else:
+            bs = 'x{}'.format(batch_size)
         metric_parts = ['{}:{:.3f}'.format(k, v) for k, v in metric_dict.items()]
         msg = ' │ ' .join([bs] + metric_parts) + ' │'
         return msg
@@ -725,17 +729,26 @@ class ScheduleMixin:
             lrs = set(map(lambda group: group['lr'], harn.optimizer.param_groups))
         elif hasattr(harn.scheduler, '_current_lrs'):
             lrs = set(harn.scheduler._current_lrs())
+        elif hasattr(harn.scheduler, 'get_lrs'):
+            # Prefered netharn scheduler style
+            lrs = harn.scheduler.get_lrs()
         elif hasattr(harn.scheduler, 'get_lr'):
-            lrs = set(harn.scheduler.get_lr())
+            # Handle torch schedulers
+            lr = harn.scheduler.get_lr()
+            lrs = set(lr) if ub.iterable(lr) else {lr}
         else:
             # workaround for ReduceLROnPlateau
             lrs = {group['lr'] for group in harn.scheduler.optimizer.param_groups}
 
-        if optim_lrs != lrs:
+        optim_lrs = sorted(optim_lrs)
+        lrs = sorted(lrs)
+
+        if not np.isclose(optim_lrs, lrs):
             harn.error('optim_lrs = {!r}'.format(optim_lrs))
             harn.error('lrs = {!r}'.format(lrs))
             harn.error('epoch = {!r}'.format(harn.epoch))
-            raise AssertionError('optimizer and scheduler are out of sync')
+            raise AssertionError(
+                'optimizer and scheduler are out of sync')
         return lrs
 
     def _check_termination(harn):
@@ -751,14 +764,25 @@ class ScheduleMixin:
 
     def _step_scheduler_batch(harn, bx):
         if getattr(harn.scheduler, '__batchaware__', False):
-            harn.scheduler.step_batch(bx=bx)
+            # TODO: can we determine what the batch size is at this point?
+            harn.scheduler.step_batch()
 
     def _step_scheduler_epoch(harn, improved=None):
         """
         helper function to change the learning rate that handles the way that
         different schedulers might be used.
         """
+        epoch_that_just_finished = harn.epoch
         if harn.scheduler is None:
+            pass
+        elif getattr(harn.scheduler, '__batchaware__', False):
+            # For netharn style detectors step_spoch will change epoch instead
+            # of last_epoch
+
+            # HACK: Currently dont step on epochs for batchaware schedulers
+            # need to figure out how we want to track information when the
+            # dataset size / batch size / are not constant.
+            # harn.scheduler.step_epoch(epoch=epoch_that_just_finished + 1)
             pass
         elif harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
             assert improved is not None, 'must validate for ReduceLROnPlateau schedule'
@@ -793,7 +817,10 @@ class ScheduleMixin:
             # # hack to determine if the rlrop scheduler stepped
             hack_lr_step(harn.scheduler, improved)
         else:
-            harn.scheduler.step(epoch=harn.epoch)
+            # Note that for torch schedulers the epoch param indicates
+            # the epoch that just finished, so calling
+            # harn.scheduler.last_epoch will be the same as harn.epoch
+            harn.scheduler.step(epoch=epoch_that_just_finished)
 
 
 @register_mixin
@@ -925,6 +952,7 @@ class CoreMixin:
         if harn._check_termination():
             raise StopTraining()
         else:
+            # Step to move to the next epoch
             # change learning rate (modified optimizer inplace)
             harn._step_scheduler_epoch(improved)
 
