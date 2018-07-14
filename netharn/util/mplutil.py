@@ -31,6 +31,7 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
                 gridlinewidth, gridlinestyle
             Ticks:
                 num_xticks, num_yticks, tickwidth, ticklength, ticksize
+                xticklabels, yticklabels, <-overwrites previous
             Data:
                 xmin, xmax, ymin, ymax, spread_list
                 # can append _list to any of these
@@ -468,6 +469,15 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
         # Overrides num_xticks
         ax.set_xticks(xdata)
         ax.set_xticklabels(xticklabels)
+
+    xticks = kwargs.get('xticks', None)
+    if xticks is not None:
+        print('xticks = {!r}'.format(xticks))
+        ax.set_xticks(xticks)
+
+    yticks = kwargs.get('yticks', None)
+    if yticks is not None:
+        ax.set_yticks(yticks)
 
     xtick_rotation = kwargs.get('xtick_rotation', None)
     if xtick_rotation is not None:

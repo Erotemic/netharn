@@ -379,7 +379,11 @@ class HyperParams(object):
         """ Instanciate the lr scheduler defined by the hyperparams """
         if hyper.scheduler_cls is None:
             return None
-        scheduler = hyper.scheduler_cls(optimizer, **hyper.scheduler_params)
+
+        kw = hyper.scheduler_params.copy()
+        kw['optimizer'] = optimizer
+        # scheduler = hyper.scheduler_cls(optimizer, **hyper.scheduler_params)
+        scheduler = hyper.scheduler_cls(**kw)
         return scheduler
 
     def make_initializer(hyper):

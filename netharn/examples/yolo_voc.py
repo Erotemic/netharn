@@ -895,9 +895,12 @@ def setup_harness(bsize=16, workers=0):
             'weight_decay': decay * simulated_bsize,
         }),
 
-        'scheduler': (nh.schedulers.ListedLR, {
+        'scheduler': (nh.schedulers.core.YOLOScheduler, {
             'points': lr_step_points,
-            'interpolate': False
+            'interpolate': False,
+            'burn_in': 3.86683584,  # number of epochs to burn_in for. approx 1000 batches?
+            'dset_size': len(datasets['train']),
+            'batch_size': bsize,
         }),
 
         'monitor': (nh.Monitor, {
@@ -960,6 +963,8 @@ if __name__ == '__main__':
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=eav_run2 --lr=0.001 --bstep=4 --workers=8 --eav
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=4
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=4 --nice=pjr_run2 --lr=0.001 --bstep=8 --workers=4
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
