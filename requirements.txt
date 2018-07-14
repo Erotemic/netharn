@@ -27,7 +27,7 @@ pytest-cov
 coverage >= 4.3.4
 tqdm
 
-xxhash
+# xxhash
 
 opencv-python
 pyqt5
