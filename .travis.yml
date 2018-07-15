@@ -14,12 +14,14 @@ before_install:
   - pip install --progress-bar off pytest-cov -U
   - pip install --progress-bar off codecov -U
   - pip install --progress-bar off xdoctest -U
+  - python -c "from xdoctest import docstr; print(docstr)"
   - pip install --progress-bar off ubelt -U
   - pip install --progress-bar off opencv-python
   - pip install --progress-bar off pyqt5
   - pip install --progress-bar off torch
   - pip install --progress-bar off -e git+https://github.com/aleju/imgaug.git@master#egg=imgaug
   - pip install --progress-bar off -r requirements.txt 
+  - python -c "from xdoctest import docstr; print(docstr)"
 install:
   #- travis_retry python setup.py build develop
   - travis_retry pip install -e .
