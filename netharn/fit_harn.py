@@ -447,7 +447,7 @@ class InitializeMixin:
 
 @register_mixin
 class ProgMixin:
-    def _make_prog(harn, **kw):
+    def _make_prog(harn, chunksize=None, **kw):
         if harn.config['use_tqdm'] is None:
             harn.config['use_tqdm'] = harn.config['prog_backend'] == 'tqdm'
             if harn.config['prog_backend'] not in {'tqdm', 'progiter'}:
@@ -456,7 +456,7 @@ class ProgMixin:
             import tqdm
             Prog = tqdm.tqdm
         else:
-            Prog = functools.partial(ub.ProgIter, verbose=1)
+            Prog = functools.partial(ub.ProgIter, chunksize=chunksize, verbose=1)
         return Prog(**kw)
 
     def _batch_msg(harn, metric_dict, batch_size):
