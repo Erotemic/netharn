@@ -386,7 +386,7 @@ class YoloHarn(nh.FitHarn):
             >>> harn.visualize_prediction(batch, outputs, postout, idx=0, thresh=0.01)
             >>> mplutil.show_if_requested()
         """
-        if harn.current_tag != 'train' and harn.epoch >= 20:
+        if True or harn.current_tag != 'train':
             # Dont worry about computing mAP on the training set for now
             inputs, labels = batch
             inp_size = np.array(inputs.shape[-2:][::-1])
