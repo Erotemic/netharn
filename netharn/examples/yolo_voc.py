@@ -440,13 +440,14 @@ class YoloHarn(nh.FitHarn):
         tag = harn.current_tag
 
         if tag in {'test', 'vali'}:
-            # if harn.epoch < 100:
-            #     # Dont bother testing the early iterations
-            #     return
+            if harn.epoch < 20:
+                # Dont bother testing the early iterations
+                return
 
             if (harn.epoch % 10 == 5 or harn.epoch > 300):
                 harn._dump_chosen_indices()
 
+        metrics_dict = ub.odict()
         if harn.batch_confusions:
             y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
 
@@ -470,11 +471,10 @@ class YoloHarn(nh.FitHarn):
 
             harn.batch_confusions.clear()
 
-            metrics_dict = ub.odict()
             metrics_dict['max-AP'] = max_ap
             metrics_dict['mAP'] = mean_ap
             metrics_dict['AP'] = ap
-            return metrics_dict
+        return metrics_dict
 
     # Non-standard problem-specific custom methods
 
