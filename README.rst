@@ -105,9 +105,9 @@ See the netharn/examples folder for example usage. The doctests are also a good
 resource. It would be nice if we had better docs.
 
 
-.. |Travis| image:: https://img.shields.io/travis/Erotemic/netharn/master.svg?label=Travis%20CI
+.. |TravisOld| image:: https://img.shields.io/travis/Erotemic/netharn/master.svg?label=Travis%20CI
    :target: https://travis-ci.org/Erotemic/netharn
-.. |TravisHack| image:: https://img.shields.io/travis/Erotemic/netharn.svg
+.. |Travis| image:: https://img.shields.io/travis/Erotemic/netharn.svg
    :target: https://travis-ci.org/Erotemic/netharn
 .. |Codecov| image:: https://codecov.io/github/Erotemic/netharn/badge.svg?branch=master&service=github
    :target: https://codecov.io/github/Erotemic/netharn?branch=master
