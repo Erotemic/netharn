@@ -88,6 +88,11 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         self.flip_val = Binomial(.5)
         self.flip_sat = Binomial(.5)
 
+    def _augment_heatmaps(self, *args, **kw):
+        # TODO
+        raise NotImplementedError
+        pass
+
     def _augment_images(self, images, random_state, parents, hooks):
         return [self.forward(img, random_state) for img in images]
 
