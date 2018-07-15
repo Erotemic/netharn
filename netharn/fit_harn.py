@@ -1294,7 +1294,10 @@ class CoreCallback:
 
         # Ensure scheduler is given current information
         if harn.scheduler:
-            harn.scheduler.step(epoch=harn.epoch - 1)
+            if getattr(harn.scheduler, '__batchaware__', False):
+                harn.scheduler.step_epoch(epoch=harn.epoch - 1)
+            else:
+                harn.scheduler.step(epoch=harn.epoch - 1)
 
 
 # Define the exposed class as a union of mixin classes

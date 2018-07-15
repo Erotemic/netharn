@@ -1,5 +1,4 @@
 import torch.optim.lr_scheduler
-import math
 
 
 class CommonMixin:
@@ -196,6 +195,8 @@ class YOLOScheduler(NetharnScheduler):
     def step_epoch(self, epoch=None):
         # more intuitve interface (at least for me)
         epoch = epoch if epoch is not None else self.epoch + 1
+        # FIXME: dont assume constant sizes
+        self.n_items_seen = self.dset_size * epoch
         self._update_optimizer()
 
     # def step(self, epoch=None):
