@@ -12,13 +12,9 @@ before_install:
   - pip install pip -U
   - pip install --progress-bar off xdoctest -U
   - python -c "from xdoctest import docstr; print(docstr)"
-  - pip install --progress-bar off torch
-  - pip install --progress-bar off pyqt5
-  - pip install --progress-bar off opencv-python
-  - pip install --progress-bar off pytest
-  - pip install --progress-bar off pytest-cov
-  - pip install --progress-bar off codecov
-  - pip install --progress-bar off ubelt -U
+  - pip install --progress-bar off torch pyqt5 opencv-python
+  - pip install --progress-bar off pytest pytest-cov codecov
+  - pip install --progress-bar off ubelt progiter -U
   - pip install --progress-bar off -e git+https://github.com/aleju/imgaug.git@master#egg=imgaug
   - pip install --progress-bar off -r requirements.txt 
 install:
