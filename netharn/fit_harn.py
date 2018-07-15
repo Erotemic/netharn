@@ -762,7 +762,7 @@ class ScheduleMixin:
             return True
         return False
 
-    def _step_scheduler_batch(harn, bx):
+    def _step_scheduler_batch(harn):
         if getattr(harn.scheduler, '__batchaware__', False):
             # TODO: can we determine what the batch size is at this point?
             harn.scheduler.step_batch()
@@ -1033,7 +1033,8 @@ class CoreMixin:
                     harn._update_prog_postfix(prog)
 
                 # Some schedulers update every batch
-                harn._step_scheduler_batch(bx)
+                if learn:
+                    harn._step_scheduler_batch()
 
         # do a final step when bstep > 1, so the last few batches arent skipped
         if harn.dynamics['batch_step'] > 1:
