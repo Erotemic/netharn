@@ -301,7 +301,10 @@ class HyperParams(object):
         >>>     }),
         >>>     scheduler=('ReduceLROnPlateau', {}),
         >>> )
+        >>> # xdoctest: +IGNORE_WANT
         >>> print(hyper.hyper_id())
+        NoOp,SGD,dampening=0,lr=0.001,momentum=0.9,nesterov=True,weight_decay=0.0005,ReduceLROnPlateau,cooldown=0,eps=1e-08,factor=0.1,min_lr=0,mode=min,patience=10,threshold=0.0001,threshold_mode=rel,verbose=False,CrossEntropyLoss,ignore_index=-100,reduce=True,size_average=True,weight=[0.0,2.0,1.0],DataLoader,batch_size=1,Dynamics,batch_step=1,grad_norm_max=None
+
     """
 
     def __init__(hyper,

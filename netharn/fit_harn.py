@@ -274,6 +274,7 @@ class InitializeMixin:
         else:
             paths = folders.Folders(hyper=harn.hyper)
             train_info = paths.setup_dpath()
+            harn.train_info = train_info
             harn.nice_dpath = train_info['nice_dpath']
             harn.train_dpath = train_info['train_dpath']
             return harn.train_dpath
@@ -332,6 +333,9 @@ class InitializeMixin:
             raise ValueError(
                 'Hyperparameters not specified, must setup modules yourself')
 
+        # harn.debug('hyper = {}'.format(ub.repr2(harn.train_info['hyper'], nl=3)))
+        # harn.debug(harn.hyper)
+
         harn.debug('make XPU')
         harn.xpu = harn.hyper.make_xpu()
         harn.debug('harn.xpu = {!r}'.format(harn.xpu))
@@ -355,6 +359,7 @@ class InitializeMixin:
 
         harn.debug('Making model')
         harn.model = harn.hyper.make_model()
+        harn.debug(harn.model)
 
         n_params = util.number_of_parameters(harn.model)
         harn.log('Model has {!r} parameters'.format(n_params))
@@ -514,7 +519,7 @@ class LogMixin:
 
     def debug(harn, msg):
         if harn.flog:
-            msg = strip_ansi(msg)
+            msg = strip_ansi(str(msg))
             # Encode to prevent errors on windows terminals
             # On windows there is a sometimes a UnicodeEncodeError: For more details see: https://wiki.python.org/moin/PrintFails
             if sys.platform.startswith('win32'):
@@ -744,11 +749,13 @@ class ScheduleMixin:
         lrs = sorted(lrs)
 
         if not np.isclose(optim_lrs, lrs):
-            harn.error('optim_lrs = {!r}'.format(optim_lrs))
-            harn.error('lrs = {!r}'.format(lrs))
-            harn.error('epoch = {!r}'.format(harn.epoch))
-            raise AssertionError(
+            harn.error('[ERROR] optim_lrs = {!r}'.format(optim_lrs))
+            harn.error('[ERROR] lrs = {!r}'.format(lrs))
+            harn.error('[ERROR] epoch = {!r}'.format(harn.epoch))
+            import warnings
+            warnings.warn(
                 'optimizer and scheduler are out of sync')
+            # raise AssertionError(
         return lrs
 
     def _check_termination(harn):
