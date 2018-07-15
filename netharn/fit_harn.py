@@ -986,7 +986,7 @@ class CoreMixin:
                     harn.main_prog.pos + 1)
         prog = harn._make_prog(desc=desc, total=len(loader), disable=not
                                harn.config['show_prog'], position=position,
-                               leave=True, dynamic_ncols=True)
+                               chunksize=bsize, leave=True, dynamic_ncols=True)
         harn.epoch_prog = prog
         harn._update_prog_postfix(prog)
 

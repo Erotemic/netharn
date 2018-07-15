@@ -190,8 +190,17 @@ class YOLOScheduler(NetharnScheduler):
         """
         Used when restarting after killing an epoch
         """
-        del self.epoch_to_n_items_seen[epoch]
-        self.n_items_seen = sum(self.epoch_to_n_items_seen.values())
+        for i in range(0, epoch):
+            n_full_batches = int(self.dset_size / self.batch_size)
+            remainder = int(self.dset_size % self.batch_size)
+            n_items_seen = ([self.batch_size] * n_full_batches) + [remainder]
+            self.epoch_to_n_items_seen[i] = n_items_seen
+
+        for i in list(self.epoch_to_n_items_seen.keys()):
+            if i >= epoch:
+                del self.epoch_to_n_items_seen[i]
+
+        self.n_items_seen = sum(map(sum, self.epoch_to_n_items_seen.values()))
 
     def step_batch(self, batch_size=None):
         """
