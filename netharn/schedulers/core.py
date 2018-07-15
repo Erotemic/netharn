@@ -1,4 +1,5 @@
 import torch.optim.lr_scheduler
+from collections import defaultdict
 
 
 class CommonMixin:
@@ -150,6 +151,8 @@ class YOLOScheduler(NetharnScheduler):
         # This keeps tack of progress at the finest possible granularity
         # It should be taken as cannonical over self.batch_num and self.epoch
         # which are integral and rounted.
+
+        self.epoch_to_n_items_seen = defaultdict(list)  # mapping from epoch to list of batch sizes seen in interation
         self.n_items_seen = self.dset_size * (last_epoch + 1)
 
         self.optimizer = optimizer
@@ -183,12 +186,20 @@ class YOLOScheduler(NetharnScheduler):
     def n_batches_per_epoch(self):
         return self.dset_size / self.batch_size
 
+    def reset_epoch(self, epoch):
+        """
+        Used when restarting after killing an epoch
+        """
+        del self.epoch_to_n_items_seen[epoch]
+        self.n_items_seen = sum(self.epoch_to_n_items_seen.values())
+
     def step_batch(self, batch_size=None):
         """
         Args:
             batch_size (int): number of examples in the batch
         """
         batch_size = batch_size if batch_size is not None else self.batch_size
+        self.epoch_to_n_items_seen[self.epoch].append(batch_size)
         self.n_items_seen += batch_size
         self._update_optimizer()
 

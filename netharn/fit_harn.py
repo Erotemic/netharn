@@ -1295,7 +1295,7 @@ class CoreCallback:
         # Ensure scheduler is given current information
         if harn.scheduler:
             if getattr(harn.scheduler, '__batchaware__', False):
-                harn.scheduler.step_epoch(epoch=harn.epoch - 1)
+                harn.scheduler.reset_epoch(epoch=harn.epoch)
             else:
                 harn.scheduler.step(epoch=harn.epoch - 1)
 
