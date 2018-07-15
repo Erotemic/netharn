@@ -15,7 +15,7 @@ six >= 1.11.0
 # Testing
 # =======
 # testing comes first
-xdoctest >= 0.5.1
+xdoctest >= 0.5.6
 pytest >= 3.6.3
 pytest-cov >= 2.5.1
 coverage >= 4.3.4
