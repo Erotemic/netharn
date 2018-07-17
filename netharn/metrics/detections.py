@@ -8,6 +8,10 @@ from netharn.util import profiler
 def _devcheck_voc_consistency():
     """
     # CHECK FOR ISSUES WITH MY MAP COMPUTATION
+
+    TODO:
+        Check how cocoeval works
+        https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py
     """
     def voc_eval(lines, recs, classname, ovthresh=0.5, method=False, bias=1):
         import copy

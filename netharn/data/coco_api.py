@@ -1200,7 +1200,15 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
                 del self.dataset['annotations'][idx]
             self._clear_index()
 
-    def add_category(self, name, supercategory=None):
+    def add_category(self, name, supercategory=None, cid=None):
+        """
+        Adds a category
+
+        Args:
+            name (str): name of the new category
+            supercategory (str, optional): parent of this category
+            cid (int, optional): use this category id, if it was not taken
+        """
         if name in self.name_to_cat:
             raise ValueError(name)
         else:
@@ -1210,7 +1218,12 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
                 for i in it.count(len(self.cats) + 1):
                     if i not in self.cats:
                         return i
-            cid = unused_cid()
+            if cid is None:
+                cid = unused_cid()
+            else:
+                if cid in self.cats:
+                    raise IndexError(
+                        'Category id={} already exists'.format(cid))
             cat = ub.odict()
             cat['id'] = cid
             cat['name'] = name

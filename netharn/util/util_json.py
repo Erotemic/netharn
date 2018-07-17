@@ -22,20 +22,39 @@ def walk_json(node):
             yield key, val
 
 
-class JSONEncoder(json.JSONEncoder):
-    def default(harn, obj):
+class LossyJSONEncoder(json.JSONEncoder):
+    """
+    Helps cooerce objects into a json-serializable format. Note that this is a
+    lossy process. Information about object types / array types are lost. Only
+    info directly translatable to json primitives are preserved as those
+    primitive types.  (e.g: tuples and ndarrays are encoded as lists, and
+    objects only remember their dict of attributes).
+
+    Example:
+        >>> import json
+        >>> class MyClass:
+        >>>     def __init__(self, foo='bar'):
+        >>>         self.foo = foo
+        >>>         self.spam = 32
+        >>>         self.eggs = np.array([32])
+        >>>     def __json__(self):
+        >>>         return {self.__class__.__name__: self.__dict__}
+        >>> self = MyClass()
+        >>> text = json.dumps(self, cls=LossyJSONEncoder)
+        >>> print(text)
+        {"MyClass": {"foo": "bar", "spam": 32, "eggs": [32]}}
+    """
+    def default(self, obj):
+        if hasattr(obj, '__json__'):
+            return obj.__json__()
         if isinstance(obj, np.integer):
             return int(obj)
-        return json.JSONEncoder.default(harn, obj)
-
-
-class NumpyAwareJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
         elif isinstance(obj, np.generic):
             return obj.item()
-        return json.JSONEncoder.default(self, obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+        # return json.JSONEncoder.default(self, obj)
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -62,18 +81,18 @@ class NumpyEncoder(json.JSONEncoder):
         # Let the base class default method raise the TypeError
         return json.JSONEncoder(self, obj)
 
+    @staticmethod
+    def json_numpy_obj_hook(dct):
+        """Decodes a previously encoded numpy ndarray with proper shape and dtype.
 
-# def json_numpy_obj_hook(dct):
-#     """Decodes a previously encoded numpy ndarray with proper shape and dtype.
-
-#     :param dct: (dict) json encoded ndarray
-#     :return: (ndarray) if input was an encoded ndarray
-#     """
-#     import base64
-#     if isinstance(dct, dict) and '__ndarray__' in dct:
-#         data = base64.b64decode(dct['__ndarray__'])
-#         return np.frombuffer(data, dct['dtype']).reshape(dct['shape'])
-#     return dct
+        :param dct: (dict) json encoded ndarray
+        :return: (ndarray) if input was an encoded ndarray
+        """
+        import base64
+        if isinstance(dct, dict) and '__ndarray__' in dct:
+            data = base64.b64decode(dct['__ndarray__'])
+            return np.frombuffer(data, dct['dtype']).reshape(dct['shape'])
+        return dct
 
 
 def write_json(fpath, data):
@@ -84,10 +103,9 @@ def write_json(fpath, data):
         # pretty pandas
         json_text = (json.dumps(json.loads(data.to_json()), indent=4))
     elif isinstance(data, dict):
-        json_text = json.dumps(data, cls=JSONEncoder, indent=4)
+        json_text = json.dumps(data, cls=LossyJSONEncoder, indent=4)
     else:
         raise TypeError(type(data))
-
     ub.writeto(fpath, json_text)
 
 

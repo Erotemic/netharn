@@ -66,6 +66,11 @@ class Folders(object):
             if callable(input_id):
                 input_id = input_id()
         else:
+            import warnings
+            warnings.warn(
+                'FitHarn cannot track the training dataset state because '
+                'harn.datasets["train"] is missing the "input_id" attribute.'
+            )
             input_id = 'none'
 
         def _hash_data(data):

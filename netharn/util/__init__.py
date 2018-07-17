@@ -81,9 +81,8 @@ else:
     from netharn.util.util_io import (read_arr, read_h5arr, write_arr,
                                       write_h5arr,)
     from netharn.util.util_iter import (roundrobin,)
-    from netharn.util.util_json import (JSONEncoder, NumpyAwareJSONEncoder,
-                                        NumpyEncoder, read_json, walk_json,
-                                        write_json,)
+    from netharn.util.util_json import (LossyJSONEncoder, NumpyEncoder, read_json,
+                                        walk_json, write_json,)
     from netharn.util.util_numpy import (atleast_nd, isect_flags,
                                          iter_reduce_ufunc,)
     from netharn.util.util_random import (ensure_rng, random_combinations,
@@ -93,18 +92,19 @@ else:
                                           Stitcher,)
     from netharn.util.util_subextreme import (argsubmax, argsubmaxima,)
     from netharn.util.util_tensorboard import (read_tensorboard_scalars,)
-    from netharn.util.util_torch import (ModuleMixin, grad_context,
-                                         number_of_parameters,)
+    from netharn.util.util_torch import (DisableBatchNorm, ModuleMixin,
+                                         grad_context, number_of_parameters,
+                                         trainable_layers,)
 
     __all__ = ['Boxes', 'CV2_INTERPOLATION_TYPES', 'CacheStamp', 'Color',
-               'CumMovingAve', 'ExpMovingAve', 'IS_PROFILING',
-               'InternalRunningStats', 'JSONEncoder', 'KernprofParser',
-               'ModuleMixin', 'MovingAve', 'NumpyAwareJSONEncoder', 'NumpyEncoder',
-               'PlotNums', 'RunningStats', 'SlidingIndexDataset', 'SlidingSlices',
-               'Stitcher', 'WindowedMovingAve', 'absdev', 'adjust_gamma',
-               'adjust_subplots', 'aggensure', 'align_paths', 'apply_grouping',
-               'argsubmax', 'argsubmaxima', 'atleast_3channels', 'atleast_nd',
-               'autompl', 'axes_extent', 'box_ious', 'check_aligned', 'colorbar',
+               'CumMovingAve', 'DisableBatchNorm', 'ExpMovingAve', 'IS_PROFILING',
+               'InternalRunningStats', 'KernprofParser', 'LossyJSONEncoder',
+               'ModuleMixin', 'MovingAve', 'NumpyEncoder', 'PlotNums',
+               'RunningStats', 'SlidingIndexDataset', 'SlidingSlices', 'Stitcher',
+               'WindowedMovingAve', 'absdev', 'adjust_gamma', 'adjust_subplots',
+               'aggensure', 'align_paths', 'apply_grouping', 'argsubmax',
+               'argsubmaxima', 'atleast_3channels', 'atleast_nd', 'autompl',
+               'axes_extent', 'box_ious', 'check_aligned', 'colorbar',
                'colorbar_image', 'compact_idstr', 'convert_colorspace',
                'copy_figure_to_clipboard', 'deterministic_shuffle',
                'dict_intersection', 'distinct_colors', 'distinct_markers',
@@ -131,10 +131,10 @@ else:
                'run_length_encoding', 'save_parts', 'savefig2', 'scores_to_cmap',
                'scores_to_color', 'set_figtitle', 'set_mpl_backend',
                'shortest_unique_prefixes', 'shortest_unique_suffixes',
-               'show_if_requested', 'shuffle', 'stats_dict', 'util_averages',
-               'util_boxes', 'util_cachestamp', 'util_cv2', 'util_demodata',
-               'util_fname', 'util_groups', 'util_idstr', 'util_io', 'util_iter',
-               'util_json', 'util_numpy', 'util_random', 'util_resources',
-               'util_slider', 'util_subextreme', 'util_tensorboard', 'util_torch',
-               'walk_json', 'wide_strides_1d', 'write_arr', 'write_h5arr',
-               'write_json']
+               'show_if_requested', 'shuffle', 'stats_dict', 'trainable_layers',
+               'util_averages', 'util_boxes', 'util_cachestamp', 'util_cv2',
+               'util_demodata', 'util_fname', 'util_groups', 'util_idstr',
+               'util_io', 'util_iter', 'util_json', 'util_numpy', 'util_random',
+               'util_resources', 'util_slider', 'util_subextreme',
+               'util_tensorboard', 'util_torch', 'walk_json', 'wide_strides_1d',
+               'write_arr', 'write_h5arr', 'write_json']
