@@ -128,52 +128,72 @@ def _devcheck_voc_consistency():
         return rec, prec, ap
     import netharn as nh
     method = 'voc2012'
-    recs = {}
-    lines = []
 
-    confusions = []
+    xdata = []
+    ydatas = ub.ddict(list)
 
-    rng = np.random.RandomState(0)
+    for noise in np.linspace(0, 5, 10):
+        recs = {}
+        lines = []
+        confusions = []
+        rng = np.random.RandomState(0)
 
-    classname = 0
-    nimgs = 1
-    for imgname in range(nimgs):
-        imgname = str(imgname)
+        classname = 0
+        nimgs = 5
+        nboxes = 2
+        for imgname in range(nimgs):
+            imgname = str(imgname)
 
-        true_boxes = nh.util.Boxes.random(num=3, scale=100, rng=rng, format='tlbr').data
-        pred_boxes = true_boxes
-        # pred_boxes = nh.util.Boxes.random(num=10, scale=100, rng=rng, format='tlbr')
+            true_boxes = nh.util.Boxes.random(num=nboxes, scale=100, rng=rng, format='cxywh')
+            pred_boxes = true_boxes.copy()
+            pred_boxes.data = pred_boxes.data.astype(np.float) + (rng.rand() * noise)
 
-        recs[imgname] = []
-        for bbox in true_boxes:
-            recs[imgname].append({
-                'bbox': bbox,
-                'difficult': False,
-                'name': classname
-            })
+            true_boxes = true_boxes.to_tlbr().data
+            pred_boxes = pred_boxes.to_tlbr().data
+            # pred_boxes = nh.util.Boxes.random(num=10, scale=100, rng=rng, format='tlbr')
 
-        for bbox in pred_boxes:
-            lines.append('{} {} {} {} {} {}'.format(imgname, .9, *bbox))
+            recs[imgname] = []
+            for bbox in true_boxes:
+                recs[imgname].append({
+                    'bbox': bbox,
+                    'difficult': False,
+                    'name': classname
+                })
 
-        # Create netharn style confusion data
-        true_cxs = np.array([0] * len(true_boxes))
-        pred_cxs = np.array([0] * len(true_boxes))
-        true_weights = np.array([1] * len(true_boxes))
-        pred_scores = np.array([.9] * len(pred_boxes))
+            for bbox, score in zip(pred_boxes, np.arange(len(pred_boxes))):
+                lines.append('{} {} {} {} {} {}'.format(imgname, score, *bbox))
 
-        y = detection_confusions(true_boxes, true_cxs, true_weights,
-                                 pred_boxes, pred_scores, pred_cxs,
-                                 bg_weight=1.0, ovthresh=0.5, bg_cls=-1,
-                                 bias=1.0, PREFER_WEIGHTED_TRUTH=False)
-        y = pd.DataFrame(y)
-        confusions.append(y)
-    y = pd.concat(confusions)
+            # Create netharn style confusion data
+            true_cxs = np.array([0] * len(true_boxes))
+            pred_cxs = np.array([0] * len(true_boxes))
+            true_weights = np.array([1] * len(true_boxes))
+            pred_scores = np.arange(len(pred_boxes))
 
-    ap3 = ave_precisions(y, method=method)['ap']
-    rec, prec, ap = voc_eval(lines, recs, classname, ovthresh=0.5,
-                             method=method, bias=1)
-    print('ap3 = {!r}'.format(ap3))
-    print('ap = {!r}'.format(ap))
+            y = pd.DataFrame(detection_confusions(true_boxes, true_cxs, true_weights,
+                                                  pred_boxes, pred_scores, pred_cxs,
+                                                  bg_weight=1.0, ovthresh=0.5, bg_cls=-1,
+                                                  bias=0.0, PREFER_WEIGHTED_TRUTH=False))
+            y['gx'] = int(imgname)
+            y = (y)
+            confusions.append(y)
+        y = pd.concat(confusions)
+
+        ap3 = ave_precisions(y, method=method)['ap']
+        rec, prec, ap = voc_eval(lines, recs, classname, ovthresh=0.5,
+                                 method=method, bias=0.0)
+        prec2, rec2, ap2 = _multiclass_ap(y)
+        ap2 = _ave_precision(rec2, prec2, method)
+        print('noise = {!r}'.format(noise))
+        print('ap3 = {!r}'.format(ap3.values.mean()))
+        print('ap = {!r}'.format(ap))
+        print('ap2 = {!r}'.format(ap2))
+        print('---')
+        xdata.append(noise)
+        ydatas['orig'].append(ap)
+        ydatas['eav'].append(ap2)
+        ydatas['mine'].append(ap3)
+    nh.util.autompl()
+    nh.util.multi_plot(xdata=xdata, ydata=ydatas)
 
 
 def _multiclass_ap(y):
@@ -211,7 +231,7 @@ def _multiclass_ap(y):
     recall = []
     for tp, fp in zip(tps, fps):
         recall.append(tp / num_annotations)
-        precision.append(tp / (fp + tp))
+        precision.append(tp / np.maximum(fp + tp, np.finfo(np.float64).eps))
 
     import scipy
     num_of_samples = 100
@@ -235,7 +255,7 @@ def _multiclass_ap(y):
 @profiler.profile
 def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
                          pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5,
-                         bg_cls=-1, bias=1.0, PREFER_WEIGHTED_TRUTH=False):
+                         bg_cls=-1, bias=0.0, PREFER_WEIGHTED_TRUTH=False):
     """
     Given predictions and truth for an image return (y_pred, y_true,
     y_score), which is suitable for sklearn classification metrics
@@ -312,8 +332,16 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
     y_weight = []
     cxs = []
 
+    y_pxs = []
+    y_txs = []
+
     if bg_weight is None:
         bg_weight = 1.0
+
+    if isinstance(true_boxes, util.Boxes):
+        true_boxes = true_boxes.data
+    if isinstance(pred_boxes, util.Boxes):
+        pred_boxes = pred_boxes.data
 
     # Group true boxes by class
     # Keep track which true boxes are unused / not assigned
@@ -330,7 +358,7 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
     pred_cxs = pred_cxs.take(sortx, axis=0)
     pred_scores = pred_scores.take(sortx, axis=0)
 
-    for cx, box, score in zip(pred_cxs, pred_boxes, pred_scores):
+    for px, cx, box, score in zip(sortx, pred_cxs, pred_boxes, pred_scores):
         # For each predicted detection box
         cls_true_idxs = cx_to_idxs.get(cx, [])
         cls_unused = cx_to_unused.get(cx, [])
@@ -358,7 +386,7 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
             ovmax = overlaps[ovidx]
             weight = cls_true_weights[ovidx]
 
-            NOT_HACK = False
+            NOT_HACK = True
             # True
             # False
             if NOT_HACK:
@@ -391,6 +419,10 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
             y_weight.append(weight)
             cxs.append(cx)
             cls_unused[ovidx] = False
+
+            tx = cls_true_idxs[ovidx]
+            y_pxs.append(px)
+            y_txs.append(tx)
         else:
             # Mark this prediction as a false positive
             y_pred.append(cx)
@@ -398,6 +430,10 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
             y_score.append(score)
             y_weight.append(bg_weight)
             cxs.append(cx)
+
+            tx = -1
+            y_pxs.append(px)
+            y_txs.append(tx)
 
     # All pred boxes have been assigned to a truth box or the background.
     # Mark unused true boxes we failed to predict as false negatives
@@ -417,13 +453,21 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
                 y_weight.append(weight)
                 cxs.append(cx)
 
+                tx = cls_true_idxs[ovidx]
+                px = -1
+                y_pxs.append(px)
+                y_txs.append(tx)
+
     y = {
         'pred': y_pred,
         'true': y_true,
         'score': y_score,
         'weight': y_weight,
         'cx': cxs,
+        'y_txs': y_txs,  # index into the original true box for this row
+        'y_pxs': y_pxs,  # index into the original pred box for this row
     }
+    # print('y = {}'.format(ub.repr2(y, nl=1)))
     # y = pd.DataFrame(y)
     return y
 
