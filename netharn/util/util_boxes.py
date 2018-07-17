@@ -602,6 +602,13 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         """
         Makes random boxes
 
+        Args:
+            num (int): number of boxes to generate
+            scale (float): size of imgdims
+            format (str): format of boxes to be created (e.g. tlbr, xywh)
+            anchors (ndarray): width / heights of anchor boxes to perterb and
+                randomly place.
+
         Example:
             >>> # xdoctest: +IGNORE_WHITESPACE
             >>> Boxes.random(3, rng=0, scale=100)

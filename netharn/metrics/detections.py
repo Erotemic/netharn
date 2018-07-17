@@ -5,6 +5,177 @@ from netharn import util
 from netharn.util import profiler
 
 
+def _devcheck_voc_consistency():
+    """
+    # CHECK FOR ISSUES WITH MY MAP COMPUTATION
+    """
+    def voc_eval(lines, recs, classname, ovthresh=0.5, method=False, bias=1):
+        import copy
+        imagenames = ([x.strip().split(' ')[0] for x in lines])
+        # BUGFIX: the original code did not cast this to a set
+        imagenames = set(imagenames)
+        recs2 = copy.deepcopy(recs)
+
+        # extract gt objects for this class
+        class_recs = {}
+        npos = 0
+        for imagename in imagenames:
+            R = [obj for obj in recs2[imagename] if obj['name'] == classname]
+            bbox = np.array([x['bbox'] for x in R])
+            difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
+            det = [False] * len(R)
+            npos = npos + sum(~difficult)
+            class_recs[imagename] = {'bbox': bbox,
+                                     'difficult': difficult,
+                                     'det': det}
+
+        splitlines = [x.strip().split(' ') for x in lines]
+        image_ids = [x[0] for x in splitlines]
+        confidence = np.array([float(x[1]) for x in splitlines])
+        BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
+
+        # sort by confidence
+        sorted_ind = np.argsort(-confidence)
+        # sorted_scores = np.sort(-confidence)  #
+        BB = BB[sorted_ind, :]
+        image_ids = [image_ids[x] for x in sorted_ind]
+
+        # go down dets and mark TPs and FPs
+        nd = len(image_ids)
+        tp = np.zeros(nd)
+        fp = np.zeros(nd)
+        for d in range(nd):
+            R = class_recs[image_ids[d]]
+            bb = BB[d, :].astype(float)
+            ovmax = -np.inf
+            BBGT = R['bbox'].astype(float)
+
+            if BBGT.size > 0:
+                # compute overlaps
+                # intersection
+                ixmin = np.maximum(BBGT[:, 0], bb[0])
+                iymin = np.maximum(BBGT[:, 1], bb[1])
+                ixmax = np.minimum(BBGT[:, 2], bb[2])
+                iymax = np.minimum(BBGT[:, 3], bb[3])
+                iw = np.maximum(ixmax - ixmin + bias, 0.)
+                ih = np.maximum(iymax - iymin + bias, 0.)
+                inters = iw * ih
+
+                # union
+                uni = ((bb[2] - bb[0] + bias) * (bb[3] - bb[1] + bias) +
+                       (BBGT[:, 2] - BBGT[:, 0] + bias) *
+                       (BBGT[:, 3] - BBGT[:, 1] + bias) - inters)
+
+                overlaps = inters / uni
+                ovmax = np.max(overlaps)
+                jmax = np.argmax(overlaps)
+
+            if ovmax > ovthresh:
+                if not R['difficult'][jmax]:
+                    if not R['det'][jmax]:
+                        tp[d] = 1.
+                        R['det'][jmax] = 1
+                    else:
+                        fp[d] = 1.
+            else:
+                fp[d] = 1.
+
+        # compute precision recall
+        fp = np.cumsum(fp)
+        tp = np.cumsum(tp)
+        rec = tp / float(npos)
+        # avoid divide by zero in case the first detection matches a difficult
+        # ground truth
+        prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+
+        def voc_ap(rec, prec, use_07_metric=False):
+            """ ap = voc_ap(rec, prec, [use_07_metric])
+            Compute VOC AP given precision and recall.
+            If use_07_metric is true, uses the
+            VOC 07 11 point method (default:False).
+            """
+            if use_07_metric:
+                # 11 point metric
+                ap = 0.
+                for t in np.arange(0., 1.1, 0.1):
+                    if np.sum(rec >= t) == 0:
+                        p = 0
+                    else:
+                        p = np.max(prec[rec >= t])
+                    ap = ap + p / 11.
+            else:
+                # correct AP calculation
+                # first append sentinel values at the end
+                mrec = np.concatenate(([0.], rec, [1.]))
+                mpre = np.concatenate(([0.], prec, [0.]))
+
+                # compute the precision envelope
+                for i in range(mpre.size - 1, 0, -1):
+                    mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+
+                # to calculate area under PR curve, look for points
+                # where X axis (recall) changes value
+                i = np.where(mrec[1:] != mrec[:-1])[0]
+
+                # and sum (\Delta recall) * prec
+                ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+            return ap
+
+        ap2 = voc_ap(rec, prec, use_07_metric=method ==  'voc2007')
+        ap = _ave_precision(rec, prec, method)
+
+        assert ap == ap2
+        return rec, prec, ap
+    import netharn as nh
+    method = 'voc2012'
+    recs = {}
+    lines = []
+
+    confusions = []
+
+    rng = np.random.RandomState(0)
+
+    classname = 0
+    nimgs = 1
+    for imgname in range(nimgs):
+        imgname = str(imgname)
+
+        true_boxes = nh.util.Boxes.random(num=3, scale=100, rng=rng, format='tlbr').data
+        pred_boxes = true_boxes
+        # pred_boxes = nh.util.Boxes.random(num=10, scale=100, rng=rng, format='tlbr')
+
+        recs[imgname] = []
+        for bbox in true_boxes:
+            recs[imgname].append({
+                'bbox': bbox,
+                'difficult': False,
+                'name': classname
+            })
+
+        for bbox in pred_boxes:
+            lines.append('{} {} {} {} {} {}'.format(imgname, .9, *bbox))
+
+        # Create netharn style confusion data
+        true_cxs = np.array([0] * len(true_boxes))
+        pred_cxs = np.array([0] * len(true_boxes))
+        true_weights = np.array([1] * len(true_boxes))
+        pred_scores = np.array([.9] * len(pred_boxes))
+
+        y = detection_confusions(true_boxes, true_cxs, true_weights,
+                                 pred_boxes, pred_scores, pred_cxs,
+                                 bg_weight=1.0, ovthresh=0.5, bg_cls=-1,
+                                 bias=1.0, PREFER_WEIGHTED_TRUTH=False)
+        y = pd.DataFrame(y)
+        confusions.append(y)
+    y = pd.concat(confusions)
+
+    ap3 = ave_precisions(y, method=method)['ap']
+    rec, prec, ap = voc_eval(lines, recs, classname, ovthresh=0.5,
+                             method=method, bias=1)
+    print('ap3 = {!r}'.format(ap3))
+    print('ap = {!r}'.format(ap))
+
+
 def _multiclass_ap(y):
     """ computes pr like lightnet from netharn confusions """
     y = y.sort_values('score', ascending=False)
@@ -64,9 +235,7 @@ def _multiclass_ap(y):
 @profiler.profile
 def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
                          pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5,
-                         bg_cls=-1,
-                         bias=1.0,
-                         PREFER_WEIGHTED_TRUTH=False):
+                         bg_cls=-1, bias=1.0, PREFER_WEIGHTED_TRUTH=False):
     """
     Given predictions and truth for an image return (y_pred, y_true,
     y_score), which is suitable for sklearn classification metrics
@@ -88,6 +257,10 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
 
     Returns:
         pd.DataFrame: with relevant clf information
+
+    Ignore:
+        from xinspect.dynamic_kwargs import get_func_kwargs
+        globals().update(get_func_kwargs(detection_confusions))
 
     Example:
         >>> true_boxes = np.array([[ 0,  0, 10, 10],
@@ -183,8 +356,11 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
             # choose best score by default
             ovidx = sortx[0]
             ovmax = overlaps[ovidx]
+            weight = cls_true_weights[ovidx]
 
             NOT_HACK = False
+            # True
+            # False
             if NOT_HACK:
                 # Only allowed to select matches over a thresh
                 is_valid = overlaps > ovthresh
@@ -197,15 +373,15 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
                     # should be trying to ignore difficult gt boxes
                     reweighted = reweighted * cls_true_weights
 
-            if NOT_HACK and np.any(reweighted > 0):
-                # Prefer truth with more weight
-                sortx = reweighted.argsort()[::-1]
-                ovidx = sortx[0]
-                ovmax = overlaps[ovidx]
-                weight = cls_true_weights[ovidx]
-            else:
-                ovmax = 0
-                weight = bg_weight
+            if NOT_HACK:
+                if np.any(reweighted > 0):
+                    # Prefer truth with more weight
+                    sortx = reweighted.argsort()[::-1]
+                    ovidx = sortx[0]
+                    ovmax = overlaps[ovidx]
+                else:
+                    ovmax = 0
+                    weight = bg_weight
 
         if ovmax > ovthresh and cls_unused[ovidx]:
             # Mark this prediction as a true positive
@@ -252,7 +428,7 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
     return y
 
 
-def _ave_precision(rec, prec, method='voc2007'):
+def _ave_precision(rec, prec, method='voc2012'):
     """ ap = voc_ap(rec, prec, [use_07_metric])
     Compute VOC AP given precision and recall.
     If method == voc2007, uses the VOC 07 11 point method (default:False).
@@ -289,13 +465,13 @@ def _ave_precision(rec, prec, method='voc2007'):
     return ap
 
 
-def ave_precisions(y, labels=None, method='voc2007'):
+def ave_precisions(y, labels=None, method='voc2012'):
     """
 
     Args:
         y (pd.DataFrame): pre-measured frames of predictions, truth,
             weight and class.
-        method (str): either voc2007 or sklearn
+        method (str): either voc2007 voc2012 or sklearn
 
     Example:
         >>> # xdoc: +IGNORE_WANT
