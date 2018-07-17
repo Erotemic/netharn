@@ -832,7 +832,9 @@ def setup_harness(bsize=16, workers=0):
             # 0:   lr * 0.1 / simulated_bsize,  # burnin
             # 4:   lr * 1.0 / simulated_bsize,
             0:   lr * 1.0 / simulated_bsize,
+            154: lr * 1.0 / simulated_bsize,
             155: lr * 0.1 / simulated_bsize,
+            232: lr * 0.1 / simulated_bsize,
             233: lr * 0.01 / simulated_bsize,
         }
         max_epoch = 311

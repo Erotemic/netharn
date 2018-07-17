@@ -102,7 +102,7 @@ class YOLOScheduler(NetharnScheduler):
             burn-in modulated learning rates.
 
     CommandLine:
-        xdoctest netharn.schedulers.core YOLOScheduler
+        xdoctest netharn.schedulers.core YOLOScheduler --show
 
     Example:
         >>> # Assuming optimizer has two groups.
@@ -112,21 +112,31 @@ class YOLOScheduler(NetharnScheduler):
         >>> points = {0: .01, 2: .02, 3: .1, 6: .05, 9: .025}
         >>> self = YOLOScheduler(dset_size=103, batch_size=10, burn_in=1.2,
         >>>                      points=points)
+        >>> # Actual YOLO params
+        >>> lr = 0.001
+        >>> bsize = 32
+        >>> bstep = 2
+        >>> simbsize = bsize * bstep
+        >>> points = {0: lr * 1.0 / simbsize, 155: lr * 0.1 / simbsize, 233: lr * 0.01 / simbsize}
+        >>> self = YOLOScheduler(dset_size=16551, batch_size=bsize,
+        >>>                      burn_in=3.86683584, points=points)
         >>> xdata = ub.ddict(list)
         >>> ydata = ub.ddict(list)
-        >>> for epoch in range(10):
-        >>>     for batch in range(20):
+        >>> for epoch in range(300):
+        >>>     lr = self.get_lr()
+        >>>     xdata['epoch'].append(self.n_epochs_seen)
+        >>>     xdata['iter'].append(self.n_items_seen)
+        >>>     ydata['lr'].append(lr)
+        >>>     for batch in range(self.dset_size // self.batch_size):
         >>>         lr = self.get_lr()
-        >>>         xdata['epoch'].append(self.n_epochs_seen)
-        >>>         xdata['iter'].append(self.n_items_seen)
-        >>>         ydata['lr'].append(lr)
         >>>         self.step_batch()
-        >>> print('ydata = {}'.format(ub.repr2(ydata, precision=5, nl=0)))
+        >>> #print('ydata = {}'.format(ub.repr2(ydata, precision=5, nl=0)))
         >>> # xdoc: +REQUIRES(--show)
         >>> nh.util.autompl()
         >>> xticklabels = sorted({1, 20} | set(points.keys()))
         >>> nh.util.multi_plot(xdata=xdata['epoch'], ydata=ydata, xlabel='epoch', fnum=1,
         >>>                    ylabel='lr', xticklabels=xticklabels, xticks=xticklabels)
+        >>> nh.util.show_if_requested()
 
     """
     __batchaware__ = True

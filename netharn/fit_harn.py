@@ -232,20 +232,20 @@ class InitializeMixin:
             print('RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR')
             if harn.train_dpath is None:
                 # Need to determine which path needs deletion.
-                harn.setup_paths()
+                harn._setup_paths()
             for path in glob.glob(join(harn.train_dpath, '*')):
                 ub.delete(path)
         elif reset:
             print('RESET HARNESS BY RESTARTING FROM EPOCH 0')
 
         if harn.train_dpath is None:
-            harn.setup_paths()
+            harn._setup_paths()
         else:
             ub.ensuredir(harn.train_dpath)
 
-        harn.setup_loggers()
+        harn._setup_loggers()
 
-        harn.setup_modules()
+        harn._setup_modules()
 
         assert harn.model is not None, 'required module'
         assert harn.optimizer is not None, 'required module'
@@ -268,7 +268,7 @@ class InitializeMixin:
 
         harn._initialized = True
 
-    def setup_paths(harn):
+    def _setup_paths(harn):
         if harn.hyper is None:
             harn.warn('harn.train_dpath is None, cannot setup_paths')
         else:
@@ -279,7 +279,7 @@ class InitializeMixin:
             harn.train_dpath = train_info['train_dpath']
             return harn.train_dpath
 
-    def setup_loggers(harn):
+    def _setup_loggers(harn):
         """
         Setup file logging and / or tensorboard logging
         """
@@ -323,7 +323,7 @@ class InitializeMixin:
         else:
             harn.log('Tensorboard is not available')
 
-    def setup_modules(harn):
+    def _setup_modules(harn):
         """
         Construts the basic modules to be used by the harness, i.e:
             loaders, xpu, model, criterion, optimizer, initializer, scheduler,
@@ -459,8 +459,8 @@ class ProgMixin:
             Prog = functools.partial(ub.ProgIter, chunksize=chunksize, verbose=1)
         return Prog(**kw)
 
-    def _batch_msg(harn, metric_dict, batch_size):
-        if harn.scheduler and getattr(harn.scheduler, '__batchaware__', False):
+    def _batch_msg(harn, metric_dict, batch_size, learn=False):
+        if learn and harn.scheduler and getattr(harn.scheduler, '__batchaware__', False):
             lr = harn.scheduler.get_lr()
             bs = 'x{} @ {:.4g}'.format(batch_size, lr)
         else:
@@ -987,7 +987,7 @@ class CoreMixin:
             harn.model.train(learn)
 
         bsize = loader.batch_sampler.batch_size
-        msg = harn._batch_msg({'loss': -1}, bsize)
+        msg = harn._batch_msg({'loss': -1}, bsize, learn)
         desc = tag + ' ' + msg
         position = (list(harn.loaders.keys()).index(tag) +
                     harn.main_prog.pos + 1)
@@ -1027,7 +1027,7 @@ class CoreMixin:
                 if harn.check_interval('display_' + tag, bx):
                     ave_metrics = iter_moving_metrics.average()
 
-                    msg = harn._batch_msg({'loss': ave_metrics['loss']}, bsize)
+                    msg = harn._batch_msg({'loss': ave_metrics['loss']}, bsize, learn)
                     prog.set_description(tag + ' ' + msg)
 
                     # log_iter_train, log_iter_test, log_iter_vali
@@ -1186,20 +1186,25 @@ class CoreCallback:
 
         Overload Encouraged, but not always necessary
         """
-        batch_inputs, batch_labels = raw_batch
+        try:
+            batch_inputs, batch_labels = raw_batch
 
-        # the dataset should return a inputs/target 2-tuple of lists.
-        # in most cases each list will be length 1, unless there are
-        # multiple input branches or multiple output branches.
-        if not isinstance(batch_inputs, (list, tuple)):
-            batch_inputs = [batch_inputs]
-        if not isinstance(batch_labels, (list, tuple)):
-            batch_labels = [batch_labels]
+            # the dataset should return a inputs/target 2-tuple of lists.
+            # in most cases each list will be length 1, unless there are
+            # multiple input branches or multiple output branches.
+            if not isinstance(batch_inputs, (list, tuple)):
+                batch_inputs = [batch_inputs]
+            if not isinstance(batch_labels, (list, tuple)):
+                batch_labels = [batch_labels]
 
-        inputs = [harn.xpu.variable(d) for d in batch_inputs]
-        labels = [harn._tovar(d) for d in batch_labels]
+            inputs = [harn.xpu.variable(d) for d in batch_inputs]
+            labels = [harn._tovar(d) for d in batch_labels]
 
-        batch = (inputs, labels)
+            batch = (inputs, labels)
+        except Exception:
+            harn.warn('Error occurred in default prepare_batch. '
+                      'Perhaps you should overload it?')
+            raise
         return batch
 
     def run_batch(harn, batch):
@@ -1212,9 +1217,14 @@ class CoreCallback:
             tuple: (outputs, loss)
         """
         # Simple forward prop and loss computation
-        inputs, labels = batch
-        outputs = harn.model(*inputs)
-        loss = harn.criterion(outputs, *labels)
+        try:
+            inputs, labels = batch
+            outputs = harn.model(*inputs)
+            loss = harn.criterion(outputs, *labels)
+        except Exception:
+            harn.warn('Error occurred in default run_batch. '
+                      'Perhaps you should overload it?')
+            raise
         return outputs, loss
 
     def on_batch(harn, batch, outputs, loss):
@@ -1335,9 +1345,16 @@ class FitHarn(*MIXINS):
             Note: it is recomended that this is left None, and you allow
             `hyper` to create a directory based on the hyperparamters.
 
+    Attributes:
+        model (torch.nn.Module) : an instance of your model (po
+        optimizer (torch.nn.Module) :
+        scheduler (torch.nn.Module) :
+        criterion (torch.nn.Module) :
+        monitor (nh.Monitor) : monitors performance of the validation set
+
     Note:
         hyper is optional. If you choose not to specify it then you must
-        overwrite harn.setup_modules and create the requires class instances
+        overwrite harn._setup_modules and create the requires class instances
         (i.e. model, optimizer, monitor, etc...). You also need to specify
         train_dpath yourself if you want to save progress snapshots.
     """
@@ -1352,11 +1369,12 @@ class FitHarn(*MIXINS):
         harn.datasets = None
         harn.loaders = None
 
+        # The following attributes will be initialized in harn._setup_modules()
         harn.model = None
         harn.optimizer = None
         harn.scheduler = None
-        harn.monitor = None
         harn.criterion = None
+        harn.monitor = None
 
         # Note: these default values are actually stored in hyperparams
         harn.dynamics = {
