@@ -26,12 +26,26 @@ def classification_report(y_true, y_pred, target_names=None,
             Error Measures in MultiClass Prediction
 
     Example:
+        >>> # xdoctest: +IGNORE_WANT
         >>> y_true = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3]
         >>> y_pred = [1, 2, 1, 3, 1, 2, 2, 3, 2, 2, 3, 3, 2, 3, 3, 3, 1, 3]
         >>> target_names = None
         >>> sample_weight = None
-        >>> verbose = True
-        >>> report = classification_report(y_true, y_pred, verbose=verbose)
+        >>> report = classification_report(y_true, y_pred, verbose=0)
+        >>> print(report['confusion'])
+        pred  1  2  3  Σr
+        real
+        1     3  1  1   5
+        2     0  4  1   5
+        3     1  1  6   8
+        Σp    4  6  8  18
+        >>> print(report['metrics'])
+        metric    precision  recall    fpr  markedness  bookmaker    mcc  support
+        class
+        1            0.7500  0.6000 0.0769      0.6071     0.5231 0.5635        5
+        2            0.6667  0.8000 0.1538      0.5833     0.6462 0.6139        5
+        3            0.7500  0.7500 0.2000      0.5500     0.5500 0.5500        8
+        combined     0.7269  0.7222 0.1530      0.5751     0.5761 0.5758       18
 
     Ignore:
         >>> size = 100
@@ -308,12 +322,26 @@ def ovr_classification_report(mc_y_true, mc_probs, target_names=None,
         mc_probs: multiclass probabilities for each class [N x C]
 
     Example:
-        >>> y_true = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3]
-        >>> y_pred = [1, 2, 1, 3, 1, 2, 2, 3, 2, 2, 3, 3, 2, 3, 3, 3, 1, 3]
+        >>> # xdoctest: +IGNORE_WANT
+        >>> y_true = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0]
+        >>> y_probs = np.random.rand(len(y_true), max(y_true) + 1)
         >>> target_names = None
         >>> sample_weight = None
         >>> verbose = True
-        >>> report = ovr_classification_report(y_true, y_pred, verbose=verbose)
+        >>> report = ovr_classification_report(y_true, y_probs)
+        >>> print(report['ave'])
+        auc     0.6541
+        ap      0.6824
+        kappa   0.0963
+        mcc     0.1002
+        brier   0.2214
+        dtype: float64
+        >>> print(report['ovr'])
+             auc     ap  kappa    mcc  brier  support  weight
+        0 0.6062 0.6161 0.0526 0.0598 0.2608        8  0.4444
+        1 0.5846 0.6014 0.0000 0.0000 0.2195        5  0.2778
+        2 0.8000 0.8693 0.2623 0.2652 0.1602        5  0.2778
+
     """
     import warnings
 
