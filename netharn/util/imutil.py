@@ -135,11 +135,12 @@ def make_channels_comparable(img1, img2):
         python -m netharn.util.imutil make_channels_comparable
 
     Example:
+        >>> import itertools as it
         >>> wh_basis = [(5, 5), (3, 5), (5, 3), (1, 1), (1, 3), (3, 1)]
         >>> for w, h in wh_basis:
         >>>     shape_basis = [(w, h), (w, h, 1), (w, h, 3)]
         >>>     # Test all permutations of shap inputs
-        >>>     for shape1, shape2 in ut.product(shape_basis, shape_basis):
+        >>>     for shape1, shape2 in it.product(shape_basis, shape_basis):
         >>>         print('*    input shapes: %r, %r' % (shape1, shape2))
         >>>         img1 = np.empty(shape1)
         >>>         img2 = np.empty(shape2)

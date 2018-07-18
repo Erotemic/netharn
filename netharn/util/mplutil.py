@@ -947,16 +947,13 @@ def copy_figure_to_clipboard(fig):
 
 
 def dict_intersection(dict1, dict2):
-    r"""
+    """
     Args:
         dict1 (dict):
         dict2 (dict):
 
     Returns:
         dict: mergedict_
-
-    CommandLine:
-        python -m utool.util_dict --exec-dict_intersection
 
     Example:
         >>> # ENABLE_DOCTEST
@@ -1703,7 +1700,7 @@ def imshow(img,
         >>> (fig, ax) = imshow(img)
         >>> result = ('(fig, ax) = %s' % (str((fig, ax)),))
         >>> print(result)
-        >>> ut.show_if_requested()
+        >>> nh.util.show_if_requested()
     """
     import matplotlib as mpl
     import matplotlib.pyplot as plt
@@ -2868,6 +2865,7 @@ def make_legend_img(classname_to_rgb, dpi=96, shape=(200, 200), transparent=Fals
         python -m irharn.util.util_draw make_legend_img --show
 
     Example:
+        >>> import netharn as nh
         >>> classname_to_rgb = {
         >>>     'blue': nh.util.Color('blue').as01(),
         >>>     'red': nh.util.Color('red').as01(),
