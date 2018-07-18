@@ -844,7 +844,8 @@ class CoreMixin:
 
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
-            harn.log('dont forget to start:\n    tensorboard --logdir ' + train_base)
+            harn.log('dont forget to start:\n'
+                     '    tensorboard --logdir ' + train_base)
 
         harn.log('begin training')
 
@@ -910,6 +911,13 @@ class CoreMixin:
         harn.log('\n\n\n')
         harn.log('training completed')
         harn.log('current lrs: {}'.format(harn._current_lrs()))
+
+        if tensorboard_logger:
+            train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
+            harn.log('harn.train_dpath = {!r}'.format(harn.train_dpath))
+            harn.log('harn.nice_dpath = {!r}'.format(harn.nice_dpath))
+            harn.log('view tensorboard results for this run via:\n'
+                     '    tensorboard --logdir ' + train_base)
 
         harn.on_complete()
         harn.log('exiting fit harness.')
