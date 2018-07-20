@@ -1610,16 +1610,21 @@ def aggensure():
             set_mpl_backend('agg')
 
 
-def set_mpl_backend(backend):
+def set_mpl_backend(backend, verbose=None):
     """
     Args:
         backend (str): name of backend to use (e.g. Agg, PyQt)
     """
     import sys
     import matplotlib as mpl
+    if verbose:
+        print('set_mpl_backend backend={}'.format(backend))
     if backend.lower().startswith('qt'):
         # handle interactive qt case
         qtensure()
+    current_backend = mpl.get_backend()
+    if verbose:
+        print('* current_backend = {!r}'.format(current_backend))
     if backend != mpl.get_backend():
         # If we have already imported pyplot, then we need to use experimental
         # behavior. Otherwise, we can just set the backend.
@@ -1630,23 +1635,48 @@ def set_mpl_backend(backend):
             mpl.use(backend)
 
 
-def autompl():
+def autompl(verbose=0):
     """
     Uses platform heuristics to automatically set the mpl backend.
     If no display is available it will be set to agg, otherwise we will try to
     use the cross-platform Qt5Agg backend.
+
+    References:
+        https://stackoverflow.com/questions/637005/how-to-check-if-x-server-is-running
     """
     import os
     import sys
+    if verbose:
+        print('AUTOMPL')
     if sys.platform.startswith('win32'):
         # TODO: something reasonable
         pass
     else:
         DISPLAY = os.environ.get('DISPLAY', '')
+        if DISPLAY:
+            # Check if we can actually connect to X
+            info = ub.cmd('xdpyinfo', shell=True)
+            if verbose:
+                # python -c "import ubelt as ub; ub.Timerit(10).call(lambda: ub.cmd('xset q', shell=True)['ret']).print()"
+                # python -c "import ubelt as ub; ub.Timerit(10).call(lambda: ub.cmd('xdpyinfo', shell=True)['ret']).print()"
+                print('xdpyinfo-info = {}'.format(ub.repr2(info)))
+            if info['ret'] != 0:
+                DISPLAY = None
+
+        if verbose:
+            print(' * DISPLAY = {!r}'.format(DISPLAY))
+
         if not DISPLAY:
-            set_mpl_backend('agg')
+            backend = 'agg'
         else:
-            set_mpl_backend('Qt5Agg')
+            if ub.modname_to_modpath('PyQt5'):
+                backend = 'Qt5Agg'
+            elif ub.modname_to_modpath('PyQt4'):
+                backend = 'Qt4Agg'
+            else:
+                backend = 'agg'
+
+        set_mpl_backend(backend, verbose=verbose)
 
 
 def imshow(img,
