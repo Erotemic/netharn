@@ -609,8 +609,16 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
         >>> from matplotlib import pyplot as plt
         >>> plt.show()
     """
-    def __init__(self, data, tag=None, img_root=None, autobuild=True,
+    def __init__(self, data=None, tag=None, img_root=None, autobuild=True,
                  autofix=False):
+        if data is None:
+            data = {
+                'categories': [],
+                'images': [],
+                'annotations': [],
+                'licenses': [],
+                'info': [],
+            }
         if isinstance(data, six.string_types):
             fpath = data
             key = basename(fpath).split('.')[0]
@@ -1200,6 +1208,36 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
                 del self.dataset['annotations'][idx]
             self._clear_index()
 
+    def add_image(self, gname):
+        # hack
+        new_gid = len(self.dataset['images']) + 1
+        img = ub.odict()
+        img['id'] = new_gid
+        img['file_name'] = gname
+        self.dataset['images'].append(img)
+        if self.imgs:
+            self._clear_index()
+        return new_gid
+
+    def add_annotation(self, gid, cid, bbox=None, **kw):
+        # hack
+        new_aid = len(self.dataset['annotations']) + 1
+        ann = ub.odict()
+        ann['id'] = new_aid
+        ann['image_id'] = gid
+        ann['category_id'] = cid
+        if bbox:
+            import netharn as nh
+            if isinstance(bbox, nh.util.Boxes):
+                bbox = bbox.to_xywh().data.tolist()
+            ann['bbox'] = bbox
+        assert not set(kw).intersection(set(ann))
+        ann.update(**kw)
+        self.dataset['annotations'].append(ann)
+        if self.anns:
+            self._clear_index()
+        return new_aid
+
     def add_category(self, name, supercategory=None, cid=None):
         """
         Adds a category
@@ -1209,35 +1247,42 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
             supercategory (str, optional): parent of this category
             cid (int, optional): use this category id, if it was not taken
         """
-        if name in self.name_to_cat:
-            raise ValueError(name)
-        else:
-            def unused_cid():
-                # Find an unused category id
-                import itertools as it
-                for i in it.count(len(self.cats) + 1):
-                    if i not in self.cats:
-                        return i
-            if cid is None:
-                cid = unused_cid()
-            else:
-                if cid in self.cats:
+        if self.name_to_cat is not None:
+            if name in self.name_to_cat:
+                raise ValueError(name)
+
+        def unused_cid(cid):
+            import itertools as it
+            if cid is not None:
+                if self.cats and cid in self.cats:
                     raise IndexError(
                         'Category id={} already exists'.format(cid))
-            cat = ub.odict()
-            cat['id'] = cid
-            cat['name'] = name
-            if supercategory:
-                cat['supercategory'] = supercategory
+                return cid
+            if self.name_to_cat is None:
+                # hack
+                return len(self.dataset['categories']) + 1
+            # Find an unused category id
+            for i in it.count(len(self.cats) + 1):
+                if i not in self.cats:
+                    return i
 
-            # Add to raw data structure
-            self.dataset['categories'].append(cat)
+        cid = unused_cid(cid)
+        cat = ub.odict()
+        cat['id'] = cid
+        cat['name'] = name
+        if supercategory:
+            cat['supercategory'] = supercategory
 
-            # And add to the indexes
+        # Add to raw data structure
+        self.dataset['categories'].append(cat)
+
+        # And add to the indexes
+        if self.name_to_cat is not None:
             self.cats[cid] = cat
             self.cid_to_gids[cid] = []
             self.cid_to_aids[cid] = []
             self.name_to_cat[name] = cat
+        return cid
 
     # --- The following functions were only defined for debug purposes ---
 

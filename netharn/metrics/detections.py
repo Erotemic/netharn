@@ -133,6 +133,9 @@ def _devcheck_voc_consistency():
     import netharn as nh
     method = 'voc2012'
 
+    bias = 0
+    bias = 1
+
     xdata = []
     ydatas = ub.ddict(list)
 
@@ -143,11 +146,19 @@ def _devcheck_voc_consistency():
         rng = np.random.RandomState(0)
 
         classname = 0
+        # nimgs = 5
+        # nboxes = 2
         nimgs = 5
-        nboxes = 2
-        for imgname in range(nimgs):
-            imgname = str(imgname)
+        nboxes = 4
 
+        true_coco = nh.data.coco_api.CocoDataset()
+        pred_coco = nh.data.coco_api.CocoDataset()
+        cid = true_coco.add_category('cat1')
+        cid = pred_coco.add_category('cat1')
+        for imgname in range(nimgs):
+
+            # Create voc style data
+            imgname = str(imgname)
             true_boxes = nh.util.Boxes.random(num=nboxes, scale=100, rng=rng, format='cxywh')
             pred_boxes = true_boxes.copy()
             pred_boxes.data = pred_boxes.data.astype(np.float) + (rng.rand() * noise)
@@ -167,6 +178,18 @@ def _devcheck_voc_consistency():
             for bbox, score in zip(pred_boxes, np.arange(len(pred_boxes))):
                 lines.append('{} {} {} {} {} {}'.format(imgname, score, *bbox))
 
+            # Create MS-COCO style data
+            gid = true_coco.add_image(imgname)
+            gid = pred_coco.add_image(imgname)
+
+            for bbox in nh.util.Boxes(true_boxes, 'tlbr'):
+                true_coco.add_annotation(gid, cid, bbox=bbox, iscrowd=False,
+                                         area=bbox.area[0])
+
+            for bbox, score in zip(nh.util.Boxes(pred_boxes, 'tlbr'), np.arange(len(pred_boxes))):
+                pred_coco.add_annotation(gid, cid, bbox=bbox, iscrowd=False,
+                                         score=score, area=bbox.area[0])
+
             # Create netharn style confusion data
             true_cxs = np.array([0] * len(true_boxes))
             pred_cxs = np.array([0] * len(true_boxes))
@@ -176,15 +199,33 @@ def _devcheck_voc_consistency():
             y = pd.DataFrame(detection_confusions(true_boxes, true_cxs, true_weights,
                                                   pred_boxes, pred_scores, pred_cxs,
                                                   bg_weight=1.0, ovthresh=0.5, bg_cls=-1,
-                                                  bias=0.0, PREFER_WEIGHTED_TRUTH=False))
+                                                  bias=bias, PREFER_WEIGHTED_TRUTH=False))
             y['gx'] = int(imgname)
             y = (y)
             confusions.append(y)
+
+        from pycocotools import coco as orig_coco
+        from pycocotools import cocoeval as coco_score
+        # orig_coco = ub.import_module_from_path(ub.truepath('~/code/netharn/netharn/metrics/orig_coco_api.py'))
+        # coco_score = ub.import_module_from_path(ub.truepath('~/code/netharn/netharn/metrics/coco_score.py'))
+        cocoGt = orig_coco.COCO()
+        cocoDt = orig_coco.COCO()
+        cocoGt.dataset = true_coco.dataset
+        cocoGt.createIndex()
+        cocoDt.dataset = pred_coco.dataset
+        cocoDt.createIndex()
+
+        evaler = coco_score.COCOeval(cocoGt, cocoDt, iouType='bbox')
+        evaler.evaluate()
+        evaler.accumulate()
+        evaler.summarize()
+        coco_ap = evaler.stats[1]
+
         y = pd.concat(confusions)
 
         ap3 = ave_precisions(y, method=method)['ap']
         rec, prec, ap = voc_eval(lines, recs, classname, ovthresh=0.5,
-                                 method=method, bias=0.0)
+                                 method=method, bias=bias)
         prec2, rec2, ap2 = _multiclass_ap(y)
         ap2 = _ave_precision(rec2, prec2, method)
         print('noise = {!r}'.format(noise))
@@ -196,6 +237,8 @@ def _devcheck_voc_consistency():
         ydatas['orig'].append(ap)
         ydatas['eav'].append(ap2)
         ydatas['mine'].append(ap3)
+        ydatas['coco'].append(coco_ap)
+
     nh.util.autompl()
     nh.util.multi_plot(xdata=xdata, ydata=ydatas)
 
