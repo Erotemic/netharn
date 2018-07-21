@@ -222,6 +222,8 @@ def _devcheck_voc_consistency():
         confusions = []
         rng = np.random.RandomState(0)
 
+        detmetrics = DetectionMetrics()
+
         true_coco = nh.data.coco_api.CocoDataset()
         pred_coco = nh.data.coco_api.CocoDataset()
         cid = true_coco.add_category('cat1')
@@ -234,7 +236,9 @@ def _devcheck_voc_consistency():
             pred_boxes = true_boxes.copy()
             pred_boxes.data = pred_boxes.data.astype(np.float) + (rng.rand() * noise)
             if nbad:
-                pred_boxes.data = np.vstack([pred_boxes.data, nh.util.Boxes.random(num=nbad, scale=100., rng=rng, format='cxywh').data])
+                pred_boxes.data = np.vstack([
+                    pred_boxes.data,
+                    nh.util.Boxes.random(num=nbad, scale=100., rng=rng, format='cxywh').data])
 
             true_cxs = rng.choice(classes, size=len(true_boxes))
             pred_cxs = true_cxs.copy()

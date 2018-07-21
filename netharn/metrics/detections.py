@@ -5,24 +5,71 @@ from netharn import util
 from netharn.util import profiler
 
 
-class ScoreDets:
-    def __init__(self, true_dets, pred_dets, bg_weight=1.0, ovthresh=0.5,
-                 bg_cls=-1, bias=0.0):
+class DetectionMetrics:
+    """
+    Attributes:
+        true_dets (nh.data.CocoAPI): ground truth dataset
+        pred_dets (nh.data.CocoAPI): predictions dataset
+    """
+    def __init__(self, true_dets=None):
+        import netharn as nh
+        if true_dets is None:
+            true_dets = nh.data.coco_api.CocoDataset()
         self.true_dets = true_dets
-        self.pred_dets = pred_dets
+        self.pred_dets = nh.data.coco_api.CocoDataset()
 
-    def score_netharn():
-        pass
+    def add_predictions(self, imgname, pred_boxes, pred_cids, pred_scores):
+        pred_gid = self.pred_dets.add_image(imgname)
+        for bbox, cid, score in zip(pred_boxes.to_xywh(), pred_cids, pred_scores):
+            self.pred_dets.add_annotation(pred_gid, cid, bbox=bbox, score=score)
 
-    def score_voc():
-        pass
+    def add_truth(self, imgname, true_boxes, true_cids, true_weights):
+        true_gid = self.true_dets.add_image(imgname)
+        for bbox, cid, weight in zip(true_boxes.to_xywh(), true_cids, true_weights):
+            self.true_dets.add_annotation(true_gid, cid, bbox=bbox, weight=weight)
 
-    def score_coco():
+    def score_netharn(self, bias=0):
+        confusions = []
+        for gid in self.pred_dets.imgs.keys():
+            pred_annots = self.pred_dets.annots(gid=gid)
+            true_annots = self.true_dets.annots(gid=gid)
+
+            true_boxes = true_annots.boxes
+            true_cids = true_annots.cids
+            true_weights = true_annots._lookup('weight')
+
+            pred_boxes = pred_annots.boxes
+            pred_cids = pred_annots.cids
+            pred_scores = pred_annots._lookup('score')
+
+            y = detection_confusions(true_boxes, true_cids, true_weights,
+                                     pred_boxes, pred_scores, pred_cids,
+                                     bg_weight=1.0, ovthresh=0.5, bg_cls=-1,
+                                     bias=bias)
+            y['gid'] = [gid] * len(y['true'])
+            confusions.append(y)
+
+    def score_voc(self):
+        recs = {}
+        lines = []
+        for img in self.imgs:
+            recs[imgname] = []
+            for bbox in true_boxes.to_tlbr().data:
+                recs[imgname].append({
+                    'bbox': bbox,
+                    'difficult': False,
+                    'name': classname
+                })
+
+            for bbox, score in zip(pred_boxes.to_tlbr().data, np.arange(len(pred_boxes))):
+                lines.append([imgname, score] + list(bbox))
+
+    def score_coco(self):
         pass
 
 
 @profiler.profile
-def assign_dets(true_boxes, true_cxs, true_weights, pred_boxes, pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5, bg_cls=-1, bias=0.0) -> dict:
+def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5, bg_cls=-1, bias=0.0) -> dict:
     """ Classify detections by assigning to groundtruth boxes.
 
     Given predictions and truth for an image return (y_pred, y_true,
@@ -392,7 +439,6 @@ def pr_curves(y, method='voc2012'):  # -> Tuple[float, ndarray, ndarray]:
 
 
 ave_precisions = score_detection_assignment
-detection_confusions = assign_dets
 
 
 if __name__ == '__main__':

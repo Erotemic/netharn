@@ -426,13 +426,16 @@ class Images(ObjectList1D):
     def gids(self):
         return self._ids
 
+    def _lookup(self, key):
+        return [img[key] for img in ub.take(self._dset.imgs, self._ids)]
+
     @property
     def width(self):
-        return [img['width'] for img in ub.take(self._dset.imgs, self._ids)]
+        return self._lookup('width')
 
     @property
     def height(self):
-        return [img['height'] for img in ub.take(self._dset.imgs, self._ids)]
+        return self._lookup('height')
 
     @property
     def size(self):
@@ -483,7 +486,14 @@ class Annots(ObjectList1D):
 
     @property
     def gids(self):
-        return [ann['image_id'] for ann in ub.take(self._dset.anns, self._ids)]
+        return self._lookup('image_id')
+
+    @property
+    def cids(self):
+        return self._lookup('category_id')
+
+    def _lookup(self, key):
+        return [ann[key] for ann in ub.take(self._dset.anns, self._ids)]
 
     @property
     def boxes(self):
@@ -497,7 +507,7 @@ class Annots(ObjectList1D):
                        [124,  96,  45,  18]]))>
         """
         import netharn as nh
-        xywh = [ann['bbox'] for ann in ub.take(self._dset.anns, self._ids)]
+        xywh = self._lookup('bbox')
         boxes = nh.util.Boxes(xywh, 'xywh')
         return boxes
 
