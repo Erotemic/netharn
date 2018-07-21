@@ -5,305 +5,26 @@ from netharn import util
 from netharn.util import profiler
 
 
-def _devcheck_voc_consistency():
-    """
-    # CHECK FOR ISSUES WITH MY MAP COMPUTATION
+class ScoreDets:
+    def __init__(self, true_dets, pred_dets, bg_weight=1.0, ovthresh=0.5,
+                 bg_cls=-1, bias=0.0):
+        self.true_dets = true_dets
+        self.pred_dets = pred_dets
 
-    TODO:
-        Check how cocoeval works
-        https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py
-    """
-    def voc_eval(lines, recs, classname, ovthresh=0.5, method=False, bias=1):
-        import copy
-        imagenames = ([x.strip().split(' ')[0] for x in lines])
-        # BUGFIX: the original code did not cast this to a set
-        imagenames = set(imagenames)
-        recs2 = copy.deepcopy(recs)
+    def score_netharn():
+        pass
 
-        # extract gt objects for this class
-        class_recs = {}
-        npos = 0
-        for imagename in imagenames:
-            R = [obj for obj in recs2[imagename] if obj['name'] == classname]
-            bbox = np.array([x['bbox'] for x in R])
-            difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
-            det = [False] * len(R)
-            npos = npos + sum(~difficult)
-            class_recs[imagename] = {'bbox': bbox,
-                                     'difficult': difficult,
-                                     'det': det}
+    def score_voc():
+        pass
 
-        splitlines = [x.strip().split(' ') for x in lines]
-        image_ids = [x[0] for x in splitlines]
-        confidence = np.array([float(x[1]) for x in splitlines])
-        BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
-
-        # sort by confidence
-        sorted_ind = np.argsort(-confidence)
-        # sorted_scores = np.sort(-confidence)  #
-        BB = BB[sorted_ind, :]
-        image_ids = [image_ids[x] for x in sorted_ind]
-
-        # go down dets and mark TPs and FPs
-        nd = len(image_ids)
-        tp = np.zeros(nd)
-        fp = np.zeros(nd)
-        for d in range(nd):
-            R = class_recs[image_ids[d]]
-            bb = BB[d, :].astype(float)
-            ovmax = -np.inf
-            BBGT = R['bbox'].astype(float)
-
-            if BBGT.size > 0:
-                # compute overlaps
-                # intersection
-                ixmin = np.maximum(BBGT[:, 0], bb[0])
-                iymin = np.maximum(BBGT[:, 1], bb[1])
-                ixmax = np.minimum(BBGT[:, 2], bb[2])
-                iymax = np.minimum(BBGT[:, 3], bb[3])
-                iw = np.maximum(ixmax - ixmin + bias, 0.)
-                ih = np.maximum(iymax - iymin + bias, 0.)
-                inters = iw * ih
-
-                # union
-                uni = ((bb[2] - bb[0] + bias) * (bb[3] - bb[1] + bias) +
-                       (BBGT[:, 2] - BBGT[:, 0] + bias) *
-                       (BBGT[:, 3] - BBGT[:, 1] + bias) - inters)
-
-                overlaps = inters / uni
-                ovmax = np.max(overlaps)
-                jmax = np.argmax(overlaps)
-
-            if ovmax > ovthresh:
-                if not R['difficult'][jmax]:
-                    if not R['det'][jmax]:
-                        tp[d] = 1.
-                        R['det'][jmax] = 1
-                    else:
-                        fp[d] = 1.
-            else:
-                fp[d] = 1.
-
-        # compute precision recall
-        fp = np.cumsum(fp)
-        tp = np.cumsum(tp)
-        rec = tp / float(npos)
-        # avoid divide by zero in case the first detection matches a difficult
-        # ground truth
-        prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
-
-        def voc_ap(rec, prec, use_07_metric=False):
-            """ ap = voc_ap(rec, prec, [use_07_metric])
-            Compute VOC AP given precision and recall.
-            If use_07_metric is true, uses the
-            VOC 07 11 point method (default:False).
-            """
-            if use_07_metric:
-                # 11 point metric
-                ap = 0.
-                for t in np.arange(0., 1.1, 0.1):
-                    if np.sum(rec >= t) == 0:
-                        p = 0
-                    else:
-                        p = np.max(prec[rec >= t])
-                    ap = ap + p / 11.
-            else:
-                # correct AP calculation
-                # first append sentinel values at the end
-                mrec = np.concatenate(([0.], rec, [1.]))
-                mpre = np.concatenate(([0.], prec, [0.]))
-
-                # compute the precision envelope
-                for i in range(mpre.size - 1, 0, -1):
-                    mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
-
-                # to calculate area under PR curve, look for points
-                # where X axis (recall) changes value
-                i = np.where(mrec[1:] != mrec[:-1])[0]
-
-                # and sum (\Delta recall) * prec
-                ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
-            return ap
-
-        ap2 = voc_ap(rec, prec, use_07_metric=method ==  'voc2007')
-        ap = _ave_precision(rec, prec, method)
-
-        assert ap == ap2
-        return rec, prec, ap
-    import netharn as nh
-    method = 'voc2012'
-
-    bias = 0
-    bias = 1
-
-    xdata = []
-    ydatas = ub.ddict(list)
-
-    for noise in np.linspace(0, 5, 10):
-        recs = {}
-        lines = []
-        confusions = []
-        rng = np.random.RandomState(0)
-
-        classname = 0
-        # nimgs = 5
-        # nboxes = 2
-        nimgs = 5
-        nboxes = 4
-
-        true_coco = nh.data.coco_api.CocoDataset()
-        pred_coco = nh.data.coco_api.CocoDataset()
-        cid = true_coco.add_category('cat1')
-        cid = pred_coco.add_category('cat1')
-        for imgname in range(nimgs):
-
-            # Create voc style data
-            imgname = str(imgname)
-            true_boxes = nh.util.Boxes.random(num=nboxes, scale=100, rng=rng, format='cxywh')
-            pred_boxes = true_boxes.copy()
-            pred_boxes.data = pred_boxes.data.astype(np.float) + (rng.rand() * noise)
-
-            true_boxes = true_boxes.to_tlbr().data
-            pred_boxes = pred_boxes.to_tlbr().data
-            # pred_boxes = nh.util.Boxes.random(num=10, scale=100, rng=rng, format='tlbr')
-
-            recs[imgname] = []
-            for bbox in true_boxes:
-                recs[imgname].append({
-                    'bbox': bbox,
-                    'difficult': False,
-                    'name': classname
-                })
-
-            for bbox, score in zip(pred_boxes, np.arange(len(pred_boxes))):
-                lines.append('{} {} {} {} {} {}'.format(imgname, score, *bbox))
-
-            # Create MS-COCO style data
-            gid = true_coco.add_image(imgname)
-            gid = pred_coco.add_image(imgname)
-
-            for bbox in nh.util.Boxes(true_boxes, 'tlbr'):
-                true_coco.add_annotation(gid, cid, bbox=bbox, iscrowd=False,
-                                         area=bbox.area[0])
-
-            for bbox, score in zip(nh.util.Boxes(pred_boxes, 'tlbr'), np.arange(len(pred_boxes))):
-                pred_coco.add_annotation(gid, cid, bbox=bbox, iscrowd=False,
-                                         score=score, area=bbox.area[0])
-
-            # Create netharn style confusion data
-            true_cxs = np.array([0] * len(true_boxes))
-            pred_cxs = np.array([0] * len(true_boxes))
-            true_weights = np.array([1] * len(true_boxes))
-            pred_scores = np.arange(len(pred_boxes))
-
-            y = pd.DataFrame(detection_confusions(true_boxes, true_cxs, true_weights,
-                                                  pred_boxes, pred_scores, pred_cxs,
-                                                  bg_weight=1.0, ovthresh=0.5, bg_cls=-1,
-                                                  bias=bias, PREFER_WEIGHTED_TRUTH=False))
-            y['gx'] = int(imgname)
-            y = (y)
-            confusions.append(y)
-
-        from pycocotools import coco as orig_coco
-        from pycocotools import cocoeval as coco_score
-        # orig_coco = ub.import_module_from_path(ub.truepath('~/code/netharn/netharn/metrics/orig_coco_api.py'))
-        # coco_score = ub.import_module_from_path(ub.truepath('~/code/netharn/netharn/metrics/coco_score.py'))
-        cocoGt = orig_coco.COCO()
-        cocoDt = orig_coco.COCO()
-        cocoGt.dataset = true_coco.dataset
-        cocoGt.createIndex()
-        cocoDt.dataset = pred_coco.dataset
-        cocoDt.createIndex()
-
-        evaler = coco_score.COCOeval(cocoGt, cocoDt, iouType='bbox')
-        evaler.evaluate()
-        evaler.accumulate()
-        evaler.summarize()
-        coco_ap = evaler.stats[1]
-
-        y = pd.concat(confusions)
-
-        ap3 = ave_precisions(y, method=method)['ap']
-        rec, prec, ap = voc_eval(lines, recs, classname, ovthresh=0.5,
-                                 method=method, bias=bias)
-        prec2, rec2, ap2 = _multiclass_ap(y)
-        ap2 = _ave_precision(rec2, prec2, method)
-        print('noise = {!r}'.format(noise))
-        print('ap3 = {!r}'.format(ap3.values.mean()))
-        print('ap = {!r}'.format(ap))
-        print('ap2 = {!r}'.format(ap2))
-        print('---')
-        xdata.append(noise)
-        ydatas['orig'].append(ap)
-        ydatas['eav'].append(ap2)
-        ydatas['mine'].append(ap3)
-        ydatas['coco'].append(coco_ap)
-
-    nh.util.autompl()
-    nh.util.multi_plot(xdata=xdata, ydata=ydatas)
-
-
-def _multiclass_ap(y):
-    """ computes pr like lightnet from netharn confusions """
-    y = y.sort_values('score', ascending=False)
-
-    num_annotations = y[y.true >= 0].weight.sum()
-    positives = []
-
-    for rx, row in y.iterrows():
-        if row.pred >= 0:
-            if row.true == row.pred:
-                positives.append((row.score, True))
-            else:
-                positives.append((row.score, False))
-
-    # sort matches by confidence from high to low
-    positives = sorted(positives, key=lambda d: (d[0], -d[1]), reverse=True)
-
-    tps = []
-    fps = []
-    tp_counter = 0
-    fp_counter = 0
-
-    # all matches in dataset
-    for pos in positives:
-        if pos[1]:
-            tp_counter += 1
-        else:
-            fp_counter += 1
-        tps.append(tp_counter)
-        fps.append(fp_counter)
-
-    precision = []
-    recall = []
-    for tp, fp in zip(tps, fps):
-        recall.append(tp / num_annotations)
-        precision.append(tp / np.maximum(fp + tp, np.finfo(np.float64).eps))
-
-    import scipy
-    num_of_samples = 100
-
-    if len(precision) > 1 and len(recall) > 1:
-        p = np.array(precision)
-        r = np.array(recall)
-        p_start = p[np.argmin(r)]
-        samples = np.arange(0., 1., 1.0 / num_of_samples)
-        interpolated = scipy.interpolate.interp1d(r, p, fill_value=(p_start, 0.), bounds_error=False)(samples)
-        avg = sum(interpolated) / len(interpolated)
-    elif len(precision) > 0 and len(recall) > 0:
-        # 1 point on PR: AP is box between (0,0) and (p,r)
-        avg = precision[0] * recall[0]
-    else:
-        avg = float('nan')
-
-    return precision, recall, avg
+    def score_coco():
+        pass
 
 
 @profiler.profile
-def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
-                         pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5,
-                         bg_cls=-1, bias=0.0, PREFER_WEIGHTED_TRUTH=False):
-    """
+def assign_dets(true_boxes, true_cxs, true_weights, pred_boxes, pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5, bg_cls=-1, bias=0.0) -> dict:
+    """ Classify detections by assigning to groundtruth boxes.
+
     Given predictions and truth for an image return (y_pred, y_true,
     y_score), which is suitable for sklearn classification metrics
 
@@ -330,6 +51,8 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
         globals().update(get_func_kwargs(detection_confusions))
 
     Example:
+        >>> from netharn.metrics.detections import *
+        >>> from netharn.metrics.detections import _ave_precision, pr_curves
         >>> true_boxes = np.array([[ 0,  0, 10, 10],
         >>>                        [10,  0, 20, 10],
         >>>                        [10,  0, 20, 10],
@@ -347,12 +70,12 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
         >>>                          bg_weight=bg_weight, ovthresh=.5)
         >>> y = pd.DataFrame(y)
         >>> print(y)  # xdoc: +IGNORE_WANT
-           cx  pred  score  true  weight
-        0   1     1 0.5000     1  1.0000
-        1   0     0 0.5000    -1  1.0000
-        2   0     0 0.5000     0  0.0000
-        3   0    -1 0.0000     0  1.0000
-        4   1    -1 0.0000     1  0.9000
+           pred  true  score  weight  cx  y_txs  y_pxs
+        0     1     1 0.5000  1.0000   1      3      2
+        1     0    -1 0.5000  1.0000   0     -1      1
+        2     0     0 0.5000  0.0000   0      1      0
+        3    -1     0 0.0000  1.0000   0      0     -1
+        4    -1     1 0.0000  0.9000   1      2     -1
 
     Example:
         >>> true_boxes = np.array([[ 0,  0, 10, 10],
@@ -385,92 +108,74 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
     if bg_weight is None:
         bg_weight = 1.0
 
-    if isinstance(true_boxes, util.Boxes):
-        true_boxes = true_boxes.data
-    if isinstance(pred_boxes, util.Boxes):
-        pred_boxes = pred_boxes.data
+    if False:
+        if isinstance(true_boxes, util.Boxes):
+            true_boxes = true_boxes.data
+        if isinstance(pred_boxes, util.Boxes):
+            pred_boxes = pred_boxes.data
+    else:
+        if not isinstance(true_boxes, util.Boxes):
+            true_boxes = util.Boxes(true_boxes, 'tlbr')
+        if not isinstance(pred_boxes, util.Boxes):
+            pred_boxes = util.Boxes(pred_boxes, 'tlbr')
+
+    # Keep track of which true items have been used
+    true_unused = np.ones(len(true_cxs), dtype=np.bool)
+    if true_weights is None:
+        true_weights = np.ones(len(true_cxs))
 
     # Group true boxes by class
     # Keep track which true boxes are unused / not assigned
     cx_to_idxs = ub.group_items(range(len(true_cxs)), true_cxs)
-    cx_to_unused = {cx: np.array([True] * len(idxs))
-                    for cx, idxs in cx_to_idxs.items()}
 
     # cx_to_boxes = ub.group_items(true_boxes, true_cxs)
     # cx_to_boxes = ub.map_vals(np.array, cx_to_boxes)
 
     # sort predictions by descending score
-    sortx = pred_scores.argsort()[::-1]
-    pred_boxes = pred_boxes.take(sortx, axis=0)
-    pred_cxs = pred_cxs.take(sortx, axis=0)
-    pred_scores = pred_scores.take(sortx, axis=0)
+    spred_sortx = pred_scores.argsort()[::-1]
+    spred_boxes = pred_boxes.take(spred_sortx, axis=0)
+    spred_cxs = pred_cxs.take(spred_sortx, axis=0)
+    spred_scores = pred_scores.take(spred_sortx, axis=0)
 
-    for px, cx, box, score in zip(sortx, pred_cxs, pred_boxes, pred_scores):
-        # For each predicted detection box
+    # For each predicted detection box
+    # Allow it to match the truth of a particular class
+    for px, cx, box, score in zip(spred_sortx, spred_cxs, spred_boxes, spred_scores):
         cls_true_idxs = cx_to_idxs.get(cx, [])
-        cls_unused = cx_to_unused.get(cx, [])
 
         ovmax = -np.inf
         ovidx = None
         weight = bg_weight
+        tx = None  # we will set this to the index of the assignd gt
 
         if len(cls_true_idxs):
             cls_true_boxes = true_boxes.take(cls_true_idxs, axis=0)
-            if true_weights is None:
-                cls_true_weights = np.ones(len(cls_true_boxes))
-            else:
-                cls_true_weights = true_weights.take(cls_true_idxs, axis=0)
+            cls_true_weights = true_weights.take(cls_true_idxs, axis=0)
 
-            # TODO: make this more efficient
-            cls_true_boxes_ = util.Boxes(cls_true_boxes, 'tlbr')
-            box_ = util.Boxes(box, 'tlbr')
-            overlaps = cls_true_boxes_.ious(box_, bias=bias)
-
-            sortx = overlaps.argsort()[::-1]
+            overlaps = cls_true_boxes.ious(box, bias=bias)
 
             # choose best score by default
-            ovidx = sortx[0]
+            ovidx = overlaps.argsort()[-1]
             ovmax = overlaps[ovidx]
             weight = cls_true_weights[ovidx]
+            tx = cls_true_idxs[ovidx]
 
-            NOT_HACK = True
-            # True
-            # False
-            if NOT_HACK:
-                # Only allowed to select matches over a thresh
-                is_valid = overlaps > ovthresh
-                # Only allowed to select unused annotations
-                is_valid = is_valid * cls_unused
-                reweighted = overlaps * is_valid.astype(np.float)
-                # settings can modify this
-                if PREFER_WEIGHTED_TRUTH:
-                    # PREFER_WEIGHTED_TRUTH is bugged, doesn't work.
-                    # should be trying to ignore difficult gt boxes
-                    reweighted = reweighted * cls_true_weights
-
-            if NOT_HACK:
-                if np.any(reweighted > 0):
-                    # Prefer truth with more weight
-                    sortx = reweighted.argsort()[::-1]
-                    ovidx = sortx[0]
-                    ovmax = overlaps[ovidx]
-                else:
-                    ovmax = 0
-                    weight = bg_weight
-
-        if ovmax > ovthresh and cls_unused[ovidx]:
+        if ovmax > ovthresh and true_unused[tx]:
+            # Assign this prediction to a groundtruth object
             # Mark this prediction as a true positive
             y_pred.append(cx)
             y_true.append(cx)
             y_score.append(score)
             y_weight.append(weight)
             cxs.append(cx)
-            cls_unused[ovidx] = False
+            # cls_unused[ovidx] = False
 
             tx = cls_true_idxs[ovidx]
+            true_unused[tx] = False
+
             y_pxs.append(px)
             y_txs.append(tx)
         else:
+            # Assign this prediction to a the background
             # Mark this prediction as a false positive
             y_pred.append(cx)
             y_true.append(bg_cls)  # use -1 as background ignore class
@@ -484,26 +189,17 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
 
     # All pred boxes have been assigned to a truth box or the background.
     # Mark unused true boxes we failed to predict as false negatives
-    for cx, cls_unused in cx_to_unused.items():
-        cls_true_idxs = cx_to_idxs.get(cx, [])
-        if true_weights is None:
-            cls_true_weights = np.ones(len(cls_true_boxes))
-        else:
-            cls_true_weights = true_weights.take(cls_true_idxs, axis=0)
-        for ovidx, flag in enumerate(cls_unused):
-            if flag:
-                weight = cls_true_weights[ovidx]
-                # Mark this prediction as a false negative
-                y_pred.append(-1)
-                y_true.append(cx)
-                y_score.append(0.0)
-                y_weight.append(weight)
-                cxs.append(cx)
+    for tx in np.where(true_unused)[0]:
+        # Mark each unmatched truth as a false negative
+        y_pred.append(-1)
+        y_true.append(true_cxs[tx])
+        y_score.append(0.0)
+        y_weight.append(true_weights[tx])
+        cxs.append(true_cxs[tx])
 
-                tx = cls_true_idxs[ovidx]
-                px = -1
-                y_pxs.append(px)
-                y_txs.append(tx)
+        px = -1
+        y_pxs.append(px)
+        y_txs.append(tx)
 
     y = {
         'pred': y_pred,
@@ -519,8 +215,11 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
     return y
 
 
-def _ave_precision(rec, prec, method='voc2012'):
-    """ ap = voc_ap(rec, prec, [use_07_metric])
+def _ave_precision(rec, prec, method='voc2012') -> float:
+    """ Compute AP from precision and recall
+
+
+    ap = voc_ap(rec, prec, [use_07_metric])
     Compute VOC AP given precision and recall.
     If method == voc2007, uses the VOC 07 11 point method (default:False).
     """
@@ -556,8 +255,8 @@ def _ave_precision(rec, prec, method='voc2012'):
     return ap
 
 
-def ave_precisions(y, labels=None, method='voc2012'):
-    """
+def score_detection_assignment(y, labels=None, method='voc2012') -> pd.DataFrame:
+    """ Measures scores of predicted detections assigned to groundtruth objects
 
     Args:
         y (pd.DataFrame): pre-measured frames of predictions, truth,
@@ -615,16 +314,24 @@ def ave_precisions(y, labels=None, method='voc2012'):
     for cx in labels:
         # for cx, group in cx_to_group.items():
         group = cx_to_group.get(cx, None)
-        ap = _group_metrics(group, method)
+        ap = pr_curves(group, method)
         class_aps.append((cx, ap))
 
     ave_precs = pd.DataFrame(class_aps, columns=['cx', 'ap'])
     return ave_precs
 
 
-def _group_metrics(group, method):
+def pr_curves(y, method='voc2012'):  # -> Tuple[float, ndarray, ndarray]:
+    """ Compute a PR curve from a method
+
+    Args:
+        y (pd.DataFrame): output of detection_confusions
+    """
+    if method not in ['sklearn', 'voc2007', 'voc2012']:
+        raise KeyError(method)
+
     # compute metrics on a per class basis
-    if group is None:
+    if y is None:
         return np.nan
 
     # References [Manning2008] and [Everingham2010] present alternative
@@ -632,60 +339,36 @@ def _group_metrics(group, method):
     # average_precision_score does not implement any interpolated variant
     # http://scikit-learn.org/stable/modules/model_evaluation.html
 
-    # g2 = group[group.weight > 0]
+    # g2 = y[y.weight > 0]
     # prec2, rec2, thresh = sklearn.metrics.precision_recall_curve(
     #     (g2.true > -1).values,
     #     g2.score.values,
     #     sample_weight=g2.weight.values)
-    # ap2 = _ave_precision(rec2, prec2, method=method)
-    # print('ap2 = {!r}'.format(ap2))
+    # eav_ap = _ave_precision(rec2, prec2, method=method)
+    # print('eav_ap = {!r}'.format(eav_ap))
 
     if method == 'sklearn':
         # In the future, we should simply use the sklearn version
         # which gives nice easy to reproduce results.
         import sklearn.metrics
-        df = group
+        df = y
         ap = sklearn.metrics.average_precision_score(
             y_true=(df['true'].values == df['pred'].values).astype(np.int),
             y_score=df['score'].values,
             sample_weight=df['weight'].values,
         )
-        return ap
-
-    if False and method == 'voc2007':
-        import sklearn.metrics
-
-        # The VOC scoring is weird, and does not conform to sklearn We
-        # overcount the number of trues and use unweighted PR curves instead of
-        # simply using the weighted variant (that albiet gives lower scores)
-        npos = group[group.true >= 0].weight.sum()
-        dets = group[group.pred > -1]
-
-        fps, tps, thresholds = sklearn.metrics.ranking._binary_clf_curve(
-            (dets.pred == dets.true).values, dets.score.values,
-            sample_weight=None)
-
-        precision = tps / (tps + fps)
-        recall = tps / npos
-
-        last_ind = tps.searchsorted(tps[-1])
-        sl = slice(last_ind, None, -1)
-        prec3 = np.r_[precision[sl], 1]
-        rec3 = np.r_[recall[sl], 0]
-        # thre3 = thresholds[sl]
-
-        ap = _ave_precision(rec3, prec3, method=method)
+        raise NotImplementedError('todo: return pr curves')
         return ap
 
     if method == 'voc2007' or method == 'voc2012':
-        group = group.sort_values('score', ascending=False)
+        y = y.sort_values('score', ascending=False)
         # if True:
         #     # ignore "difficult" matches
-        #     group = group[group.weight > 0]
+        #     y = y[y.weight > 0]
 
-        # npos = sum(group.true >= 0)
-        npos = group[group.true >= 0].weight.sum()
-        dets = group[group.pred > -1]
+        # npos = sum(y.true >= 0)
+        npos = y[y.true >= 0].weight.sum()
+        dets = y[y.pred > -1]
         if npos > 0 and len(dets) > 0:
             tp = (dets.pred == dets.true).values.astype(np.int)
             fp = 1 - tp
@@ -697,14 +380,19 @@ def _group_metrics(group, method):
             prec = tp_cum / np.maximum(tp_cum + fp_cum, eps)
 
             ap = _ave_precision(rec, prec, method=method)
-            return ap
         else:
+            prec, rec = None, None
             if npos == 0:
-                return np.nan
+                ap = np.nan
             if len(dets) == 0:
                 if npos == 0:
-                    return np.nan
-                return 0.0
+                    ap = np.nan
+                ap = 0.0
+    return ap, prec, rec
+
+
+ave_precisions = score_detection_assignment
+detection_confusions = assign_dets
 
 
 if __name__ == '__main__':

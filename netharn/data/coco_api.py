@@ -380,6 +380,14 @@ class CocoExtrasMixin(object):
             self.dataset['images'].remove(img)
         self._build_index()
 
+    def _aspycoco(self):
+        # Converts to the official pycocotools.coco.COCO object
+        from pycocotools import coco
+        pycoco = coco.COCO()
+        pycoco.dataset = self.dataset
+        pycoco.createIndex()
+        return pycoco
+
 
 class ObjectList1D(ub.NiceRepr):
     """
