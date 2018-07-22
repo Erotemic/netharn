@@ -542,6 +542,8 @@ class YoloHarn(nh.FitHarn):
             coco_scores = dmet.score_coco()
             metrics_dict['coco-mAP'] = coco_scores['mAP']
         except Exception as ex:
+            import utool
+            utool.embed()
             print('ex = {!r}'.format(ex))
 
         try:
@@ -549,12 +551,16 @@ class YoloHarn(nh.FitHarn):
             metrics_dict['nh-mAP'] = nh_scores['mAP']
             metrics_dict['nh-AP'] = nh_scores['peritem']['ap']
         except Exception as ex:
+            import utool
+            utool.embed()
             print('ex = {!r}'.format(ex))
 
         try:
             voc_scores = dmet.score_voc()
             metrics_dict['voc-mAP'] = voc_scores['mAP']
         except Exception as ex:
+            import utool
+            utool.embed()
             print('ex = {!r}'.format(ex))
 
         # Reset detections

@@ -198,22 +198,25 @@ def _devcheck_voc_consistency2():
     xdata = []
     ydatas = ub.ddict(list)
 
-    for box_noise in np.linspace(0, 5, 10):
+    dmets = []
+
+    for box_noise in np.linspace(0, 8, 50) / 6:
         dmet = DetectionMetrics.demo(
-            nimgs=500,
-            nboxes=(0, 2),
-            n_fp=(0, 1),
-            n_fn=(0, 1),
+            nimgs=20,
+            nboxes=(0, 20),
             nclasses=3,
-            rng=30,
+            rng=0,
+            # anchors=np.array([[.5, .5], [.3, .3], [.1, .3], [.2, .1]]),
             box_noise=box_noise,
-            cls_noise=.3,
+            # n_fp=0 if box_noise == 0 else (0, 3),
+            # n_fn=0 if box_noise == 0 else (0, 3),
+            # cls_noise=0 if box_noise == 0 else .3,
         )
+        dmets.append(dmet)
 
-        nh_scores = dmet.score_netharn()
-        voc_scores = dmet.score_voc()
+        nh_scores = dmet.score_netharn(bias=0)
+        voc_scores = dmet.score_voc(bias=0)
         coco_scores = dmet.score_coco()
-
         nh_map = nh_scores['mAP']
         voc_map = voc_scores['mAP']
         coco_map = coco_scores['mAP']
@@ -231,6 +234,32 @@ def _devcheck_voc_consistency2():
 
     nh.util.autompl()
     nh.util.multi_plot(xdata=xdata, ydata=ydatas, fnum=1, doclf=True)
+
+    if False:
+        dmet_ = dmets[-1]
+        dmet_ = dmets[0]
+        print('true = ' + ub.repr2(dmet_.true.dataset, nl=2, precision=2))
+        print('pred = ' + ub.repr2(dmet_.pred.dataset, nl=2, precision=2))
+
+        dmet = DetectionMetrics()
+        for gid in range(0, 5):
+            print('----')
+            print('gid = {!r}'.format(gid))
+            dmet.true = dmet_.true.subset([gid])
+            dmet.pred = dmet_.pred.subset([gid])
+
+            nh_scores = dmet.score_netharn(bias=0)
+            voc_scores = dmet.score_voc(bias=0)
+            coco_scores = dmet.score_coco()
+            nh_map = nh_scores['mAP']
+            voc_map = voc_scores['mAP']
+            coco_map = coco_scores['mAP']
+            print('nh_map = {!r}'.format(nh_map))
+            print('voc_map = {!r}'.format(voc_map))
+            print('coco_map = {!r}'.format(coco_map))
+
+            print('true = ' + ub.repr2(dmet.true.dataset, nl=2))
+            print('pred = ' + ub.repr2(dmet.pred.dataset, nl=2))
 
 
 def _devcheck_voc_consistency():

@@ -61,6 +61,8 @@ class DetectionMetrics:
         box_noise = kw.get('box_noise', 0)
         cls_noise = kw.get('cls_noise', 0)
 
+        anchors = kw.get('anchors', None)
+
         scale = 100
 
         true = nh.data.coco_api.CocoDataset()
@@ -81,26 +83,30 @@ class DetectionMetrics:
 
             # Generate random ground truth detections
             true_boxes = nh.util.Boxes.random(num=nboxes_, scale=scale,
-                                              rng=rng, format='cxywh')
-            true_cxs = rng.choice(classes, size=len(true_boxes))
+                                              anchors=anchors, rng=rng,
+                                              format='cxywh')
+            # Prevent 0 sized boxes
+            true_boxes.data[2:4] += 1
+            true_cids = rng.choice(classes, size=len(true_boxes))
             true_weights = np.ones(len(true_boxes))
 
             # Initialize predicted detections as a copy of truth
             pred_boxes = true_boxes.copy()
-            pred_cxs = true_cxs.copy()
+            pred_cids = true_cids.copy()
 
             # Perterb box coordinates
-            pred_boxes.data = pred_boxes.data.astype(np.float) + (rng.rand() * box_noise)
+            pred_boxes.data = np.abs(pred_boxes.data.astype(np.float) + (
+                rng.randn() * box_noise))
 
             # Perterb class predictions
-            change = rng.rand(len(pred_cxs)) < cls_noise
-            pred_cxs_swap = rng.choice(classes, size=len(pred_cxs))
-            pred_cxs[change] = pred_cxs_swap[change]
+            change = rng.rand(len(pred_cids)) < cls_noise
+            pred_cids_swap = rng.choice(classes, size=len(pred_cids))
+            pred_cids[change] = pred_cids_swap[change]
 
             # Drop true positive boxes
             if n_fn_:
                 pred_boxes.data = pred_boxes.data[n_fn_:]
-                pred_cxs = pred_cxs[n_fn_:]
+                pred_cids = pred_cids[n_fn_:]
 
             # Add false positive boxes
             if n_fp_:
@@ -108,15 +114,17 @@ class DetectionMetrics:
                     pred_boxes.data,
                     nh.util.Boxes.random(num=n_fp_, scale=scale, rng=rng,
                                          format='cxywh').data])
-                pred_cxs = np.hstack([pred_cxs,
+                pred_cids = np.hstack([pred_cids,
                                       rng.choice(classes, size=n_fp_)])
 
             # Create netharn style confusion data
-            pred_scores = np.linspace(1, 2, len(pred_boxes))
+            pred_scores = np.linspace(0.01, 10, len(pred_boxes))
 
-            for bbox, weight in zip(true_boxes.to_xywh(), true_weights):
+            for bbox, cid, weight in zip(true_boxes.to_xywh(), true_cids,
+                                         true_weights):
                 true.add_annotation(gid, cid, bbox=bbox, weight=weight)
-            for bbox, score in zip(pred_boxes.to_xywh(), pred_scores):
+            for bbox, cid, score in zip(pred_boxes.to_xywh(), pred_cids,
+                                        pred_scores):
                 pred.add_annotation(gid, cid, bbox=bbox, score=score)
 
         dmet = cls()
@@ -134,7 +142,7 @@ class DetectionMetrics:
         for bbox, cid, weight in zip(true_boxes.to_xywh(), true_cids, true_weights):
             dmet.true.add_annotation(true_gid, cid, bbox=bbox, weight=weight)
 
-    def score_netharn(dmet, ovthresh=0.5, bias=0):
+    def score_netharn(dmet, ovthresh=0.5, bias=0, method='voc2012'):
         y_accum = ub.ddict(list)
         # confusions = []
         for gid in dmet.pred.imgs.keys():
@@ -172,7 +180,7 @@ class DetectionMetrics:
         for cx in cx_to_group:
             # for cx, group in cx_to_group.items():
             group = cx_to_group.get(cx, None)
-            ap, prec, rec = pr_curves(group, method='voc2012')
+            ap, prec, rec = pr_curves(group, method=method)
             perclass[cx] = {
                 'ap': ap,
                 'pr': (prec, rec),
@@ -186,7 +194,7 @@ class DetectionMetrics:
         }
         return nh_scores
 
-    def score_voc(dmet, ovthresh=0.5, bias=0):
+    def score_voc(dmet, ovthresh=0.5, bias=1, method='voc2012'):
         recs = {}
         cx_to_lines = ub.ddict(list)
         # confusions = []
@@ -218,8 +226,9 @@ class DetectionMetrics:
         perclass = ub.ddict(dict)
         for cx in cx_to_lines.keys():
             lines = cx_to_lines[cx]
-            rec, prec, ap = voc_eval(lines, recs, cx, ovthresh=ovthresh,
-                                     bias=bias)
+            classname = cx
+            rec, prec, ap = voc_eval(lines, recs, classname, ovthresh=ovthresh,
+                                     bias=bias, method=method)
             perclass[cx]['pr'] = (rec, prec)
             perclass[cx]['ap'] = ap
 
@@ -642,9 +651,13 @@ def voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012', bias=1):
     import copy
     # imagenames = ([x.strip().split(' ')[0] for x in lines])
     imagenames = ([x[0] for x in lines])
-    # BUGFIX: the original code did not cast this to a set
-    imagenames = set(imagenames)
     recs2 = copy.deepcopy(recs)
+
+    # BUGFIX: need to score images with no predictions / no truth
+    imagenames += list(recs.keys())
+
+    # BUGFIX: the original code did not cast this to a set
+    imagenames = sorted(set(imagenames))
 
     # extract gt objects for this class
     class_recs = {}

@@ -959,7 +959,7 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
         merged = _coco_union(relative_dsets)
         return CocoDataset(merged, **kw)
 
-    def subset(self, sub_gids):
+    def subset(self, gids):
         """
         Return a subset of the larger coco dataset by specifying which images
         to port. All annotations in those images will be taken.
@@ -967,8 +967,8 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
         Example:
             >>> dataset = demo_coco_data()
             >>> self = CocoDataset(dataset, tag='demo')
-            >>> sub_gids = [1, 3]
-            >>> sub_dset = self.subset(sub_gids)
+            >>> gids = [1, 3]
+            >>> sub_dset = self.subset(gids)
             >>> assert len(self.gid_to_aids) == 3
             >>> assert len(sub_dset.gid_to_aids) == 2
 
@@ -990,11 +990,11 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
         new_dataset['info'] = self.dataset.get('info', [])
         new_dataset['licenses'] = self.dataset.get('licenses', [])
 
-        sub_gids = sorted(set(sub_gids))
-        sub_aids = sorted([aid for gid in sub_gids
+        gids = sorted(set(gids))
+        sub_aids = sorted([aid for gid in gids
                            for aid in self.gid_to_aids.get(gid, [])])
         new_dataset['annotations'] = list(ub.take(self.anns, sub_aids))
-        new_dataset['images'] = list(ub.take(self.imgs, sub_gids))
+        new_dataset['images'] = list(ub.take(self.imgs, gids))
 
         sub_dset = CocoDataset(new_dataset, img_root=self.img_root)
         return sub_dset
