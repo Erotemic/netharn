@@ -774,10 +774,11 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
             cid - Category ID
         """
         # create index
+        _set = ub.oset
         anns, cats, imgs = {}, {}, {}
-        gid_to_aids = ub.ddict(set)
-        cid_to_gids = ub.ddict(set)
-        cid_to_aids = ub.ddict(set)
+        gid_to_aids = ub.ddict(_set)
+        cid_to_gids = ub.ddict(_set)
+        cid_to_aids = ub.ddict(_set)
 
         # Build one-to-one self-lookup maps
         for cat in self.dataset.get('categories', []):
@@ -830,21 +831,24 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
         # Fix one-to-zero cases
         for cid in cats.keys():
             if cid not in cid_to_aids:
-                cid_to_aids[cid] = set()
+                cid_to_aids[cid] = _set()
             if cid not in cid_to_gids:
-                cid_to_gids[cid] = set()
+                cid_to_gids[cid] = _set()
 
         for gid in imgs.keys():
             if gid not in gid_to_aids:
-                gid_to_aids[gid] = set()
+                gid_to_aids[gid] = _set()
 
         # create class members
         self.anns = anns
         self.imgs = imgs
         self.cats = cats
-        self.gid_to_aids = ub.map_vals(sorted, gid_to_aids)
-        self.cid_to_gids = ub.map_vals(sorted, cid_to_gids)
-        self.cid_to_aids = ub.map_vals(sorted, cid_to_aids)
+        self.gid_to_aids = gid_to_aids
+        self.cid_to_gids = cid_to_gids
+        self.cid_to_aids = cid_to_aids
+        # self.gid_to_aids = ub.map_vals(sorted, gid_to_aids)
+        # self.cid_to_gids = ub.map_vals(sorted, cid_to_gids)
+        # self.cid_to_aids = ub.map_vals(sorted, cid_to_aids)
         self.name_to_cat = {cat['name']: cat for cat in self.cats.values()}
 
     def _clear_index(self):
@@ -1224,9 +1228,12 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
         if self.anns is not None:
             # Keep the category and image indexes alive
             self.anns.clear()
-            self.gid_to_aids.clear()
-            self.cid_to_gids.clear()
-            self.cid_to_aids.clear()
+            for _ in self.gid_to_aids.values():
+                _.clear()
+            for _ in self.cid_to_gids.values():
+                _.clear()
+            for _ in self.cid_to_aids.values():
+                _.clear()
 
     def remove_annotation(self, aid_or_ann):
         """

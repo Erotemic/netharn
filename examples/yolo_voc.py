@@ -538,15 +538,24 @@ class YoloHarn(nh.FitHarn):
         # dmet.pred._build_index()
         # dmet.true._build_index()
 
-        coco_scores = dmet.score_coco()
-        metrics_dict['coco-mAP'] = coco_scores['mAP']
+        try:
+            coco_scores = dmet.score_coco()
+            metrics_dict['coco-mAP'] = coco_scores['mAP']
+        except Exception as ex:
+            print('ex = {!r}'.format(ex))
 
-        nh_scores = dmet.score_netharn()
-        metrics_dict['nh-mAP'] = nh_scores['mAP']
-        metrics_dict['nh-AP'] = nh_scores['peritem']['ap']
+        try:
+            nh_scores = dmet.score_netharn()
+            metrics_dict['nh-mAP'] = nh_scores['mAP']
+            metrics_dict['nh-AP'] = nh_scores['peritem']['ap']
+        except Exception as ex:
+            print('ex = {!r}'.format(ex))
 
-        voc_scores = dmet.score_voc()
-        metrics_dict['voc-mAP'] = voc_scores['mAP']
+        try:
+            voc_scores = dmet.score_voc()
+            metrics_dict['voc-mAP'] = voc_scores['mAP']
+        except Exception as ex:
+            print('ex = {!r}'.format(ex))
 
         # Reset detections
         dmet.pred.remove_all_annotations()

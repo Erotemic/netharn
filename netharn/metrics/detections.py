@@ -468,7 +468,7 @@ def pr_curves(y, method='voc2012'):  # -> Tuple[float, ndarray, ndarray]:
 
     # compute metrics on a per class basis
     if y is None:
-        return np.nan
+        return np.nan, [], []
 
     # References [Manning2008] and [Everingham2010] present alternative
     # variants of AP that interpolate the precision-recall curve. Currently,
@@ -494,7 +494,7 @@ def pr_curves(y, method='voc2012'):  # -> Tuple[float, ndarray, ndarray]:
             sample_weight=df['weight'].values,
         )
         raise NotImplementedError('todo: return pr curves')
-        return ap
+        return ap, [], []
     elif method == 'voc2007' or method == 'voc2012':
         y = y.sort_values('score', ascending=False)
         # if True:
