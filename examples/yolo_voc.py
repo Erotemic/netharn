@@ -5,6 +5,7 @@ References:
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import os
+import itertools as it
 import torch
 import ubelt as ub
 import numpy as np
@@ -25,7 +26,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
     with minimal processing) for multiscale training.
 
     CommandLine:
-        python ~/code/netharn/netharn/examples/yolo_voc.py YoloVOCDataset
+        python ~/code/netharn/examples/yolo_voc.py YoloVOCDataset
 
     Example:
         >>> # DISABLE_DOCTSET
@@ -84,16 +85,19 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         # the aspect ratio.
         self.letterbox = nh.data.transforms.Resize(None, mode='letterbox')
 
+    # def __len__(self):
+    #     return 128
+
     @profiler.profile
     def __getitem__(self, index):
         """
         CommandLine:
-            python ~/code/netharn/netharn/examples/yolo_voc.py YoloVOCDataset.__getitem__ --show
+            python ~/code/netharn/examples/yolo_voc.py YoloVOCDataset.__getitem__ --show
 
         Example:
             >>> # DISABLE_DOCTSET
             >>> import sys, ubelt
-            >>> sys.path.append(ubelt.truepath('~/code/netharn/netharn/examples'))
+            >>> sys.path.append(ubelt.truepath('~/code/netharn/examples'))
             >>> from yolo_voc import *
             >>> self = YoloVOCDataset(split='train')
             >>> index = 1
@@ -114,7 +118,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         Example:
             >>> # DISABLE_DOCTSET
             >>> import sys, ubelt
-            >>> sys.path.append(ubelt.truepath('~/code/netharn/netharn/examples'))
+            >>> sys.path.append(ubelt.truepath('~/code/netharn/examples'))
             >>> from yolo_voc import *
             >>> self = YoloVOCDataset(split='test')
             >>> index = 0
@@ -256,7 +260,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                     pin_memory=False):
         """
         CommandLine:
-            python ~/code/netharn/netharn/examples/yolo_voc.py YoloVOCDataset.make_loader
+            python ~/code/netharn/examples/yolo_voc.py YoloVOCDataset.make_loader
 
         Example:
             >>> # DISABLE_DOCTSET
@@ -303,10 +307,33 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 class YoloHarn(nh.FitHarn):
     def __init__(harn, **kw):
         super().__init__(**kw)
-        harn.batch_confusions = []
-        harn.aps = {}
+        # harn.batch_confusions = []
+        # harn.aps = {}
 
+        # Dictionary of detection metrics
+        harn.dmets = {}  # Dict[str, nh.metrics.detections.DetectionMetrics]
         harn.chosen_indices = {}
+
+    def after_initialize(harn):
+        # Prepare structures we will use to measure and quantify quality
+        for tag, voc_dset in harn.datasets.items():
+
+            cacher = ub.Cacher('foo', cfgstr=tag, appname='netharn')
+            dmet = cacher.tryload()
+            if dmet is None:
+                dmet = nh.metrics.detections.DetectionMetrics()
+                dmet.true = voc_dset.to_coco()
+                # Truth and predictions share the same images and categories
+                dmet.pred.dataset['images'] = dmet.true.dataset['images']
+                dmet.pred.dataset['categories'] = dmet.true.dataset['categories']
+                dmet.pred.dataset['annotations'] = []  # start empty
+                dmet.pred._clear_index()
+                cacher.save(dmet)
+
+            dmet.true._build_index()
+            # dmet.pred._clear_index()
+            dmet.pred._build_index()
+            harn.dmets[tag] = dmet
 
     @profiler.profile
     def prepare_batch(harn, raw_batch):
@@ -330,11 +357,11 @@ class YoloHarn(nh.FitHarn):
             batch: item returned by the loader
 
         CommandLine:
-            python ~/code/netharn/netharn/examples/yolo_voc.py YoloHarn.run_batch
+            python ~/code/netharn/examples/yolo_voc.py YoloHarn.run_batch
 
         Example:
             >>> # DISABLE_DOCTSET
-            >>> harn = setup_harness(bsize=2)
+            >>> harn = setup_yolo_harness(bsize=2)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'test')
             >>> weights_fpath = light_yolo.demo_voc_weights()
@@ -367,11 +394,11 @@ class YoloHarn(nh.FitHarn):
         custom callback
 
         CommandLine:
-            python ~/code/netharn/netharn/examples/yolo_voc.py YoloHarn.on_batch --gpu=0 --show
+            python ~/code/netharn/examples/yolo_voc.py YoloHarn.on_batch --gpu=0 --show
 
         Example:
             >>> # DISABLE_DOCTSET
-            >>> harn = setup_harness(bsize=1)
+            >>> harn = setup_yolo_harness(bsize=1)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'test')
             >>> weights_fpath = light_yolo.demo_voc_weights()
@@ -386,23 +413,7 @@ class YoloHarn(nh.FitHarn):
             >>> harn.visualize_prediction(batch, outputs, postout, idx=0, thresh=0.01)
             >>> mplutil.show_if_requested()
         """
-        if True or harn.current_tag != 'train':
-            # Dont worry about computing mAP on the training set for now
-            inputs, labels = batch
-            inp_size = np.array(inputs.shape[-2:][::-1])
-
-            try:
-                postout = harn.model.module.postprocess(outputs)
-                # if ub.argflag('--profile'):
-                #     torch.cuda.synchronize()
-            except Exception as ex:
-                harn.error('\n\n\n')
-                harn.error('ERROR: FAILED TO POSTPROCESS OUTPUTS')
-                harn.error('DETAILS: {!r}'.format(ex))
-                raise
-
-            for y in harn._measure_confusion(postout, labels, inp_size):
-                harn.batch_confusions.append(y)
+        harn._record_predictions(harn.current_tag, batch, outputs)
 
         metrics_dict = ub.odict()
         metrics_dict['L_bbox'] = float(harn.criterion.loss_coord)
@@ -414,203 +425,138 @@ class YoloHarn(nh.FitHarn):
         return metrics_dict
 
     @profiler.profile
+    def _record_predictions(harn, tag, batch, outputs):
+        """
+        Transform batch predictions into coco-style detections for scoring
+
+        Ignore:
+            >>> harn = setup_yolo_harness(bsize=1)
+            >>> harn.initialize()
+            >>> tag = 'test'
+            >>> batch = harn._demo_batch(0, tag)
+            >>> weights_fpath = light_yolo.demo_voc_weights()
+            >>> state_dict = harn.xpu.load(weights_fpath)['weights']
+            >>> harn.model.module.load_state_dict(state_dict)
+            >>> outputs, loss = harn.run_batch(batch)
+            >>> harn._record_predictions(tag, batch, outputs)
+        """
+        inputs, labels = batch
+        inp_size = np.array(inputs.shape[-2:][::-1])
+        try:
+            postout = harn.model.module.postprocess(outputs, nms_mode=2)
+        except Exception as ex:
+            harn.error('\n\n\n')
+            harn.error('ERROR: FAILED TO POSTPROCESS OUTPUTS')
+            harn.error('DETAILS: {!r}'.format(ex))
+            raise
+
+        dmet = harn.dmets[tag]
+        pred = dmet.pred
+
+        indices = labels['indices']
+        orig_sizes = labels['orig_sizes']
+
+        letterbox = harn.datasets['train'].letterbox
+
+        # MAX_DETS = 100
+        MAX_DETS = 25
+
+        bsize = len(indices)
+        for bx in range(bsize):
+            postitem = postout[bx].data.cpu().numpy()
+            orig_size = orig_sizes[bx].data.cpu().numpy()
+            gx = int(indices[bx].data.cpu().numpy())
+
+            # Unpack postprocessed predictions
+            sboxes = postitem.reshape(-1, 6)
+            pred_boxes_ = util.Boxes(sboxes[:, 0:4], 'cxywh').scale(inp_size)
+            pred_scores = sboxes[:, 4]
+            pred_cxs = sboxes[:, 5].astype(np.int)
+
+            pred_boxes = letterbox._boxes_letterbox_invert(
+                pred_boxes_, orig_size, inp_size)
+
+            # sort predictions by descending score
+
+            # Take at most MAX_DETS detections to evaulate
+            _pred_sortx = pred_scores.argsort()[::-1][:MAX_DETS]
+
+            _pred_boxes = pred_boxes.take(_pred_sortx, axis=0).to_xywh().data.tolist()
+            _pred_cxs = pred_cxs.take(_pred_sortx, axis=0).tolist()
+            _pred_scores = pred_scores.take(_pred_sortx, axis=0).tolist()
+            _aids = it.count(len(pred.dataset['annotations']) + 1)
+
+            anns = [
+                {
+                    'id': aid,
+                    'image_id': gx,
+                    'category_id': cx,
+                    'bbox': box,
+                    'score': score
+                }
+                for aid, box, cx, score in zip(_aids, _pred_boxes, _pred_cxs, _pred_scores)
+            ]
+            # pred.dataset['annotations'].extend(anns)
+            pred.add_annotations(anns)
+            # pred.add_annotation(aid=aid, gid=gx, cid=cx, bbox=box,
+            #                     score=score)
+
+    @profiler.profile
     def on_epoch(harn):
         """
         custom callback
 
         CommandLine:
-            python ~/code/netharn/netharn/examples/yolo_voc.py YoloHarn.on_epoch
+            python ~/code/netharn/examples/yolo_voc.py YoloHarn.on_epoch
 
         Example:
             >>> # DISABLE_DOCTSET
-            >>> harn = setup_harness(bsize=4)
+            >>> import sys, os
+            >>> sys.path.append(os.path.expanduser('~/code/netharn/examples'))
+            >>> from yolo_voc import *
+            >>> harn = setup_yolo_harness(bsize=4)
             >>> harn.initialize()
-            >>> batch = harn._demo_batch(0, 'test')
             >>> weights_fpath = light_yolo.demo_voc_weights()
             >>> state_dict = harn.xpu.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
-            >>> outputs, loss = harn.run_batch(batch)
+            >>> tag = harn.current_tag = 'test'
             >>> # run a few batches
-            >>> harn.on_batch(batch, outputs, loss)
-            >>> harn.on_batch(batch, outputs, loss)
-            >>> harn.on_batch(batch, outputs, loss)
+            >>> for i in ub.ProgIter(range(5)):
+            ...     batch = harn._demo_batch(i, tag)
+            ...     outputs, loss = harn.run_batch(batch)
+            ...     harn.on_batch(batch, outputs, loss)
             >>> # then finish the epoch
             >>> harn.on_epoch()
         """
+        metrics_dict = ub.odict()
+
         tag = harn.current_tag
+        harn.log('Epoch evaluation: {}'.format(tag))
+
+        # Measure quality
+        dmet = harn.dmets[tag]
+        # dmet.pred._build_index()
+        # dmet.true._build_index()
+
+        coco_scores = dmet.score_coco()
+        metrics_dict['coco-mAP'] = coco_scores['mAP']
+
+        nh_scores = dmet.score_netharn()
+        metrics_dict['nh-mAP'] = nh_scores['mAP']
+        metrics_dict['nh-AP'] = nh_scores['peritem']['ap']
+
+        voc_scores = dmet.score_voc()
+        metrics_dict['voc-mAP'] = voc_scores['mAP']
+
+        # Reset detections
+        dmet.pred.remove_all_annotations()
 
         if tag in {'test', 'vali'}:
-            if harn.epoch < 20:
+            if harn.epoch > 20:
                 # Dont bother testing the early iterations
-                return
-
-            if (harn.epoch % 10 == 5 or harn.epoch > 300):
-                harn._dump_chosen_indices()
-
-        metrics_dict = ub.odict()
-        if harn.batch_confusions:
-            y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
-
-            precision, recall, ap = nh.metrics.detections._multiclass_ap(y)
-
-            # TODO: write out a few visualizations
-            loader = harn.loaders[tag]
-            num_classes = len(loader.dataset.label_names)
-            labels = list(range(num_classes))
-            aps = nh.metrics.ave_precisions(y, labels, method='voc2012')
-
-            new_index = list(ub.take(loader.dataset.label_names, aps.index))
-            aps.index = new_index
-
-            harn.debug('aps[{}] = {!r}'.format(tag, aps))
-            harn.aps[tag] = aps
-            mean_ap = np.nanmean(aps['ap'])
-            max_ap = np.nanmax(aps['ap'])
-            harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
-            harn.log_value(tag + ' epoch max-AP', max_ap, harn.epoch)
-
-            harn.batch_confusions.clear()
-
-            metrics_dict['max-AP'] = max_ap
-            metrics_dict['mAP'] = mean_ap
-            metrics_dict['AP'] = ap
+                if (harn.epoch % 10 == 5 or harn.epoch > 300):
+                    harn._dump_chosen_indices()
         return metrics_dict
-
-    # Non-standard problem-specific custom methods
-
-    @profiler.profile
-    def _measure_confusion(harn, postout, labels, inp_size, **kw):
-        targets = labels['targets']
-        gt_weights = labels['gt_weights']
-        bg_weights = labels['bg_weights']
-        # orig_sizes = labels['orig_sizes']
-        # indices = labels['indices']
-
-        def asnumpy(tensor):
-            return tensor.data.cpu().numpy()
-
-        bsize = len(targets)
-        for bx in range(bsize):
-            target = asnumpy(targets[bx]).reshape(-1, 5)
-            true_cxywh = target[:, 1:5]
-            true_cxs = target[:, 0]
-            true_weight = asnumpy(gt_weights[bx])
-
-            # Remove padded truth
-            flags = true_cxs != -1
-            true_cxywh = true_cxywh[flags]
-            true_cxs = true_cxs[flags]
-            true_weight = true_weight[flags]
-
-            # orig_size    = asnumpy(orig_sizes[bx])
-            # gx           = int(asnumpy(indices[bx]))
-
-            # how much do we care about the background in this image?
-            bg_weight = float(asnumpy(bg_weights[bx]))
-
-            # Unpack postprocessed predictions
-            postitem = asnumpy(postout[bx])
-            sboxes = postitem.reshape(-1, 6)
-            pred_cxywh = sboxes[:, 0:4]
-            pred_scores = sboxes[:, 4]
-            pred_cxs = sboxes[:, 5].astype(np.int)
-
-            true_tlbr = util.Boxes(true_cxywh, 'cxywh').to_tlbr()
-            pred_tlbr = util.Boxes(pred_cxywh, 'cxywh').to_tlbr()
-
-            true_tlbr = true_tlbr.scale(inp_size)
-            pred_tlbr = pred_tlbr.scale(inp_size)
-
-            # TODO: can we invert the letterbox transform here and clip for
-            # some extra mAP?
-            true_boxes = true_tlbr.data
-            pred_boxes = pred_tlbr.data
-
-            y = nh.metrics.detection_confusions(
-                true_boxes=true_boxes,
-                true_cxs=true_cxs,
-                true_weights=true_weight,
-                pred_boxes=pred_boxes,
-                pred_scores=pred_scores,
-                pred_cxs=pred_cxs,
-                bg_weight=bg_weight,
-                bg_cls=-1,
-                ovthresh=harn.hyper.other['ovthresh'],
-                **kw
-            )
-            # y['gx'] = gx
-            yield y
-
-    def _postout_to_coco(harn, postout, labels, inp_size):
-        """
-        -[ ] TODO: dump predictions for the test set to disk and score using
-             someone elses code.
-        """
-        targets = labels['targets']
-        gt_weights = labels['gt_weights']
-        # orig_sizes = labels['orig_sizes']
-        indices = labels['indices']
-        orig_sizes = labels['orig_sizes']
-        # bg_weights = labels['bg_weights']
-
-        def asnumpy(tensor):
-            return tensor.data.cpu().numpy()
-
-        def undo_letterbox(cxywh):
-            boxes = util.Boxes(cxywh, 'cxywh')
-            letterbox = harn.datasets['train'].letterbox
-            return letterbox._boxes_letterbox_invert(boxes, orig_size, inp_size)
-
-        predictions = []
-        truth = []
-
-        bsize = len(targets)
-        for bx in range(bsize):
-            postitem = asnumpy(postout[bx])
-            target = asnumpy(targets[bx]).reshape(-1, 5)
-            true_cxywh = target[:, 1:5]
-            true_cxs = target[:, 0]
-            true_weight = asnumpy(gt_weights[bx])
-
-            # Remove padded truth
-            flags = true_cxs != -1
-            true_cxywh = true_cxywh[flags]
-            true_cxs = true_cxs[flags]
-            true_weight = true_weight[flags]
-
-            orig_size = asnumpy(orig_sizes[bx])
-            gx = int(asnumpy(indices[bx]))
-
-            # how much do we care about the background in this image?
-            # bg_weight = float(asnumpy(bg_weights[bx]))
-
-            # Unpack postprocessed predictions
-            sboxes = postitem.reshape(-1, 6)
-            pred_cxywh = sboxes[:, 0:4]
-            pred_scores = sboxes[:, 4]
-            pred_cxs = sboxes[:, 5].astype(np.int)
-
-            true_tlwh = undo_letterbox(true_cxywh).toformat('tlwh').data
-            pred_tlwh = undo_letterbox(pred_cxywh).toformat('tlwh').data
-
-            for tlwh, cx, score in zip(pred_tlwh, pred_cxs, pred_scores):
-                pred = {
-                    'image_id': gx,
-                    'category_id': cx,
-                    'bbox': list(tlwh),
-                    'score': score,
-                }
-                predictions.append(pred)
-
-            for tlwh, cx, weight in zip(true_tlwh, true_cxs, gt_weights):
-                true = {
-                    'image_id': gx,
-                    'category_id': cx,
-                    'bbox': list(tlwh),
-                    'weight': weight,
-                }
-                truth.append(true)
-        return predictions, truth
 
     def visualize_prediction(harn, batch, outputs, postout, idx=0, thresh=None,
                              orig_img=None):
@@ -760,14 +706,14 @@ class YoloHarn(nh.FitHarn):
         pass
 
 
-def setup_harness(bsize=16, workers=0):
+def setup_yolo_harness(bsize=16, workers=0):
     """
     CommandLine:
-        python ~/code/netharn/netharn/examples/yolo_voc.py setup_harness
+        python ~/code/netharn/examples/yolo_voc.py setup_yolo_harness
 
     Example:
         >>> # DISABLE_DOCTSET
-        >>> harn = setup_harness()
+        >>> harn = setup_yolo_harness()
         >>> harn.initialize()
     """
 
@@ -869,7 +815,8 @@ def setup_harness(bsize=16, workers=0):
         'model': (light_yolo.Yolo, {
             'num_classes': datasets['train'].num_classes,
             'anchors': anchors,
-            'conf_thresh': 0.001,
+            # 'conf_thresh': 0.001,
+            'conf_thresh': 0.1,  # make training a bit faster
             # nms_thresh=0.5 to reproduce original yolo
             # nms_thresh=0.4 to reproduce lightnet
             'nms_thresh': 0.5 if not ub.argflag('--eav') else 0.4
@@ -941,7 +888,7 @@ def setup_harness(bsize=16, workers=0):
 
 
 def train():
-    harn = setup_harness()
+    harn = setup_yolo_harness()
     # util.ensure_ulimit()
     harn.run()
 
@@ -950,26 +897,28 @@ if __name__ == '__main__':
     r"""
     CommandLine:
         srun -c 4 -p priority --gres=gpu:1 \
-            python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=rescaled --lr=0.001 --bstep=4 --workers=4
+            python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=rescaled --lr=0.001 --bstep=4 --workers=4
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=new_loss_v2 --lr=0.001 --bstep=4 --workers=4
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=new_loss_v2 --lr=0.001 --bstep=4 --workers=4
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=eav_run --lr=0.001 --bstep=4 --workers=6 --eav
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=6
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=16 --nice=eav_run --lr=0.001 --bstep=4 --workers=6 --eav
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=6
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=fixed_nms --lr=0.001 --bstep=4 --workers=6
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=fixed_nms --lr=0.001 --bstep=4 --workers=6
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=fixed_lrs --lr=0.001 --bstep=4 --workers=6
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=fixed_lrs --lr=0.001 --bstep=4 --workers=6
 
-        # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
-        # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
+        # python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
+        # python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=eav_run2 --lr=0.001 --bstep=4 --workers=8 --eav
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=4
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=eav_run2 --lr=0.001 --bstep=4 --workers=8 --eav
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=4
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=4 --nice=pjr_run2 --lr=0.001 --bstep=8 --workers=4
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=4 --nice=pjr_run2 --lr=0.001 --bstep=8 --workers=4
 
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1 --batch_size=32 --nice=batchaware --lr=0.001 --bstep=2 --workers=8
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0,1 --batch_size=32 --nice=batchaware --lr=0.001 --bstep=2 --workers=8
+
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=batchaware2 --lr=0.001 --bstep=8 --workers=3
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

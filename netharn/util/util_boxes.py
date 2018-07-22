@@ -712,7 +712,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>> self.take([])
             <Boxes(tlbr, array([], shape=(0, 4), dtype=int64))>
         """
-        if len(self.data.shape) != 2:
+        if len(self) and len(self.data.shape) != 2:
             raise ValueError('data must be 2d got {}d'.format(len(self.data.shape)))
         self2 = self if inplace else self.copy()
         self2.data = self2.data.take(idxs, axis=axis)

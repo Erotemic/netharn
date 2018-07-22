@@ -323,7 +323,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         """
         Undo the letterbox transform for these bounding boxes. Moves
         the box from `target_size` coordinatse (which are probably square)
-        to `orig_size` coordinates (which are probably nto square).
+        to `orig_size` coordinates (which are probably not square).
 
         Args:
             boxes (util.Boxes) : boxes to rework in `target_size` coordinates

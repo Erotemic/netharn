@@ -265,8 +265,8 @@ class InitializeMixin:
                 harn.snapshot_dpath))
         else:
             harn.warn('harn.train_dpath is None, all computation is in memory')
-
         harn._initialized = True
+        harn.after_initialize()
 
     def _setup_paths(harn):
         if harn.hyper is None:
@@ -1187,6 +1187,12 @@ class CoreCallback:
             return [harn.xpu.variable(d) for d in data]
         else:
             return harn.xpu.variable(data)
+
+    def after_initialize(harn):
+        """
+        Perform a custom initialization step (not usually needed)
+        """
+        pass
 
     def prepare_batch(harn, raw_batch):
         """

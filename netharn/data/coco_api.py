@@ -44,6 +44,7 @@ import json
 import numpy as np
 import ubelt as ub
 import six
+from netharn import util
 
 
 def annot_type(ann):
@@ -574,6 +575,37 @@ class CocoAttrsMixin(object):
         return Images(gids, self)
 
 
+class _NextId(object):
+    """ Tracks unused ids for new items """
+    def __init__(self, parent):
+        self.parent = parent
+        self.unused = {
+            'cid': None,
+            'gid': None,
+            'aid': None,
+        }
+
+    def set(self, key):
+        # Determines what the next safe id can be
+        key2 = {'aid': 'annotations', 'gid': 'images',
+                'cid': 'categories'}[key]
+        item_list = self.parent.dataset[key2]
+        max_id = max(item['id'] for item in item_list) if item_list else 0
+        next_id = max(max_id + 1, len(item_list))
+        self.unused[key] = next_id
+        # for i in it.count(len(self.cats) + 1):
+        #     if i not in self.cats:
+        #         return i
+
+    def get(self, key):
+        """ Get the next safe item id """
+        if self.unused[key] is None:
+            self.set(key)
+        new_id = self.unused[key]
+        self.unused[key] += 1
+        return new_id
+
+
 class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
     """
     Notes:
@@ -663,6 +695,9 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
         self.cid_to_gids = None
         self.cid_to_aids = None
         self.name_to_cat = None
+
+        # Keep track of an unused id we may use
+        self._next_ids = _NextId(self)
 
         if autofix:
             self._run_fixes()
@@ -1184,6 +1219,15 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
 
         self._build_index()
 
+    def remove_all_annotations(self):
+        self.dataset['annotations'].clear()
+        if self.anns is not None:
+            # Keep the category and image indexes alive
+            self.anns.clear()
+            self.gid_to_aids.clear()
+            self.cid_to_gids.clear()
+            self.cid_to_aids.clear()
+
     def remove_annotation(self, aid_or_ann):
         """
         Remove a single annotation from the dataset
@@ -1226,35 +1270,62 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
                 del self.dataset['annotations'][idx]
             self._clear_index()
 
-    def add_image(self, gname):
-        # hack
-        new_gid = len(self.dataset['images']) + 1
-        img = ub.odict()
-        img['id'] = new_gid
-        img['file_name'] = gname
-        self.dataset['images'].append(img)
-        if self.imgs:
-            self._clear_index()
-        return new_gid
+    def add_image(self, gname, gid=None):
+        if gid is None:
+            gid = self._next_ids.get('gid')
+        elif self.imgs and gid in self.imgs:
+            raise IndexError('Image id={} already exists'.format(gid))
 
-    def add_annotation(self, gid, cid, bbox=None, **kw):
-        # hack
-        new_aid = len(self.dataset['annotations']) + 1
+        img = ub.odict()
+        img['id'] = int(gid)
+        img['file_name'] = str(gname)
+        self.dataset['images'].append(img)
+        if self.imgs is not None:
+            # self._clear_index()
+            self.imgs[gid] = img
+            self.gid_to_aids[gid] = []
+        return gid
+
+    @util.profile
+    def add_annotation(self, gid, cid, bbox=None, aid=None, **kw):
+        if aid is None:
+            aid = self._next_ids.get('aid')
+        elif self.anns and aid in self.anns:
+            raise IndexError('Annot id={} already exists'.format(aid))
+
         ann = ub.odict()
-        ann['id'] = new_aid
-        ann['image_id'] = gid
-        ann['category_id'] = cid
+        ann['id'] = int(aid)
+        ann['image_id'] = int(gid)
+        ann['category_id'] = int(cid)
         if bbox:
-            import netharn as nh
-            if isinstance(bbox, nh.util.Boxes):
+            if isinstance(bbox, util.Boxes):
                 bbox = bbox.to_xywh().data.tolist()
             ann['bbox'] = bbox
-        assert not set(kw).intersection(set(ann))
+        # assert not set(kw).intersection(set(ann))
         ann.update(**kw)
         self.dataset['annotations'].append(ann)
-        if self.anns:
-            self._clear_index()
-        return new_aid
+
+        if self.anns is not None:
+            # self._clear_index()
+            self.anns[aid] = ann
+            self.gid_to_aids[gid].append(aid)
+            self.cid_to_gids[cid].append(gid)
+            self.cid_to_aids[cid].append(aid)
+        return aid
+
+    @util.profile
+    def add_annotations(self, anns):
+        """ Faster less-safe multi-annot alternative """
+        self.dataset['annotations'].extend(anns)
+        aids = [ann['id'] for ann in anns]
+        gids = [ann['image_id'] for ann in anns]
+        cids = [ann['category_id'] for ann in anns]
+        new_anns = dict(zip(aids, anns))
+        self.anns.update(new_anns)
+        for gid, cid, aid in zip(gids, cids, aids):
+            self.gid_to_aids[gid].append(aid)
+            self.cid_to_gids[cid].append(gid)
+            self.cid_to_aids[cid].append(aid)
 
     def add_category(self, name, supercategory=None, cid=None):
         """
@@ -1265,29 +1336,18 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
             supercategory (str, optional): parent of this category
             cid (int, optional): use this category id, if it was not taken
         """
-        if self.name_to_cat is not None:
+        if self.cats is not None:
             if name in self.name_to_cat:
                 raise ValueError(name)
 
-        def unused_cid(cid):
-            import itertools as it
-            if cid is not None:
-                if self.cats and cid in self.cats:
-                    raise IndexError(
-                        'Category id={} already exists'.format(cid))
-                return cid
-            if self.name_to_cat is None:
-                # hack
-                return len(self.dataset['categories']) + 1
-            # Find an unused category id
-            for i in it.count(len(self.cats) + 1):
-                if i not in self.cats:
-                    return i
+        if cid is None:
+            cid = self._next_ids.get('cid')
+        elif self.cats and cid in self.cats:
+            raise IndexError('Category id={} already exists'.format(cid))
 
-        cid = unused_cid(cid)
         cat = ub.odict()
-        cat['id'] = cid
-        cat['name'] = name
+        cat['id'] = int(cid)
+        cat['name'] = str(name)
         if supercategory:
             cat['supercategory'] = supercategory
 
@@ -1295,7 +1355,7 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
         self.dataset['categories'].append(cat)
 
         # And add to the indexes
-        if self.name_to_cat is not None:
+        if self.cats is not None:
             self.cats[cid] = cat
             self.cid_to_gids[cid] = []
             self.cid_to_aids[cid] = []

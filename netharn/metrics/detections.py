@@ -8,64 +8,146 @@ from netharn.util import profiler
 class DetectionMetrics:
     """
     Attributes:
-        true_dets (nh.data.CocoAPI): ground truth dataset
-        pred_dets (nh.data.CocoAPI): predictions dataset
+        true (nh.data.CocoAPI): ground truth dataset
+        pred (nh.data.CocoAPI): predictions dataset
     """
-    def __init__(self, true_dets=None):
+    def __init__(dmet, true=None):
         import netharn as nh
-        if true_dets is None:
-            true_dets = nh.data.coco_api.CocoDataset()
-        self.true_dets = true_dets
-        self.pred_dets = nh.data.coco_api.CocoDataset()
+        if true is None:
+            true = nh.data.coco_api.CocoDataset()
+        dmet.true = true
+        dmet.pred = nh.data.coco_api.CocoDataset()
 
-    def add_predictions(self, imgname, pred_boxes, pred_cids, pred_scores):
-        pred_gid = self.pred_dets.add_image(imgname)
+    def add_predictions(dmet, imgname, pred_boxes, pred_cids, pred_scores):
+        pred_gid = dmet.pred.add_image(imgname)
         for bbox, cid, score in zip(pred_boxes.to_xywh(), pred_cids, pred_scores):
-            self.pred_dets.add_annotation(pred_gid, cid, bbox=bbox, score=score)
+            dmet.pred.add_annotation(pred_gid, cid, bbox=bbox, score=score)
 
-    def add_truth(self, imgname, true_boxes, true_cids, true_weights):
-        true_gid = self.true_dets.add_image(imgname)
+    def add_truth(dmet, imgname, true_boxes, true_cids, true_weights):
+        true_gid = dmet.true.add_image(imgname)
         for bbox, cid, weight in zip(true_boxes.to_xywh(), true_cids, true_weights):
-            self.true_dets.add_annotation(true_gid, cid, bbox=bbox, weight=weight)
+            dmet.true.add_annotation(true_gid, cid, bbox=bbox, weight=weight)
 
-    def score_netharn(self, bias=0):
-        confusions = []
-        for gid in self.pred_dets.imgs.keys():
-            pred_annots = self.pred_dets.annots(gid=gid)
-            true_annots = self.true_dets.annots(gid=gid)
+    def score_netharn(dmet, bias=0):
+        y_accum = ub.ddict(list)
+        # confusions = []
+        for gid in dmet.pred.imgs.keys():
+            pred_annots = dmet.pred.annots(gid=gid)
+            true_annots = dmet.true.annots(gid=gid)
 
             true_boxes = true_annots.boxes
-            true_cids = true_annots.cids
+            true_cxs = true_annots.cids
             true_weights = true_annots._lookup('weight')
 
             pred_boxes = pred_annots.boxes
-            pred_cids = pred_annots.cids
+            pred_cxs = pred_annots.cids
             pred_scores = pred_annots._lookup('score')
 
-            y = detection_confusions(true_boxes, true_cids, true_weights,
-                                     pred_boxes, pred_scores, pred_cids,
+            y = detection_confusions(true_boxes, true_cxs, true_weights,
+                                     pred_boxes, pred_scores, pred_cxs,
                                      bg_weight=1.0, ovthresh=0.5, bg_cls=-1,
                                      bias=bias)
             y['gid'] = [gid] * len(y['true'])
-            confusions.append(y)
+            for k, v in y.items():
+                y_accum[k].extend(v)
 
-    def score_voc(self):
+        y_df = pd.DataFrame(y_accum)
+
+        # class agnostic score
+        ap, prec, rec = pr_curves(y_df)
+        peritem = {
+            'ap': ap,
+            'pr': (prec, rec),
+        }
+
+        # perclass scores
+        perclass = {}
+        cx_to_group = dict(iter(y_df.groupby('cx')))
+        for cx in cx_to_group:
+            # for cx, group in cx_to_group.items():
+            group = cx_to_group.get(cx, None)
+            ap, prec, rec = pr_curves(group, method='voc2012')
+            perclass[cx] = {
+                'ap': ap,
+                'pr': (prec, rec),
+            }
+
+        mAP = np.nanmean([d['ap'] for d in perclass.values()])
+        nh_scores = {
+            'mAP': mAP,
+            'perclass': perclass,
+            'peritem': peritem
+        }
+        return nh_scores
+
+    def score_voc(dmet):
         recs = {}
-        lines = []
-        for img in self.imgs:
-            recs[imgname] = []
-            for bbox in true_boxes.to_tlbr().data:
-                recs[imgname].append({
+        cx_to_lines = ub.ddict(list)
+        # confusions = []
+        for gid in dmet.pred.imgs.keys():
+            pred_annots = dmet.pred.annots(gid=gid)
+            true_annots = dmet.true.annots(gid=gid)
+
+            true_boxes = true_annots.boxes
+            true_cxs = true_annots.cids
+            true_weights = true_annots._lookup('weight')
+
+            pred_boxes = pred_annots.boxes
+            pred_cxs = pred_annots.cids
+            pred_scores = pred_annots._lookup('score')
+
+            recs[gid] = []
+            for bbox, cx, weight in zip(true_boxes.to_tlbr().data,
+                                         true_cxs, true_weights):
+                recs[gid].append({
                     'bbox': bbox,
-                    'difficult': False,
-                    'name': classname
+                    'difficult': weight < .5,
+                    'name': cx
                 })
 
-            for bbox, score in zip(pred_boxes.to_tlbr().data, np.arange(len(pred_boxes))):
-                lines.append([imgname, score] + list(bbox))
+            for bbox, cx, score in zip(pred_boxes.to_tlbr().data,
+                                         pred_cxs, pred_scores):
+                cx_to_lines[cx].append([gid, score] + list(bbox))
 
-    def score_coco(self):
-        pass
+        perclass = ub.ddict(dict)
+        for cx in cx_to_lines.keys():
+            lines = cx_to_lines[cx]
+            rec, prec, ap = voc_eval(lines, recs, cx, ovthresh=0.5, bias=1)
+            perclass[cx]['pr'] = (rec, prec)
+            perclass[cx]['ap'] = ap
+
+        mAP = np.nanmean([d['ap'] for d in perclass.values()])
+        voc_scores = {
+            'mAP': mAP,
+            'perclass': perclass,
+            'perclass': perclass
+        }
+        return voc_scores
+
+    def score_coco(dmet):
+        from pycocotools import cocoeval as coco_score
+        cocoGt = dmet.true._aspycoco()
+        cocoDt = dmet.pred._aspycoco()
+
+        for ann in cocoGt.dataset['annotations']:
+            w, h = ann['bbox'][-2:]
+            ann['ignore'] = ann['weight'] < .5
+            ann['area'] = w * h
+            ann['iscrowd'] = False
+
+        for ann in cocoDt.dataset['annotations']:
+            w, h = ann['bbox'][-2:]
+            ann['area'] = w * h
+
+        evaler = coco_score.COCOeval(cocoGt, cocoDt, iouType='bbox')
+        evaler.evaluate()
+        evaler.accumulate()
+        evaler.summarize()
+        coco_ap = evaler.stats[1]
+        coco_scores = {
+            'mAP': coco_ap,
+        }
+        return coco_scores
 
 
 @profiler.profile
@@ -117,12 +199,12 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
         >>>                          bg_weight=bg_weight, ovthresh=.5)
         >>> y = pd.DataFrame(y)
         >>> print(y)  # xdoc: +IGNORE_WANT
-           pred  true  score  weight  cx  y_txs  y_pxs
-        0     1     1 0.5000  1.0000   1      3      2
-        1     0    -1 0.5000  1.0000   0     -1      1
-        2     0     0 0.5000  0.0000   0      1      0
-        3    -1     0 0.0000  1.0000   0      0     -1
-        4    -1     1 0.0000  0.9000   1      2     -1
+           pred  true  score  weight  cx  txs  pxs
+        0     1     1 0.5000  1.0000   1    3    2
+        1     0    -1 0.5000  1.0000   0   -1    1
+        2     0     0 0.5000  0.0000   0    1    0
+        3    -1     0 0.0000  1.0000   0    0   -1
+        4    -1     1 0.0000  0.9000   1    2   -1
 
     Example:
         >>> true_boxes = np.array([[ 0,  0, 10, 10],
@@ -170,6 +252,11 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
     true_unused = np.ones(len(true_cxs), dtype=np.bool)
     if true_weights is None:
         true_weights = np.ones(len(true_cxs))
+    else:
+        true_weights = np.array(true_weights)
+    pred_scores = np.array(pred_scores)
+    pred_cxs = np.array(pred_cxs)
+    true_cxs = np.array(true_cxs)
 
     # Group true boxes by class
     # Keep track which true boxes are unused / not assigned
@@ -179,14 +266,14 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
     # cx_to_boxes = ub.map_vals(np.array, cx_to_boxes)
 
     # sort predictions by descending score
-    spred_sortx = pred_scores.argsort()[::-1]
-    spred_boxes = pred_boxes.take(spred_sortx, axis=0)
-    spred_cxs = pred_cxs.take(spred_sortx, axis=0)
-    spred_scores = pred_scores.take(spred_sortx, axis=0)
+    _pred_sortx = pred_scores.argsort()[::-1]
+    _pred_boxes = pred_boxes.take(_pred_sortx, axis=0)
+    _pred_cxs = pred_cxs.take(_pred_sortx, axis=0)
+    _pred_scores = pred_scores.take(_pred_sortx, axis=0)
 
     # For each predicted detection box
     # Allow it to match the truth of a particular class
-    for px, cx, box, score in zip(spred_sortx, spred_cxs, spred_boxes, spred_scores):
+    for px, cx, box, score in zip(_pred_sortx, _pred_cxs, _pred_boxes, _pred_scores):
         cls_true_idxs = cx_to_idxs.get(cx, [])
 
         ovmax = -np.inf
@@ -254,8 +341,8 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
         'score': y_score,
         'weight': y_weight,
         'cx': cxs,
-        'y_txs': y_txs,  # index into the original true box for this row
-        'y_pxs': y_pxs,  # index into the original pred box for this row
+        'txs': y_txs,  # index into the original true box for this row
+        'pxs': y_pxs,  # index into the original pred box for this row
     }
     # print('y = {}'.format(ub.repr2(y, nl=1)))
     # y = pd.DataFrame(y)
@@ -295,6 +382,8 @@ def _ave_precision(rec, prec, method='voc2012') -> float:
 
         # and sum (\Delta recall) * prec
         ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+    else:
+        raise KeyError(method)
 
     if False:
         # sklearn metric
@@ -361,7 +450,7 @@ def score_detection_assignment(y, labels=None, method='voc2012') -> pd.DataFrame
     for cx in labels:
         # for cx, group in cx_to_group.items():
         group = cx_to_group.get(cx, None)
-        ap = pr_curves(group, method)
+        ap, prec, rec = pr_curves(group, method)
         class_aps.append((cx, ap))
 
     ave_precs = pd.DataFrame(class_aps, columns=['cx', 'ap'])
@@ -406,8 +495,7 @@ def pr_curves(y, method='voc2012'):  # -> Tuple[float, ndarray, ndarray]:
         )
         raise NotImplementedError('todo: return pr curves')
         return ap
-
-    if method == 'voc2007' or method == 'voc2012':
+    elif method == 'voc2007' or method == 'voc2012':
         y = y.sort_values('score', ascending=False)
         # if True:
         #     # ignore "difficult" matches
@@ -435,7 +523,98 @@ def pr_curves(y, method='voc2012'):  # -> Tuple[float, ndarray, ndarray]:
                 if npos == 0:
                     ap = np.nan
                 ap = 0.0
+    else:
+        raise KeyError(method)
+
     return ap, prec, rec
+
+
+def voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012', bias=1):
+    import copy
+    # imagenames = ([x.strip().split(' ')[0] for x in lines])
+    imagenames = ([x[0] for x in lines])
+    # BUGFIX: the original code did not cast this to a set
+    imagenames = set(imagenames)
+    recs2 = copy.deepcopy(recs)
+
+    # extract gt objects for this class
+    class_recs = {}
+    npos = 0
+    for imagename in imagenames:
+        R = [obj for obj in recs2[imagename] if obj['name'] == classname]
+        bbox = np.array([x['bbox'] for x in R])
+        difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
+        det = [False] * len(R)
+        npos = npos + sum(~difficult)
+        class_recs[imagename] = {'bbox': bbox,
+                                 'difficult': difficult,
+                                 'det': det}
+
+    splitlines = lines
+    image_ids = [x[0] for x in splitlines]
+    confidence = np.array([x[1] for x in splitlines])
+    BB = np.array([[z for z in x[2:]] for x in splitlines])
+
+    # splitlines = [x.strip().split(' ') for x in lines]
+    # confidence = np.array([float(x[1]) for x in splitlines])
+    # BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
+
+    # sort by confidence
+    sorted_ind = np.argsort(-confidence)
+    # sorted_scores = np.sort(-confidence)  #
+    BB = BB[sorted_ind, :]
+    image_ids = [image_ids[x] for x in sorted_ind]
+
+    # go down dets and mark TPs and FPs
+    nd = len(image_ids)
+    tp = np.zeros(nd)
+    fp = np.zeros(nd)
+    for d in range(nd):
+        R = class_recs[image_ids[d]]
+        bb = BB[d, :].astype(float)
+        ovmax = -np.inf
+        BBGT = R['bbox'].astype(float)
+
+        if BBGT.size > 0:
+            # compute overlaps
+            # intersection
+            ixmin = np.maximum(BBGT[:, 0], bb[0])
+            iymin = np.maximum(BBGT[:, 1], bb[1])
+            ixmax = np.minimum(BBGT[:, 2], bb[2])
+            iymax = np.minimum(BBGT[:, 3], bb[3])
+            iw = np.maximum(ixmax - ixmin + bias, 0.)
+            ih = np.maximum(iymax - iymin + bias, 0.)
+            inters = iw * ih
+
+            # union
+            uni = ((bb[2] - bb[0] + bias) * (bb[3] - bb[1] + bias) +
+                   (BBGT[:, 2] - BBGT[:, 0] + bias) *
+                   (BBGT[:, 3] - BBGT[:, 1] + bias) - inters)
+
+            overlaps = inters / uni
+            ovmax = np.max(overlaps)
+            jmax = np.argmax(overlaps)
+
+        if ovmax > ovthresh:
+            if not R['difficult'][jmax]:
+                if not R['det'][jmax]:
+                    tp[d] = 1.
+                    R['det'][jmax] = 1
+                else:
+                    fp[d] = 1.
+        else:
+            fp[d] = 1.
+
+    # compute precision recall
+    fp = np.cumsum(fp)
+    tp = np.cumsum(tp)
+    rec = tp / float(npos)
+    # avoid divide by zero in case the first detection matches a difficult
+    # ground truth
+    prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+
+    ap = _ave_precision(rec=rec, prec=prec, method=method)
+    return rec, prec, ap
 
 
 ave_precisions = score_detection_assignment
