@@ -24,6 +24,7 @@ else:
     from netharn.util import util_io
     from netharn.util import util_iter
     from netharn.util import util_json
+    from netharn.util import util_misc
     from netharn.util import util_numpy
     from netharn.util import util_random
     from netharn.util import util_resources
@@ -83,6 +84,7 @@ else:
     from netharn.util.util_iter import (roundrobin,)
     from netharn.util.util_json import (LossyJSONEncoder, NumpyEncoder, read_json,
                                         walk_json, write_json,)
+    from netharn.util.util_misc import (SupressPrint,)
     from netharn.util.util_numpy import (atleast_nd, isect_flags,
                                          iter_reduce_ufunc,)
     from netharn.util.util_random import (ensure_rng, random_combinations,
@@ -102,10 +104,10 @@ else:
                'InternalRunningStats', 'KernprofParser', 'LossyJSONEncoder',
                'ModuleMixin', 'MovingAve', 'NumpyEncoder', 'PlotNums',
                'RunningStats', 'SlidingIndexDataset', 'SlidingSlices', 'Stitcher',
-               'WindowedMovingAve', 'absdev', 'adjust_gamma', 'adjust_subplots',
-               'aggensure', 'align_paths', 'apply_grouping', 'argsubmax',
-               'argsubmaxima', 'atleast_3channels', 'atleast_nd', 'autompl',
-               'axes_extent', 'box_ious', 'check_aligned', 'colorbar',
+               'SupressPrint', 'WindowedMovingAve', 'absdev', 'adjust_gamma',
+               'adjust_subplots', 'aggensure', 'align_paths', 'apply_grouping',
+               'argsubmax', 'argsubmaxima', 'atleast_3channels', 'atleast_nd',
+               'autompl', 'axes_extent', 'box_ious', 'check_aligned', 'colorbar',
                'colorbar_image', 'compact_idstr', 'convert_colorspace',
                'copy_figure_to_clipboard', 'dict_intersection', 'distinct_colors',
                'distinct_markers', 'draw_border', 'draw_boxes',
@@ -135,7 +137,7 @@ else:
                'stack_images', 'stats_dict', 'trainable_layers', 'util_averages',
                'util_boxes', 'util_cachestamp', 'util_cv2', 'util_demodata',
                'util_fname', 'util_groups', 'util_idstr', 'util_io', 'util_iter',
-               'util_json', 'util_numpy', 'util_random', 'util_resources',
-               'util_slider', 'util_subextreme', 'util_tensorboard', 'util_torch',
-               'walk_json', 'wide_strides_1d', 'write_arr', 'write_h5arr',
-               'write_json']
+               'util_json', 'util_misc', 'util_numpy', 'util_random',
+               'util_resources', 'util_slider', 'util_subextreme',
+               'util_tensorboard', 'util_torch', 'walk_json', 'wide_strides_1d',
+               'write_arr', 'write_h5arr', 'write_json']

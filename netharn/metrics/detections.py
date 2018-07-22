@@ -18,6 +18,112 @@ class DetectionMetrics:
         dmet.true = true
         dmet.pred = nh.data.coco_api.CocoDataset()
 
+    @classmethod
+    def demo(cls, **kw):
+        """
+        Creates random true boxes and predicted boxes that have some noisy
+        offset from the truth.
+
+        Example:
+            >>> dmet = DetectionMetrics.demo(
+            >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1))
+            >>> dmet.score_coco()['mAP']
+            >>> dmet.score_netharn()['mAP']
+            >>> dmet.score_voc()['mAP']
+
+        """
+        import netharn as nh
+
+        rng = nh.util.ensure_rng(kw.get('rng', 0))
+
+        class RV(object):
+            def __init__(self, val):
+                self.rng = rng
+                if isinstance(val, tuple):
+                    self.low = val[0]
+                    self.high = val[1] + 1
+                else:
+                    self.low = val
+                    self.high = val + 1
+
+            def __call__(self):
+                return self.rng.randint(self.low, self.high)
+
+        nclasses = kw.get('nclasses', 1)
+        nimgs = kw.get('nimgs', 1)
+
+        classes = list(range(nclasses))
+
+        nboxes = RV(kw.get('nboxes', 1))
+        n_fp = RV(kw.get('n_fp', 0))
+        n_fn = RV(kw.get('n_fn', 0))
+
+        box_noise = kw.get('box_noise', 0)
+        cls_noise = kw.get('cls_noise', 0)
+
+        scale = 100
+
+        true = nh.data.coco_api.CocoDataset()
+        pred = nh.data.coco_api.CocoDataset()
+
+        for cid in classes:
+            true.add_category('cat_{}'.format(cid), cid=cid)
+            pred.add_category('cat_{}'.format(cid), cid=cid)
+
+        for gid in range(nimgs):
+            nboxes_ = nboxes()
+            n_fp_ = n_fp()
+            n_fn_ = n_fn()
+
+            imgname = 'img_{}'.format(gid)
+            gid = true.add_image(imgname, gid=gid)
+            gid = pred.add_image(imgname, gid=gid)
+
+            # Generate random ground truth detections
+            true_boxes = nh.util.Boxes.random(num=nboxes_, scale=scale,
+                                              rng=rng, format='cxywh')
+            true_cxs = rng.choice(classes, size=len(true_boxes))
+            true_weights = np.ones(len(true_boxes))
+
+            # Initialize predicted detections as a copy of truth
+            pred_boxes = true_boxes.copy()
+            pred_cxs = true_cxs.copy()
+
+            # Perterb box coordinates
+            pred_boxes.data = pred_boxes.data.astype(np.float) + (rng.rand() * box_noise)
+
+            # Perterb class predictions
+            change = rng.rand(len(pred_cxs)) < cls_noise
+            pred_cxs_swap = rng.choice(classes, size=len(pred_cxs))
+            pred_cxs[change] = pred_cxs_swap[change]
+
+            # Drop true positive boxes
+            if n_fn_:
+                pred_boxes.data = pred_boxes.data[n_fn_:]
+                pred_cxs = pred_cxs[n_fn_:]
+
+            # Add false positive boxes
+            if n_fp_:
+                pred_boxes.data = np.vstack([
+                    pred_boxes.data,
+                    nh.util.Boxes.random(num=n_fp_, scale=scale, rng=rng,
+                                         format='cxywh').data])
+                pred_cxs = np.hstack([pred_cxs,
+                                      rng.choice(classes, size=n_fp_)])
+
+            # Create netharn style confusion data
+            pred_scores = np.linspace(1, 2, len(pred_boxes))
+
+            for bbox, weight in zip(true_boxes.to_xywh(), true_weights):
+                true.add_annotation(gid, cid, bbox=bbox, weight=weight)
+            for bbox, score in zip(pred_boxes.to_xywh(), pred_scores):
+                pred.add_annotation(gid, cid, bbox=bbox, score=score)
+
+        dmet = cls()
+        dmet.true = true
+        dmet.pred = pred
+        return dmet
+
     def add_predictions(dmet, imgname, pred_boxes, pred_cids, pred_scores):
         pred_gid = dmet.pred.add_image(imgname)
         for bbox, cid, score in zip(pred_boxes.to_xywh(), pred_cids, pred_scores):
@@ -28,7 +134,7 @@ class DetectionMetrics:
         for bbox, cid, weight in zip(true_boxes.to_xywh(), true_cids, true_weights):
             dmet.true.add_annotation(true_gid, cid, bbox=bbox, weight=weight)
 
-    def score_netharn(dmet, bias=0):
+    def score_netharn(dmet, ovthresh=0.5, bias=0):
         y_accum = ub.ddict(list)
         # confusions = []
         for gid in dmet.pred.imgs.keys():
@@ -45,9 +151,9 @@ class DetectionMetrics:
 
             y = detection_confusions(true_boxes, true_cxs, true_weights,
                                      pred_boxes, pred_scores, pred_cxs,
-                                     bg_weight=1.0, ovthresh=0.5, bg_cls=-1,
-                                     bias=bias)
-            y['gid'] = [gid] * len(y['true'])
+                                     bg_weight=1.0, ovthresh=ovthresh,
+                                     bg_cls=-1, bias=bias)
+            y['gid'] = [gid] * len(y['pred'])
             for k, v in y.items():
                 y_accum[k].extend(v)
 
@@ -80,7 +186,7 @@ class DetectionMetrics:
         }
         return nh_scores
 
-    def score_voc(dmet):
+    def score_voc(dmet, ovthresh=0.5, bias=0):
         recs = {}
         cx_to_lines = ub.ddict(list)
         # confusions = []
@@ -112,7 +218,8 @@ class DetectionMetrics:
         perclass = ub.ddict(dict)
         for cx in cx_to_lines.keys():
             lines = cx_to_lines[cx]
-            rec, prec, ap = voc_eval(lines, recs, cx, ovthresh=0.5, bias=1)
+            rec, prec, ap = voc_eval(lines, recs, cx, ovthresh=ovthresh,
+                                     bias=bias)
             perclass[cx]['pr'] = (rec, prec)
             perclass[cx]['ap'] = ap
 
@@ -120,33 +227,35 @@ class DetectionMetrics:
         voc_scores = {
             'mAP': mAP,
             'perclass': perclass,
-            'perclass': perclass
         }
         return voc_scores
 
     def score_coco(dmet):
-        from pycocotools import cocoeval as coco_score
-        cocoGt = dmet.true._aspycoco()
-        cocoDt = dmet.pred._aspycoco()
+        from pycocotools import coco
+        from pycocotools import cocoeval
+        # The original pycoco-api prints to much, supress it
+        with util.SupressPrint(coco, cocoeval):
+            cocoGt = dmet.true._aspycoco()
+            cocoDt = dmet.pred._aspycoco()
 
-        for ann in cocoGt.dataset['annotations']:
-            w, h = ann['bbox'][-2:]
-            ann['ignore'] = ann['weight'] < .5
-            ann['area'] = w * h
-            ann['iscrowd'] = False
+            for ann in cocoGt.dataset['annotations']:
+                w, h = ann['bbox'][-2:]
+                ann['ignore'] = ann['weight'] < .5
+                ann['area'] = w * h
+                ann['iscrowd'] = False
 
-        for ann in cocoDt.dataset['annotations']:
-            w, h = ann['bbox'][-2:]
-            ann['area'] = w * h
+            for ann in cocoDt.dataset['annotations']:
+                w, h = ann['bbox'][-2:]
+                ann['area'] = w * h
 
-        evaler = coco_score.COCOeval(cocoGt, cocoDt, iouType='bbox')
-        evaler.evaluate()
-        evaler.accumulate()
-        evaler.summarize()
-        coco_ap = evaler.stats[1]
-        coco_scores = {
-            'mAP': coco_ap,
-        }
+            evaler = cocoeval.COCOeval(cocoGt, cocoDt, iouType='bbox')
+            evaler.evaluate()
+            evaler.accumulate()
+            evaler.summarize()
+            coco_ap = evaler.stats[1]
+            coco_scores = {
+                'mAP': coco_ap,
+            }
         return coco_scores
 
 

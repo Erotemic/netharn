@@ -185,6 +185,54 @@ def voc_eval(lines, recs, classname, ovthresh=0.5, method=False, bias=1):
     return rec, prec, ap
 
 
+def _devcheck_voc_consistency2():
+    """
+    # CHECK FOR ISSUES WITH MY MAP COMPUTATION
+
+    TODO:
+        Check how cocoeval works
+        https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py
+    """
+    from netharn.metrics.detections import DetectionMetrics
+    import netharn as nh
+    xdata = []
+    ydatas = ub.ddict(list)
+
+    for box_noise in np.linspace(0, 5, 10):
+        dmet = DetectionMetrics.demo(
+            nimgs=500,
+            nboxes=(0, 2),
+            n_fp=(0, 1),
+            n_fn=(0, 1),
+            nclasses=3,
+            rng=30,
+            box_noise=box_noise,
+            cls_noise=.3,
+        )
+
+        nh_scores = dmet.score_netharn()
+        voc_scores = dmet.score_voc()
+        coco_scores = dmet.score_coco()
+
+        nh_map = nh_scores['mAP']
+        voc_map = voc_scores['mAP']
+        coco_map = coco_scores['mAP']
+        print('nh_map = {!r}'.format(nh_map))
+        print('voc_map = {!r}'.format(voc_map))
+        print('coco_map = {!r}'.format(coco_map))
+
+        xdata.append(box_noise)
+        ydatas['voc'].append(voc_map)
+        ydatas['netharn'].append(nh_map)
+        ydatas['coco'].append(coco_map)
+
+    ydf = pd.DataFrame(ydatas)
+    print(ydf)
+
+    nh.util.autompl()
+    nh.util.multi_plot(xdata=xdata, ydata=ydatas, fnum=1, doclf=True)
+
+
 def _devcheck_voc_consistency():
     """
     # CHECK FOR ISSUES WITH MY MAP COMPUTATION
