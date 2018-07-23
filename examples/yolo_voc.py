@@ -541,6 +541,8 @@ class YoloHarn(nh.FitHarn):
         try:
             coco_scores = dmet.score_coco()
             metrics_dict['coco-mAP'] = coco_scores['mAP']
+        except ImportError:
+            pass
         except Exception as ex:
             import utool
             utool.embed()
@@ -932,7 +934,7 @@ if __name__ == '__main__':
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=4 --nice=pjr_run2 --lr=0.001 --bstep=8 --workers=4
 
-        python ~/code/netharn/examples/yolo_voc.py train --gpu=0,1 --batch_size=32 --nice=batchaware --lr=0.001 --bstep=2 --workers=8
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0,1 --batch_size=32 --nice=july22 --lr=0.001 --bstep=2 --workers=8
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=batchaware2 --lr=0.001 --bstep=8 --workers=3
     """
