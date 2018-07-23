@@ -298,7 +298,10 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
                                        pin_memory=pin_memory)
         if loader.batch_size != batch_size:
             try:
+                # Hack: ensure dataloader has batch size attr
+                loader._DataLoader__initialized = False
                 loader.batch_size = batch_size
+                loader._DataLoader__initialized = True
             except Exception:
                 pass
         return loader
@@ -868,7 +871,7 @@ def setup_yolo_harness(bsize=16, workers=0):
             'interpolate': False,
             'burn_in': 3.86683584,  # number of epochs to burn_in for. approx 1000 batches?
             'dset_size': len(datasets['train']),
-            'batch_size': bsize,
+            'batch_size': batch_size,
         }),
 
         'monitor': (nh.Monitor, {
@@ -935,6 +938,8 @@ if __name__ == '__main__':
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=4 --nice=pjr_run2 --lr=0.001 --bstep=8 --workers=4
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0,1 --batch_size=32 --nice=july22 --lr=0.001 --bstep=2 --workers=8
+
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=8 --nice=july22_lr_x8 --lr=0.008 --bstep=8 --workers=6
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=batchaware2 --lr=0.001 --bstep=8 --workers=3
     """

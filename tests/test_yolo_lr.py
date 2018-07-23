@@ -69,8 +69,8 @@ def test_yolo_lr():
         # number of epochs to burn_in for. approx 1000 batches?
         burn_in = 3.86683584
         lr = 0.001
-        bstep = 8
-        bsize = 8
+        bstep = 2
+        bsize = 32
         decay = 0.0005
         simulated_bsize = bstep * bsize
         max_epoch = 311
@@ -148,7 +148,7 @@ def test_yolo_lr():
 if __name__ == '__main__':
     """
     CommandLine:
-        python ~/code/netharn/tests/test_yolo_lr.py
+        python ~/code/netharn/tests/test_yolo_lr.py --show
     """
     # import warnings
     # warnings.filterwarnings('error')
