@@ -454,7 +454,7 @@ class Images(ObjectList1D):
         """
         Example:
             >>> self = CocoDataset.demo().images()
-            >>> print(self.aids)
+            >>> print(ub.repr2(list(map(list, self.aids)), nl=0))
             [[1, 2, 3, 4, 5, 6, 7, 8, 9], [10, 11], []]
         """
         return list(ub.take(self._dset.gid_to_aids, self._ids))

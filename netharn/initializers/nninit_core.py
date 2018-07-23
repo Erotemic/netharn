@@ -3,19 +3,20 @@ References:
     https://github.com/alykhantejani/initializers
 """
 import ubelt as ub
-from os.path import dirname, exists, join
+from os.path import dirname, exists, join, normpath
 from netharn import util
 import torch
 
 from netharn.initializers import nninit_base
 
 
-class Pretrained(nninit_base._BaseInitializer):
+class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
     """
     Attributes:
         fpath (str): location of the pretrained weights file
         initializer (_BaseInitializer): backup initializer if the weights can
             only be partially applied
+        info (dict, optional): specify explicit history info
 
     Example:
         >>> from netharn.initializers.nninit_core import *
@@ -26,17 +27,22 @@ class Pretrained(nninit_base._BaseInitializer):
         >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
         >>> self(layer)
     """
-    def __init__(self, fpath, initializer=None):
+    def __init__(self, fpath, initializer=None, info=None):
         self.fpath = fpath
         if isinstance(initializer, str):
             from netharn import initializers
             initializer = getattr(initializers, initializer)()
         self.initializer = initializer
+        self.info = info
+
+    def __nice__(self):
+        return self.fpath
 
     def forward(self, model):
         from netharn import XPU
         xpu = XPU.from_data(model)
-        model_state_dict = xpu.load(self.fpath)
+        # model_state_dict = xpu.load(self.fpath)
+        model_state_dict = xpu.load(util.zopen(self.fpath, 'rb', seekable=True))
         if 'model_state_dict' in model_state_dict:
             model_state_dict = model_state_dict['model_state_dict']
         nninit_base.load_partial_state(model, model_state_dict,
@@ -46,13 +52,36 @@ class Pretrained(nninit_base._BaseInitializer):
         """
         if available return the history of the model as well
         """
-        # TODO: check for train_info.json in a few different places
-        info_dpath = dirname(dirname(ub.truepath(self.fpath)))
-        info_fpath = join(info_dpath, 'train_info.json')
-        if exists(info_fpath):
-            return util.read_json(info_fpath)
+        import netharn as nh
+        if self.info is None:
+            if False:
+                info_dpath = dirname(dirname(ub.truepath(self.fpath)))
+                info_fpath = join(info_dpath, 'train_info.json')
+                if exists(info_fpath):
+                    info = nh.util.read_json(info_fpath)
+                else:
+                    info = '__UNKNOWN__'
+            else:
+                # TODO: check for train_info.json in a few different places
+                snap_fpath = ub.truepath(self.fpath)
+                candidate_paths = [
+                    join(dirname(snap_fpath), 'train_info.json'),
+                    join(dirname(dirname(snap_fpath)), 'train_info.json'),
+                ]
+                info = None
+                for info_fpath in candidate_paths:
+                    info_fpath = normpath(info_fpath)
+                    try:
+                        # Info might be inside of a zipfile
+                        info = nh.util.read_json(nh.util.zopen(info_fpath))
+                        break
+                    except Exception as ex:
+                        pass
+                if info is None:
+                    info = '__UNKNOWN__'
         else:
-            return '__UNKNOWN__'
+            info = self.info
+        return info
 
 
 class Orthogonal(nninit_base._BaseInitializer):

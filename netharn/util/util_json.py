@@ -113,4 +113,7 @@ def read_json(fpath):
     """
     Write human readable json files
     """
-    return json.load(open(fpath, 'r'))
+    if isinstance(fpath, str):
+        return json.load(open(fpath, 'r'))
+    else:
+        return json.load(fpath)

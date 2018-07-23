@@ -32,6 +32,7 @@ else:
     from netharn.util import util_subextreme
     from netharn.util import util_tensorboard
     from netharn.util import util_torch
+    from netharn.util import util_zip
 
     from netharn.util.imutil import (CV2_INTERPOLATION_TYPES, adjust_gamma,
                                      atleast_3channels, convert_colorspace,
@@ -98,6 +99,7 @@ else:
                                          grad_context, number_of_parameters,
                                          one_hot_embedding, one_hot_lookup,
                                          trainable_layers,)
+    from netharn.util.util_zip import (split_archive, zopen,)
 
     __all__ = ['Boxes', 'CV2_INTERPOLATION_TYPES', 'CacheStamp', 'Color',
                'CumMovingAve', 'DisableBatchNorm', 'ExpMovingAve', 'IS_PROFILING',
@@ -134,10 +136,11 @@ else:
                'save_parts', 'savefig2', 'scores_to_cmap', 'scores_to_color',
                'set_figtitle', 'set_mpl_backend', 'shortest_unique_prefixes',
                'shortest_unique_suffixes', 'show_if_requested', 'shuffle',
-               'stack_images', 'stats_dict', 'trainable_layers', 'util_averages',
-               'util_boxes', 'util_cachestamp', 'util_cv2', 'util_demodata',
-               'util_fname', 'util_groups', 'util_idstr', 'util_io', 'util_iter',
-               'util_json', 'util_misc', 'util_numpy', 'util_random',
-               'util_resources', 'util_slider', 'util_subextreme',
-               'util_tensorboard', 'util_torch', 'walk_json', 'wide_strides_1d',
-               'write_arr', 'write_h5arr', 'write_json']
+               'split_archive', 'stack_images', 'stats_dict', 'trainable_layers',
+               'util_averages', 'util_boxes', 'util_cachestamp', 'util_cv2',
+               'util_demodata', 'util_fname', 'util_groups', 'util_idstr',
+               'util_io', 'util_iter', 'util_json', 'util_misc', 'util_numpy',
+               'util_random', 'util_resources', 'util_slider', 'util_subextreme',
+               'util_tensorboard', 'util_torch', 'util_zip', 'walk_json',
+               'wide_strides_1d', 'write_arr', 'write_h5arr', 'write_json',
+               'zopen']

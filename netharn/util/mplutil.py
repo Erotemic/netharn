@@ -2892,7 +2892,7 @@ def make_legend_img(classname_to_rgb, dpi=96, shape=(200, 200), transparent=Fals
     Makes an image of a categorical legend
 
     CommandLine:
-        python -m irharn.util.util_draw make_legend_img --show
+        python -m netharn.util.mplutil make_legend_img
 
     Example:
         >>> import netharn as nh
@@ -2902,7 +2902,7 @@ def make_legend_img(classname_to_rgb, dpi=96, shape=(200, 200), transparent=Fals
         >>> }
         >>> img = make_legend_img(classname_to_rgb)
         >>> # xdoctest: +REQUIRES(--show)
-        >>> nh.util.qtensure()
+        >>> nh.util.autompl()
         >>> nh.util.imshow(img)
         >>> nh.util.show_if_requested()
     """

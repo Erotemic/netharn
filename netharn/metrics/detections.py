@@ -27,7 +27,7 @@ class DetectionMetrics:
         Example:
             >>> dmet = DetectionMetrics.demo(
             >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1))
-            >>> print(dmet.score_coco()['mAP'])
+            >>> #print(dmet.score_coco()['mAP'])
             >>> print(dmet.score_netharn(bias=0)['mAP'])
             >>> print(dmet.score_voc(bias=0)['mAP'])
         """
@@ -378,6 +378,8 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
     # Group true boxes by class
     # Keep track which true boxes are unused / not assigned
     cx_to_idxs = ub.group_items(range(len(true_cxs)), true_cxs)
+    cx_to_tboxes = util.group_items(true_boxes, true_cxs, axis=0)
+    cx_to_tweight = util.group_items(true_weights, true_cxs, axis=0)
 
     # cx_to_boxes = ub.group_items(true_boxes, true_cxs)
     # cx_to_boxes = ub.map_vals(np.array, cx_to_boxes)
@@ -399,8 +401,10 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
         tx = None  # we will set this to the index of the assignd gt
 
         if len(cls_true_idxs):
-            cls_true_boxes = true_boxes.take(cls_true_idxs, axis=0)
-            cls_true_weights = true_weights.take(cls_true_idxs, axis=0)
+            cls_true_boxes = cx_to_tboxes[cx]
+            cls_true_weights = cx_to_tweight[cx]
+            # cls_true_boxes = true_boxes.take(cls_true_idxs, axis=0)
+            # cls_true_weights = true_weights.take(cls_true_idxs, axis=0)
 
             overlaps = cls_true_boxes.ious(box, bias=bias)
 
