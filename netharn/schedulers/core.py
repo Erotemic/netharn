@@ -162,7 +162,8 @@ class YOLOScheduler(NetharnScheduler):
         # It should be taken as cannonical over self.batch_num and self.epoch
         # which are integral and rounted.
 
-        self.epoch_to_n_items_seen = defaultdict(list)  # mapping from epoch to list of batch sizes seen in interation
+        # self.epoch_to_n_items_seen = defaultdict(list)  # mapping from epoch to list of batch sizes seen in interation
+        self.epoch_to_n_items_seen = defaultdict(int)  # mapping from epoch to number of items (not batches) seen in iteration
         self.n_items_seen = self.dset_size * (last_epoch + 1)
 
         self.optimizer = optimizer
@@ -200,17 +201,20 @@ class YOLOScheduler(NetharnScheduler):
         """
         Used when restarting after killing an epoch
         """
+        n_full_batches = int(self.dset_size / self.batch_size)
+        remainder = int(self.dset_size % self.batch_size)
+        # n_items_seen = ([self.batch_size] * n_full_batches) + [remainder]
+        n_items_seen = (self.batch_size * n_full_batches) + remainder
         for i in range(0, epoch):
-            n_full_batches = int(self.dset_size / self.batch_size)
-            remainder = int(self.dset_size % self.batch_size)
-            n_items_seen = ([self.batch_size] * n_full_batches) + [remainder]
             self.epoch_to_n_items_seen[i] = n_items_seen
 
         for i in list(self.epoch_to_n_items_seen.keys()):
             if i >= epoch:
                 del self.epoch_to_n_items_seen[i]
 
-        self.n_items_seen = sum(map(sum, self.epoch_to_n_items_seen.values()))
+        # self.n_items_seen = sum(map(sum, self.epoch_to_n_items_seen.values()))
+        self.n_items_seen = sum(self.epoch_to_n_items_seen.values())
+        self._update_optimizer()
 
     def step_batch(self, batch_size=None):
         """
@@ -218,7 +222,8 @@ class YOLOScheduler(NetharnScheduler):
             batch_size (int): number of examples in the batch
         """
         batch_size = batch_size if batch_size is not None else self.batch_size
-        self.epoch_to_n_items_seen[self.epoch].append(batch_size)
+        # self.epoch_to_n_items_seen[self.epoch].append(batch_size)
+        self.epoch_to_n_items_seen[self.epoch] += batch_size
         self.n_items_seen += batch_size
         self._update_optimizer()
 

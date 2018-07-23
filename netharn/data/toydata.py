@@ -4,6 +4,7 @@ import itertools as it
 from torch.utils import data as torch_data
 from netharn.data import base
 from netharn import util
+import ubelt as ub
 
 
 class ToyData1d(torch_data.Dataset, base.DataMixin):
@@ -59,6 +60,9 @@ class ToyData1d(torch_data.Dataset, base.DataMixin):
         self.data = data
         self.labels = labels
 
+        suffix = ub.hash_data([rng], base='abc', hasher='sha1')[0:16]
+        self.input_id = 'TD1D_{}_'.format(n) + suffix
+
     def __len__(self):
         return len(self.data)
 
@@ -110,6 +114,11 @@ class ToyData2d(torch_data.Dataset, base.DataMixin):
 
         self.data = np.concatenate([data1, data2], axis=0)
         self.labels = np.array(([0] * n) + ([1] * n))
+
+        suffix = ub.hash_data([
+            size, border, n, rng
+        ], base='abc', hasher='sha1')[0:16]
+        self.input_id = 'TD2D_{}_'.format(n) + suffix
 
     def __len__(self):
         return len(self.data)

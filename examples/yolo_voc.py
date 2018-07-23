@@ -758,6 +758,7 @@ def setup_yolo_harness(bsize=16, workers=0):
         cv2.setNumThreads(0)
 
     simulated_bsize = bstep * batch_size
+    assert simulated_bsize == 64, 'must be 64'
 
     # Pascal 2007 + 2012 trainval has 16551 images
     # Pascal 2007 test has 4952 images

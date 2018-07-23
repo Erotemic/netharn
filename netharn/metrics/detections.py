@@ -27,10 +27,9 @@ class DetectionMetrics:
         Example:
             >>> dmet = DetectionMetrics.demo(
             >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1))
-            >>> dmet.score_coco()['mAP']
-            >>> dmet.score_netharn()['mAP']
-            >>> dmet.score_voc()['mAP']
-
+            >>> print(dmet.score_coco()['mAP'])
+            >>> print(dmet.score_netharn(bias=0)['mAP'])
+            >>> print(dmet.score_voc(bias=0)['mAP'])
         """
         import netharn as nh
 

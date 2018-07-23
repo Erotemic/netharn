@@ -200,7 +200,7 @@ def _devcheck_voc_consistency2():
 
     dmets = []
 
-    for box_noise in np.linspace(0, 8, 50) / 6:
+    for box_noise in np.linspace(0, 8, 20):
         dmet = DetectionMetrics.demo(
             nimgs=20,
             nboxes=(0, 20),
