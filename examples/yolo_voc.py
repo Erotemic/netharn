@@ -461,8 +461,9 @@ class YoloHarn(nh.FitHarn):
 
         letterbox = harn.datasets['train'].letterbox
 
+        MAX_DETS = None
         # MAX_DETS = 100
-        MAX_DETS = 25
+        # MAX_DETS = 25
 
         bsize = len(indices)
         for bx in range(bsize):
