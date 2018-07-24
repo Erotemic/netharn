@@ -27,12 +27,13 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
         >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
         >>> self(layer)
     """
-    def __init__(self, fpath, initializer=None, info=None):
+    def __init__(self, fpath, initializer=None):
         self.fpath = fpath
         if isinstance(initializer, str):
             from netharn import initializers
             initializer = getattr(initializers, initializer)()
         self.initializer = initializer
+        info = None
         self.info = info
 
     def __nice__(self):
