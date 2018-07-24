@@ -321,9 +321,11 @@ def _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2):
     # (numer1 + numer2)
     np.add(rgb3, temp_rgb, out=rgb3)
 
-    with np.errstate(invalid='ignore'):
-        np.divide(rgb3, alpha3[..., None], out=rgb3)
-    rgb3[alpha3 == 0] = 0
+    # removing errstate is actually a significant speedup
+    # with np.errstate(invalid='ignore'):
+    np.divide(rgb3, alpha3[..., None], out=rgb3)
+    if not np.all(alpha3):
+        rgb3[alpha3 == 0] = 0
     return rgb3, alpha3
 
 
