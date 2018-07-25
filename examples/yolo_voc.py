@@ -257,7 +257,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         return super(YoloVOCDataset, self)._load_annotation(index)
 
     def make_loader(self, batch_size=16, num_workers=0, shuffle=False,
-                    pin_memory=False):
+                    pin_memory=False, resize_rate=10, drop_last=False):
         """
         CommandLine:
             python ~/code/netharn/examples/yolo_voc.py YoloVOCDataset.make_loader
@@ -282,7 +282,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         assert len(self) > 0, 'must have some data'
         if shuffle:
             sampler = torch_sampler.RandomSampler(self)
-            resample_freq = 10
+            resample_freq = resize_rate
         else:
             sampler = torch_sampler.SequentialSampler(self)
             resample_freq = None
@@ -290,6 +290,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         # use custom sampler that does multiscale training
         batch_sampler = multiscale_batch_sampler.MultiScaleBatchSampler(
             sampler, batch_size=batch_size, resample_freq=resample_freq,
+            drop_last=drop_last,
         )
         # torch.utils.data.sampler.WeightedRandomSampler
         loader = torch_data.DataLoader(self, batch_sampler=batch_sampler,
@@ -321,7 +322,7 @@ class YoloHarn(nh.FitHarn):
         # Prepare structures we will use to measure and quantify quality
         for tag, voc_dset in harn.datasets.items():
 
-            cacher = ub.Cacher('foo', cfgstr=tag, appname='netharn')
+            cacher = ub.Cacher('dmet', cfgstr=tag, appname='netharn')
             dmet = cacher.tryload()
             if dmet is None:
                 dmet = nh.metrics.detections.DetectionMetrics()
@@ -332,6 +333,11 @@ class YoloHarn(nh.FitHarn):
                 dmet.pred.dataset['annotations'] = []  # start empty
                 dmet.pred._clear_index()
                 cacher.save(dmet)
+
+            if tag == 'train':
+                # Augmentation means we have to build training annots too
+                dmet.true.dataset['annotations'] = []
+                dmet.true._clear_index()
 
             dmet.true._build_index()
             # dmet.pred._clear_index()
@@ -505,6 +511,45 @@ class YoloHarn(nh.FitHarn):
             # pred.add_annotation(aid=aid, gid=gx, cid=cx, bbox=box,
             #                     score=score)
 
+        if tag == 'train':
+            true = dmet.true
+            # On the training set, we need to add truth due to augmentation
+            bsize = len(indices)
+            targets = labels['targets']
+            gt_weights = labels['gt_weights']
+            orig_sizes = labels['orig_sizes']
+            for bx in range(bsize):
+                target = targets[bx].cpu().numpy().reshape(-1, 5)
+                true_weights = gt_weights[bx].cpu().numpy()
+                orig_size = orig_sizes[bx].cpu().numpy()
+                true_cxs = target[:, 0].astype(np.int)
+                true_cxywh = target[:, 1:5]
+                flags = true_cxs != -1
+                true_weights = true_weights[flags]
+                true_cxywh = true_cxywh[flags]
+                true_cxs = true_cxs[flags]
+
+                gx = int(indices[bx].data.cpu().numpy())
+
+                true_boxes = nh.util.Boxes(true_cxywh, 'cxywh').scale(inp_size)
+                true_boxes = letterbox._boxes_letterbox_invert(true_boxes, orig_size, inp_size)
+
+                _true_boxes = true_boxes.to_xywh().data.tolist()
+                _true_cxs = true_cxs.tolist()
+                _true_weights = true_weights.tolist()
+                _aids = it.count(len(true.dataset['annotations']) + 1)
+                anns = [
+                    {
+                        'id': aid,
+                        'image_id': gx,
+                        'category_id': cx,
+                        'bbox': box,
+                        'weight': weight
+                    }
+                    for aid, box, cx, weight in zip(_aids, _true_boxes, _true_cxs, _true_weights)
+                ]
+                true.add_annotations(anns)
+
     @profiler.profile
     def on_epoch(harn):
         """
@@ -571,6 +616,8 @@ class YoloHarn(nh.FitHarn):
 
         # Reset detections
         dmet.pred.remove_all_annotations()
+        if tag == 'train':
+            dmet.true.remove_all_annotations()
 
         if tag in {'test', 'vali'}:
             if harn.epoch > 20:
@@ -638,7 +685,7 @@ class YoloHarn(nh.FitHarn):
         true_cxywh_ = letterbox._boxes_letterbox_invert(true_boxes_, orig_size, target_size)
         pred_cxywh_ = letterbox._boxes_letterbox_invert(pred_boxes_, orig_size, target_size)
 
-        shift, scale, embed_size = letterbox._letterbox_transform(orig_size, target_size)
+        # shift, scale, embed_size = letterbox._letterbox_transform(orig_size, target_size)
 
         fig = nh.util.figure(doclf=True, fnum=1)
         nh.util.imshow(img, colorspace='rgb')
@@ -747,6 +794,7 @@ def setup_yolo_harness(bsize=16, workers=0):
     decay = float(ub.argval('--decay', default=0.0005))
     lr = float(ub.argval('--lr', default=0.001))
     ovthresh = 0.5
+    simulated_bsize = bstep * batch_size
 
     # We will divide the learning rate by the simulated batch size
     datasets = {
@@ -755,7 +803,8 @@ def setup_yolo_harness(bsize=16, workers=0):
     }
     loaders = {
         key: dset.make_loader(batch_size=batch_size, num_workers=workers,
-                              shuffle=(key == 'train'), pin_memory=True)
+                              shuffle=(key == 'train'), pin_memory=True,
+                              resize_rate=10 * bstep, drop_last=True)
         for key, dset in datasets.items()
     }
 
@@ -763,7 +812,6 @@ def setup_yolo_harness(bsize=16, workers=0):
         import cv2
         cv2.setNumThreads(0)
 
-    simulated_bsize = bstep * batch_size
     assert simulated_bsize == 64, 'must be 64'
 
     # Pascal 2007 + 2012 trainval has 16551 images
@@ -789,12 +837,16 @@ def setup_yolo_harness(bsize=16, workers=0):
     #
     # Based in this, the iter to batch conversion is
     #
-    # >>> np.array([250, 25000, 35000]) / 259
-    # [  1,  98, 137]
-    # >>> np.array([1000, 40000, 60000, 80200]) / 258.609375
+    # >>> np.array([250, 25000, 35000]) / (16512 / 64)
+    # >>> np.array([250, 25000, 30000]) / (16512 / 64)
+    # array([  0.96899225,  96.89922481, 135.65891473])
+    # -> Round
+    # array([  1.,  97., 135.])
+    # >>> np.array([1000, 40000, 60000, 80200]) / 258
     # array([  3.86683584, 154.67343363, 232.01015044, 310.12023443])
     # -> Round
     # array(4, 157, 232, 310])
+    # array([  3.87596899, 155.03875969, 232.55813953, 310.85271318])
     if not ub.argflag('--eav'):
         lr_step_points = {
             # 0:   lr * 0.1 / simulated_bsize,  # burnin
@@ -811,10 +863,12 @@ def setup_yolo_harness(bsize=16, workers=0):
             # dividing by batch size was one of those unpublished details
             # 0:   lr * 0.1 / simulated_bsize,
             0:   lr * 1.0 / simulated_bsize,
+            1:   lr * 1.0 / simulated_bsize,
             97:  lr * 0.1 / simulated_bsize,
-            136: lr * 0.01 / simulated_bsize,
+            116: lr * 0.01 / simulated_bsize,
+            # 135: lr * 0.01 / simulated_bsize,
         }
-        max_epoch = 175
+        max_epoch = 116
 
     # Anchors
     anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
@@ -870,8 +924,9 @@ def setup_yolo_harness(bsize=16, workers=0):
         'scheduler': (nh.schedulers.core.YOLOScheduler, {
             'points': lr_step_points,
             'interpolate': False,
-            'burn_in': 3.86683584,  # number of epochs to burn_in for. approx 1000 batches?
-            'dset_size': len(datasets['train']),
+            'burn_in': 0.96899225 if ub.argflag('--eav') else 3.86683584,  # number of epochs to burn_in for. approx 1000 batches?
+            # 'dset_size': len(datasets['train']) # when drop_last=False
+            'dset_size': (len(datasets['train']) // simulated_bsize) * simulated_bsize,  # make a multiple of batch_size because drop_last=True
             'batch_size': batch_size,
         }),
 
@@ -938,11 +993,14 @@ if __name__ == '__main__':
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=4 --nice=pjr_run2 --lr=0.001 --bstep=8 --workers=4
 
-        python ~/code/netharn/examples/yolo_voc.py train --gpu=0,1 --batch_size=32 --nice=july22 --lr=0.001 --bstep=2 --workers=8
-
-        python ~/code/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=8 --nice=july22_lr_x8 --lr=0.008 --bstep=8 --workers=6
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0,1 --batch_size=32 --nice=july23 --lr=0.001 --bstep=2 --workers=8
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=16 --nice=july23_lr_x8 --lr=0.008 --bstep=4 --workers=6
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=batchaware2 --lr=0.001 --bstep=8 --workers=3
+
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=july_eav_run3 --lr=0.001 --bstep=8 --workers=6 --eav
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=8 --nice=july_eav_run4 --lr=0.002 --bstep=8 --workers=6 --eav
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=16 --nice=july_pjr_run4 --lr=0.001 --bstep=4 --workers=6
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

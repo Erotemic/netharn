@@ -890,9 +890,6 @@ class CoreMixin:
         #     if getattr(harn.scheduler, 'last_epoch', 0) == -1:
         #         harn.scheduler.step()
 
-        # Clear any existing gradients before starting
-        harn.optimizer.zero_grad()
-
         try:
             for harn.epoch in it.count(harn.epoch):
                 harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
@@ -932,6 +929,8 @@ class CoreMixin:
         current_lr = max(harn._current_lrs())
         harn.log_value('epoch lr', current_lr, harn.epoch)
 
+        # Clear any existing gradients before training
+        harn.optimizer.zero_grad()
         # run training epoch
         harn._run_epoch(train_loader, tag='train', learn=True)
 
@@ -1052,11 +1051,11 @@ class CoreMixin:
                     harn._step_scheduler_batch()
 
         # do a final step when bstep > 1, so the last few batches arent skipped
-        if harn.dynamics['batch_step'] > 1:
-            if any(param.grad is not None
-                   for name, param in harn.model.named_parameters()):
-                harn.optimizer.step()
-                harn.optimizer.zero_grad()
+        # if harn.dynamics['batch_step'] > 1:
+        #     if any(param.grad is not None
+        #            for name, param in harn.model.named_parameters()):
+        #         harn.optimizer.step()
+        #         harn.optimizer.zero_grad()
 
         prog.close()
         harn.epoch_prog = None

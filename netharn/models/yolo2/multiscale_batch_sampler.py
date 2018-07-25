@@ -58,7 +58,7 @@ class MultiScaleBatchSampler(torch_sampler.BatchSampler):
             if len(batch) == self.batch_size:
                 yield batch
                 if self.resample_freq and idx % self.resample_freq == 0:
-                    # choose a new scale index every 10 batches
+                    # choose a new scale index every `resample_freq` batches
                     scale_index = int(torch.rand(1) * self.num_scales)
                 batch = []
         if len(batch) > 0 and not self.drop_last:
