@@ -962,6 +962,7 @@ def setup_yolo_harness(bsize=16, workers=0):
             'input_range': 'norm01',
         },
     })
+    print('max_epoch = {!r}'.format(max_epoch))
     harn = YoloHarn(hyper=hyper)
     harn.config['use_tqdm'] = False
     harn.intervals['log_iter_train'] = None
