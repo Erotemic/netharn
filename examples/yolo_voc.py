@@ -863,12 +863,17 @@ def setup_yolo_harness(bsize=16, workers=0):
             # dividing by batch size was one of those unpublished details
             # 0:   lr * 0.1 / simulated_bsize,
             0:   lr * 1.0 / simulated_bsize,
+
             1:   lr * 1.0 / simulated_bsize,
+            96:  lr * 1.0 / simulated_bsize,
+
             97:  lr * 0.1 / simulated_bsize,
+            115: lr * 0.1 / simulated_bsize,
+
             116: lr * 0.01 / simulated_bsize,
-            # 135: lr * 0.01 / simulated_bsize,
+            135: lr * 0.05 / simulated_bsize,
         }
-        max_epoch = 116
+        max_epoch = 150
 
     # Anchors
     anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
@@ -923,7 +928,8 @@ def setup_yolo_harness(bsize=16, workers=0):
 
         'scheduler': (nh.schedulers.core.YOLOScheduler, {
             'points': lr_step_points,
-            'interpolate': False,
+            # 'interpolate': False,
+            'interpolate': True,
             'burn_in': 0.96899225 if ub.argflag('--eav') else 3.86683584,  # number of epochs to burn_in for. approx 1000 batches?
             # 'dset_size': len(datasets['train']) # when drop_last=False
             'dset_size': (len(datasets['train']) // simulated_bsize) * simulated_bsize,  # make a multiple of batch_size because drop_last=True
