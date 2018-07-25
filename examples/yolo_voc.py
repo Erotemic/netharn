@@ -322,7 +322,7 @@ class YoloHarn(nh.FitHarn):
         # Prepare structures we will use to measure and quantify quality
         for tag, voc_dset in harn.datasets.items():
 
-            cacher = ub.Cacher('foo', cfgstr=tag, appname='netharn')
+            cacher = ub.Cacher('dmet', cfgstr=tag, appname='netharn')
             dmet = cacher.tryload()
             if dmet is None:
                 dmet = nh.metrics.detections.DetectionMetrics()
@@ -333,6 +333,11 @@ class YoloHarn(nh.FitHarn):
                 dmet.pred.dataset['annotations'] = []  # start empty
                 dmet.pred._clear_index()
                 cacher.save(dmet)
+
+            if tag == 'train':
+                # Augmentation means we have to build training annots too
+                dmet.true.dataset['annotations'] = []
+                dmet.true._clear_index()
 
             dmet.true._build_index()
             # dmet.pred._clear_index()
@@ -506,6 +511,45 @@ class YoloHarn(nh.FitHarn):
             # pred.add_annotation(aid=aid, gid=gx, cid=cx, bbox=box,
             #                     score=score)
 
+        if tag == 'train':
+            true = dmet.true
+            # On the training set, we need to add truth due to augmentation
+            bsize = len(indices)
+            targets = labels['targets']
+            gt_weights = labels['gt_weights']
+            orig_sizes = labels['orig_sizes']
+            for bx in range(bsize):
+                target = targets[bx].cpu().numpy().reshape(-1, 5)
+                true_weights = gt_weights[bx].cpu().numpy()
+                orig_size = orig_sizes[bx].cpu().numpy()
+                true_cxs = target[:, 0].astype(np.int)
+                true_cxywh = target[:, 1:5]
+                flags = true_cxs != -1
+                true_weights = true_weights[flags]
+                true_cxywh = true_cxywh[flags]
+                true_cxs = true_cxs[flags]
+
+                gx = int(indices[bx].data.cpu().numpy())
+
+                true_boxes = nh.util.Boxes(true_cxywh, 'cxywh').scale(inp_size)
+                true_boxes = letterbox._boxes_letterbox_invert(true_boxes, orig_size, inp_size)
+
+                _true_boxes = true_boxes.to_xywh().data.tolist()
+                _true_cxs = true_cxs.tolist()
+                _true_weights = true_weights.tolist()
+                _aids = it.count(len(true.dataset['annotations']) + 1)
+                anns = [
+                    {
+                        'id': aid,
+                        'image_id': gx,
+                        'category_id': cx,
+                        'bbox': box,
+                        'weight': weight
+                    }
+                    for aid, box, cx, weight in zip(_aids, _true_boxes, _true_cxs, _true_weights)
+                ]
+                true.add_annotations(anns)
+
     @profiler.profile
     def on_epoch(harn):
         """
@@ -572,6 +616,8 @@ class YoloHarn(nh.FitHarn):
 
         # Reset detections
         dmet.pred.remove_all_annotations()
+        if tag == 'train':
+            dmet.true.remove_all_annotations()
 
         if tag in {'test', 'vali'}:
             if harn.epoch > 20:
@@ -639,7 +685,7 @@ class YoloHarn(nh.FitHarn):
         true_cxywh_ = letterbox._boxes_letterbox_invert(true_boxes_, orig_size, target_size)
         pred_cxywh_ = letterbox._boxes_letterbox_invert(pred_boxes_, orig_size, target_size)
 
-        shift, scale, embed_size = letterbox._letterbox_transform(orig_size, target_size)
+        # shift, scale, embed_size = letterbox._letterbox_transform(orig_size, target_size)
 
         fig = nh.util.figure(doclf=True, fnum=1)
         nh.util.imshow(img, colorspace='rgb')
@@ -952,7 +998,9 @@ if __name__ == '__main__':
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=batchaware2 --lr=0.001 --bstep=8 --workers=3
 
-        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=eav_run3 --lr=0.001 --bstep=8 --workers=8 --eav
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=july_eav_run3 --lr=0.001 --bstep=8 --workers=6 --eav
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=8 --nice=july_eav_run4 --lr=0.002 --bstep=8 --workers=6 --eav
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=16 --nice=july_pjr_run4 --lr=0.002 --bstep=4 --workers=6
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
