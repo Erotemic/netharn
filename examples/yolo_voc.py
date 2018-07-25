@@ -9,7 +9,7 @@ import itertools as it
 import torch
 import ubelt as ub
 import numpy as np
-import pandas as pd
+import pandas as pd  # NOQA
 import netharn as nh
 from netharn import util
 import imgaug.augmenters as iaa
