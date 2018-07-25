@@ -1315,8 +1315,10 @@ class CoreCallback:
         if 'monitor_state_dict' in snapshot_state:
             # hack: dont override patience, use whatever the current val is
             patience = harn.monitor.patience
+            max_epoch = harn.monitor.max_epoch
             harn.monitor.load_state_dict(snapshot_state['monitor_state_dict'])
             harn.monitor.patience = patience
+            harn.monitor.max_epoch = max_epoch
             harn.debug('loaded monitor_state_dict')
 
         if 'optimizer_state_dict' in snapshot_state:
