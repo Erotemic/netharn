@@ -852,6 +852,7 @@ class CoreMixin:
         if harn._check_termination():
             return
 
+        print('harn.monitor.max_epoch = {!r}'.format(harn.monitor.max_epoch))
         harn.main_prog = harn._make_prog(desc='epoch',
                                          total=harn.monitor.max_epoch,
                                          disable=not harn.config['show_prog'],
