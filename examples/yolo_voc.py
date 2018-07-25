@@ -837,9 +837,9 @@ def setup_yolo_harness(bsize=16, workers=0):
     #
     # Based in this, the iter to batch conversion is
     #
-    # >>> np.array([250, 25000, 35000]) / (16512 / 64)
+    # >>> np.array([250, 25000, 35000, 45000]) / (16512 / 64)
     # >>> np.array([250, 25000, 30000]) / (16512 / 64)
-    # array([  0.96899225,  96.89922481, 135.65891473])
+    # array([  0.96899225,  96.89922481, 135.65891473, 174.41860465])
     # -> Round
     # array([  1.,  97., 135.])
     # >>> np.array([1000, 40000, 60000, 80200]) / 258
@@ -873,7 +873,7 @@ def setup_yolo_harness(bsize=16, workers=0):
             116: lr * 0.01 / simulated_bsize,
             135: lr * 0.05 / simulated_bsize,
         }
-        max_epoch = 150
+        max_epoch = 200
 
     weights = ub.argval('--weights', default=None)
     if weights is None or weights == 'imgnet':
