@@ -39,7 +39,7 @@ def demodata_hsv_image(w=200, h=200):
 
 
 class HSVShift(augmenter_base.ParamatarizedAugmenter):
-    r"""
+    """
     Perform random HSV shift on the RGB data.
 
     MODIFIED FROM LIGHTNET YOLO into imgaug format

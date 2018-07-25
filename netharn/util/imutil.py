@@ -407,7 +407,7 @@ def ensure_grayscale(img, colorspace_hint='BGR'):
 
 
 def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
-    r"""
+    """
     Converts colorspace of img.
     Convinience function around cv2.cvtColor
 
@@ -419,12 +419,37 @@ def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
     Returns:
         ndarray[uint8_t, ndim=2]: img -  image data
 
+    Note:
+        Note the LAB and HSV colorspaces in float do not go into the 0-1 range.
+
+        For HSV the floating point range is:
+            0:360, 0:1, 0:1
+        For LAB the floating point range is:
+            0:100, -86.1875:98.234375, -107.859375:94.46875
+            (Note, that some extreme combinations of a and b are not valid)
+
     Example:
         >>> convert_colorspace(np.array([[[0, 0, 1]]], dtype=np.float32), 'LAB', src_space='RGB')
         >>> convert_colorspace(np.array([[[0, 1, 0]]], dtype=np.float32), 'LAB', src_space='RGB')
         >>> convert_colorspace(np.array([[[1, 0, 0]]], dtype=np.float32), 'LAB', src_space='RGB')
         >>> convert_colorspace(np.array([[[1, 1, 1]]], dtype=np.float32), 'LAB', src_space='RGB')
         >>> convert_colorspace(np.array([[[0, 0, 1]]], dtype=np.float32), 'HSV', src_space='RGB')
+
+    Ignore:
+        # Check LAB output ranges
+        import itertools as it
+        s = 1
+        _iter = it.product(range(0, 256, s), range(0, 256, s), range(0, 256, s))
+        minvals = np.full(3, np.inf)
+        maxvals = np.full(3, -np.inf)
+        for r, g, b in ub.ProgIter(_iter, total=(256 // s) ** 3):
+            img255 = np.array([[[r, g, b]]], dtype=np.uint8)
+            img01 = (img255 / 255.0).astype(np.float32)
+            lab = convert_colorspace(img01, 'lab', src_space='rgb')
+            np.minimum(lab[0, 0], minvals, out=minvals)
+            np.maximum(lab[0, 0], maxvals, out=maxvals)
+        print('minvals = {}'.format(ub.repr2(minvals, nl=0)))
+        print('maxvals = {}'.format(ub.repr2(maxvals, nl=0)))
     """
     dst_space = dst_space.upper()
     src_space = src_space.upper()
@@ -439,7 +464,7 @@ def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
         code = _lookup_colorspace_code(dst_space, src_space)
         # Note the conversion to colorspaces like LAB and HSV in float form
         # do not go into the 0-1 range. Instead they go into
-        # (0-100, -111-111hs, -111-111is) and (0-360, 0-1, 0-1) respectively
+        # (0-100, -111-111ish, -111-111ish) and (0-360, 0-1, 0-1) respectively
         img2 = cv2.cvtColor(img, code, dst=dst)
     return img2
 

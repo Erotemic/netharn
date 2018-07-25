@@ -106,8 +106,13 @@ class Folders(object):
 
         # also setup a "nice" custom name, which may conflict, but oh well
         if hyper.nice:
-            nice_dpath = normpath(
-                    join(self.hyper.workdir, 'fit', 'nice', hyper.nice))
+            try:
+                nice_dpath = normpath(
+                        join(self.hyper.workdir, 'fit', 'nice', hyper.nice))
+            except Exception:
+                print('self.hyper.workdir = {!r}'.format(self.hyper.workdir))
+                print('hyper.nice = {!r}'.format(hyper.nice))
+                raise
         else:
             nice_dpath = None
 

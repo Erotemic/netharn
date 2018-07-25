@@ -875,6 +875,12 @@ def setup_yolo_harness(bsize=16, workers=0):
         }
         max_epoch = 150
 
+    weights = ub.argval('--weights', default=None)
+    if weights is None or weights == 'imgnet':
+        weights = light_yolo.initial_imagenet_weights()
+    if weights == 'lightnet':
+        weights = light_yolo.demo_voc_weights()
+
     # Anchors
     anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
                         (5.05587, 8.09892), (9.47112, 4.84053),
@@ -914,8 +920,7 @@ def setup_yolo_harness(bsize=16, workers=0):
         }),
 
         'initializer': (nh.initializers.Pretrained, {
-            # 'fpath': light_yolo.demo_voc_weights(),
-            'fpath': light_yolo.initial_imagenet_weights(),
+            'fpath': weights,
         }),
 
         'optimizer': (torch.optim.SGD, {
@@ -1008,6 +1013,11 @@ if __name__ == '__main__':
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=july_eav_run3 --lr=0.001 --bstep=8 --workers=6 --eav
         python ~/code/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=8 --nice=july_eav_run4 --lr=0.002 --bstep=8 --workers=6 --eav
         python ~/code/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=16 --nice=july_pjr_run4 --lr=0.001 --bstep=4 --workers=6
+
+
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=july_eav_run4_hack1 --lr=0.001 --bstep=8 --workers=6 --eav --weights=/home/local/KHQ/jon.crall/work/voc_yolo2/fit/nice/july_eav_run_hack/torch_snapshots/_epoch_00000150.pt
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=8 --nice=july_eav_run4_hack2 --lr=0.001 --bstep=8 --workers=6 --eav --weights=lightnet
+
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
