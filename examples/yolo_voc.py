@@ -931,8 +931,8 @@ def setup_yolo_harness(bsize=16, workers=0):
             # 'interpolate': False,
             'interpolate': True,
             'burn_in': 0.96899225 if ub.argflag('--eav') else 3.86683584,  # number of epochs to burn_in for. approx 1000 batches?
-            # 'dset_size': len(datasets['train']) # when drop_last=False
-            'dset_size': (len(datasets['train']) // simulated_bsize) * simulated_bsize,  # make a multiple of batch_size because drop_last=True
+            'dset_size': len(datasets['train']),  # when drop_last=False
+            # 'dset_size': (len(datasets['train']) // simulated_bsize) * simulated_bsize,  # make a multiple of batch_size because drop_last=True
             'batch_size': batch_size,
         }),
 
