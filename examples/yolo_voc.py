@@ -878,8 +878,10 @@ def setup_yolo_harness(bsize=16, workers=0):
     weights = ub.argval('--weights', default=None)
     if weights is None or weights == 'imgnet':
         weights = light_yolo.initial_imagenet_weights()
-    if weights == 'lightnet':
+    elif weights == 'lightnet':
         weights = light_yolo.demo_voc_weights()
+    else:
+        print('weights = {!r}'.format(weights))
 
     # Anchors
     anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
