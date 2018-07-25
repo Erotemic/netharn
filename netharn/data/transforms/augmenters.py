@@ -67,15 +67,42 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         >>> from netharn.util import mplutil
         >>> import ubelt as ub
         >>> mplutil.autompl()
-        >>> mplutil.figure(doclf=True, fnum=1)
+        >>> mplutil.figure(doclf=True, fnum=3)
         >>> self = HSVShift(0.5, 1.5, 1.5)
         >>> pnums = mplutil.PlotNums(5, 5)
-        >>> random_state = self.random_state
+        >>> #random_state = self.random_state
+        >>> self.reseed(random.Random(0))
         >>> mplutil.imshow(img, colorspace='rgb', pnum=pnums[0], title='orig')
         >>> for i in range(1, len(pnums)):
         >>>     aug = self.augment_image(img)
         >>>     title = 'aug: {}'.format(ub.repr2(self._prev_params, nl=0, precision=3))
         >>>     mplutil.imshow(aug, colorspace='rgb', pnum=pnums[i], title=title)
+        >>> mplutil.show_if_requested()
+
+    Ignore:
+        >>> from netharn.data.transforms.augmenters import *
+        >>> lnpre = ub.import_module_from_path(ub.truepath('~/code/lightnet/lightnet/data/transform/_preprocess.py'))
+        >>> self = lnpre.HSVShift(0.1, 1.5, 1.5)
+        >>> from PIL import Image
+        >>> img = demodata_hsv_image()
+        >>> from_ = ub.identity
+        >>> #img = Image.fromarray(img)
+        >>> #from_ = np.array
+        >>> aug = self(img)
+        >>> # xdoc: +REQUIRES(--show)
+        >>> from netharn.util import mplutil
+        >>> import ubelt as ub
+        >>> mplutil.autompl()
+        >>> mplutil.figure(doclf=True, fnum=1)
+        >>> import random
+        >>> random.seed(0)
+        >>> pnums = mplutil.PlotNums(5, 5)
+        >>> mplutil.imshow(from_(img), colorspace='rgb', pnum=pnums[0], title='orig')
+        >>> for i in range(1, len(pnums)):
+        >>>     aug = self(img)
+        >>>     #title = 'aug: {}'.format(ub.repr2(self._prev_params, nl=0, precision=3))
+        >>>     title = 'foo'
+        >>>     mplutil.imshow(from_(aug), colorspace='rgb', pnum=pnums[i], title=title)
         >>> mplutil.show_if_requested()
     """
     def __init__(self, hue, sat, val, input_colorspace='rgb'):

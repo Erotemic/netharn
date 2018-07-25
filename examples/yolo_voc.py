@@ -1000,7 +1000,7 @@ if __name__ == '__main__':
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=july_eav_run3 --lr=0.001 --bstep=8 --workers=6 --eav
         python ~/code/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=8 --nice=july_eav_run4 --lr=0.002 --bstep=8 --workers=6 --eav
-        python ~/code/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=16 --nice=july_pjr_run4 --lr=0.002 --bstep=4 --workers=6
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=2 --batch_size=16 --nice=july_pjr_run4 --lr=0.001 --bstep=4 --workers=6
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
