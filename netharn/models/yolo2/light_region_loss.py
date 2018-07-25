@@ -397,7 +397,9 @@ class RegionLoss(BaseLossWithCudaState):
             # exactly the anchors if they don't predict anything, but the
             # weight is only 0.01, set it to 0.01 / self.coord_scale.
             # Note we will apply the required sqrt later
-            if self.ORIG:
+
+            if self.ORIG and False:
+                # This hurts even thought it seems like its what darknet does
                 coord_mask.fill_((0.01 / self.coord_scale))
             else:
                 coord_mask.fill_(1)
