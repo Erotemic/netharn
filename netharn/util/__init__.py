@@ -92,7 +92,7 @@ else:
                                           random_product, shuffle,)
     from netharn.util.util_resources import (ensure_ulimit,)
     from netharn.util.util_slider import (SlidingIndexDataset, SlidingSlices,
-                                          Stitcher,)
+                                          SlidingWindow, Stitcher,)
     from netharn.util.util_subextreme import (argsubmax, argsubmaxima,)
     from netharn.util.util_tensorboard import (read_tensorboard_scalars,)
     from netharn.util.util_torch import (DisableBatchNorm, ModuleMixin,
@@ -105,15 +105,16 @@ else:
                'CumMovingAve', 'DisableBatchNorm', 'ExpMovingAve', 'IS_PROFILING',
                'InternalRunningStats', 'KernprofParser', 'LossyJSONEncoder',
                'ModuleMixin', 'MovingAve', 'NumpyEncoder', 'PlotNums',
-               'RunningStats', 'SlidingIndexDataset', 'SlidingSlices', 'Stitcher',
-               'SupressPrint', 'WindowedMovingAve', 'absdev', 'adjust_gamma',
-               'adjust_subplots', 'aggensure', 'align_paths', 'apply_grouping',
-               'argsubmax', 'argsubmaxima', 'atleast_3channels', 'atleast_nd',
-               'autompl', 'axes_extent', 'box_ious', 'check_aligned', 'colorbar',
-               'colorbar_image', 'compact_idstr', 'convert_colorspace',
-               'copy_figure_to_clipboard', 'dict_intersection', 'distinct_colors',
-               'distinct_markers', 'draw_border', 'draw_boxes',
-               'draw_boxes_on_image', 'draw_line_segments', 'draw_text_on_image',
+               'RunningStats', 'SlidingIndexDataset', 'SlidingSlices',
+               'SlidingWindow', 'Stitcher', 'SupressPrint', 'WindowedMovingAve',
+               'absdev', 'adjust_gamma', 'adjust_subplots', 'aggensure',
+               'align_paths', 'apply_grouping', 'argsubmax', 'argsubmaxima',
+               'atleast_3channels', 'atleast_nd', 'autompl', 'axes_extent',
+               'box_ious', 'check_aligned', 'colorbar', 'colorbar_image',
+               'compact_idstr', 'convert_colorspace', 'copy_figure_to_clipboard',
+               'dict_intersection', 'distinct_colors', 'distinct_markers',
+               'draw_border', 'draw_boxes', 'draw_boxes_on_image',
+               'draw_line_segments', 'draw_text_on_image',
                'dump_global_profile_report', 'dumpsafe', 'dynamic_profile',
                'ensure_alpha_channel', 'ensure_float01', 'ensure_fnum',
                'ensure_grayscale', 'ensure_rng', 'ensure_ulimit',
