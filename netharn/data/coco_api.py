@@ -442,6 +442,7 @@ class Images(ObjectList1D):
     def size(self):
         """
         Example:
+            >>> from netharn.data.coco_api import *
             >>> self = CocoDataset.demo().images()
             >>> self._dset._ensure_imgsize()
             >>> print(self.size)
@@ -1278,6 +1279,19 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
             self._clear_index()
 
     def add_image(self, gname, gid=None):
+        """
+        Add an image to the dataset (dynamically updates the index)
+
+        Args:
+            gname (str): image name
+            gid (None or int): ADVANCED. Force using this image id.
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> gname = util.grab_test_image_fpath('paraview')
+            >>> gid = self.add_image(gname)
+            >>> assert self.imgs[gid]['file_name'] == gname
+        """
         if gid is None:
             gid = self._next_ids.get('gid')
         elif self.imgs and gid in self.imgs:
@@ -1295,6 +1309,23 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
 
     @util.profile
     def add_annotation(self, gid, cid, bbox=None, aid=None, **kw):
+        """
+        Add an annotation to the dataset (dynamically updates the index)
+
+        Args:
+            gid (int): image_id to add to
+            cid (int): category_id to add to
+            bbox (list or nh.util.Boxes): bounding box in xywh format
+            aid (None or int): ADVANCED. Force using this annotation id.
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> gid = 1
+            >>> cid = 1
+            >>> bbox = [10, 10, 20, 20]
+            >>> aid = self.add_annotation(gid, cid, bbox)
+            >>> assert self.anns[aid]['bbox'] == bbox
+        """
         if aid is None:
             aid = self._next_ids.get('aid')
         elif self.anns and aid in self.anns:
@@ -1390,9 +1421,13 @@ def demo_coco_data():
     """
     Simple data for testing
     """
-    gpath1 = ub.grabdata('https://i.imgur.com/KXhKM72.png')
-    gpath2 = ub.grabdata('https://i.imgur.com/flTHWFD.png')
-    gpath3 = ub.grabdata('https://i.imgur.com/kCi7C1r.png')
+    gpath1 = util.grab_test_image_fpath('astro')
+    gpath2 = util.grab_test_image_fpath('carl')
+    gpath3 = util.grab_test_image_fpath('stars')
+    # gpath1 = ub.grabdata('https://i.imgur.com/KXhKM72.png')
+    # gpath2 = ub.grabdata('https://i.imgur.com/flTHWFD.png')
+    # gpath3 = ub.grabdata('https://i.imgur.com/kCi7C1r.png')
+
     dataset = {
         'categories': [
             {'id': 1, 'name': 'astronaut', 'supercategory': 'human'},

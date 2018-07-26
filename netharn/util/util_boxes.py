@@ -391,6 +391,18 @@ class _BoxPropertyMixins(object):
         w, h = self.to_tlwh().components[-2:]
         return w * h
 
+    @property
+    def center(self):
+        """
+        Example:
+            >>> Boxes([25, 30, 15, 10], 'tlwh').area
+            array([150])
+            >>> Boxes([[25, 30, 0, 0]], 'tlwh').area
+            array([[0]])
+        """
+        cx, cy = self.to_cxywh().components[0:2]
+        return cx, cy
+
 
 def _numel(data):
     """ compatable API between torch and numpy """

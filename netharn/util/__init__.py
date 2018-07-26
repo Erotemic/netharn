@@ -71,7 +71,8 @@ else:
     from netharn.util.util_cachestamp import (CacheStamp,)
     from netharn.util.util_cv2 import (draw_boxes_on_image, draw_text_on_image,
                                        putMultiLineText,)
-    from netharn.util.util_demodata import (grab_test_image,)
+    from netharn.util.util_demodata import (grab_test_image,
+                                            grab_test_image_fpath,)
     from netharn.util.util_fname import (align_paths, check_aligned, dumpsafe,
                                          shortest_unique_prefixes,
                                          shortest_unique_suffixes,)
@@ -120,11 +121,11 @@ else:
                'ensure_grayscale', 'ensure_rng', 'ensure_ulimit',
                'extract_axes_extents', 'figure', 'find_parent_class',
                'find_pattern_above_row', 'find_pyclass_above_row',
-               'get_num_channels', 'grab_test_image', 'grad_context',
-               'group_consecutive', 'group_consecutive_indices', 'group_indices',
-               'group_items', 'image_slices', 'imread', 'imscale', 'imshow',
-               'imutil', 'imwrite', 'interpolated_colormap', 'isect_flags',
-               'iter_reduce_ufunc', 'legend', 'load_image_paths',
+               'get_num_channels', 'grab_test_image', 'grab_test_image_fpath',
+               'grad_context', 'group_consecutive', 'group_consecutive_indices',
+               'group_indices', 'group_items', 'image_slices', 'imread', 'imscale',
+               'imshow', 'imutil', 'imwrite', 'interpolated_colormap',
+               'isect_flags', 'iter_reduce_ufunc', 'legend', 'load_image_paths',
                'make_channels_comparable', 'make_heatmask', 'make_idstr',
                'make_legend_img', 'make_short_idstr', 'mplutil', 'multi_plot',
                'next_fnum', 'nms', 'non_max_supression', 'number_of_parameters',
