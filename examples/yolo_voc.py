@@ -1018,7 +1018,8 @@ if __name__ == '__main__':
 
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=july_eav_run4_hack1 --lr=0.001 --bstep=8 --workers=6 --eav --weights=/home/local/KHQ/jon.crall/work/voc_yolo2/fit/nice/july_eav_run_hack/torch_snapshots/_epoch_00000150.pt
-        python ~/code/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=8 --nice=july_eav_run4_hack2 --lr=0.001 --bstep=8 --workers=6 --eav --weights=lightnet
+
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=lightnet_start --lr=0.001 --bstep=8 --workers=6 --eav --weights=lightnet
 
     """
     import xdoctest
