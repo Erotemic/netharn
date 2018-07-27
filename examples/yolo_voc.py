@@ -862,9 +862,15 @@ def setup_yolo_harness(bsize=16, workers=0):
         lr_step_points = {
             # dividing by batch size was one of those unpublished details
             # 0:   lr * 0.1 / simulated_bsize,
-            0:   lr * 1.0 / simulated_bsize,
 
-            1:   lr * 1.0 / simulated_bsize,
+            # 0:   lr * 1.0 / simulated_bsize,
+            # 1:   lr * 1.0 / simulated_bsize,
+
+            0:   0,  # Hack to see performance before any learning
+            1:   0,
+            2:   lr * 1.0 / simulated_bsize,
+            3:   lr * 1.0 / simulated_bsize,
+
             96:  lr * 1.0 / simulated_bsize,
 
             97:  lr * 0.1 / simulated_bsize,
