@@ -8,9 +8,16 @@ import ubelt as ub
 import warnings
 import torch
 import six
+import os
 
 
 __all__ = ['XPU']
+
+try:
+    # minimum memory (MB) needed for auto to resolve to GPU by default
+    NETHARN_MIN_MB = int(os.environ['NETHARN_MIN_MB'])
+except Exception:
+    NETHARN_MIN_MB = 6000
 
 
 if torch.__version__.startswith('0.3'):
@@ -195,9 +202,13 @@ class XPU(ub.NiceRepr):
             raise ValueError('cannot cast to XPU. item={}'.format(item))
 
     @classmethod
-    def from_auto(XPU, min_memory=6000):
+    def from_auto(XPU, min_memory=NETHARN_MIN_MB):
         """
         Determines what a CPU/GPU device to use.
+
+        Args:
+            min_memory (int): min memory needed in bytes to default to GPU.
+                defaults to envvar NETHARN_MIN_MB or 6000
         """
         if torch.cuda.is_available():
             n_available = torch.cuda.device_count()

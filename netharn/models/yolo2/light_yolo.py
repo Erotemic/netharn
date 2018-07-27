@@ -334,11 +334,13 @@ def demo_voc_weights(key='lightnet'):
 
     if key == 'lightnet':
         url = 'https://gitlab.com/EAVISE/lightnet/raw/master/examples/yolo-voc/lightnet_weights.pt'
+        hash_prefix = 'c4597fed8eb1b01da3495'
     elif key == 'darknet':
         url = 'https://pjreddie.com/media/files/yolo-voc.weights'
+        hash_prefix = '3033f5f510c25ab3ff6b9'
     else:
         raise KeyError(key)
-    fpath = ub.grabdata(url, appname='netharn')
+    fpath = ub.grabdata(url, appname='netharn', hash_prefix=hash_prefix)
     # import lightnet
     # from os.path import dirname, join
     # dpath = dirname(dirname(lightnet.__file__))
@@ -351,7 +353,9 @@ def initial_imagenet_weights():
     import ubelt as ub
     # fpath = ub.grabdata(url)
     torch_fpath = ub.grabdata('https://data.kitware.com/api/v1/item/5b16b81b8d777f15ebe1ffcd/download',
-                              fname='darknet19_448.conv.23.pt', appname='netharn')
+                              fname='darknet19_448.conv.23.pt',
+                              appname='netharn',
+                              hash_prefix='fd2b99b9f66bb4')
     # weight_fpath = ub.grabdata(
     #     'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='netharn')
     # torch_fpath = weight_fpath + '.pt'

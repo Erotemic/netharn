@@ -156,11 +156,17 @@ def load_partial_state(model, model_state_dict, initializer=None):
             elif len(other_value.size()) == len(self_value.size()):
                 if key.endswith('bias'):
                     print('Skipping {} due to incompatable size'.format(key))
+                    print(' * self  = {!r}'.format(self_value.size()))
+                    print(' * other = {!r}'.format(other_value.size()))
                 else:
                     if initializer is None:
                         print('Skipping {} due to incompatable size'.format(key))
+                        print(' * self  = {!r}'.format(self_value.size()))
+                        print(' * other = {!r}'.format(other_value.size()))
                     else:
                         print('Partially add {} with incompatable size'.format(key))
+                        print(' * self  = {!r}'.format(self_value.size()))
+                        print(' * other = {!r}'.format(other_value.size()))
                         # Initialize all weights in case any are unspecified
                         if initializer is not None:
                             initializer(self_state[key])
@@ -178,6 +184,8 @@ def load_partial_state(model, model_state_dict, initializer=None):
                         unused_keys.remove(key)
             else:
                 print('Skipping {} due to incompatable size'.format(key))
+                print(' * self  = {!r}'.format(self_value.size()))
+                print(' * other = {!r}'.format(other_value.size()))
         else:
             print('Skipping {} because it does not exist'.format(key))
 

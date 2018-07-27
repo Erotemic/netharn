@@ -45,6 +45,8 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
         model_state_dict = xpu.load(util.zopen(self.fpath, 'rb', seekable=True))
         if 'model_state_dict' in model_state_dict:
             model_state_dict = model_state_dict['model_state_dict']
+        elif 'weights' in model_state_dict:
+            model_state_dict = model_state_dict['weights']
         nninit_base.load_partial_state(model, model_state_dict,
                                        initializer=self.initializer)
 
