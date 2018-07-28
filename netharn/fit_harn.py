@@ -1096,6 +1096,9 @@ class CoreMixin:
         """
         batch with weight updates
         """
+        if PROFILE:
+            torch.cuda.synchronize()
+
         try:
             outputs, loss = harn.run_batch(batch)
         except Exception:
@@ -1132,6 +1135,9 @@ class CoreMixin:
                 # harn.debug("STEP")
                 harn.optimizer.step()
                 harn.optimizer.zero_grad()
+
+        if PROFILE:
+            torch.cuda.synchronize()
 
         return outputs, loss
 
