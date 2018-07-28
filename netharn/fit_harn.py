@@ -144,6 +144,9 @@ __all__ = ['FitHarn']
 MIXINS = []
 
 
+PROFILE = ub.argflag('--profile')
+
+
 # class StopTraining(StopIteration):
 class StopTraining(Exception):
     """
@@ -1099,9 +1102,16 @@ class CoreMixin:
             harn.error('May need to override `run_batch` with a custom func')
             raise
 
+        if PROFILE:
+            torch.cuda.synchronize()
+
         # backprop and learn
         if learn:
             loss.backward()
+
+            if PROFILE:
+                torch.cuda.synchronize()
+
             # approximates a batch size of (bsize * bstep) if step > 1,
             bstep = harn.dynamics['batch_step']
             if (bx + 1) % bstep == 0:
@@ -1127,6 +1137,7 @@ class CoreMixin:
 
     @profiler.profile
     def _on_batch(harn, bx, batch, outputs, loss):
+        """ Internal function that prepares to call the `on_batch` callback. """
         loss_value = float(loss.data.cpu().item())
         harn._check_loss(loss_value)
         metrics_dict = {
