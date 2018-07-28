@@ -351,20 +351,26 @@ def demo_voc_weights(key='lightnet'):
 def initial_imagenet_weights():
     # import os
     import ubelt as ub
-    # fpath = ub.grabdata(url)
-    torch_fpath = ub.grabdata('https://data.kitware.com/api/v1/item/5b16b81b8d777f15ebe1ffcd/download',
-                              fname='darknet19_448.conv.23.pt',
-                              appname='netharn',
-                              hash_prefix='fd2b99b9f66bb4')
-    # weight_fpath = ub.grabdata(
-    #     'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='netharn')
-    # torch_fpath = weight_fpath + '.pt'
-    # if not os.path.exists(torch_fpath):
-    #     import lightnet.models
-    #     # hack to transform initial state
-    #     model = lightnet.models.Yolo(num_classes=1000)
-    #     model.load_weights(weight_fpath)
-    #     torch.save(model.state_dict(), torch_fpath)
+    if False:
+        # Maybe this had a weird bad init state?
+        torch_fpath = ub.grabdata('https://data.kitware.com/api/v1/item/5b16b81b8d777f15ebe1ffcd/download',
+                                  fname='darknet19_448.conv.23.pt',
+                                  appname='netharn',
+                                  # hash_prefix='fd2b99b9f66bb4',
+                                  hash_prefix='f38968224a81a')
+    else:
+        darknet_weight_fpath = ub.grabdata(
+            'https://pjreddie.com/media/files/darknet19_448.conv.23',
+            appname='netharn', hash_prefix='8016f5b7ddc15c5d7dad2315')
+
+        torch_fpath = darknet_weight_fpath + '.pt'
+        import os
+        if not os.path.exists(torch_fpath):
+            import lightnet.models
+            # hack to transform initial state
+            model = lightnet.models.Yolo(num_classes=20)
+            model.load_weights(darknet_weight_fpath)
+            torch.save(model.state_dict(), torch_fpath)
     return torch_fpath
 
 

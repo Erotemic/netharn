@@ -141,10 +141,12 @@ class DetectionMetrics:
         for bbox, cid, weight in zip(true_boxes.to_xywh(), true_cids, true_weights):
             dmet.true.add_annotation(true_gid, cid, bbox=bbox, weight=weight)
 
-    def score_netharn(dmet, ovthresh=0.5, bias=0, method='voc2012'):
+    def score_netharn(dmet, ovthresh=0.5, bias=0, method='voc2012', gids=None):
         y_accum = ub.ddict(list)
         # confusions = []
-        for gid in dmet.pred.imgs.keys():
+        if gids is None:
+            gids = dmet.pred.imgs.keys()
+        for gid in gids:
             pred_annots = dmet.pred.annots(gid=gid)
             true_annots = dmet.true.annots(gid=gid)
 
@@ -193,11 +195,13 @@ class DetectionMetrics:
         }
         return nh_scores
 
-    def score_voc(dmet, ovthresh=0.5, bias=1, method='voc2012'):
+    def score_voc(dmet, ovthresh=0.5, bias=1, method='voc2012', gids=None):
         recs = {}
         cx_to_lines = ub.ddict(list)
         # confusions = []
-        for gid in dmet.pred.imgs.keys():
+        if gids is None:
+            gids = dmet.pred.imgs.keys()
+        for gid in gids:
             pred_annots = dmet.pred.annots(gid=gid)
             true_annots = dmet.true.annots(gid=gid)
 

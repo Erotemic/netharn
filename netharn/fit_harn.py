@@ -333,8 +333,8 @@ class InitializeMixin:
             raise ValueError(
                 'Hyperparameters not specified, must setup modules yourself')
 
-        # harn.debug('hyper = {}'.format(ub.repr2(harn.train_info['hyper'], nl=3)))
-        # harn.debug(harn.hyper)
+        harn.debug('harn.train_info[hyper] = {}'.format(ub.repr2(harn.train_info['hyper'], nl=3)))
+        harn.debug('harn.hyper = {!r}'.format(harn.hyper))
 
         harn.debug('make XPU')
         harn.xpu = harn.hyper.make_xpu()
@@ -392,9 +392,10 @@ class InitializeMixin:
         """
         Use the initializer to set the weights for the model
         """
-        harn.log('Initializing new model')
+        harn.log('Initializing model weights')
         if harn.initializer:
             if harn.initializer.__class__.__name__ == 'LSUV':
+                harn.debug('calling hacked LSUV initializer')
                 #hack LSUV needs a batch of data to run
                 with util.grad_context(False):
                     loader = harn.loaders['train']
@@ -402,6 +403,8 @@ class InitializeMixin:
                     data = harn.xpu.variable(input)
                     harn.initializer(harn.model, data)
             else:
+                harn.debug('calling harn.initializer={!r}'.format(
+                    harn.initializer))
                 harn.initializer(harn.model)
         else:
             harn.warn('initializer was not specified')
@@ -448,25 +451,34 @@ class InitializeMixin:
 @register_mixin
 class ProgMixin:
     def _make_prog(harn, chunksize=None, **kw):
-        if harn.config['use_tqdm'] is None:
-            harn.config['use_tqdm'] = harn.config['prog_backend'] == 'tqdm'
-            if harn.config['prog_backend'] not in {'tqdm', 'progiter'}:
-                raise KeyError(harn.config['prog_backend'])
-        if harn.config['use_tqdm']:
+        if harn.config['use_tqdm'] is not None:
+            harn.config['prog_backend'] = 'tqdm' if harn.config['use_tqdm'] else 'progiter'
+
+        if harn.config['prog_backend'] == 'tqdm':
             import tqdm
             Prog = tqdm.tqdm
-        else:
+        elif harn.config['prog_backend'] == 'progiter':
             Prog = functools.partial(ub.ProgIter, chunksize=chunksize, verbose=1)
+        else:
+            raise KeyError(harn.config['prog_backend'])
         return Prog(**kw)
 
     def _batch_msg(harn, metric_dict, batch_size, learn=False):
-        if learn and harn.scheduler and getattr(harn.scheduler, '__batchaware__', False):
-            lr = harn.scheduler.get_lr()
-            bs = 'x{} @ {:.4g}'.format(batch_size, lr)
+        parts = ['{}:{:.3f}'.format(k, v) for k, v in metric_dict.items()]
+
+        if harn.config['prog_backend'] == 'progiter':
+            if learn and harn.scheduler and getattr(harn.scheduler, '__batchaware__', False):
+                lr = harn.scheduler.get_lr()
+                bs = '@ {:.4g}'.format(lr)
+                parts = [bs] + parts
         else:
-            bs = 'x{}'.format(batch_size)
-        metric_parts = ['{}:{:.3f}'.format(k, v) for k, v in metric_dict.items()]
-        msg = ' │ ' .join([bs] + metric_parts) + ' │'
+            if learn and harn.scheduler and getattr(harn.scheduler, '__batchaware__', False):
+                lr = harn.scheduler.get_lr()
+                bs = 'x{} @ {:.4g}'.format(batch_size, lr)
+            else:
+                bs = 'x{}'.format(batch_size)
+            parts = [bs] + parts
+        msg = ' │ ' .join(parts) + ' │'
         return msg
 
     def _close_prog(harn):
@@ -866,7 +878,7 @@ class CoreMixin:
             if key in harn.loaders
         ])
 
-        train_loader = harn.loaders['train']
+        train_loader = harn.loaders.get('train', None)
         vali_loader  = harn.loaders.get('vali', None)
         test_loader  = harn.loaders.get('test', None)
 
@@ -931,9 +943,10 @@ class CoreMixin:
         harn.log_value('epoch lr', current_lr, harn.epoch)
 
         # Clear any existing gradients before training
-        harn.optimizer.zero_grad()
-        # run training epoch
-        harn._run_epoch(train_loader, tag='train', learn=True)
+        if train_loader:
+            harn.optimizer.zero_grad()
+            # run training epoch
+            harn._run_epoch(train_loader, tag='train', learn=True)
 
         # run validation epoch
         improved = False
@@ -991,8 +1004,8 @@ class CoreMixin:
         epoch_moving_metrics = util.CumMovingAve(nan_method='ignore')
 
         # Flag if model is training (influences batch-norm / dropout)
-        if harn.model.training != learn or learn:
-            harn.model.train(learn)
+        # if harn.model.training != learn or learn:
+        harn.model.train(learn)
 
         bsize = loader.batch_sampler.batch_size
         msg = harn._batch_msg({'loss': -1}, bsize, learn)

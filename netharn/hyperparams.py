@@ -259,14 +259,19 @@ def _rectify_loaders(arg, kw):
     loaders = None
 
     if isinstance(arg, dict):
-        if isinstance(arg.get('train', None), torch_data.DataLoader):
+        # Check if all args are already data loaders
+        # if isinstance(arg.get('train', None), torch_data.DataLoader):
+        if len(arg) and all(isinstance(v, torch_data.DataLoader) for v in arg.values()):
             # loaders were custom specified
             loaders = arg
             # TODO: extract relevant loader params efficiently
             cls = None
-            kw2 = {
-                'batch_size': loaders['train'].batch_sampler.batch_size,
-            }
+            if 'train' in loaders:
+                kw2 = {
+                    'batch_size': loaders['train'].batch_sampler.batch_size,
+                }
+            else:
+                kw2 = {}
         else:
             # loaders is kwargs for `torch_data.DataLoader`
             arg = (torch_data.DataLoader, arg)
@@ -274,7 +279,7 @@ def _rectify_loaders(arg, kw):
     else:
         raise ValueError('Loaders should be a dict')
 
-    kwnice = ub.dict_subset(kw2, ['batch_size'])
+    kwnice = ub.dict_subset(kw2, ['batch_size'], default=None)
     return loaders, cls, kw2, kwnice
 
 

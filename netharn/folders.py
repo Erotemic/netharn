@@ -60,8 +60,8 @@ class Folders(object):
             raise ValueError('model_cls is None')
         # arch = hyper.model_cls.__name__
 
-        train_dset = hyper.datasets['train']
-        if hasattr(train_dset, 'input_id'):
+        train_dset = hyper.datasets.get('train', None)
+        if train_dset is not None and hasattr(train_dset, 'input_id'):
             input_id = train_dset.input_id
             if callable(input_id):
                 input_id = input_id()
