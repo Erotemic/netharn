@@ -552,12 +552,12 @@ class YoloHarn(nh.FitHarn):
             raise
 
         pred_anns = list(harn._postout_to_pred_ann(
-            inp_size, labels, postout, _aidbase=len(dmet.pred.n_annots) + 1
+            inp_size, labels, postout, _aidbase=dmet.pred.n_annots + 1
         ))
         dmet.pred.add_annotations(pred_anns)
 
         true_anns = list(harn._labels_to_true_ann(
-            inp_size, labels, _aidbase=len(dmet.true.n_annots) + 1
+            inp_size, labels, _aidbase=dmet.true.n_annots + 1
         ))
         dmet.true.add_annotations(true_anns)
 
