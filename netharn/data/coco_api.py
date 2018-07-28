@@ -46,6 +46,10 @@ import ubelt as ub
 import six
 from netharn import util
 
+__all__ = [
+    'CocoDataset', 'demo_coco_data'
+]
+
 
 def annot_type(ann):
     """
@@ -312,8 +316,7 @@ class MixinCocoExtras(object):
         Populate the imgsize field if it does not exist.
 
         Example:
-            >>> dataset = demo_coco_data()
-            >>> self = CocoDataset(dataset, tag='demo')
+            >>> self = CocoDataset.demo()
             >>> self._ensure_imgsize()
             >>> assert self.imgs[1]['width'] == 512
             >>> assert self.imgs[2]['width'] == 300
@@ -428,7 +431,7 @@ class MixinCocoExtras(object):
         Remove annotations with keypoints only
 
         Example:
-            >>> self = CocoDataset(demo_coco_data())
+            >>> self = CocoDataset.demo()
             >>> self._remove_keypoint_annotations()
         """
         to_remove = []
@@ -477,7 +480,7 @@ class MixinCocoExtras(object):
 
     def category_graph(self):
         """
-            >>> self = CocoDataset(demo_coco_data(), tag='demo')
+            >>> self = CocoDataset.demo()
             >>> graph = self.category_graph()
 
             import graphid
@@ -519,7 +522,7 @@ class MixinCocoExtras(object):
 
         Example:
             >>> # DISABLE_DOCTEST
-            >>> self = CocoDataset(demo_coco_data(), tag='demo')
+            >>> self = CocoDataset.demo()
             >>> self.rename_categories({'astronomer': 'person', 'astronaut': 'person', 'mouth': 'person', 'helmet': 'hat'}, preserve=0)
             >>> self.rename_categories({'person': 'obj', 'hat': 'obj'}, preserve=0)
             >>> assert 'hat' in self.name_to_cat
@@ -657,8 +660,7 @@ class MixinCocoStats(object):
         Reports the number of annotations of each category
 
         Example:
-            >>> dataset = demo_coco_data()
-            >>> self = CocoDataset(dataset, tag='demo')
+            >>> self = CocoDataset.demo()
             >>> hist = self.category_annotation_frequency()
             >>> print(ub.repr2(hist))
             {
@@ -682,8 +684,7 @@ class MixinCocoStats(object):
         Reports the number of annotations of each type for each category
 
         Example:
-            >>> dataset = demo_coco_data()
-            >>> self = CocoDataset(dataset, tag='demo')
+            >>> self = CocoDataset.demo()
             >>> hist = self.category_annotation_frequency()
             >>> print(ub.repr2(hist))
         """
@@ -700,8 +701,7 @@ class MixinCocoStats(object):
         Reports number of images, annotations, and categories.
 
         Example:
-            >>> dataset = demo_coco_data()
-            >>> self = CocoDataset(dataset, tag='demo')
+            >>> self = CocoDataset.demo()
             >>> print(ub.repr2(self.basic_stats()))
             {
                 'n_anns': 11,
@@ -720,8 +720,7 @@ class MixinCocoStats(object):
         Reports number of images, annotations, and categories.
 
         Example:
-            >>> dataset = demo_coco_data()
-            >>> self = CocoDataset(dataset, tag='demo')
+            >>> self = CocoDataset.demo()
             >>> print(ub.repr2(self.extended_stats()))
         """
         from netharn import util
@@ -1051,7 +1050,7 @@ class MixinCocoAddRemove(object):
         them in batch with `self.remove_annotations`
 
         Example:
-            >>> self = CocoDataset(demo_coco_data(), tag='demo')
+            >>> self = CocoDataset.demo()
             >>> aids_or_anns = [self.anns[2], 3, 4, self.anns[1]]
             >>> self.remove_annotations(aids_or_anns)
             >>> assert len(self.dataset['annotations']) == 7
@@ -1066,7 +1065,7 @@ class MixinCocoAddRemove(object):
         Remove multiple annotations from the dataset.
 
         Example:
-            >>> self = CocoDataset(demo_coco_data(), tag='demo')
+            >>> self = CocoDataset.demo()
             >>> aids_or_anns = [self.anns[2], 3, 4, self.anns[1]]
             >>> self.remove_annotations(aids_or_anns)
             >>> assert len(self.dataset['annotations']) == 7
@@ -1190,8 +1189,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         """
         Example:
             >>> from netharn.data.coco_api import *
-            >>> dataset = demo_coco_data()
-            >>> self = CocoDataset(dataset, tag='demo')
+            >>> self = CocoDataset.demo()
             >>> new = self.copy()
             >>> assert new.imgs[1] is new.dataset['images'][0]
             >>> assert new.imgs[1] == self.dataset['images'][0]
@@ -1217,8 +1215,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
         Example:
             >>> from netharn.data.coco_api import *
-            >>> dataset = demo_coco_data()
-            >>> self = CocoDataset(dataset, tag='demo')
+            >>> self = CocoDataset.demo()
             >>> text = self.dumps()
             >>> print(text)
             >>> self2 = CocoDataset(json.loads(text), tag='demo2')
@@ -1446,16 +1443,14 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         to port. All annotations in those images will be taken.
 
         Example:
-            >>> dataset = demo_coco_data()
-            >>> self = CocoDataset(dataset, tag='demo')
+            >>> self = CocoDataset.demo()
             >>> gids = [1, 3]
             >>> sub_dset = self.subset(gids)
             >>> assert len(self.gid_to_aids) == 3
             >>> assert len(sub_dset.gid_to_aids) == 2
 
         Example:
-            >>> dataset = demo_coco_data()
-            >>> self = CocoDataset(dataset, tag='demo')
+            >>> self = CocoDataset.demo()
             >>> sub1 = self.subset([1])
             >>> sub2 = self.subset([2])
             >>> sub3 = self.subset([3])
@@ -1540,7 +1535,7 @@ def demo_coco_data():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m netharn.data.coco_api all
+        xdoctest netharn.data.coco_api all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
