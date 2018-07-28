@@ -1224,7 +1224,26 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
 
         self._build_index()
 
+    def remove_all_images(self):
+        """
+        Removes all images and annotations (but not categories)
+        """
+        self.dataset['images'].clear()
+        self.dataset['annotations'].clear()
+        if self.imgs is not None:
+            # Keep the category indexes alive
+            self.imgs.clear()
+            self.anns.clear()
+            self.gid_to_aids.clear()
+            for _ in self.cid_to_gids.values():
+                _.clear()
+            for _ in self.cid_to_aids.values():
+                _.clear()
+
     def remove_all_annotations(self):
+        """
+        Removes all annotations (but not images and categories)
+        """
         self.dataset['annotations'].clear()
         if self.anns is not None:
             # Keep the category and image indexes alive
@@ -1278,7 +1297,7 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
                 del self.dataset['annotations'][idx]
             self._clear_index()
 
-    def add_image(self, gname, gid=None):
+    def add_image(self, gname, gid=None, **kw):
         """
         Add an image to the dataset (dynamically updates the index)
 
@@ -1300,6 +1319,7 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
         img = ub.odict()
         img['id'] = int(gid)
         img['file_name'] = str(gname)
+        img.update(**kw)
         self.dataset['images'].append(img)
         if self.imgs is not None:
             # self._clear_index()
@@ -1353,7 +1373,7 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
 
     @util.profile
     def add_annotations(self, anns):
-        """ Faster less-safe multi-annot alternative """
+        """ Faster less-safe multi-item alternative """
         self.dataset['annotations'].extend(anns)
         aids = [ann['id'] for ann in anns]
         gids = [ann['image_id'] for ann in anns]
@@ -1364,6 +1384,16 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
             self.gid_to_aids[gid].append(aid)
             self.cid_to_gids[cid].append(gid)
             self.cid_to_aids[cid].append(aid)
+
+    @util.profile
+    def add_images(self, imgs):
+        """ Faster less-safe multi-item alternative """
+        self.dataset['images'].extend(imgs)
+        gids = [img['id'] for img in imgs]
+        new_imgs = dict(zip(gids, imgs))
+        self.imgs.update(new_imgs)
+        for gid in gids:
+            self.gid_to_aids[gid] = []
 
     def add_category(self, name, supercategory=None, cid=None):
         """

@@ -425,7 +425,7 @@ class YoloHarn(nh.FitHarn):
             >>> harn.visualize_prediction(batch, outputs, postout, idx=0, thresh=0.01)
             >>> mplutil.show_if_requested()
         """
-        harn._record_predictions(harn.current_tag, batch, outputs)
+        harn._record_predictions(batch, outputs)
 
         metrics_dict = ub.odict()
         metrics_dict['L_bbox'] = float(harn.criterion.loss_coord)
@@ -524,22 +524,22 @@ class YoloHarn(nh.FitHarn):
                 }
 
     @profiler.profile
-    def _record_predictions(harn, tag, batch, outputs):
+    def _record_predictions(harn, batch, outputs):
         """
         Transform batch predictions into coco-style detections for scoring
 
         Ignore:
             >>> harn = setup_yolo_harness(bsize=1)
             >>> harn.initialize()
-            >>> tag = 'test'
+            >>> harn.current_tag = tag = 'test'
             >>> batch = harn._demo_batch(0, tag)
             >>> weights_fpath = light_yolo.demo_voc_weights()
             >>> state_dict = harn.xpu.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn.run_batch(batch)
-            >>> harn._record_predictions(tag, batch, outputs)
+            >>> harn._record_predictions(batch, outputs)
         """
-        dmet = harn.dmets[tag]
+        dmet = harn.dmets[harn.current_tag]
         inputs, labels = batch
         inp_size = np.array(inputs.shape[-2:][::-1])
 
@@ -552,18 +552,12 @@ class YoloHarn(nh.FitHarn):
             raise
 
         pred_anns = list(harn._postout_to_pred_ann(
-            inp_size, labels, postout,
-            _aidbase=len(dmet.pred.dataset['annotations']) + 1
+            inp_size, labels, postout, _aidbase=len(dmet.pred.anns) + 1
         ))
         dmet.pred.add_annotations(pred_anns)
-        # pred.dataset['annotations'].extend(anns)
-        # pred.add_annotation(aid=aid, gid=gx, cid=cx, bbox=box,
-        #                     score=score)
 
-        # if tag == 'train':
         true_anns = list(harn._labels_to_true_ann(
-            inp_size, labels,
-            _aidbase=len(dmet.true.dataset['annotations']) + 1
+            inp_size, labels, _aidbase=len(dmet.true.anns) + 1
         ))
         dmet.true.add_annotations(true_anns)
 
@@ -596,14 +590,10 @@ class YoloHarn(nh.FitHarn):
         """
         metrics_dict = ub.odict()
 
-        tag = harn.current_tag
-        harn.log('Epoch evaluation: {}'.format(tag))
+        harn.log('Epoch evaluation: {}'.format(harn.current_tag))
 
         # Measure quality
-        dmet = harn.dmets[tag]
-        # dmet.pred._build_index()
-        # dmet.true._build_index()
-
+        dmet = harn.dmets[harn.current_tag]
         try:
             coco_scores = dmet.score_coco()
             metrics_dict['coco-mAP'] = coco_scores['mAP']
@@ -634,9 +624,8 @@ class YoloHarn(nh.FitHarn):
         # Reset detections
         dmet.pred.remove_all_annotations()
         dmet.true.remove_all_annotations()
-        # if tag == 'train':
 
-        if tag in {'test', 'vali'}:
+        if harn.current_tag in {'test', 'vali'}:
             if harn.epoch > 20:
                 # Dont bother testing the early iterations
                 if (harn.epoch % 10 == 5 or harn.epoch > 300):
