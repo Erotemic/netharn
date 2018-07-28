@@ -47,7 +47,7 @@ import six
 from netharn import util
 
 __all__ = [
-    'CocoDataset', 'demo_coco_data'
+    'CocoDataset',
 ]
 
 

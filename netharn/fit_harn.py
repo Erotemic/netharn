@@ -1125,6 +1125,7 @@ class CoreMixin:
 
         return outputs, loss
 
+    @profiler.profile
     def _on_batch(harn, bx, batch, outputs, loss):
         loss_value = float(loss.data.cpu().item())
         harn._check_loss(loss_value)
@@ -1148,6 +1149,7 @@ class CoreMixin:
                 raise TrainingDiverged(
                     'NON-FINITE GRAD {}.grad = {!r}'.format(key, value))
 
+    @profiler.profile
     def _check_loss(harn, loss_value):
         if not np.isfinite(loss_value):
             harn.warn('WARNING: got inf loss, setting loss to a large value')
@@ -1170,6 +1172,7 @@ class CoreMixin:
     #             value.normal_()
     #     return modified
 
+    @profiler.profile
     def _check_divergence(harn):
         # Eventually we may need to remove
         # num_batches_tracked once 0.5.0 lands
@@ -1453,7 +1456,8 @@ class FitHarn(*MIXINS):
             'prog_backend': 'tqdm',
 
             # A loss that would be considered large
-            'large_loss': 100,
+            # (This tells netharn when to check for divergence)
+            'large_loss': 1000,
 
             # number of recent / best snapshots to keep
             'num_keep': 10,

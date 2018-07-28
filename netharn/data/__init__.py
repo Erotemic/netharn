@@ -17,7 +17,7 @@ else:
     from netharn.data import voc
 
     from netharn.data.base import (DataMixin,)
-    from netharn.data.coco_api import (CocoDataset, demo_coco_data,)
+    from netharn.data.coco_api import (CocoDataset,)
     from netharn.data.collate import (CollateException, default_collate,
                                       list_collate, padded_collate,)
     from netharn.data.toydata import (ToyData1d, ToyData2d,)
@@ -25,5 +25,5 @@ else:
 
     __all__ = ['CocoDataset', 'CollateException', 'DataMixin', 'ToyData1d',
                'ToyData2d', 'VOCDataset', 'base', 'coco_api', 'collate',
-               'default_collate', 'demo_coco_data', 'list_collate',
-               'padded_collate', 'toydata', 'transforms', 'voc']
+               'default_collate', 'list_collate', 'padded_collate', 'toydata',
+               'transforms', 'voc']
