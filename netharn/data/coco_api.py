@@ -1375,25 +1375,27 @@ class CocoDataset(ub.NiceRepr, CocoExtrasMixin, CocoAttrsMixin):
     def add_annotations(self, anns):
         """ Faster less-safe multi-item alternative """
         self.dataset['annotations'].extend(anns)
-        aids = [ann['id'] for ann in anns]
-        gids = [ann['image_id'] for ann in anns]
-        cids = [ann['category_id'] for ann in anns]
-        new_anns = dict(zip(aids, anns))
-        self.anns.update(new_anns)
-        for gid, cid, aid in zip(gids, cids, aids):
-            self.gid_to_aids[gid].append(aid)
-            self.cid_to_gids[cid].append(gid)
-            self.cid_to_aids[cid].append(aid)
+        if self.anns is not None:
+            aids = [ann['id'] for ann in anns]
+            gids = [ann['image_id'] for ann in anns]
+            cids = [ann['category_id'] for ann in anns]
+            new_anns = dict(zip(aids, anns))
+            self.anns.update(new_anns)
+            for gid, cid, aid in zip(gids, cids, aids):
+                self.gid_to_aids[gid].append(aid)
+                self.cid_to_gids[cid].append(gid)
+                self.cid_to_aids[cid].append(aid)
 
     @util.profile
     def add_images(self, imgs):
         """ Faster less-safe multi-item alternative """
         self.dataset['images'].extend(imgs)
-        gids = [img['id'] for img in imgs]
-        new_imgs = dict(zip(gids, imgs))
-        self.imgs.update(new_imgs)
-        for gid in gids:
-            self.gid_to_aids[gid] = []
+        if self.imgs is not None:
+            gids = [img['id'] for img in imgs]
+            new_imgs = dict(zip(gids, imgs))
+            self.imgs.update(new_imgs)
+            for gid in gids:
+                self.gid_to_aids[gid] = []
 
     def add_category(self, name, supercategory=None, cid=None):
         """
