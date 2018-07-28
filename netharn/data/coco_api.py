@@ -871,7 +871,7 @@ class MixinCocoDraw(object):
             ax.plot(xs, ys, 'bo')
 
 
-class MixinCocoDynamicAddRemove(object):
+class MixinCocoAddRemove(object):
     """
     Mixin functions to dynamically add / remove annotations images and
     categories while maintaining lookup indexes.
@@ -1086,8 +1086,8 @@ class MixinCocoDynamicAddRemove(object):
             self._clear_index()
 
 
-class CocoDataset(ub.NiceRepr, MixinCocoExtras, MixinCocoAttrs,
-                  MixinCocoDynamicAddRemove, MixinCocoStats, MixinCocoDraw):
+class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
+                  MixinCocoAttrs, MixinCocoDraw, MixinCocoExtras):
     """
     Notes:
         A keypoint annotation
