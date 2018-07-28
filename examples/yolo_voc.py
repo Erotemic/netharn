@@ -990,6 +990,7 @@ def setup_yolo_harness(bsize=16, workers=0):
     harn.intervals['log_iter_train'] = None
     harn.intervals['log_iter_test'] = None
     harn.intervals['log_iter_vali'] = None
+    harn.config['large_loss'] = 1000  # tell netharn when to check for divergence
     return harn
 
 
