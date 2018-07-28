@@ -54,6 +54,157 @@ def annot_type(ann):
     return tuple(sorted(set(ann) & {'bbox', 'line', 'keypoints'}))
 
 
+class ObjectList1D(ub.NiceRepr):
+    """
+    Lightweight reference to a set of annotations that allows for convenient
+    property access.
+
+    Similar to ibeis._ibeis_object.ObjectList1D
+    """
+    def __init__(self, ids, dset, key):
+        self._key = key
+        self._ids = ids
+        self._dset = dset
+
+    def __nice__(self):
+        return 'num={!r}'.format(len(self))
+
+    def __iter__(self):
+        return iter(self._ids)
+
+    def __len__(self):
+        return len(self._ids)
+
+    def take(self, idxs):
+        subids = list(ub.take(self._rowids, idxs))
+        newself = self.__class__(subids, self._dset)
+        return newself
+
+
+class Images(ObjectList1D):
+    """
+    """
+    def __init__(self, ids, dset):
+        super().__init__(ids, dset, 'images')
+
+    @property
+    def gids(self):
+        return self._ids
+
+    def _lookup(self, key):
+        return [img[key] for img in ub.take(self._dset.imgs, self._ids)]
+
+    @property
+    def width(self):
+        return self._lookup('width')
+
+    @property
+    def height(self):
+        return self._lookup('height')
+
+    @property
+    def size(self):
+        """
+        Example:
+            >>> from netharn.data.coco_api import *
+            >>> self = CocoDataset.demo().images()
+            >>> self._dset._ensure_imgsize()
+            >>> print(self.size)
+            [(512, 512), (300, 250), (256, 256)]
+        """
+        return list(zip(self.width, self.height))
+
+    @property
+    def aids(self):
+        """
+        Example:
+            >>> self = CocoDataset.demo().images()
+            >>> print(ub.repr2(list(map(list, self.aids)), nl=0))
+            [[1, 2, 3, 4, 5, 6, 7, 8, 9], [10, 11], []]
+        """
+        return list(ub.take(self._dset.gid_to_aids, self._ids))
+
+    @property
+    def annots(self):
+        """
+        Example:
+            >>> self = CocoDataset.demo().images()
+            >>> print(self.annots)
+            <AnnotGroups(n=3, m=3.7, s=3.9)>
+        """
+        return AnnotGroups([self._dset.annots(aids) for aids in self.aids],
+                           self._dset)
+
+
+class Annots(ObjectList1D):
+    """
+    """
+    def __init__(self, ids, dset):
+        super().__init__(ids, dset, 'annotations')
+
+    @property
+    def aids(self):
+        return self._ids
+
+    @property
+    def images(self):
+        return self._dset.images(self.gids)
+
+    @property
+    def gids(self):
+        return self._lookup('image_id')
+
+    @property
+    def cids(self):
+        return self._lookup('category_id')
+
+    def _lookup(self, key):
+        return [ann[key] for ann in ub.take(self._dset.anns, self._ids)]
+
+    @property
+    def boxes(self):
+        """
+        Example:
+            >>> self = CocoDataset.demo().annots([1, 2, 11])
+            >>> print(self.boxes)
+            <Boxes(tlwh,
+                array([[ 10,  10, 360, 490],
+                       [350,   5, 130, 290],
+                       [124,  96,  45,  18]]))>
+        """
+        import netharn as nh
+        xywh = self._lookup('bbox')
+        boxes = nh.util.Boxes(xywh, 'xywh')
+        return boxes
+
+
+class ObjectGroups(ub.NiceRepr):
+    def __init__(self, groups, dset):
+        self._groups = groups
+
+    def __nice__(self):
+        # import timerit
+        # mu = timerit.core._trychar('μ', 'm')
+        # sigma = timerit.core._trychar('σ', 's')
+        mu = 'm'
+        sigma = 's'
+        len_list = list(map(len, self._groups))
+        num = len(self._groups)
+        mean = np.mean(len_list)
+        std = np.std(len_list)
+        nice = 'n={!r}, {}={:.1f}, {}={:.1f}'.format(
+            num, mu, mean, sigma, std)
+        return nice
+
+
+class AnnotGroups(ObjectGroups):
+    pass
+
+
+class ImageGroups(ObjectGroups):
+    pass
+
+
 class MixinCocoExtras(object):
     """
     Misc functions for coco
@@ -447,157 +598,6 @@ class MixinCocoExtras(object):
         pycoco.dataset = self.dataset
         pycoco.createIndex()
         return pycoco
-
-
-class ObjectList1D(ub.NiceRepr):
-    """
-    Lightweight reference to a set of annotations that allows for convenient
-    property access.
-
-    Similar to ibeis._ibeis_object.ObjectList1D
-    """
-    def __init__(self, ids, dset, key):
-        self._key = key
-        self._ids = ids
-        self._dset = dset
-
-    def __nice__(self):
-        return 'num={!r}'.format(len(self))
-
-    def __iter__(self):
-        return iter(self._ids)
-
-    def __len__(self):
-        return len(self._ids)
-
-    def take(self, idxs):
-        subids = list(ub.take(self._rowids, idxs))
-        newself = self.__class__(subids, self._dset)
-        return newself
-
-
-class Images(ObjectList1D):
-    """
-    """
-    def __init__(self, ids, dset):
-        super().__init__(ids, dset, 'images')
-
-    @property
-    def gids(self):
-        return self._ids
-
-    def _lookup(self, key):
-        return [img[key] for img in ub.take(self._dset.imgs, self._ids)]
-
-    @property
-    def width(self):
-        return self._lookup('width')
-
-    @property
-    def height(self):
-        return self._lookup('height')
-
-    @property
-    def size(self):
-        """
-        Example:
-            >>> from netharn.data.coco_api import *
-            >>> self = CocoDataset.demo().images()
-            >>> self._dset._ensure_imgsize()
-            >>> print(self.size)
-            [(512, 512), (300, 250), (256, 256)]
-        """
-        return list(zip(self.width, self.height))
-
-    @property
-    def aids(self):
-        """
-        Example:
-            >>> self = CocoDataset.demo().images()
-            >>> print(ub.repr2(list(map(list, self.aids)), nl=0))
-            [[1, 2, 3, 4, 5, 6, 7, 8, 9], [10, 11], []]
-        """
-        return list(ub.take(self._dset.gid_to_aids, self._ids))
-
-    @property
-    def annots(self):
-        """
-        Example:
-            >>> self = CocoDataset.demo().images()
-            >>> print(self.annots)
-            <AnnotGroups(n=3, m=3.7, s=3.9)>
-        """
-        return AnnotGroups([self._dset.annots(aids) for aids in self.aids],
-                           self._dset)
-
-
-class Annots(ObjectList1D):
-    """
-    """
-    def __init__(self, ids, dset):
-        super().__init__(ids, dset, 'annotations')
-
-    @property
-    def aids(self):
-        return self._ids
-
-    @property
-    def images(self):
-        return self._dset.images(self.gids)
-
-    @property
-    def gids(self):
-        return self._lookup('image_id')
-
-    @property
-    def cids(self):
-        return self._lookup('category_id')
-
-    def _lookup(self, key):
-        return [ann[key] for ann in ub.take(self._dset.anns, self._ids)]
-
-    @property
-    def boxes(self):
-        """
-        Example:
-            >>> self = CocoDataset.demo().annots([1, 2, 11])
-            >>> print(self.boxes)
-            <Boxes(tlwh,
-                array([[ 10,  10, 360, 490],
-                       [350,   5, 130, 290],
-                       [124,  96,  45,  18]]))>
-        """
-        import netharn as nh
-        xywh = self._lookup('bbox')
-        boxes = nh.util.Boxes(xywh, 'xywh')
-        return boxes
-
-
-class ObjectGroups(ub.NiceRepr):
-    def __init__(self, groups, dset):
-        self._groups = groups
-
-    def __nice__(self):
-        # import timerit
-        # mu = timerit.core._trychar('μ', 'm')
-        # sigma = timerit.core._trychar('σ', 's')
-        mu = 'm'
-        sigma = 's'
-        len_list = list(map(len, self._groups))
-        num = len(self._groups)
-        mean = np.mean(len_list)
-        std = np.std(len_list)
-        nice = 'n={!r}, {}={:.1f}, {}={:.1f}'.format(
-            num, mu, mean, sigma, std)
-        return nice
-
-
-class AnnotGroups(ObjectGroups):
-    pass
-
-
-class ImageGroups(ObjectGroups):
-    pass
 
 
 class MixinCocoAttrs(object):
