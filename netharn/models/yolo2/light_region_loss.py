@@ -244,13 +244,7 @@ class RegionLoss(BaseLossWithCudaState):
             if nC > 1:
                 masked_tcls = tcls[cls_mask].view(-1).long()
 
-        # tcoord = Variable(tcoord, requires_grad=False)
-        # tconf = Variable(tconf, requires_grad=False)
-        # coord_mask = Variable(coord_mask, requires_grad=False)
-        # conf_mask = Variable(conf_mask, requires_grad=False)
         if nC > 1:
-            # tcls = Variable(tcls, requires_grad=False)
-
             # Swaps the dimensions to be [B, A, H, W, C]
             # (Allowed because 3rd dimension is guarneteed to be 1 here)
             cls_probs_mask = cls_mask.reshape(nB, nA, nH, nW, 1).repeat(1, 1, 1, 1, nC)

@@ -363,7 +363,7 @@ def initial_imagenet_weights():
             'https://pjreddie.com/media/files/darknet19_448.conv.23',
             appname='netharn', hash_prefix='8016f5b7ddc15c5d7dad2315')
 
-        torch_fpath = darknet_weight_fpath + '.pt'
+        torch_fpath = darknet_weight_fpath + '_lntf.pt'
         import os
         if not os.path.exists(torch_fpath):
             import lightnet.models

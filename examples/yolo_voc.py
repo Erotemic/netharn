@@ -75,7 +75,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             augmentors = [
                 # Order used in lightnet is hsv, rc, rf, lb
                 # lb is applied externally to augmenters
-                HSVShift(hue=0.1, sat=1.5, val=1.5),
+                iaa.Sometimes(.9, HSVShift(hue=0.1, sat=1.5, val=1.5)),
                 # iaa.Crop(percent=(0, .2)),
                 iaa.Crop(percent=(0, .2), keep_size=False),
                 iaa.Fliplr(p=.5),
@@ -488,7 +488,6 @@ class YoloHarn(nh.FitHarn):
         orig_sizes = labels['orig_sizes']
         targets = labels['targets']
         gt_weights = labels['gt_weights']
-        orig_sizes = labels['orig_sizes']
 
         letterbox = harn.datasets[harn.current_tag].letterbox
         # On the training set, we need to add truth due to augmentation
@@ -940,7 +939,8 @@ def setup_yolo_harness(bsize=16, workers=0):
 
             'thresh': 0.6,  # iou_thresh
             'seen_thresh': 12800,
-            'small_boxes': not ub.argflag('--eav'),
+            # 'small_boxes': not ub.argflag('--eav'),
+            'small_boxes': True,
             'mse_factor': 0.5 if not ub.argflag('--eav') else 1.0,
         }),
 
@@ -1039,6 +1039,7 @@ if __name__ == '__main__':
 
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE --lr=0.001 --bstep=8 --workers=6 --eav --weights=imagenet
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE2 --lr=0.001 --bstep=8 --workers=6 --eav --weights=imagenet
 
     """
     import xdoctest
