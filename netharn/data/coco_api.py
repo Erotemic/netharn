@@ -51,6 +51,9 @@ __all__ = [
 ]
 
 
+INT_TYPES = (int, np.integer)
+
+
 def annot_type(ann):
     """
     Returns what type of annotation `ann` is.
@@ -401,7 +404,7 @@ class MixinCocoExtras(object):
         """
         Ensures output is an annotation dictionary
         """
-        if isinstance(aid_or_ann, int):
+        if isinstance(aid_or_ann, INT_TYPES):
             resolved_aid = aid_or_ann
         else:
             resolved_aid = aid_or_ann['id']
@@ -411,7 +414,7 @@ class MixinCocoExtras(object):
         """
         Ensures output is an annotation dictionary
         """
-        if isinstance(aid_or_ann, int):
+        if isinstance(aid_or_ann, INT_TYPES):
             resolved_ann = None
             if self.anns is not None:
                 resolved_ann = self.anns[aid_or_ann]
@@ -1276,8 +1279,11 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         for ann in self.dataset.get('annotations', []):
             aid = ann['id']
             if aid in anns:
-                warnings.warn('Annotations have the same id in {}:\n{} and\n{}'.format(
-                    self, anns[aid], ann))
+                warnings.warn('Annotations at index {} and {} '
+                              'have the same id in {}:\n{} and\n{}'.format(
+                                  self.dataset['annotations'].index(anns[aid]),
+                                  self.dataset['annotations'].index(ann),
+                                  self, anns[aid], ann))
             anns[aid] = ann
 
         # Build one-to-many lookup maps
@@ -1289,11 +1295,11 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             except KeyError:
                 raise KeyError('Annotation does not have ids {}'.format(ann))
 
-            if not isinstance(aid, int):
+            if not isinstance(aid, INT_TYPES):
                 raise TypeError('bad aid={} type={}'.format(aid, type(aid)))
-            if not isinstance(gid, int):
+            if not isinstance(gid, INT_TYPES):
                 raise TypeError('bad gid={} type={}'.format(gid, type(gid)))
-            if not isinstance(cid, int):
+            if not isinstance(cid, INT_TYPES):
                 raise TypeError('bad cid={} type={}'.format(cid, type(cid)))
 
             gid_to_aids[gid].add(aid)
