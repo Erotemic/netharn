@@ -842,9 +842,9 @@ def setup_yolo_harness(bsize=16, workers=0):
     #
     # Based in this, the iter to batch conversion is
     #
-    # >>> np.array([250, 25000, 35000, 45000]) / (16512 / 64)
-    # >>> np.array([250, 25000, 30000]) / (16512 / 64)
-    # array([  0.96899225,  96.89922481, 135.65891473, 174.41860465])
+    # Key lightnet batch numbers
+    # >>> np.array([250, 25000, 30000, 35000, 45000]) / (16512 / 64)
+    # array([0.9689,  96.899, 116.2790, 135.658, 174.4186])
     # -> Round
     # array([  1.,  97., 135.])
     # >>> np.array([1000, 40000, 60000, 80200]) / 258
@@ -919,10 +919,8 @@ def setup_yolo_harness(bsize=16, workers=0):
         'model': (light_yolo.Yolo, {
             'num_classes': datasets['train'].num_classes,
             'anchors': anchors,
-            # 'conf_thresh': 0.001,
-            'conf_thresh': 0.1,  # make training a bit faster
-            # nms_thresh=0.5 to reproduce original yolo
-            # nms_thresh=0.4 to reproduce lightnet
+            'conf_thresh': 0.001,
+            # 'conf_thresh': 0.1,  # make training a bit faster
             'nms_thresh': 0.5 if not ub.argflag('--eav') else 0.4
         }),
 
@@ -1040,7 +1038,7 @@ if __name__ == '__main__':
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE --lr=0.001 --bstep=8 --workers=6 --eav --weights=imagenet
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE2 --lr=0.001 --bstep=8 --workers=6 --eav --weights=imagenet
-
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE3 --lr=0.005 --bstep=8 --workers=4 --eav --weights=imagenet
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
