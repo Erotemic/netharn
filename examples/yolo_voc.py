@@ -1038,7 +1038,7 @@ if __name__ == '__main__':
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE --lr=0.001 --bstep=8 --workers=6 --eav --weights=imagenet
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE2 --lr=0.001 --bstep=8 --workers=6 --eav --weights=imagenet
-        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE3 --lr=0.005 --bstep=8 --workers=4 --eav --weights=imagenet
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE3 --lr=0.001 --bstep=8 --workers=4 --eav --weights=imagenet
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
