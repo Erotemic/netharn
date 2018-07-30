@@ -597,7 +597,7 @@ class YoloHarn(nh.FitHarn):
         """
         metrics_dict = ub.odict()
 
-        harn.log('Epoch evaluation: {}'.format(harn.current_tag))
+        # harn.log('Epoch evaluation: {}'.format(harn.current_tag))
 
         # Measure quality
         dmet = harn.dmets[harn.current_tag]

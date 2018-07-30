@@ -101,7 +101,7 @@ Example:
     Snapshots will save to harn.snapshot_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/olqtvpde/torch_snapshots'
     dont forget to start:
         tensorboard --logdir /home/joncrall/.cache/netharn/demo/fit/nice
-    begin training
+    === begin training ===
     epoch lr:0.001 │ vloss is unevaluated: 100%|███████████████████████| 10/10 [00:00<00:00, 15.11it/s, wall=Jul:07 EST]10 [00:00<?, ?it/s]
     train x64 │ loss:0.186 │: 100%|████████████████████████████████████████████████████████| 8/8 [00:00<00:00, 276.93it/s, wall=Jul:07 EST]
     test x64 │ loss:0.159 │: 100%|█████████████████████████████████████████████████████████| 4/4 [00:00<00:00, 482.91it/s, wall=Jul:07 EST]
@@ -531,6 +531,8 @@ class LogMixin:
         print(msg)
         harn.debug(msg)
 
+    info = log
+
     def debug(harn, msg):
         if harn.flog:
             msg = strip_ansi(str(msg))
@@ -861,7 +863,7 @@ class CoreMixin:
             harn.log('dont forget to start:\n'
                      '    tensorboard --logdir ' + train_base)
 
-        harn.log('begin training')
+        harn.log('=== begin training ===')
 
         if harn._check_termination():
             return
@@ -995,6 +997,9 @@ class CoreMixin:
             harn._update_main_prog_desc()
             harn.main_prog.update(1)
 
+        if harn.config['prog_backend'] == 'progiter':
+            harn.info('=== finish epoch {} ==='.format(harn.epoch))
+
     @profiler.profile
     def _run_epoch(harn, loader, tag, learn=False):
         """
@@ -1020,8 +1025,9 @@ class CoreMixin:
         desc = tag + ' ' + msg
         position = (list(harn.loaders.keys()).index(tag) +
                     harn.main_prog.pos + 1)
-        prog = harn._make_prog(desc=desc, total=len(loader), disable=not
-                               harn.config['show_prog'], position=position,
+        prog = harn._make_prog(desc=desc, total=len(loader),
+                               disable=not harn.config['show_prog'],
+                               position=position,
                                chunksize=bsize, leave=True, dynamic_ncols=True)
         harn.epoch_prog = prog
         harn._update_prog_postfix(prog)
