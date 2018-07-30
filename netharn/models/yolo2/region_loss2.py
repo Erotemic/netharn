@@ -284,16 +284,14 @@ class RegionLoss(BaseLossWithCudaState):
                 gt[:, 1::2] *= nH
 
                 # Set confidence mask of matching detections to 0
-                import utool
-                with utool.embed_on_exception_context:
-                    iou_gt_pred = bbox_ious(gt, cur_pred_boxes)
-                    mask = (iou_gt_pred > self.thresh).sum(0) >= 1
-                    conf_mask[b][mask.view_as(conf_mask[b])] = 0
+                iou_gt_pred = bbox_ious(gt, cur_pred_boxes)
+                mask = (iou_gt_pred > self.thresh).sum(0) >= 1
+                conf_mask[b][mask.view_as(conf_mask[b])] = 0
 
-                    # Find best anchor for each gt
-                    gt_wh = gt.clone()
-                    gt_wh[:, :2] = 0
-                    iou_gt_anchors = bbox_ious(gt_wh, anchors)
+                # Find best anchor for each gt
+                gt_wh = gt.clone()
+                gt_wh[:, :2] = 0
+                iou_gt_anchors = bbox_ious(gt_wh, anchors)
                 _, best_anchors = iou_gt_anchors.max(1)
 
                 # Set masks and target values for each gt
