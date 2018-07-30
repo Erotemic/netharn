@@ -95,20 +95,21 @@ class Folders(object):
         # Gather all information about this run into a single hash
         train_hashid = _hash_data(train_id)[0:8]
 
+        nice = hyper.nice
+
         # input_dname = 'input_' + input_id
         # verbose_dpath = join(self.hyper.workdir, 'fit', 'link', 'arch', arch, input_dname, train_id)
-        hashed_dpath = normpath(
-                join(self.hyper.workdir, 'fit', 'runs', train_hashid))
+        train_dpath = normpath(
+                join(self.hyper.workdir, 'fit', 'runs', nice, train_hashid))
 
         # setup a cannonical and a linked symlink dir
-        train_dpath = hashed_dpath
         # link_dpath = verbose_dpath
 
         # also setup a "nice" custom name, which may conflict, but oh well
-        if hyper.nice:
+        if nice:
             try:
                 nice_dpath = normpath(
-                        join(self.hyper.workdir, 'fit', 'nice', hyper.nice))
+                        join(self.hyper.workdir, 'fit', 'nice', nice))
             except Exception:
                 print('self.hyper.workdir = {!r}'.format(self.hyper.workdir))
                 print('hyper.nice = {!r}'.format(hyper.nice))
@@ -143,6 +144,9 @@ class Folders(object):
 
             ('nice', hyper.nice),
 
+            ('old_train_dpath', normpath(
+                join(self.hyper.workdir, 'fit', 'runs', train_hashid))),
+
             ('train_dpath', train_dpath),
             # ('link_dpath', link_dpath),
             ('nice_dpath', nice_dpath),
@@ -173,6 +177,11 @@ class Folders(object):
             ub.ensuredir(dirname(train_info['nice_dpath']))
             ub.symlink(train_info['train_dpath'], train_info['nice_dpath'],
                        overwrite=True, verbose=3)
+
+        # import os
+        # if not os.path.exists(train_info['old_train_dpath']):
+        #     ub.symlink(train_info['train_dpath'], train_info['old_train_dpath'],
+        #                overwrite=True, verbose=3)
 
         verbose = 0
         if verbose:

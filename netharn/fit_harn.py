@@ -20,9 +20,6 @@ TODO:
     [x] - move logs to a logs folder. Keep a single master log in the root
     [ ] - Why didnt the best_snapshot.pt get saved in the most recent yolo run?
 
-CommandLine:
-    xdoctest netharn.fit_harn __doc__:0
-
 Notes:
     In the following example we demonstrate how to use netharn to train a model
     to solve a toy problem.
@@ -39,6 +36,8 @@ Notes:
     still be useful to look at.  Its complexity is more than CIFAR but less
     than YOLO.
 
+CommandLine:
+    xdoctest netharn.fit_harn __doc__:0
 
 Example:
     >>> import netharn as nh
@@ -98,7 +97,7 @@ Example:
     Mounting ToyNet2d model on GPU(0)
     Initializing new model
      * harn.train_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/olqtvpde'
-     * harn.nice_dpath = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
+     * harn.nice_dpath  = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
     Snapshots will save to harn.snapshot_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/olqtvpde/torch_snapshots'
     dont forget to start:
         tensorboard --logdir /home/joncrall/.cache/netharn/demo/fit/nice
@@ -263,7 +262,7 @@ class InitializeMixin:
 
         if harn.train_dpath:
             harn.log(' * harn.train_dpath = {!r}'.format(harn.train_dpath))
-            harn.log(' * harn.nice_dpath = {!r}'.format(harn.nice_dpath))
+            harn.log(' * harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
             harn.log('Snapshots will save to harn.snapshot_dpath = {!r}'.format(
                 harn.snapshot_dpath))
         else:
@@ -934,7 +933,7 @@ class CoreMixin:
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
             harn.log('harn.train_dpath = {!r}'.format(harn.train_dpath))
-            harn.log('harn.nice_dpath = {!r}'.format(harn.nice_dpath))
+            harn.log('harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
             harn.log('view tensorboard results for this run via:\n'
                      '    tensorboard --logdir ' + train_base)
 
