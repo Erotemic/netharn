@@ -38,6 +38,7 @@ Notes:
 
 CommandLine:
     xdoctest netharn.fit_harn __doc__:0
+    xdoctest netharn.fit_harn __doc__:0 --progiter
 
 Example:
     >>> import netharn as nh
@@ -83,7 +84,7 @@ Example:
     >>> })
     >>> harn = FitHarn(hyper)
     >>> # non-algorithmic behavior configs (do not change learned models)
-    >>> harn.config['prog_backend'] = 'tqdm'  # I prefer progiter (I may be biased)
+    >>> harn.config['prog_backend'] = 'tqdm' if not ub.argflag('--progiter') else 'progiter' # I prefer progiter (I may be biased)
     >>> # start training.
     >>> harn.initialize(reset='delete')
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
@@ -863,12 +864,13 @@ class CoreMixin:
             harn.log('dont forget to start:\n'
                      '    tensorboard --logdir ' + train_base)
 
-        harn.log('=== begin training ===')
+        harn.log(ub.color_text('=== begin training {!r} / {!r} ==='.format(
+            harn.epoch, harn.monitor.max_epoch), 'white'))
 
         if harn._check_termination():
             return
 
-        print('harn.monitor.max_epoch = {!r}'.format(harn.monitor.max_epoch))
+        # print('harn.monitor.max_epoch = {!r}'.format(harn.monitor.max_epoch))
         harn.main_prog = harn._make_prog(desc='epoch',
                                          total=harn.monitor.max_epoch,
                                          disable=not harn.config['show_prog'],
@@ -998,7 +1000,7 @@ class CoreMixin:
             harn.main_prog.update(1)
 
         if harn.config['prog_backend'] == 'progiter':
-            harn.info('=== finish epoch {} ==='.format(harn.epoch))
+            harn.info(ub.color_text('=== finish epoch {!r} / {!r} ==='.format(harn.epoch, harn.monitor.max_epoch), 'white'))
 
     @profiler.profile
     def _run_epoch(harn, loader, tag, learn=False):
