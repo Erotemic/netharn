@@ -394,8 +394,16 @@ class YoloHarn(nh.FitHarn):
         #     torch.cuda.synchronize()
         target = labels['targets']
         gt_weights = labels['gt_weights']
-        loss = harn.criterion(outputs, target, seen=n_seen,
-                              gt_weights=gt_weights)
+
+        target2 = {
+            'target': target,
+            'gt_weights': gt_weights,
+        }
+        loss = harn.criterion(outputs, target2, seen=n_seen)
+
+        # loss = harn.criterion(outputs, target, seen=n_seen,
+        #                       gt_weights=gt_weights)
+
         # if ub.argflag('--profile'):
         #     torch.cuda.synchronize()
         return outputs, loss
@@ -419,7 +427,7 @@ class YoloHarn(nh.FitHarn):
             >>> outputs, loss = harn.run_batch(batch)
             >>> harn.on_batch(batch, outputs, loss)
             >>> # xdoc: +REQUIRES(--show)
-            >>> postout = harn.model.module.postprocess(outputs)
+            >>> postout = harn.model.module.postprocess(outputs, nms_mode=4)
             >>> from netharn.util import mplutil
             >>> mplutil.qtensure()  # xdoc: +SKIP
             >>> harn.visualize_prediction(batch, outputs, postout, idx=0, thresh=0.01)
@@ -543,7 +551,7 @@ class YoloHarn(nh.FitHarn):
         inp_size = np.array(inputs.shape[-2:][::-1])
 
         try:
-            postout = harn.model.module.postprocess(outputs, nms_mode=2)
+            postout = harn.model.module.postprocess(outputs, nms_mode=4)
         except Exception as ex:
             harn.error('\n\n\n')
             harn.error('ERROR: FAILED TO POSTPROCESS OUTPUTS')
@@ -599,8 +607,6 @@ class YoloHarn(nh.FitHarn):
         except ImportError:
             pass
         except Exception as ex:
-            import utool
-            utool.embed()
             print('ex = {!r}'.format(ex))
 
         try:
@@ -608,16 +614,12 @@ class YoloHarn(nh.FitHarn):
             metrics_dict['nh-mAP'] = nh_scores['mAP']
             metrics_dict['nh-AP'] = nh_scores['peritem']['ap']
         except Exception as ex:
-            import utool
-            utool.embed()
             print('ex = {!r}'.format(ex))
 
         try:
             voc_scores = dmet.score_voc()
             metrics_dict['voc-mAP'] = voc_scores['mAP']
         except Exception as ex:
-            import utool
-            utool.embed()
             print('ex = {!r}'.format(ex))
 
         # Reset detections
@@ -750,7 +752,7 @@ class YoloHarn(nh.FitHarn):
             raw_batch = nh.data.collate.padded_collate(inbatch)
             batch = harn.prepare_batch(raw_batch)
             outputs, loss = harn.run_batch(batch)
-            postout = harn.model.module.postprocess(outputs)
+            postout = harn.model.module.postprocess(outputs, nms_mode=4)
 
             for idx, index in enumerate(indices):
                 orig_img = dset._load_image(index)
@@ -903,6 +905,8 @@ def setup_yolo_harness(bsize=16, workers=0):
                         (5.05587, 8.09892), (9.47112, 4.84053),
                         (11.2364, 10.0071)])
 
+    from netharn.models.yolo2 import region_loss2
+
     hyper = nh.HyperParams(**{
         'nice': nice,
         'workdir': ub.truepath('~/work/voc_yolo2'),
@@ -924,23 +928,36 @@ def setup_yolo_harness(bsize=16, workers=0):
             'nms_thresh': 0.5 if not ub.argflag('--eav') else 0.4
         }),
 
-        'criterion': (light_region_loss.RegionLoss, {
+        'criterion': (region_loss2.RegionLoss, {
             'num_classes': datasets['train'].num_classes,
             'anchors': anchors,
-            'object_scale': 5.0,
-            'noobject_scale': 1.0,
-
-            # eav version originally had a random *2 in cls loss,
-            # we removed, that but we can replicate it here.
-            'class_scale': 1.0 if not ub.argflag('--eav') else 2.0,
-            'coord_scale': 1.0,
-
-            'thresh': 0.6,  # iou_thresh
-            'seen_thresh': 12800,
-            # 'small_boxes': not ub.argflag('--eav'),
-            'small_boxes': True,
-            'mse_factor': 0.5 if not ub.argflag('--eav') else 1.0,
+            'reduction': 32,
+            'seen': 0,
+            'coord_scale'    : 1.0,
+            'noobject_scale' : 1.0,
+            'object_scale'   : 5.0,
+            'class_scale'    : 1.0,
+            'thresh'         : 0.6,  # iou_thresh
+            # 'seen_thresh': 12800,
         }),
+
+        # 'criterion': (light_region_loss.RegionLoss, {
+        #     'num_classes': datasets['train'].num_classes,
+        #     'anchors': anchors,
+        #     'object_scale': 5.0,
+        #     'noobject_scale': 1.0,
+
+        #     # eav version originally had a random *2 in cls loss,
+        #     # we removed, that but we can replicate it here.
+        #     'class_scale': 1.0 if not ub.argflag('--eav') else 2.0,
+        #     'coord_scale': 1.0,
+
+        #     'thresh': 0.6,  # iou_thresh
+        #     'seen_thresh': 12800,
+        #     # 'small_boxes': not ub.argflag('--eav'),
+        #     'small_boxes': True,
+        #     'mse_factor': 0.5 if not ub.argflag('--eav') else 1.0,
+        # }),
 
         'initializer': (nh.initializers.Pretrained, {
             'fpath': weights,
@@ -1039,6 +1056,8 @@ if __name__ == '__main__':
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE --lr=0.001 --bstep=8 --workers=6 --eav --weights=imagenet
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE2 --lr=0.001 --bstep=8 --workers=6 --eav --weights=imagenet
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE3 --lr=0.001 --bstep=8 --workers=4 --eav --weights=imagenet
+
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE4 --lr=0.001 --bstep=8 --workers=4 --eav --weights=imagenet
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

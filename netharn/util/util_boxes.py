@@ -502,11 +502,18 @@ class _BoxTransformMixins(object):
             self2 = self
         else:
             self2 = self.to_tlbr(copy=True)
-        x1, y1, x2, y2 = self2.data.T
-        np.clip(x1, x_min, x_max, out=x1)
-        np.clip(y1, y_min, y_max, out=y1)
-        np.clip(x2, x_min, x_max, out=x2)
-        np.clip(y2, y_min, y_max, out=y2)
+        if torch.is_tensor(self2.data):
+            x1, y1, x2, y2 = self2.data.t()
+            x1.clamp_(x_min, x_max)
+            y1.clamp_(y_min, y_max)
+            x2.clamp_(x_min, x_max)
+            y2.clamp_(y_min, y_max)
+        else:
+            x1, y1, x2, y2 = self2.data.T
+            np.clip(x1, x_min, x_max, out=x1)
+            np.clip(y1, y_min, y_max, out=y1)
+            np.clip(x2, x_min, x_max, out=x2)
+            np.clip(y2, y_min, y_max, out=y2)
         return self2
 
     def transpose(self):

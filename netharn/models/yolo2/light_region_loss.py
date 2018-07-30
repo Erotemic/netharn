@@ -152,11 +152,6 @@ class RegionLoss(BaseLossWithCudaState):
         rel_anchors_cxywh = torch.cat([torch.zeros_like(self.anchors), self.anchors], 1)
         self.rel_anchors_boxes = util.Boxes(rel_anchors_cxywh, 'cxywh')
 
-        self._prev_pred_init = None
-        self._prev_pred_dim = None
-
-        self.iou_mode = None
-
         self.small_boxes = small_boxes
         self.mse_factor = mse_factor
 
@@ -491,6 +486,8 @@ class RegionLoss(BaseLossWithCudaState):
             # Broadcast the loop over true boxes
             ####
             # Convert the true box coordinates to be comparable with pred output
+            # * translate each gtbox to be relative to its assignd gridcell
+            # * make w/h relative to anchor box w / h and convert to logspace
             cur_tcoord_x = cur_gx - cur_true_is.float()
             cur_tcoord_y = cur_gy - cur_true_js.float()
             cur_tcoord_w = (cur_gw / cur_true_anchor_w).log()
