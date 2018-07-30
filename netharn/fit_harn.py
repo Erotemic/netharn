@@ -1029,7 +1029,12 @@ class CoreMixin:
             harn.debug('Starting batch iteration for tag={}, epoch={}'.format(
                 tag, harn.epoch))
 
+            DUMMY = ub.argflag('--dummy')
+
             for bx in range(len(loader)):
+                if DUMMY and bx > 2:
+                    break
+
                 raw_batch = next(batch_iter)
 
                 harn.bxs[tag] = bx
@@ -1444,9 +1449,10 @@ class FitHarn(*MIXINS):
 
         # Track current iteration within an epoch
         harn.bxs = {
-            'train': 0,
-            'vali': 0,
-            'test': 0,
+            'train': 0,  # training dataset
+            'vali': 0,   # validation dataset
+            'test': 0,   # test dataset
+            'cali': 0,   # TODO: calibration dataset
         }
 
         harn.intervals = {
@@ -1460,6 +1466,7 @@ class FitHarn(*MIXINS):
 
             'vali': 1,
             'test': 1,
+            # 'cali': 1,
 
             # how often to take a snapshot
             'snapshot': 1,

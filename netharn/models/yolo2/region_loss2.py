@@ -215,7 +215,7 @@ class RegionLoss(BaseLossWithCudaState):
                 cls_mask = cls_mask.view(-1, 1).repeat(1, nC).to(device)
                 cls_ = cls.view(-1, nC)[cls_mask.view(-1, nC)].view(-1, nC)
 
-        cls_ = cls_.view(-1, nC)
+            cls_ = cls_.view(-1, nC)
         coord_ = coord.view(coord_mask.shape)
         conf_ = conf.view(conf_mask.shape)
 
