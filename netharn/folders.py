@@ -164,6 +164,17 @@ class Folders(object):
         train_info = self.train_info(short, hashed)
 
         train_dpath = ub.ensuredir(train_info['train_dpath'])
+
+        # backwards compatability code,
+        # can eventually remove after a major version change
+        if True:
+            # backwards compatability code
+            import os
+            if os.path.exists(train_info['old_train_dpath']) and not os.path.islink(train_info['old_train_dpath']):
+                ub.delete(train_info['train_dpath'])
+                ub.symlink(train_info['old_train_dpath'], train_info['train_dpath'],
+                           overwrite=True, verbose=3)
+
         train_info_fpath = join(train_dpath, 'train_info.json')
 
         util.write_json(train_info_fpath, train_info)
@@ -177,11 +188,6 @@ class Folders(object):
             ub.ensuredir(dirname(train_info['nice_dpath']))
             ub.symlink(train_info['train_dpath'], train_info['nice_dpath'],
                        overwrite=True, verbose=3)
-
-        # import os
-        # if not os.path.exists(train_info['old_train_dpath']):
-        #     ub.symlink(train_info['train_dpath'], train_info['old_train_dpath'],
-        #                overwrite=True, verbose=3)
 
         verbose = 0
         if verbose:
