@@ -281,6 +281,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             >>>     kps_ois.append(imgaug.KeypointsOnImage(kps, shape=bbs_oi.shape))
             >>> keypoints_on_images = kps_ois
             >>> self = LetterboxResize((400, 400))
+            >>> self.augment_keypoints(keypoints_on_images)
         """
         result = []
         target_size = np.array(self.target_size)
@@ -300,6 +301,8 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
 
             new_keypoint = imgaug.KeypointsOnImage.from_coords_array(
                 xy_aug, shape=target_shape)
+            # Fix bug in imgaug (TODO: report the bug)
+            new_keypoint.shape = target_shape
             result.append(new_keypoint)
         return result
 
