@@ -351,18 +351,10 @@ def demo_voc_weights(key='lightnet'):
 def initial_imagenet_weights():
     # import os
     import ubelt as ub
-    if False:
-        # Maybe this had a weird bad init state?
-        torch_fpath = ub.grabdata('https://data.kitware.com/api/v1/item/5b16b81b8d777f15ebe1ffcd/download',
-                                  fname='darknet19_448.conv.23.pt',
-                                  appname='netharn',
-                                  # hash_prefix='fd2b99b9f66bb4',
-                                  hash_prefix='f38968224a81a')
-    else:
+    try:
         darknet_weight_fpath = ub.grabdata(
             'https://pjreddie.com/media/files/darknet19_448.conv.23',
             appname='netharn', hash_prefix='8016f5b7ddc15c5d7dad2315')
-
         torch_fpath = darknet_weight_fpath + '_lntf.pt'
         import os
         if not os.path.exists(torch_fpath):
@@ -371,6 +363,13 @@ def initial_imagenet_weights():
             model = lightnet.models.Yolo(num_classes=20)
             model.load_weights(darknet_weight_fpath)
             torch.save(model.state_dict(), torch_fpath)
+    except ImportError:
+        # Maybe this had a weird bad init state?
+        torch_fpath = ub.grabdata('https://data.kitware.com/api/v1/item/5b16b81b8d777f15ebe1ffcd/download',
+                                  fname='darknet19_448.conv.23.pt',
+                                  appname='netharn',
+                                  # hash_prefix='fd2b99b9f66bb4',
+                                  hash_prefix='f38968224a81a')
     return torch_fpath
 
 
