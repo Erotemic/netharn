@@ -481,7 +481,7 @@ class YoloHarn(nh.FitHarn):
             _pred_boxes = pred_boxes.take(_pred_sortx, axis=0).to_xywh().data.tolist()
             _pred_cxs = pred_cxs.take(_pred_sortx, axis=0).tolist()
             _pred_scores = pred_scores.take(_pred_sortx, axis=0).tolist()
-            for aid, box, cx, score in zip(_aids, _pred_boxes, _pred_cxs, _pred_scores):
+            for box, cx, score, aid in zip(_pred_boxes, _pred_cxs, _pred_scores, _aids):
                 yield {
                     'id': aid,
                     'image_id': gx,
@@ -521,7 +521,7 @@ class YoloHarn(nh.FitHarn):
             _true_boxes = true_boxes.to_xywh().data.tolist()
             _true_cxs = true_cxs.tolist()
             _true_weights = true_weights.tolist()
-            for aid, box, cx, weight in zip(_aids, _true_boxes, _true_cxs, _true_weights):
+            for box, cx, weight, aid in zip(_true_boxes, _true_cxs, _true_weights, _aids):
                 yield {
                     'id': aid,
                     'image_id': gx,
