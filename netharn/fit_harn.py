@@ -907,8 +907,14 @@ class CoreMixin:
         #         harn.scheduler.step()
 
         try:
-            for harn.epoch in it.count(harn.epoch):
-                harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
+            if ub.argflag('--dummy'):
+                for harn.epoch in it.count(harn.epoch):
+                    harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
+                    if harn.epoch > 10:
+                        break
+            else:
+                for harn.epoch in it.count(harn.epoch):
+                    harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
         except StopTraining:
             pass
         except Exception as ex:
@@ -1280,8 +1286,7 @@ class CoreCallback:
         return outputs, loss
 
     def on_batch(harn, batch, outputs, loss):
-        """
-        custom callback typically used to compute batch evaluation measures
+        """custom callback typically used to compute batch evaluation measures
         or accumulate data.
 
         If a dict is returned its items are added to batch measures, and
@@ -1295,8 +1300,7 @@ class CoreCallback:
         pass
 
     def on_epoch(harn):
-        """
-        custom callback typically used to compute epoch evaluation measures.
+        """custom callback typically used to compute epoch evaluation measures.
 
         If a dict is returned its items are added to epoch measures
 
