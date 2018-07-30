@@ -9,14 +9,11 @@ import itertools as it
 import torch
 import ubelt as ub
 import numpy as np
-import pandas as pd  # NOQA
 import netharn as nh
 from netharn import util
 import imgaug.augmenters as iaa
-from netharn.util import profiler  # NOQA
 import torch.utils.data as torch_data
 from netharn.models.yolo2 import multiscale_batch_sampler
-from netharn.models.yolo2 import light_region_loss
 from netharn.models.yolo2 import light_yolo
 
 
@@ -86,10 +83,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         # the aspect ratio.
         self.letterbox = nh.data.transforms.Resize(None, mode='letterbox')
 
-    # def __len__(self):
-    #     return 128
-
-    @profiler.profile
+    @util.profiler.profile
     def __getitem__(self, index):
         """
         CommandLine:
@@ -347,7 +341,7 @@ class YoloHarn(nh.FitHarn):
             dmet.pred._build_index()
             harn.dmets[tag] = dmet
 
-    @profiler.profile
+    @util.profiler.profile
     def prepare_batch(harn, raw_batch):
         """
         ensure batch is in a standardized structure
@@ -360,7 +354,7 @@ class YoloHarn(nh.FitHarn):
         batch = (inputs, labels)
         return batch
 
-    @profiler.profile
+    @util.profiler.profile
     def run_batch(harn, batch):
         """
         Connect data -> network -> loss
@@ -408,7 +402,7 @@ class YoloHarn(nh.FitHarn):
         #     torch.cuda.synchronize()
         return outputs, loss
 
-    @profiler.profile
+    @util.profiler.profile
     def on_batch(harn, batch, outputs, loss):
         """
         custom callback
@@ -530,7 +524,7 @@ class YoloHarn(nh.FitHarn):
                     'weight': weight
                 }
 
-    @profiler.profile
+    @util.profiler.profile
     def _record_predictions(harn, batch, outputs):
         """
         Transform batch predictions into coco-style detections for scoring
@@ -568,7 +562,7 @@ class YoloHarn(nh.FitHarn):
         ))
         dmet.true.add_annotations(true_anns)
 
-    @profiler.profile
+    @util.profiler.profile
     def on_epoch(harn):
         """
         custom callback
@@ -906,6 +900,7 @@ def setup_yolo_harness(bsize=16, workers=0):
                         (11.2364, 10.0071)])
 
     from netharn.models.yolo2 import region_loss2
+    # from netharn.models.yolo2 import light_region_loss
 
     hyper = nh.HyperParams(**{
         'nice': nice,
