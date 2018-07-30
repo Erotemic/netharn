@@ -281,7 +281,8 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             >>>     kps_ois.append(imgaug.KeypointsOnImage(kps, shape=bbs_oi.shape))
             >>> keypoints_on_images = kps_ois
             >>> self = LetterboxResize((400, 400))
-            >>> self.augment_keypoints(keypoints_on_images)
+            >>> aug = self.augment_keypoints(keypoints_on_images)
+            >>> assert np.all(aug[0].shape == self.target_size[::-1])
         """
         result = []
         target_size = np.array(self.target_size)
