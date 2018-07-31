@@ -62,13 +62,13 @@ class RegionLoss(BaseLossWithCudaState):
         self.class_scale = class_scale
         self.thresh = thresh
 
-    def extra_repr(self):
-        repr_str = f'classes={self.num_classes}, reduction={self.reduction}, threshold={self.thresh}, seen={self.seen.item()}\n'
-        repr_str += f'coord_scale={self.coord_scale}, object_scale={self.object_scale}, noobject_scale={self.noobject_scale}, class_scale={self.class_scale}\n'
-        repr_str += f'anchors='
-        for a in self.anchors:
-            repr_str += f'[{a[0]:.5g}, {a[1]:.5g}] '
-        return repr_str
+    # def extra_repr(self):
+    #     repr_str = 'classes={self.num_classes}, reduction={self.reduction}, threshold={self.thresh}, seen={self.seen.item()}\n'
+    #     repr_str += 'coord_scale={self.coord_scale}, object_scale={self.object_scale}, noobject_scale={self.noobject_scale}, class_scale={self.class_scale}\n'
+    #     repr_str += 'anchors='
+    #     for a in self.anchors:
+    #         repr_str += '[{a[0]:.5g}, {a[1]:.5g}] '
+    #     return repr_str
 
     def forward(self, output, target, seen=None):
         """ Compute Region loss.
@@ -111,7 +111,7 @@ class RegionLoss(BaseLossWithCudaState):
             >>> im_data = torch.randn(len(target), 3, Hin, Win, requires_grad=True)
             >>> output = network.forward(im_data)
             >>> loss = float(self(output, target))
-            >>> print(f'loss = {loss:.2f}')
+            >>> print('loss = {loss:.2f}'.format(loss))
             loss = 20.43
         """
         if isinstance(target, dict):
