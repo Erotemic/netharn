@@ -56,10 +56,26 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
         matplotlib.org/examples/api/barchart_demo.html
 
     CommandLine:
-        python -m netharn.util.mplutil multi_plot:0 --show
-        python -m netharn.util.mplutil multi_plot:1 --show
+        xdoctest netharn.util.mplutil multi_plot
+        xdoctest netharn.util.mplutil multi_plot:0 --show
+        xdoctest netharn.util.mplutil multi_plot:1 --show
 
     Example:
+        >>> import netharn as nh
+        >>> nh.util.autompl()
+        >>> # The new way to use multi_plot is to pass ydata as a dict of lists
+        >>> ydata = {
+        >>>     'spamΣ': [1, 1, 2, 3, 5, 8, 13],
+        >>>     'eggs': [3, 3, 3, 3, 3, np.nan, np.nan],
+        >>>     'jamµ': [5, 3, np.nan, 1, 2, np.nan, np.nan],
+        >>>     'pram': [4, 2, np.nan, 0, 0, np.nan, 1],
+        >>> }
+        >>> fig = nh.util.multi_plot(ydata=ydata, title='ΣΣΣµµµ',
+        >>>                          xlabel='\nfdsΣΣΣµµµ', linestyle='-')
+        >>> nh.util.show_if_requested()
+
+    Example:
+        >>> # Old way to use multi_plot is a list of lists
         >>> autompl()
         >>> xdata = [1, 2, 3, 4, 5]
         >>> ydata_list = [[1, 2, 3, 4, 5], [3, 3, 3, 3, 3], [5, 4, np.nan, 2, 1], [4, 3, np.nan, 1, 0]]
@@ -69,8 +85,9 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
         >>> show_if_requested()
 
     Example:
+        >>> # Simple way to use multiplot is to pass xdata and ydata exactly
+        >>> # like you would use plt.plot
         >>> autompl()
-        >>> fig1 = multi_plot([1, 2, 3], [4, 5, 6])
         >>> fig2 = multi_plot([1, 2, 3], [4, 5, 6], fnum=4)
         >>> show_if_requested()
     """
