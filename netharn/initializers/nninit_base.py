@@ -144,25 +144,36 @@ def load_partial_state(model, model_state_dict, initializer=None):
 
         return model_state_dict
 
-    model_state_dict = _fix_keys(model_state_dict)
+    other_state = _fix_keys(model_state_dict)
 
-    unused_keys = set(self_state.keys())
-    for key, other_value in model_state_dict.items():
-        if key in self_state:
+    self_unused_keys = set(self_state.keys())  # will end up as keys in our that were not set
+    other_unused_keys = set(other_state.keys())  # will end up as keys in the other model that were not used
+
+    seen_keys = ub.ddict(set)
+
+    for key, other_value in other_state.items():
+        if key not in self_state:
+            print('Skipping {} because it does not exist'.format(key))
+            seen_keys['skipped'].add(key)
+        else:
             self_value = self_state[key]
             if other_value.size() == self_value.size():
                 self_state[key] = other_value
-                unused_keys.remove(key)
+                self_unused_keys.remove(key)
+                other_unused_keys.remove(key)
+                seen_keys['full_add'].add(key)
             elif len(other_value.size()) == len(self_value.size()):
                 if key.endswith('bias'):
                     print('Skipping {} due to incompatable size'.format(key))
                     print(' * self  = {!r}'.format(self_value.size()))
                     print(' * other = {!r}'.format(other_value.size()))
+                    seen_keys['skipped'].add(key)
                 else:
                     if initializer is None:
-                        print('Skipping {} due to incompatable size'.format(key))
+                        print('Skipping {} due to incompatable size and no default initializer'.format(key))
                         print(' * self  = {!r}'.format(self_value.size()))
                         print(' * other = {!r}'.format(other_value.size()))
+                        seen_keys['skipped'].add(key)
                     else:
                         print('Partially add {} with incompatable size'.format(key))
                         print(' * self  = {!r}'.format(self_value.size()))
@@ -181,23 +192,28 @@ def load_partial_state(model, model_state_dict, initializer=None):
                         #     # might help the network recover in case this is
                         #     # not a good idea
                         #     shock(self_state[key], func=initializer)
-                        unused_keys.remove(key)
+                        self_unused_keys.remove(key)
+                        other_unused_keys.remove(key)
+                        seen_keys['partial_add'].add(key)
             else:
                 print('Skipping {} due to incompatable size'.format(key))
                 print(' * self  = {!r}'.format(self_value.size()))
                 print(' * other = {!r}'.format(other_value.size()))
-        else:
-            print('Skipping {} because it does not exist'.format(key))
+                seen_keys['skipped'].add(key)
 
-    if unused_keys:
-        print('Unused keys {}'.format(unused_keys))
+    if self_unused_keys or other_unused_keys:
+        print('Seen Keys: {}'.format(ub.repr2(seen_keys, nl=2)))
+        print('Self Unused Keys: {}'.format(ub.repr2(self_unused_keys, nl=1)))
+        print('Other Unused keys: {}'.format(ub.repr2(other_unused_keys, nl=1)))
         if initializer:
             print('Initializing unused keys using {}'.format(initializer))
-            for key in unused_keys:
+            for key in self_unused_keys:
                 if key.endswith('.bias'):
                     self_state[key].fill_(0)
                 else:
                     initializer(self_state[key])
+    else:
+        print('Pretrained weights are a perfect fit')
     model.load_state_dict(self_state)
 
 if __name__ == '__main__':

@@ -389,7 +389,7 @@ class InitializeMixin:
         """
         Use the initializer to set the weights for the model
         """
-        harn.log('Initializing model weights')
+        harn.log('Initializing model weights with: {}'.format(harn.initializer))
         if harn.initializer:
             if harn.initializer.__class__.__name__ == 'LSUV':
                 harn.debug('calling hacked LSUV initializer')
@@ -960,7 +960,7 @@ class CoreMixin:
             harn._run_epoch(train_loader, tag='train', learn=True)
 
         # run validation epoch
-        improved = False
+        improved = None
         if vali_loader and harn.check_interval('vali', harn.epoch):
             vali_metrics = harn._run_epoch(vali_loader, tag='vali',
                                            learn=False)
@@ -1506,7 +1506,18 @@ class FitHarn(*MIXINS):
         n = harn.intervals[tag]
         if n is None:
             return False
-        return (idx + 1) % n == 0
+        elif isinstance(n, int):
+            # Intervals can be numbers corresponding to strides
+            return (idx + 1) % n == 0
+        elif isinstance(n, slice):
+            # Intervals can be slices
+            if n.stop is not None and idx >= n.stop:
+                return False
+            start = 0 if n.start is None else n.start
+            if idx < start:
+                return False
+            step = 1 if n.step is None else n.step
+            return (idx + start + 1) % step == 0
 
 
 if __name__ == '__main__':
