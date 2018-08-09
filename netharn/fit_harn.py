@@ -995,11 +995,11 @@ class CoreMixin:
             # change learning rate (modified optimizer inplace)
             harn._step_scheduler_epoch(improved)
 
+            if harn.config['prog_backend'] == 'progiter':
+                harn.info(ub.color_text('=== finish epoch {!r} / {!r} ==='.format(harn.epoch, harn.monitor.max_epoch), 'white'))
+
             harn._update_main_prog_desc()
             harn.main_prog.update(1)
-
-        if harn.config['prog_backend'] == 'progiter':
-            harn.info(ub.color_text('=== finish epoch {!r} / {!r} ==='.format(harn.epoch, harn.monitor.max_epoch), 'white'))
 
     @profiler.profile
     def _run_epoch(harn, loader, tag, learn=False):
