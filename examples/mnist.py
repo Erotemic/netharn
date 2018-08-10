@@ -247,6 +247,14 @@ def train_mnist():
     harn.initialize(reset=reset)
     harn.run()
 
+    # Set how often vali / test will be run
+    harn.intervals.update({
+        # 'vali': slice(5, None, 1),
+
+        # Start testing after the 5th epoch and then test every 4 epochs
+        'test': slice(5, None, 4),
+    })
+
     # if False:
     #     import plottool as pt
     #     pt.qtensure()
