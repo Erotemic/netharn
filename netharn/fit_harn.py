@@ -856,7 +856,7 @@ class CoreMixin:
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
             harn.log('dont forget to start:\n'
-                     '    tensorboard --logdir ' + train_base)
+                     '    tensorboard --logdir ' + ub.compressuser(train_base))
 
         action = 'resume' if harn.epoch > 0 else 'begin'
         if harn.config['prog_backend'] == 'progiter':
@@ -938,7 +938,7 @@ class CoreMixin:
             harn.log('harn.train_dpath = {!r}'.format(harn.train_dpath))
             harn.log('harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
             harn.log('view tensorboard results for this run via:\n'
-                     '    tensorboard --logdir ' + train_base)
+                     '    tensorboard --logdir ' + ub.compressuser(train_base))
 
         harn.on_complete()
         harn.log('exiting fit harness.')
