@@ -53,6 +53,7 @@ import numpy as np
 class MnistNet(nn.Module):
     def __init__(self, n_channels=1, n_classes=10):
         super(MnistNet, self).__init__()
+        self.n_classes = n_classes
         self.conv1 = nn.Conv2d(n_channels, 10, kernel_size=5)
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
         self.conv2_drop = nn.Dropout2d()
@@ -123,15 +124,6 @@ def train_mnist():
         python ~/code/netharn/examples/mnist.py --gpu=2
         python ~/code/netharn/examples/mnist.py
     """
-
-    """
-    TODO: IPython notebookize this demo
-
-    So, you made a pytorch model
-    You have a pytorch.Dataset
-    How will you train your model?
-    With FitHarness
-    """
     root = os.path.expanduser('~/data/mnist/')
 
     # Define your dataset
@@ -186,7 +178,6 @@ def train_mnist():
 
     # Give the training dataset an input_id
     datasets['train'].input_id = 'mnist_' + ub.hash_data(train_idx.numpy())[0:8]
-    del datasets['test']
 
     batch_size = 128
     n_classes = 10
@@ -237,9 +228,9 @@ def train_mnist():
         initializer=initializer,
         monitor=(nh.Monitor, {
             # 'minimize': ['loss'],
-            # 'maximize': ['global_acc', 'class_acc'],
-            # 'patience': 40,
-            'max_epoch': 75,
+            # 'maximize': ['acc'],
+            'patience': 10,
+            'max_epoch': 300,
             'smoothing': .4,
         }),
         other={
@@ -275,5 +266,7 @@ if __name__ == '__main__':
     r"""
     CommandLine:
         python examples/mnist.py
+
+        tensorboard --logdir ~/data/work/mnist/fit/nice
     """
     train_mnist()
