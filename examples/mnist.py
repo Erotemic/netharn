@@ -223,6 +223,7 @@ def train_mnist():
         model=(MnistNet, dict(n_channels=1, n_classes=n_classes)),
         # optimizer=torch.optim.Adam,
         optimizer=(torch.optim.SGD, {'lr': 0.01}),
+        # FIXME: the ReduceLROnPleateau is broken with restarts
         scheduler='ReduceLROnPlateau',
         criterion=torch.nn.CrossEntropyLoss,
         initializer=initializer,
