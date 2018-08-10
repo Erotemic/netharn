@@ -243,10 +243,6 @@ def train_mnist():
 
     harn = MnistHarn(hyper=hyper)
 
-    reset = ub.argflag('--reset')
-    harn.initialize(reset=reset)
-    harn.run()
-
     # Set how often vali / test will be run
     harn.intervals.update({
         # 'vali': slice(5, None, 1),
@@ -254,6 +250,10 @@ def train_mnist():
         # Start testing after the 5th epoch and then test every 4 epochs
         'test': slice(5, None, 4),
     })
+
+    reset = ub.argflag('--reset')
+    harn.initialize(reset=reset)
+    harn.run()
 
     # if False:
     #     import plottool as pt
