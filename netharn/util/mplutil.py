@@ -701,6 +701,7 @@ def pandas_plot_matrix(df, rot=90, ax=None, grid=True, label=None,
     import matplotlib as mpl
     import copy
     from matplotlib import pyplot as plt
+    import matplotlib.cm  # NOQA
     if ax is None:
         fig = figure(fnum=1, pnum=(1, 1, 1))
         fig.clear()
@@ -1930,6 +1931,7 @@ def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
     """
     import matplotlib as mpl
     import matplotlib.pyplot as plt
+    import matplotlib.cm  # NOQA
     assert len(scalars) == len(colors), 'scalars and colors must be corresponding'
     if len(scalars) == 0:
         return None
@@ -2665,6 +2667,7 @@ def make_heatmask(probs, cmap='plasma', with_alpha=True):
     """
     import matplotlib as mpl
     from netharn.util import imutil
+    import matplotlib.cm  # NOQA
     assert len(probs.shape) == 2
     cmap_ = mpl.cm.get_cmap(cmap)
     probs = imutil.ensure_float01(probs)
