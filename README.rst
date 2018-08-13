@@ -1,7 +1,7 @@
 |Travis| |Codecov| |Appveyor| |Pypi|
 
 
-Netharn --- A pytorch network harness
+Netharn - A pytorch network harness
 -------
 
 NAME:
