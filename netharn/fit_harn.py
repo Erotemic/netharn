@@ -86,7 +86,7 @@ Example:
     >>> harn = nh.FitHarn(hyper)
     >>> # non-algorithmic behavior configs (do not change learned models)
     >>> harn.config['prog_backend'] = 'tqdm'
-    >>> if not ub.argflag('--progiter'):  # I prefer progiter (I may be biased)
+    >>> if ub.argflag('--progiter'):  # I prefer progiter (I may be biased)
     ...     harn.config['prog_backend'] = 'progiter'
     >>> # start training.
     >>> harn.initialize(reset='delete')
@@ -261,9 +261,9 @@ class InitializeMixin:
             harn.reset_weights()
 
         if harn.train_dpath:
-            harn.log(' * harn.train_dpath = {!r}'.format(harn.train_dpath))
-            harn.log(' * harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
-            harn.log('Snapshots will save to harn.snapshot_dpath = {!r}'.format(
+            harn.info(' * harn.train_dpath = {!r}'.format(harn.train_dpath))
+            harn.info(' * harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
+            harn.info('Snapshots will save to harn.snapshot_dpath = {!r}'.format(
                 harn.snapshot_dpath))
         else:
             harn.warn('harn.train_dpath is None, all computation is in memory')
@@ -289,41 +289,50 @@ class InitializeMixin:
             harn.warn('harn.train_dpath is None, cannot setup loggers')
             return
 
-        use_file_logger = True
-        if use_file_logger and harn.flog is None:
+        use_py_logger = True
+        if use_py_logger and harn._log is None:
 
-            flog = logging.getLogger(harn.__class__.__name__)
-            formatter = logging.Formatter('%(asctime)s : %(message)s')
+            _log = logging.getLogger(harn.__class__.__name__)
+            # _log.propagate = False
+            _log.setLevel(logging.DEBUG)
+
+            f_formatter = logging.Formatter('%(asctime)s : %(levelname)s : %(message)s')
+            s_formatter = logging.Formatter('%(levelname)s: %(message)s')
 
             # Add timestamped fpath write handler
             flog_fname = 'fitlog_{}.log'.format(ub.timestamp())
             flog_dpath = ub.ensuredir(join(harn.train_dpath, 'logs'))
             w_flog_fpath = join(flog_dpath, flog_fname)
             w_handler = logging.FileHandler(w_flog_fpath, mode='w')
-            w_handler.setFormatter(formatter)
+            w_handler.setFormatter(f_formatter)
+            w_handler.setLevel(logging.DEBUG)
 
             # Add a simple root append handler
             a_flog_fpath = join(harn.train_dpath, 'fit.log')
-            a_handler = logging.FileHandler(a_flog_fpath, mode='w')
-            a_handler.setFormatter(formatter)
+            a_handler = logging.FileHandler(a_flog_fpath, mode='a')
+            a_handler.setFormatter(f_formatter)
+            a_handler.setLevel(logging.DEBUG)
 
-            flog.propagate = False
-            flog.setLevel(logging.DEBUG)
-            flog.addHandler(w_handler)
-            flog.addHandler(a_handler)
-            harn.flog = flog
+            # Add a stdout handler
+            stdout_handler = logging.StreamHandler(sys.stdout)
+            stdout_handler.setFormatter(s_formatter)
+            stdout_handler.setLevel(logging.INFO)
+
+            _log.addHandler(w_handler)
+            _log.addHandler(a_handler)
+            _log.addHandler(stdout_handler)
+
+            harn._log = _log
             harn.debug('initialized file logger')
-            # flog_link = join(harn.train_dpath, 'fit.log')
-            # ub.symlink(flog_fpath, flog_link, overwrite=True)
 
         if tensorboard_logger:
             # train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
-            # harn.log('dont forget to start:\n    tensorboard --logdir ' + train_base)
-            harn.log('Initializing tensorboard (dont forget to start the tensorboard server)')
-            harn.tlog = tensorboard_logger.Logger(harn.train_dpath,
+            # harn.info('dont forget to start:\n    tensorboard --logdir ' + train_base)
+            harn.info('Initializing tensorboard (dont forget to start the tensorboard server)')
+            harn._tlog = tensorboard_logger.Logger(harn.train_dpath,
                                                      flush_secs=2)
         else:
-            harn.log('Tensorboard is not available')
+            harn.info('Tensorboard is not available')
 
     def _setup_modules(harn):
         """
@@ -364,9 +373,9 @@ class InitializeMixin:
         harn.debug(harn.model)
 
         n_params = util.number_of_parameters(harn.model)
-        harn.log('Model has {!r} parameters'.format(n_params))
+        harn.info('Model has {!r} parameters'.format(n_params))
 
-        harn.log('Mounting {} model on {}'.format(
+        harn.info('Mounting {} model on {}'.format(
             harn.model.__class__.__name__, harn.xpu))
         harn.model = harn.xpu.mount(harn.model)
 
@@ -394,7 +403,7 @@ class InitializeMixin:
         """
         Use the initializer to set the weights for the model
         """
-        harn.log('Initializing model weights with: {}'.format(harn.initializer))
+        harn.info('Initializing model weights with: {}'.format(harn.initializer))
         if harn.initializer:
             if harn.initializer.__class__.__name__ == 'LSUV':
                 harn.debug('calling hacked LSUV initializer')
@@ -423,18 +432,18 @@ class InitializeMixin:
             raise CannotResume('harn.train_dpath is None')
 
         prev_states = harn.prev_snapshots()
-        harn.log('There are {} existing snapshots'.format(len(prev_states)))
+        harn.info('There are {} existing snapshots'.format(len(prev_states)))
         if not prev_states:
             raise CannotResume('no previous snapshots')
 
-        harn.log('Loading previous states')
+        harn.info('Loading previous states')
         success = False
         # Ignore corrupted snapshots
         for load_path in reversed(prev_states):
             try:
                 harn.load_snapshot(load_path)
             except RuntimeError:
-                harn.log('Failed to load {}. Skiping.'.format(load_path))
+                harn.info('Failed to load {}. Skiping.'.format(load_path))
             else:
                 success = True
                 break
@@ -447,7 +456,7 @@ class InitializeMixin:
                     'param "initial_lr" is not specified '
                     'in param_groups[{}] when resuming an optimizer'.format(i))
 
-        harn.log('Resuming from epoch={}'.format(harn.epoch))
+        harn.info('Resuming from epoch={}'.format(harn.epoch))
 
 
 @register_mixin
@@ -527,38 +536,43 @@ class LogMixin:
             pass
 
     def log(harn, msg):
-        harn._ensure_prog_newline()
-        print(msg)
-        harn.debug(msg)
+        harn.info(msg)
 
-    info = log
+    def info(harn, msg):
+        harn._ensure_prog_newline()
+        if harn._log:
+            harn._log.info(msg)
+        else:
+            print(msg)
+
+    def error(harn, msg):
+        harn._ensure_prog_newline()
+        if harn._log:
+            msg = strip_ansi(msg)
+            harn._log.error(msg)
+        else:
+            print(msg)
+
+    def warn(harn, msg):
+        harn._ensure_prog_newline()
+        if harn._log:
+            msg = strip_ansi(msg)
+            harn._log.warn(msg)
+        else:
+            print(msg)
 
     def debug(harn, msg):
-        if harn.flog:
+        if harn._log:
             msg = strip_ansi(str(msg))
             # Encode to prevent errors on windows terminals
             # On windows there is a sometimes a UnicodeEncodeError: For more details see: https://wiki.python.org/moin/PrintFails
             if sys.platform.startswith('win32'):
-                harn.flog.debug(msg.encode('utf8'))
+                harn._log.debug(msg.encode('utf8'))
             else:
-                harn.flog.debug(msg)
+                harn._log.debug(msg)
             # except UnicodeEncodeError:
             #     stripped = ''.join(c if ord(c) < 128 else ' ' for c in msg)
-            #     harn.flog.debug('[UnicodeEncodeError]: ' + stripped)
-
-    def error(harn, msg):
-        harn._ensure_prog_newline()
-        print(msg)
-        if harn.flog:
-            msg = strip_ansi(msg)
-            harn.flog.error(msg)
-
-    def warn(harn, msg):
-        harn._ensure_prog_newline()
-        print(msg)
-        if harn.flog:
-            msg = strip_ansi(msg)
-            harn.flog.warn(msg)
+            #     harn._log.debug('[UnicodeEncodeError]: ' + stripped)
 
     def log_value(harn, key, value, n_iter):
         """
@@ -570,8 +584,8 @@ class LogMixin:
             value (float): a scalar value
             n_iter (int): the current epoch or iteration number.
         """
-        if harn.tlog:
-            harn.tlog.log_value(key, value, n_iter)
+        if harn._tlog:
+            harn._tlog.log_value(key, value, n_iter)
         harn.debug('log_value({}, {}, {}'.format(key, value, n_iter))
 
     def log_histogram(harn, key, value, n_iter):
@@ -585,16 +599,16 @@ class LogMixin:
                histogram on, or a tuple of bins and counts.
             n_iter (int): the current epoch or iteration number.
         """
-        if harn.tlog:
+        if harn._tlog:
             # is this necessary?
             # if isinstance(value, np.ndarray):
             #     bins, counts = np.histogram(value)
             #     value = (bins, counts)
-            harn.tlog.log_histogram(key, value, n_iter)
+            harn._tlog.log_histogram(key, value, n_iter)
             harn.debug(
                 'log histogram to tensorboard: {}, {}'.format(key, n_iter))
         else:
-            harn.warn('cannot log histogram: {}, {}'.format(key, n_iter))
+            harn.warn('cannot log histogram without tensorboard: {}, {}'.format(key, n_iter))
 
     def log_images(harn, key, value, n_iter):
         """
@@ -606,12 +620,12 @@ class LogMixin:
             value (ndarray): an image
             n_iter (int): the current epoch or iteration number.
         """
-        if harn.tlog:
-            harn.tlog.log_images(key, value, n_iter)
+        if harn._tlog:
+            harn._tlog.log_images(key, value, n_iter)
             harn.debug(
                 'log image to tensorboard: {}, {}'.format(key, n_iter))
         else:
-            harn.warn('cannot log image: {}, {}'.format(key, n_iter))
+            harn.warn('cannot log image without tensorboard: {}, {}'.format(key, n_iter))
 
 
 @register_mixin
@@ -706,10 +720,10 @@ class SnapshotMixin:
         Args:
             str: path to previously saved snapshot
         """
-        harn.log('Loading previous state: {}'.format(load_path))
+        harn.info('Loading previous state: {}'.format(load_path))
         snapshot_state = harn.xpu.load(load_path)
         harn.set_snapshot_state(snapshot_state)
-        harn.log('Previous snapshot loaded...')
+        harn.info('Previous snapshot loaded...')
 
     def save_snapshot(harn):
         # save snapshot
@@ -730,7 +744,7 @@ class SnapshotMixin:
         snapshot = harn.xpu.load(load_path)
 
         print('\n\n\n\n')
-        harn.log('Backtracking to weights from previous state: {}'.format(load_path))
+        harn.info('Backtracking to weights from previous state: {}'.format(load_path))
         # only load the model state to simulate a big step back
         harn.model.load_state_dict(snapshot['model_state_dict'])
         harn.optimizer.zero_grad()
@@ -776,11 +790,11 @@ class ScheduleMixin:
     def _check_termination(harn):
         if harn.epoch >= harn.monitor.max_epoch:
             harn._close_prog()
-            harn.log('Maximum harn.epoch reached, terminating ...')
+            harn.info('Maximum harn.epoch reached, terminating ...')
             return True
         if harn.monitor.is_done():
             harn._close_prog()
-            harn.log('Validation set is not improving, terminating ...')
+            harn.info('Validation set is not improving, terminating ...')
             return True
         return False
 
@@ -859,19 +873,19 @@ class CoreMixin:
 
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
-            harn.log('dont forget to start:\n'
-                     '    tensorboard --logdir ' + ub.compressuser(train_base))
+            harn.info('dont forget to start:\n'
+                      '    tensorboard --logdir ' + ub.compressuser(train_base))
 
         if harn._check_termination():
             return
 
         action = 'resume' if harn.epoch > 0 else 'begin'
         if harn.config['prog_backend'] == 'progiter':
-            harn.log(ub.color_text('=== {} training {!r} / {!r} : {} ==='.format(
+            harn.info(ub.color_text('=== {} training {!r} / {!r} : {} ==='.format(
                 action, harn.epoch, harn.monitor.max_epoch,
                 harn.hyper.nice), 'white'))
         else:
-            harn.log(ub.color_text('=== {} training : {} ==='.format(
+            harn.info(ub.color_text('=== {} training : {} ==='.format(
                 action, harn.hyper.nice), 'white'))
 
         # print('harn.monitor.max_epoch = {!r}'.format(harn.monitor.max_epoch))
@@ -930,23 +944,23 @@ class CoreMixin:
                 type(ex), repr(ex)))
             import traceback
             tb = traceback.format_exc()
-            harn.log(tb)
+            harn.info(tb)
             harn._close_prog()
             raise
 
-        harn.log('\n\n\n')
-        harn.log('training completed')
-        harn.log('current lrs: {}'.format(harn._current_lrs()))
+        harn.info('\n\n\n')
+        harn.info('training completed')
+        harn.info('current lrs: {}'.format(harn._current_lrs()))
 
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
-            harn.log('harn.train_dpath = {!r}'.format(harn.train_dpath))
-            harn.log('harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
-            harn.log('view tensorboard results for this run via:\n'
-                     '    tensorboard --logdir ' + ub.compressuser(train_base))
+            harn.info('harn.train_dpath = {!r}'.format(harn.train_dpath))
+            harn.info('harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
+            harn.info('view tensorboard results for this run via:\n'
+                      '    tensorboard --logdir ' + ub.compressuser(train_base))
 
         harn.on_complete()
-        harn.log('exiting fit harness.')
+        harn.info('exiting fit harness.')
 
     @profiler.profile
     def _run_tagged_epochs(harn, train_loader, vali_loader, test_loader):
@@ -1468,8 +1482,8 @@ class FitHarn(*MIXINS):
         harn.nice_dpath = None
 
         harn._initialized = False
-        harn.flog = None
-        harn.tlog = None
+        harn._log = None
+        harn._tlog = None
 
         # Track current epoch number
         harn.epoch = 0

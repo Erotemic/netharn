@@ -125,9 +125,6 @@ def check_inconsistency():
     harn.intervals['log_iter_vali'] = None
 
     harn.initialize()
-    import logging
-    import sys
-    harn.flog.addHandler(logging.StreamHandler(sys.stdout))
     harn.run()
 
 

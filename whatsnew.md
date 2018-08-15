@@ -1,3 +1,8 @@
+Version 0.0.20
+==============
+FitHarn now uses StreamLogger instead of print
+
+
 Version 0.0.19
 ==============
 Fixed torch 0.4.1 deprication warnings in focal loss

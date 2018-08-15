@@ -84,7 +84,11 @@ class XPU(ub.NiceRepr):
 
         if check:
             if not XPU.exists(item):
-                raise ValueError('XPU {} does not exist.'.format(item))
+                if isinstance(item, int) and not torch.cuda.is_available():
+                    raise ValueError('XPU {} does not exist. '
+                                     'CUDA is not available'.format(item))
+                else:
+                    raise ValueError('XPU {} does not exist.'.format(item))
 
         if item is None:
             xpu.mode = 'cpu'
