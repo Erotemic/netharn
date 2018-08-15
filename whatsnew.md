@@ -1,3 +1,9 @@
+Version 0.0.21
+==============
+Fixed issue with unseeded random states. Now defaults to the global np.random state.
+Fixed bug in `load_arr`
+
+
 Version 0.0.20
 ==============
 FitHarn now uses StreamLogger instead of print

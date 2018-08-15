@@ -195,8 +195,8 @@ def ensure_rng(rng, api='numpy'):
     Returns a random number generator
 
     Args:
-        seed: if None, then the rng is unseeded. Otherwise the seed can be an
-            integer or a RandomState class
+        seed: if None, then deafults to the global rng.
+            Otherwise the seed can be an integer or a RandomState class
 
     Example:
         >>> rng = ensure_rng(None)
@@ -225,10 +225,28 @@ def ensure_rng(rng, api='numpy'):
         >>> print(pn_nums)
         >>> assert np_nums == pp_nums
         >>> assert pn_nums == nn_nums
+
+    Ignore:
+        >>> np.random.seed(0)
+        >>> np.random.randint(0, 10000)
+        2732
+        >>> np.random.seed(0)
+        >>> np.random.mtrand._rand.randint(0, 10000)
+        2732
+        >>> np.random.seed(0)
+        >>> nh.util.ensure_rng(None).randint(0, 10000)
+        2732
+        >>> np.random.randint(0, 10000)
+        9845
+        >>> nh.util.ensure_rng(None).randint(0, 10000)
+        3264
     """
     if api == 'numpy':
         if rng is None:
-            rng = np.random.RandomState(seed=None)
+            # Dont do this because it seeds using dev/urandom
+            # rng = np.random.RandomState(seed=None)
+            # This is the underlying random state of the np.random module
+            rng = np.random.mtrand._rand
         elif isinstance(rng, int):
             rng = np.random.RandomState(seed=rng % _SEED_MAX)
         elif isinstance(rng, random.Random):

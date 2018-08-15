@@ -492,6 +492,9 @@ class HyperParams(object):
         _append_part('scheduler', hyper.scheduler_cls, hyper.scheduler_params)
         _append_part('criterion', hyper.criterion_cls, hyper.criterion_params)
 
+        # TODO: should other be included in initkw? I think it should.
+        # probably should also include monitor, xpu, nice
+
         # Loader is a bit hacked
         _append_part('loader', hyper.loader_cls, hyper.loader_params_nice)
         _append_part('dynamics', 'Dynamics', hyper.dynamics)

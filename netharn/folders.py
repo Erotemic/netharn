@@ -155,6 +155,8 @@ class Folders(object):
             # TODO, add in centering if applicable
             # ('centering', hyper.centering),
 
+            ('other', hyper.other),
+
             # HACKED IN
             ('augment', hyper.augment_json()),
         ])
