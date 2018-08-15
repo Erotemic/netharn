@@ -45,7 +45,7 @@ Example:
     >>> hyper = nh.HyperParams(**{
     >>>     # ================
     >>>     # Environment Components
-    >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/demo'),
+    >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/tests/demo'),
     >>>     'nice'        : 'demo',
     >>>     'xpu'         : nh.XPU.cast('auto'),
     >>>     # workdir is a directory where intermediate results can be saved
@@ -55,6 +55,7 @@ Example:
     >>>     # Data Components
     >>>     'datasets'    : {  # dict of plain ol torch.data.Dataset instances
     >>>         'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
+    >>>         'vali': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
     >>>         'test': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
     >>>     },
     >>>     'loaders'     : {'batch_size': 64}, # DataLoader instances or kw
@@ -82,51 +83,63 @@ Example:
     >>>     # training loop. These parameters effect the learned model.
     >>>     'dynamics'   : {'batch_step': 4},
     >>> })
-    >>> harn = FitHarn(hyper)
+    >>> harn = nh.FitHarn(hyper)
     >>> # non-algorithmic behavior configs (do not change learned models)
-    >>> harn.config['prog_backend'] = 'tqdm' if not ub.argflag('--progiter') else 'progiter' # I prefer progiter (I may be biased)
+    >>> harn.config['prog_backend'] = 'tqdm'
+    >>> if not ub.argflag('--progiter'):  # I prefer progiter (I may be biased)
+    ...     harn.config['prog_backend'] = 'progiter'
     >>> # start training.
     >>> harn.initialize(reset='delete')
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
     >>> # xdoc: +IGNORE_WANT
     RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR
-    Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/olqtvpde -> /home/joncrall/.cache/netharn/demo/fit/nice/demo
+    Symlink: ...tests/demo/fit/runs/demo/keyeewlr -> ...tests/demo/fit/nice/demo
     .... already exists
     .... and points to the right place
     Initializing tensorboard (dont forget to start the tensorboard server)
     Model has 824 parameters
-    Mounting ToyNet2d model on GPU(0)
-    Initializing new model
-     * harn.train_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/olqtvpde'
-     * harn.nice_dpath  = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
-    Snapshots will save to harn.snapshot_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/olqtvpde/torch_snapshots'
+    Mounting ToyNet2d model on CPU
+    Initializing model weights
+     * harn.train_dpath = '...tests/demo/fit/runs/demo/keyeewlr'
+     * harn.nice_dpath  = '...tests/demo/fit/nice/demo'
+    Snapshots will save to harn.snapshot_dpath = '...tests/demo/fit/runs/demo/keyeewlr/torch_snapshots'
     dont forget to start:
-        tensorboard --logdir /home/joncrall/.cache/netharn/demo/fit/nice
+        tensorboard --logdir ...tests/demo/fit/nice
     === begin training ===
-    epoch lr:0.001 │ vloss is unevaluated: 100%|███████████████████████| 10/10 [00:00<00:00, 15.11it/s, wall=Jul:07 EST]10 [00:00<?, ?it/s]
-    train x64 │ loss:0.186 │: 100%|████████████████████████████████████████████████████████| 8/8 [00:00<00:00, 276.93it/s, wall=Jul:07 EST]
-    test x64 │ loss:0.159 │: 100%|█████████████████████████████████████████████████████████| 4/4 [00:00<00:00, 482.91it/s, wall=Jul:07 EST]
-
-
+    epoch lr:0.001 │ vloss: 0.1409 (n_bad_epochs= 0, best=0.1409): 100%|█| 10/10 [00:01<00:00,  9.95it/s]  0:00<?, ?it/s]
+    train x64 │ loss:0.147 │: 100%|███████████████████████████████████████████████████████| 8/8 [00:00<00:00, 130.56it/s]
+    vali x64 │ loss:0.140 │: 100%|████████████████████████████████████████████████████████| 4/4 [00:00<00:00, 342.04it/s]
+    test x64 │ loss:0.140 │: 100%|████████████████████████████████████████████████████████| 4/4 [00:00<00:00, 342.92it/s]
+    <BLANKLINE>
+    Maximum harn.epoch reached, terminating ...
+    <BLANKLINE>
+    training completed
+    current lrs: [0.001]
+    harn.train_dpath = '...tests/demo/fit/runs/demo/keyeewlr'
+    harn.nice_dpath  = '...tests/demo/fit/nice/demo'
+    view tensorboard results for this run via:
+        tensorboard --logdir ...tests/demo/fit/nice
+    exiting fit harness.
 """
 import glob
 import itertools as it
 import logging
-import numpy as np
 import os
 import parse
 import shutil
 import time
-import torch
-import ubelt as ub
 import sys
-from os.path import join
 import warnings
 import functools
+from os.path import join
 
-from netharn import device  # NOQA
+import torch
+import numpy as np
+import ubelt as ub
+
 from netharn import folders
 from netharn import hyperparams
+from netharn.exceptions import StopTraining, CannotResume, TrainingDiverged
 
 from netharn import util
 from netharn.util import profiler
@@ -141,26 +154,7 @@ except ImportError:
 __all__ = ['FitHarn']
 
 
-MIXINS = []
-
-
-PROFILE = ub.argflag('--profile')
-
-
-# class StopTraining(StopIteration):
-class StopTraining(Exception):
-    """
-    Signals that training should terminate
-    """
-    pass
-
-
-class CannotResume(Exception):
-    pass
-
-
-class TrainingDiverged(Exception):
-    pass
+MIXINS = []  # FitHarn will have the methods of every registered mixin class
 
 
 def register_mixin(cls):
@@ -395,7 +389,7 @@ class InitializeMixin:
         """
         Use the initializer to set the weights for the model
         """
-        harn.log('Initializing model weights')
+        harn.log('Initializing model weights with: {}'.format(harn.initializer))
         if harn.initializer:
             if harn.initializer.__class__.__name__ == 'LSUV':
                 harn.debug('calling hacked LSUV initializer')
@@ -862,10 +856,15 @@ class CoreMixin:
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
             harn.log('dont forget to start:\n'
-                     '    tensorboard --logdir ' + train_base)
+                     '    tensorboard --logdir ' + ub.compressuser(train_base))
 
-        harn.log(ub.color_text('=== begin training {!r} / {!r} ==='.format(
-            harn.epoch, harn.monitor.max_epoch), 'white'))
+        action = 'resume' if harn.epoch > 0 else 'begin'
+        if harn.config['prog_backend'] == 'progiter':
+            harn.log(ub.color_text('=== {} training {!r} / {!r} ==='.format(
+                action, harn.epoch, harn.monitor.max_epoch), 'white'))
+        else:
+            harn.log(ub.color_text('=== {} training ==='.format(
+                action, harn.epoch, harn.monitor.max_epoch), 'white'))
 
         if harn._check_termination():
             return
@@ -939,7 +938,7 @@ class CoreMixin:
             harn.log('harn.train_dpath = {!r}'.format(harn.train_dpath))
             harn.log('harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
             harn.log('view tensorboard results for this run via:\n'
-                     '    tensorboard --logdir ' + train_base)
+                     '    tensorboard --logdir ' + ub.compressuser(train_base))
 
         harn.on_complete()
         harn.log('exiting fit harness.')
@@ -961,7 +960,7 @@ class CoreMixin:
             harn._run_epoch(train_loader, tag='train', learn=True)
 
         # run validation epoch
-        improved = False
+        improved = None
         if vali_loader and harn.check_interval('vali', harn.epoch):
             vali_metrics = harn._run_epoch(vali_loader, tag='vali',
                                            learn=False)
@@ -996,11 +995,11 @@ class CoreMixin:
             # change learning rate (modified optimizer inplace)
             harn._step_scheduler_epoch(improved)
 
+            if harn.config['prog_backend'] == 'progiter':
+                harn.info(ub.color_text('=== finish epoch {!r} / {!r} ==='.format(harn.epoch, harn.monitor.max_epoch), 'white'))
+
             harn._update_main_prog_desc()
             harn.main_prog.update(1)
-
-        if harn.config['prog_backend'] == 'progiter':
-            harn.info(ub.color_text('=== finish epoch {!r} / {!r} ==='.format(harn.epoch, harn.monitor.max_epoch), 'white'))
 
     @profiler.profile
     def _run_epoch(harn, loader, tag, learn=False):
@@ -1114,7 +1113,7 @@ class CoreMixin:
         """
         batch with weight updates
         """
-        if PROFILE:
+        if profiler.IS_PROFILING:
             torch.cuda.synchronize()
 
         try:
@@ -1123,14 +1122,14 @@ class CoreMixin:
             harn.error('May need to override `run_batch` with a custom func')
             raise
 
-        if PROFILE:
+        if profiler.IS_PROFILING:
             torch.cuda.synchronize()
 
         # backprop and learn
         if learn:
             loss.backward()
 
-            if PROFILE:
+            if profiler.IS_PROFILING:
                 torch.cuda.synchronize()
 
             # approximates a batch size of (bsize * bstep) if step > 1,
@@ -1154,7 +1153,7 @@ class CoreMixin:
                 harn.optimizer.step()
                 harn.optimizer.zero_grad()
 
-        if PROFILE:
+        if profiler.IS_PROFILING:
             torch.cuda.synchronize()
 
         return outputs, loss
@@ -1507,7 +1506,18 @@ class FitHarn(*MIXINS):
         n = harn.intervals[tag]
         if n is None:
             return False
-        return (idx + 1) % n == 0
+        elif isinstance(n, int):
+            # Intervals can be numbers corresponding to strides
+            return (idx + 1) % n == 0
+        elif isinstance(n, slice):
+            # Intervals can be slices
+            if n.stop is not None and idx >= n.stop:
+                return False
+            start = 0 if n.start is None else n.start
+            if idx < start:
+                return False
+            step = 1 if n.step is None else n.step
+            return (idx + start + 1) % step == 0
 
 
 if __name__ == '__main__':

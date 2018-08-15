@@ -1,7 +1,7 @@
 |Travis| |Codecov| |Appveyor| |Pypi|
 
 
-Netharn
+NetHarn - a PyTorch Network Harness
 -------
 
 NAME:
@@ -26,7 +26,7 @@ BUILTINS:
    - data provenance of training history in ``train_info.json``
    - tensorboard metric visualization (optional)
 DESIGN PHILOSOPHY: 
-   Built-it yourself but don't repeat yourself.
+   Avoid boilerplate, built-it yourself when you need to, and don't repeat yourself.
 SLOGAN: 
     Rein and train.
 USAGE PATTERNS:

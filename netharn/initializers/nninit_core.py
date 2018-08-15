@@ -42,7 +42,12 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
         from netharn import XPU
         xpu = XPU.from_data(model)
         # model_state_dict = xpu.load(self.fpath)
-        model_state_dict = xpu.load(util.zopen(self.fpath, 'rb', seekable=True))
+        try:
+            model_state_dict = xpu.load(util.zopen(self.fpath, 'rb', seekable=True))
+        except Exception:
+            print('Failed to open self.fpath = {!r}'.format(self.fpath))
+            raise
+
         if 'model_state_dict' in model_state_dict:
             model_state_dict = model_state_dict['model_state_dict']
         elif 'weights' in model_state_dict:

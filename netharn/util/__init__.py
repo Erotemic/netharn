@@ -3,6 +3,16 @@ mkinit netharn.util
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+
+####
+# Hacks for backwards compatibility
+if True:
+    from netharn.util import util_misc as misc
+    from netharn.util.util_idstr import make_idstr
+    misc.make_idstr = make_idstr
+
+#####
+
 __DYNAMIC__ = False
 if __DYNAMIC__:
     import mkinit

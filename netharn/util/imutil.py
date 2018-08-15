@@ -7,10 +7,12 @@ import warnings
 import numpy as np
 import cv2
 import six
-try:
-    import skimage.io
-except ImportError:
-    pass
+# try:
+#     # Don't import skimage.io immediately because it imports pyplot
+#     # See GH Issue https://github.com/scikit-image/scikit-image/issues/3347
+#     import skimage.io
+# except ImportError:
+#     pass
 
 
 CV2_INTERPOLATION_TYPES = {
@@ -730,6 +732,7 @@ def imread(fpath, **kw):
     """
     try:
         if fpath.endswith(('.tif', '.tiff')):
+            import skimage.io
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 # skimage reads in RGB, convert to BGR
@@ -758,6 +761,7 @@ def imwrite(fpath, image, **kw):
     writes image data in BGR format
     """
     if fpath.endswith(('.tif', '.tiff')):
+        import skimage.io
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             # skimage writes in RGB, convert from BGR
