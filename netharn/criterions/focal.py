@@ -7,6 +7,9 @@ from torch import autograd
 from packaging import version
 
 
+_HAS_REDUCTION = version.parse(torch.__version__) >= version.parse('0.4.1')
+
+
 def one_hot_embedding(labels, num_classes):
     """
     Embedding labels to one-hot form.
@@ -185,7 +188,8 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
 
     def __init__(self, focus=2, weight=None, size_average=None, reduce=None,
                  reduction='elementwise_mean', ignore_index=-100):
-        if version.parse(torch.__version__) >= version.parse('0.4.1'):
+
+        if _HAS_REDUCTION:
             super(FocalLoss, self).__init__(weight=weight, reduce=reduce,
                                             size_average=size_average,
                                             reduction=reduction)
@@ -274,12 +278,11 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             (tensor) loss
         """
         output = self.focal_loss(input, target)
-        reduction = getattr(self, 'reduction', None)
-        if reduction:
-            if reduction == 'elementwise_mean':
+        if _HAS_REDUCTION:
+            if self.reduction == 'elementwise_mean':
                 output = output.sum()
                 output = output / input.shape[0]
-            elif reduction == 'sum':
+            elif self.reduction == 'sum':
                 output = output.sum()
         else:
             if self.reduce:

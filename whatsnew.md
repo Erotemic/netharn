@@ -1,4 +1,4 @@
-Version 0.0.18
+Version 0.0.19
 ==============
 Fixed torch 0.4.1 deprication warnings in focal loss
 

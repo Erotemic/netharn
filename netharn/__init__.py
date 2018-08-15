@@ -1,5 +1,5 @@
 # flake8: noqa
-__version__ = '0.0.17'
+__version__ = '0.0.19'
 """
 mkinit netharn
 """
