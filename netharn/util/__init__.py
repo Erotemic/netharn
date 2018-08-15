@@ -90,7 +90,7 @@ else:
     from netharn.util.util_numpy import (atleast_nd, isect_flags,
                                          iter_reduce_ufunc,)
     from netharn.util.util_random import (ensure_rng, random_combinations,
-                                          random_product, shuffle,)
+                                          random_product, seed_global, shuffle,)
     from netharn.util.util_resources import (ensure_ulimit,)
     from netharn.util.util_slider import (SlidingIndexDataset, SlidingSlices,
                                           SlidingWindow, Stitcher,)
@@ -136,13 +136,13 @@ else:
                'read_json', 'read_tensorboard_scalars', 'render_figure_to_image',
                'reverse_colormap', 'roundrobin', 'run_length_encoding',
                'save_parts', 'savefig2', 'scores_to_cmap', 'scores_to_color',
-               'set_figtitle', 'set_mpl_backend', 'shortest_unique_prefixes',
-               'shortest_unique_suffixes', 'show_if_requested', 'shuffle',
-               'split_archive', 'stack_images', 'stats_dict', 'trainable_layers',
-               'util_averages', 'util_boxes', 'util_cachestamp', 'util_cv2',
-               'util_demodata', 'util_fname', 'util_groups', 'util_idstr',
-               'util_io', 'util_iter', 'util_json', 'util_misc', 'util_numpy',
-               'util_random', 'util_resources', 'util_slider', 'util_subextreme',
-               'util_tensorboard', 'util_torch', 'util_zip', 'walk_json',
-               'wide_strides_1d', 'write_arr', 'write_h5arr', 'write_json',
-               'zopen']
+               'seed_global', 'set_figtitle', 'set_mpl_backend',
+               'shortest_unique_prefixes', 'shortest_unique_suffixes',
+               'show_if_requested', 'shuffle', 'split_archive', 'stack_images',
+               'stats_dict', 'trainable_layers', 'util_averages', 'util_boxes',
+               'util_cachestamp', 'util_cv2', 'util_demodata', 'util_fname',
+               'util_groups', 'util_idstr', 'util_io', 'util_iter', 'util_json',
+               'util_misc', 'util_numpy', 'util_random', 'util_resources',
+               'util_slider', 'util_subextreme', 'util_tensorboard', 'util_torch',
+               'util_zip', 'walk_json', 'wide_strides_1d', 'write_arr',
+               'write_h5arr', 'write_json', 'zopen']

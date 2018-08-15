@@ -1,3 +1,14 @@
+Version 0.0.16
+==============
+Added `nh.util.global_seed`
+Fixed MNIST example
+Small improvements to outputs
+Better test images
+Better YOLO example
+Various minor bugfixes
+Other stuff I forgot to log, I'm doing this mostly in my spare time!
+
+
 Version 0.0.15
 ==============
 Added SlidingWindow as simplified alternative to SlidingSlices

@@ -2,8 +2,23 @@ import numpy as np
 import random
 import itertools as it
 import ubelt as ub  # NOQA
+import torch
 
 _SEED_MAX = (2 ** 32 - 1)
+
+
+def seed_global(seed, offset=0):
+    """
+    Seeds the python, numpy, and torch global random states
+
+    Args:
+        seed (int): seed to use
+        offset (int, optional): if specified, uses a different seed for each
+            global random state separated by this offset.
+    """
+    random.seed((seed) % _SEED_MAX)
+    np.random.seed((seed + offset) % _SEED_MAX)
+    torch.random.manual_seed((seed + 2 * offset) % _SEED_MAX)
 
 
 def shuffle(items, rng=None):
