@@ -862,6 +862,9 @@ class CoreMixin:
             harn.log('dont forget to start:\n'
                      '    tensorboard --logdir ' + ub.compressuser(train_base))
 
+        if harn._check_termination():
+            return
+
         action = 'resume' if harn.epoch > 0 else 'begin'
         if harn.config['prog_backend'] == 'progiter':
             harn.log(ub.color_text('=== {} training {!r} / {!r} : {} ==='.format(
@@ -870,9 +873,6 @@ class CoreMixin:
         else:
             harn.log(ub.color_text('=== {} training : {} ==='.format(
                 action, harn.hyper.nice), 'white'))
-
-        if harn._check_termination():
-            return
 
         # print('harn.monitor.max_epoch = {!r}'.format(harn.monitor.max_epoch))
         harn.main_prog = harn._make_prog(desc='epoch',
@@ -1338,7 +1338,7 @@ class CoreCallback:
 
     def before_epochs(harn):
         """
-        custom callback run only once before all (train/vali/test) datasets.
+        custom callback run only once before all (train/vali/test) epochs.
         """
         pass
 

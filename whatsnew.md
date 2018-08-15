@@ -1,3 +1,8 @@
+Version 0.0.18
+==============
+Fixed torch 0.4.1 deprication warnings in focal loss
+
+
 Version 0.0.17
 ==============
 Fixed tests
