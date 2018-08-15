@@ -106,7 +106,7 @@ Example:
     dont forget to start:
         tensorboard --logdir ...tests/demo/fit/nice
     === begin training ===
-    epoch lr:0.001 │ vloss: 0.1409 (n_bad_epochs= 0, best=0.1409): 100%|█| 10/10 [00:01<00:00,  9.95it/s]  0:00<?, ?it/s]
+    epoch lr:0.001 │ vloss: 0.1409 (n_bad_epochs=00, best=0.1409): 100%|█| 10/10 [00:01<00:00,  9.95it/s]  0:00<?, ?it/s]
     train x64 │ loss:0.147 │: 100%|███████████████████████████████████████████████████████| 8/8 [00:00<00:00, 130.56it/s]
     vali x64 │ loss:0.140 │: 100%|████████████████████████████████████████████████████████| 4/4 [00:00<00:00, 342.04it/s]
     test x64 │ loss:0.140 │: 100%|████████████████████████████████████████████████████████| 4/4 [00:00<00:00, 342.92it/s]
@@ -155,6 +155,11 @@ __all__ = ['FitHarn']
 
 
 MIXINS = []  # FitHarn will have the methods of every registered mixin class
+
+
+# Debugging flag to run your harness in "dummy mode" which only runs 10 epochs
+# with two batches each.
+DUMMY = ub.argflag('--dummy')
 
 
 def register_mixin(cls):
@@ -763,7 +768,6 @@ class ScheduleMixin:
             harn.error('[ERROR] optim_lrs = {!r}'.format(optim_lrs))
             harn.error('[ERROR] lrs = {!r}'.format(lrs))
             harn.error('[ERROR] epoch = {!r}'.format(harn.epoch))
-            import warnings
             warnings.warn(
                 'optimizer and scheduler are out of sync')
             # raise AssertionError(
@@ -860,11 +864,12 @@ class CoreMixin:
 
         action = 'resume' if harn.epoch > 0 else 'begin'
         if harn.config['prog_backend'] == 'progiter':
-            harn.log(ub.color_text('=== {} training {!r} / {!r} ==='.format(
-                action, harn.epoch, harn.monitor.max_epoch), 'white'))
+            harn.log(ub.color_text('=== {} training {!r} / {!r} : {} ==='.format(
+                action, harn.epoch, harn.monitor.max_epoch,
+                harn.hyper.nice), 'white'))
         else:
-            harn.log(ub.color_text('=== {} training ==='.format(
-                action, harn.epoch, harn.monitor.max_epoch), 'white'))
+            harn.log(ub.color_text('=== {} training : {} ==='.format(
+                action, harn.hyper.nice), 'white'))
 
         if harn._check_termination():
             return
@@ -909,7 +914,7 @@ class CoreMixin:
         #         harn.scheduler.step()
 
         try:
-            if ub.argflag('--dummy'):
+            if DUMMY:
                 for harn.epoch in it.count(harn.epoch):
                     harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
                     if harn.epoch > 10:
@@ -952,6 +957,9 @@ class CoreMixin:
 
         current_lr = max(harn._current_lrs())
         harn.log_value('epoch lr', current_lr, harn.epoch)
+
+        harn.current_tag = None
+        harn.before_epoch()
 
         # Clear any existing gradients before training
         if train_loader:
@@ -996,7 +1004,10 @@ class CoreMixin:
             harn._step_scheduler_epoch(improved)
 
             if harn.config['prog_backend'] == 'progiter':
-                harn.info(ub.color_text('=== finish epoch {!r} / {!r} ==='.format(harn.epoch, harn.monitor.max_epoch), 'white'))
+                harn.info(ub.color_text(
+                    '=== finish epoch {!r} / {!r} : {} ==='.format(
+                        harn.epoch, harn.monitor.max_epoch, harn.hyper.nice),
+                    'white'))
 
             harn._update_main_prog_desc()
             harn.main_prog.update(1)
@@ -1040,8 +1051,6 @@ class CoreMixin:
             batch_iter = iter(loader)
             harn.debug('Starting batch iteration for tag={}, epoch={}'.format(
                 tag, harn.epoch))
-
-            DUMMY = ub.argflag('--dummy')
 
             for bx in range(len(loader)):
                 if DUMMY and bx > 2:
@@ -1308,6 +1317,8 @@ class CoreCallback:
     def on_epoch(harn):
         """custom callback typically used to compute epoch evaluation measures.
 
+        Called once per train / vali / test datasets.
+
         If a dict is returned its items are added to epoch measures
 
         Overload Encouraged
@@ -1322,6 +1333,12 @@ class CoreCallback:
         custom callback typically used to evaluate or deploy the final model.
 
         Overload Encouraged
+        """
+        pass
+
+    def before_epochs(harn):
+        """
+        custom callback run only once before all (train/vali/test) datasets.
         """
         pass
 

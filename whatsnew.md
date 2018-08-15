@@ -1,3 +1,10 @@
+Version 0.0.17
+==============
+Fixed tests
+Added before_epochs callback
+
+
+
 Version 0.0.16
 ==============
 Added `nh.util.global_seed`

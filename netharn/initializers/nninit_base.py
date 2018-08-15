@@ -64,12 +64,12 @@ def apply_initializer(input, func, funckw):
         >>> model = DummyNet()
         >>> func = nn.init.constant_
         >>> apply_initializer(model, func, {'val': 42})
-        >>> assert np.all(model.conv.weight == 42)
-        >>> assert np.all(model.conv.bias == 0), 'bias is always init to zero'
-        >>> assert np.all(model.norm.bias == 0), 'bias is always init to zero'
-        >>> assert np.all(model.norm.weight == 1)
-        >>> assert np.all(model.norm.running_mean == 0.0)
-        >>> assert np.all(model.norm.running_var == 1.0)
+        >>> assert np.all(model.conv.weight.detach().numpy() == 42)
+        >>> assert np.all(model.conv.bias.detach().numpy() == 0), 'bias is always init to zero'
+        >>> assert np.all(model.norm.bias.detach().numpy() == 0), 'bias is always init to zero'
+        >>> assert np.all(model.norm.weight.detach().numpy() == 1)
+        >>> assert np.all(model.norm.running_mean.detach().numpy() == 0.0)
+        >>> assert np.all(model.norm.running_var.detach().numpy() == 1.0)
     """
     if getattr(input, 'bias', None) is not None:
         # zero all biases

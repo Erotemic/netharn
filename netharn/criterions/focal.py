@@ -164,6 +164,7 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
     def __init__(self, focus=2, weight=None, size_average=True,
                  reduce=True, ignore_index=-100):
         super(FocalLoss, self).__init__(weight, size_average)
+        self.size_average = size_average  # fix for travis
         self.focus = focus
         self.reduce = reduce
         self.ignore_index = ignore_index
