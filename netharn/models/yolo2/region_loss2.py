@@ -86,6 +86,7 @@ class RegionLoss(BaseLossWithCudaState):
             as opposed to having them removed and counting them as false detections.
 
         Example:
+            >>> # DISABLE_DOCTEST
             >>> from netharn.models.yolo2.region_loss2 import *
             >>> from netharn.models.yolo2.light_yolo import Yolo
             >>> torch.random.manual_seed(0)
@@ -111,7 +112,7 @@ class RegionLoss(BaseLossWithCudaState):
             >>> im_data = torch.randn(len(target), 3, Hin, Win, requires_grad=True)
             >>> output = network.forward(im_data)
             >>> loss = float(self(output, target))
-            >>> print('loss = {loss:.2f}'.format(loss))
+            >>> print('loss = {loss:.2f}'.format(loss=loss))
             loss = 20.43
         """
         if isinstance(target, dict):
