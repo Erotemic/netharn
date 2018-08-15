@@ -959,7 +959,7 @@ class CoreMixin:
         harn.log_value('epoch lr', current_lr, harn.epoch)
 
         harn.current_tag = None
-        harn.before_epoch()
+        harn.before_epochs()
 
         # Clear any existing gradients before training
         if train_loader:
