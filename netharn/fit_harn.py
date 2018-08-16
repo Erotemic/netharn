@@ -1009,6 +1009,8 @@ class CoreMixin:
             if harn.check_interval('cleanup', harn.epoch):
                 harn.cleanup_snapshots()
 
+        harn.after_epochs()
+
         # check for termination
         if harn._check_termination():
             raise StopTraining()
@@ -1351,6 +1353,12 @@ class CoreCallback:
         pass
 
     def before_epochs(harn):
+        """
+        custom callback run only once before all (train/vali/test) epochs.
+        """
+        pass
+
+    def after_epochs(harn):
         """
         custom callback run only once before all (train/vali/test) epochs.
         """
