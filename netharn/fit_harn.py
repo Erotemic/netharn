@@ -249,9 +249,13 @@ class InitializeMixin:
 
         harn._setup_modules()
 
-        assert harn.model is not None, 'required module'
-        assert harn.optimizer is not None, 'required module'
-        assert harn.monitor is not None, 'required module'
+        assert harn.model is not None, 'model is a required module'
+
+        # TODO: we might simply default to SGD
+        assert harn.optimizer is not None, 'optimizer is a required module'
+
+        # TODO: we could probably default the monitor to something reasonable
+        assert harn.monitor is not None, 'monitor is a required module'
 
         try:
             if reset:
@@ -323,7 +327,7 @@ class InitializeMixin:
             _log.addHandler(stdout_handler)
 
             harn._log = _log
-            harn.debug('initialized file logger')
+            harn.debug('Initialized logging')
 
         if tensorboard_logger:
             # train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
@@ -332,7 +336,7 @@ class InitializeMixin:
             harn._tlog = tensorboard_logger.Logger(harn.train_dpath,
                                                      flush_secs=2)
         else:
-            harn.info('Tensorboard is not available')
+            harn.warning('Tensorboard is not available')
 
     def _setup_modules(harn):
         """
@@ -421,7 +425,6 @@ class InitializeMixin:
             harn.warn('initializer was not specified')
 
         for group in harn.optimizer.param_groups:
-            # print('group[lr] = {!r}'.format(group['lr']))
             group.setdefault('initial_lr', group['lr'])
 
     def resume_from_previous_snapshots(harn):
@@ -708,6 +711,19 @@ class SnapshotMixin:
         for fpath in ub.take(epoch_to_fpath, to_remove):
             ub.delete(fpath)
 
+    def backtrack_weights(harn, epoch):
+        """
+        Reset the weights to a previous good state
+        """
+        load_path = join(harn.snapshot_dpath, '_epoch_{:08d}.pt'.format(epoch))
+        snapshot = harn.xpu.load(load_path)
+
+        harn.info('\n\n\n\n')
+        harn.info('Backtracking to weights from previous state: {}'.format(load_path))
+        # only load the model state to simulate a big step back
+        harn.model.load_state_dict(snapshot['model_state_dict'])
+        harn.optimizer.zero_grad()
+
     def prev_snapshots(harn):
         ub.ensuredir(harn.snapshot_dpath)
         prev_states = sorted(glob.glob(join(harn.snapshot_dpath, '_epoch_*.pt')))
@@ -736,18 +752,67 @@ class SnapshotMixin:
         harn.debug('Snapshot saved to {}'.format(safe_fpath))
         return safe_fpath
 
-    def backtrack_weights(harn, epoch):
-        """
-        Reset the weights to a previous good state
-        """
-        load_path = join(harn.snapshot_dpath, '_epoch_{:08d}.pt'.format(epoch))
-        snapshot = harn.xpu.load(load_path)
 
-        print('\n\n\n\n')
-        harn.info('Backtracking to weights from previous state: {}'.format(load_path))
-        # only load the model state to simulate a big step back
-        harn.model.load_state_dict(snapshot['model_state_dict'])
-        harn.optimizer.zero_grad()
+@register_mixin
+class SnapshotCallbacks:
+    """
+    snapshot functions that may need to be extended for advanced usage
+    """
+
+    def get_snapshot_state(harn):
+        """
+        Returns a dictionary containing the base snapshot state.
+        This can be overrided for specific applications.
+
+        Returns:
+            dict: snapshot_state
+        """
+        snapshot_state = {
+            'epoch': harn.epoch,
+            'model_state_dict': harn.model.state_dict(),
+            'optimizer_state_dict': harn.optimizer.state_dict(),
+            'monitor_state_dict': harn.monitor.state_dict(),
+        }
+        return snapshot_state
+
+    def set_snapshot_state(harn, snapshot_state):
+        """
+        Sets harness state based on a previous snapshot.
+
+        This can be overrided for specific applications.  In this case,
+        it is the users responsibility to ensure that this handles all relevant
+        items returned by `harn.get_snapshot_state`.
+
+        Args:
+            snapshot_state (dict): information corresponding to
+        """
+        if 'epoch' in snapshot_state:
+            # the snapshot holds the previous epoch; add one to move to current
+            harn.epoch = snapshot_state['epoch'] + 1
+
+        if 'model_state_dict' in snapshot_state:
+            harn.model.load_state_dict(snapshot_state['model_state_dict'])
+            harn.debug('loaded model_state_dict')
+
+        if 'monitor_state_dict' in snapshot_state:
+            # hack: dont override patience, use whatever the current val is
+            patience = harn.monitor.patience
+            max_epoch = harn.monitor.max_epoch
+            harn.monitor.load_state_dict(snapshot_state['monitor_state_dict'])
+            harn.monitor.patience = patience
+            harn.monitor.max_epoch = max_epoch
+            harn.debug('loaded monitor_state_dict')
+
+        if 'optimizer_state_dict' in snapshot_state:
+            harn.optimizer.load_state_dict(snapshot_state['optimizer_state_dict'])
+            harn.debug('loaded optimizer_state_dict')
+
+        # Ensure scheduler is given current information
+        if harn.scheduler:
+            if getattr(harn.scheduler, '__batchaware__', False):
+                harn.scheduler.reset_epoch(epoch=harn.epoch)
+            else:
+                harn.scheduler.step(epoch=harn.epoch - 1)
 
 
 @register_mixin
@@ -888,7 +953,6 @@ class CoreMixin:
             harn.info(ub.color_text('=== {} training : {} ==='.format(
                 action, harn.hyper.nice), 'white'))
 
-        # print('harn.monitor.max_epoch = {!r}'.format(harn.monitor.max_epoch))
         harn.main_prog = harn._make_prog(desc='epoch',
                                          total=harn.monitor.max_epoch,
                                          disable=not harn.config['show_prog'],
@@ -931,7 +995,7 @@ class CoreMixin:
             if DUMMY:
                 for harn.epoch in it.count(harn.epoch):
                     harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
-                    if harn.epoch > 10:
+                    if harn.epoch > 5:
                         break
             else:
                 for harn.epoch in it.count(harn.epoch):
@@ -939,7 +1003,7 @@ class CoreMixin:
         except StopTraining:
             pass
         except Exception as ex:
-            print('\n\n\n')
+            harn.error('\n\n\n')
             harn.error('an {} error occurred in the train loop: {}'.format(
                 type(ex), repr(ex)))
             import traceback
@@ -1141,45 +1205,15 @@ class CoreMixin:
         if profiler.IS_PROFILING:
             torch.cuda.synchronize()
 
-        try:
-            outputs, loss = harn.run_batch(batch)
-        except Exception:
-            harn.error('May need to override `run_batch` with a custom func')
-            raise
+        # Run the forward pass to compute outputs and loss
+        outputs, loss = harn.run_batch(batch)
 
         if profiler.IS_PROFILING:
             torch.cuda.synchronize()
 
-        # backprop and learn
+        # Backpropogate to accumulate gradients and step the optimizer
         if learn:
-            loss.backward()
-
-            if profiler.IS_PROFILING:
-                torch.cuda.synchronize()
-
-            # approximates a batch size of (bsize * bstep) if step > 1,
-            bstep = harn.dynamics['batch_step']
-            if (bx + 1) % bstep == 0:
-                if harn.dynamics['grad_norm_max']:
-                    total_norm = torch.nn.utils.clip_grad_norm_(
-                        harn.model.parameters(),
-                        max_norm=harn.dynamics['grad_norm_max'],
-                        norm_type=float('inf'),
-                    )
-                    if total_norm > harn.dynamics['grad_norm_max'] * 100:
-                        harn.warn('WARNING grad norm is too high: total_norm = {!r}'.format(total_norm))
-                if False:
-                    # if harn._check_weights_and_recover():
-                    #     loss[:] = -1
-                    #     harn.optimizer.zero_grad()
-                    # else:
-                    harn._check_gradients(batch, loss)
-                # harn.debug("STEP")
-                harn.optimizer.step()
-                harn.optimizer.zero_grad()
-
-        if profiler.IS_PROFILING:
-            torch.cuda.synchronize()
+            harn.backpropogate(bx, batch, loss)
 
         return outputs, loss
 
@@ -1196,13 +1230,19 @@ class CoreMixin:
 
         return metrics_dict
 
+
+@register_mixin
+class ChecksMixin:
+    """
+    Helper functions to check if the optimization process is healthy
+    """
+
     def _check_gradients(harn, batch=None, loss=None):
         all_grads = ub.odict()
         for name, parameter in harn.model.named_parameters():
             if parameter.grad is not None:
                 grads = parameter.grad.data.cpu().numpy()
                 all_grads[name] = grads
-
         for key, value in all_grads.items():
             if np.any(~np.isfinite(value)):
                 raise TrainingDiverged(
@@ -1218,18 +1258,6 @@ class CoreMixin:
             if loss_value > harn.config['large_loss']:
                 # if the loss is getting large, check if the weights are ok
                 harn._check_divergence()
-
-    # def _check_weights_and_recover(harn):
-    #     modified = False
-    #     state = harn.model.module.state_dict()
-    #     for key, value in state.items():
-    #         stats = util.stats_dict(value.cpu().numpy())
-    #         print('stats = {!r}'.format(stats))
-    #         if stats['max'] > 2e6:
-    #             modified = True
-    #             harn.warn('HACKED RECOVER FROM DIVERGE CASE')
-    #             value.normal_()
-    #     return modified
 
     @profiler.profile
     def _check_divergence(harn):
@@ -1250,12 +1278,13 @@ class CoreMixin:
 
 
 @register_mixin
-class CoreCallback:
+class CoreCallbacks:
     """
     We encourage you to overwrite these methods
     """
 
     def _tovar(harn, data):
+        # DEPRICATE? I don't think this is needed anymore
         # handle cases when labels are unstructured
         if isinstance(data, list):
             # handle one level of nesting
@@ -1316,6 +1345,42 @@ class CoreCallback:
             raise
         return outputs, loss
 
+    @profiler.profile
+    def backpropogate(harn, bx, batch, loss):
+        """Custom callback which can overwrite the default backwards pass
+
+        Overload is generally not necessary for this function.
+
+        TODO:
+            perhaps remove dynamics as a netharn core component and simply
+            allow the end-application to take care of that detail.
+        """
+        loss.backward()
+
+        if profiler.IS_PROFILING:
+            torch.cuda.synchronize()
+
+        # approximates a batch size of (bsize * bstep) if step > 1,
+        bstep = harn.dynamics['batch_step']
+        if (bx + 1) % bstep == 0:
+            if harn.dynamics['grad_norm_max']:
+                total_norm = torch.nn.utils.clip_grad_norm_(
+                    harn.model.parameters(),
+                    max_norm=harn.dynamics['grad_norm_max'],
+                    norm_type=float('inf'),
+                )
+                if total_norm > harn.dynamics['grad_norm_max'] * 100:
+                    harn.warn('grad norm is too high: '
+                              'total_norm = {!r}'.format(total_norm))
+            # if False:
+            #     harn._check_gradients(batch, loss)
+            # harn.debug("STEP")
+            harn.optimizer.step()
+            harn.optimizer.zero_grad()
+
+        if profiler.IS_PROFILING:
+            torch.cuda.synchronize()
+
     def on_batch(harn, batch, outputs, loss):
         """custom callback typically used to compute batch evaluation measures
         or accumulate data.
@@ -1364,61 +1429,6 @@ class CoreCallback:
         """
         pass
 
-    def get_snapshot_state(harn):
-        """
-        Returns a dictionary containing the base snapshot state.
-        This can be overrided for specific applications.
-
-        Returns:
-            dict: snapshot_state
-        """
-        snapshot_state = {
-            'epoch': harn.epoch,
-            'model_state_dict': harn.model.state_dict(),
-            'optimizer_state_dict': harn.optimizer.state_dict(),
-            'monitor_state_dict': harn.monitor.state_dict(),
-        }
-        return snapshot_state
-
-    def set_snapshot_state(harn, snapshot_state):
-        """
-        Sets harness state based on a previous snapshot.
-
-        This can be overrided for specific applications.  In this case,
-        it is the users responsibility to ensure that this handles all relevant
-        items returned by `harn.get_snapshot_state`.
-
-        Args:
-            snapshot_state (dict): information corresponding to
-        """
-        if 'epoch' in snapshot_state:
-            # the snapshot holds the previous epoch; add one to move to current
-            harn.epoch = snapshot_state['epoch'] + 1
-
-        if 'model_state_dict' in snapshot_state:
-            harn.model.load_state_dict(snapshot_state['model_state_dict'])
-            harn.debug('loaded model_state_dict')
-
-        if 'monitor_state_dict' in snapshot_state:
-            # hack: dont override patience, use whatever the current val is
-            patience = harn.monitor.patience
-            max_epoch = harn.monitor.max_epoch
-            harn.monitor.load_state_dict(snapshot_state['monitor_state_dict'])
-            harn.monitor.patience = patience
-            harn.monitor.max_epoch = max_epoch
-            harn.debug('loaded monitor_state_dict')
-
-        if 'optimizer_state_dict' in snapshot_state:
-            harn.optimizer.load_state_dict(snapshot_state['optimizer_state_dict'])
-            harn.debug('loaded optimizer_state_dict')
-
-        # Ensure scheduler is given current information
-        if harn.scheduler:
-            if getattr(harn.scheduler, '__batchaware__', False):
-                harn.scheduler.reset_epoch(epoch=harn.epoch)
-            else:
-                harn.scheduler.step(epoch=harn.epoch - 1)
-
 
 # Define the exposed class as a union of mixin classes
 class FitHarn(*MIXINS):
@@ -1464,10 +1474,15 @@ class FitHarn(*MIXINS):
     def __init__(harn, hyper=None, train_dpath=None):
         if isinstance(hyper, dict):
             hyper = hyperparams.HyperParams(**hyper)
+
         harn.hyper = hyper
 
-        harn.main_prog = None
-        harn.epoch_prog = None
+        if DUMMY:
+            # Hack to prefix the nice name in DUMMY mode
+            if harn.hyper.nice is not None:
+                harn.hyper.nice = 'DUMMY_' + harn.hyper.nice
+            else:
+                raise AssertionError('should have a nice name in dummy mode')
 
         harn.datasets = None
         harn.loaders = None
@@ -1485,19 +1500,18 @@ class FitHarn(*MIXINS):
             'grad_norm_max': None,
         }
 
-        harn.paths = None
+        # Output directories
         harn.train_dpath = train_dpath
         harn.nice_dpath = None
 
-        harn._initialized = False
-        harn._log = None
-        harn._tlog = None
+        # Progress bars
+        harn.main_prog = None
+        harn.epoch_prog = None
 
-        # Track current epoch number
-        harn.epoch = 0
+        # Public internal state
+        harn.epoch = 0  # Track current epoch number
 
-        # Track current iteration within an epoch
-        harn.bxs = {
+        harn.bxs = {    # Track current iteration within an epoch
             'train': 0,  # training dataset
             'vali': 0,   # validation dataset
             'test': 0,   # test dataset
@@ -1537,6 +1551,11 @@ class FitHarn(*MIXINS):
             'keep_freq': 10,
         }
         harn.current_tag = None
+
+        # Private internal state
+        harn._initialized = False
+        harn._log = None
+        harn._tlog = None
 
     def check_interval(harn, tag, idx):
         """

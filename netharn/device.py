@@ -26,7 +26,21 @@ else:
     _TENSOR_TYPES = (torch.Tensor, torch.autograd.Variable)
 
 
-class DataSerial(torch.nn.Module):
+class MountedModel(torch.nn.Module):
+    """
+    Abstraction of DataParallel and DataSerial
+    """
+    pass
+
+
+class DataParallel(torch.nn.DataParallel, MountedModel):
+    """
+    Hack to redefine DataParallel such that it shares a base with DataSerial
+    """
+    pass
+
+
+class DataSerial(MountedModel):
     """
     Wraper to create consistent API with DataParallel
     """
@@ -63,12 +77,21 @@ class XPU(ub.NiceRepr):
         >>>     print(str(XPU([], check=False)))
     """
     def __init__(xpu, item=None, check=True):
-        xpu.main_device = None
-        xpu.devices = None
+        xpu._main_device_id = None
+        xpu._device_ids = None
         xpu.mode = None
-        xpu._device = None
 
-        if isinstance(item, six.string_types):
+        # For context manager
+        xpu._cuda_device = None
+
+        if isinstance(item, torch.device):
+            if item.type == 'cpu':
+                item = None
+            elif item.type == 'cuda':
+                item = item.index or 0
+            else:
+                raise KeyError(item.type)
+        elif isinstance(item, six.string_types):
             item = item.lower()
             item = item.replace('cpu', '')
             item = item.replace('gpu', '')
@@ -94,18 +117,31 @@ class XPU(ub.NiceRepr):
             xpu.mode = 'cpu'
         elif isinstance(item, int):
             xpu.mode = 'gpu'
-            xpu.main_device = item
+            xpu._main_device_id = item
         elif isinstance(item, (list, tuple)):
             xpu.mode = 'multi-gpu'
-            xpu.devices = list(item)
-            if not xpu.devices:
+            xpu._device_ids = list(item)
+            if not xpu._device_ids:
                 raise IndexError('empty device list')
-            xpu.main_device = xpu.devices[0]
+            xpu._main_device_id = xpu._device_ids[0]
         else:
             raise TypeError(xpu)
 
-        if xpu.main_device is not None:
-            xpu._device = torch.cuda.device(xpu.main_device)
+        if xpu._main_device_id is not None:
+            xpu._cuda_device = torch.cuda.device(xpu._main_device_id)
+
+    @property
+    def main_device(xpu):
+        """
+        Example:
+            >>> xpu = XPU(None)
+            >>> print(repr(xpu.main_device))
+            device(type='cpu')
+        """
+        if xpu.is_gpu():
+            return torch.device(type='cuda', index=xpu._main_device_id)
+        else:
+            return torch.device(type='cpu')
 
     @classmethod
     def exists(XPU, item):
@@ -128,35 +164,47 @@ class XPU(ub.NiceRepr):
             raise TypeError(type(item))
 
     @classmethod
-    def from_data(xpu, item, **kwargs):
+    def of(XPU, item, **kwargs):
         """
-        Creates an XPU to represent the processing device a Tensor or Variable
-        is on
+        Creates an XPU to represent the processing device(s) a Module, Tensor,
+        or Variable currently exists on.
 
         Example:
-            >>> xpu = XPU.from_data(torch.randn(3))
+            >>> xpu = XPU.of(torch.randn(3))
             >>> assert not xpu.is_gpu()
             >>> if torch.cuda.is_available():
-            >>>     xpu = XPU.from_data(torch.randn(3).cuda())
+            >>>     xpu = XPU.of(torch.randn(3).to('cuda'))
             >>>     assert xpu.is_gpu()
             >>>     for i in range(torch.cuda.device_count()):
-            >>>         xpu = XPU.from_data(torch.randn(3).cuda(i))
+            >>>         xpu = XPU.of(torch.randn(3).to(i))
             >>>         assert xpu.is_gpu()
-            >>>         assert xpu.main_device == i
+            >>>         assert xpu._main_device_id == i
         """
+        if hasattr(item, 'device'):
+            return XPU(item.device)
         if hasattr(item, 'is_cuda'):
             if item.is_cuda:
                 return XPU(item.get_device())
             else:
                 return XPU(None)
         elif hasattr(item, 'state_dict'):
-            state_dict = item.state_dict()
-            hist = ub.dict_hist(v.get_device() if v.is_cuda else None
-                                for v in state_dict.values())
-            device_num = ub.argsort(hist)[-1]
-            return XPU(device_num)
+            devices = [item.device for item in item.state_dict().values()]
+            _device_ids = set()
+            for device in devices:
+                if device.type == 'cuda':
+                    index = device.index or 0
+                    _device_ids.add(index)
+                else:
+                    _device_ids.add(None)
+            try:
+                _device_ids = sorted(_device_ids)
+            except TypeError:
+                raise Exception('cannot currently mix CPU and GPU')
+            return XPU(_device_ids)
         else:
             raise TypeError(type(item))
+
+    from_data = of
 
     @classmethod
     def cast(xpu, item, **kwargs):
@@ -171,7 +219,9 @@ class XPU(ub.NiceRepr):
         elif isinstance(item, XPU):
             return item
         elif isinstance(item, _TENSOR_TYPES):
-            return XPU.from_data(item)
+            return XPU.of(item)
+        elif isinstance(item, torch.nn.Module):
+            return XPU.of(item)
         elif isinstance(item, int):
             return XPU(item)
         elif isinstance(item, (list, tuple)):
@@ -249,8 +299,8 @@ class XPU(ub.NiceRepr):
             if gpu_num.lower() == 'none':
                 xpu = XPU(None)
             if isinstance(gpu_num, six.string_types) and ',' in gpu_num:
-                devices = list(map(int, gpu_num.split(',')))
-                xpu = XPU(devices)
+                _device_ids = list(map(int, gpu_num.split(',')))
+                xpu = XPU(_device_ids)
             else:
                 xpu = XPU(int(gpu_num))
         return xpu
@@ -259,40 +309,43 @@ class XPU(ub.NiceRepr):
         return xpu.__nice__()
 
     def __enter__(xpu):
-        if xpu._device:
-            xpu._device.__enter__()
+        if xpu._cuda_device:
+            xpu._cuda_device.__enter__()
         return xpu
 
     def __exit__(xpu, ex_type, ex_value, tb):
-        if xpu._device:
-            return xpu._device.__exit__(ex_type, ex_value, tb)
+        if xpu._cuda_device:
+            return xpu._cuda_device.__exit__(ex_type, ex_value, tb)
 
     def __nice__(xpu):
         if xpu.is_gpu():
-            if xpu.devices:
-                parts = [str(n) + '*' if n == xpu.main_device else str(n)
-                         for n in xpu.devices]
+            if xpu._device_ids:
+                parts = [str(n) + '*' if n == xpu._main_device_id else str(n)
+                         for n in xpu._device_ids]
                 return 'GPU({})'.format(','.join(parts))
             else:
-                return 'GPU({})'.format(xpu.main_device)
+                return 'GPU({})'.format(xpu._main_device_id)
         else:
             return 'CPU'
 
     def __int__(xpu):
-        return xpu.main_device
+        return xpu._main_device_id
 
     def number_of_devices(xpu):
         """ The number of underlying devices abstracted by this XPU """
-        return 1 if not xpu.devices else len(xpu.devices)
+        return 1 if not xpu._device_ids else len(xpu._device_ids)
 
     def is_gpu(xpu):
         """ True if running in single or parallel gpu mode """
-        return xpu.main_device is not None
+        return xpu._main_device_id is not None
         # return 'gpu' in xpu.mode
 
     def mount(xpu, model):
         """
-        Like move, but only for models. Mounts a model on the xpu.
+        Like move, but only for models. Creates an instance
+
+
+        Mounts a model on the xpu.
         (Note this may be multiple gpus).
 
         Unlike move this function does NOT work in place.
@@ -301,13 +354,14 @@ class XPU(ub.NiceRepr):
             >>> model = torch.nn.Conv2d(1, 1, 1)
             >>> xpu = XPU()
         """
-        if isinstance(model, (torch.nn.DataParallel, DataSerial)):
-            # raise ValueError('Model is already in parallel mode.')
+        if isinstance(model, (MountedModel, torch.nn.DataParallel)):
+            # Unwrap the core model
             model = model.module
+
         model = xpu.move(model)
-        if xpu.devices:
-            model = torch.nn.DataParallel(model, device_ids=xpu.devices,
-                                          output_device=xpu.main_device)
+        if xpu._device_ids:
+            model = DataParallel(model, device_ids=xpu._device_ids,
+                                 output_device=xpu._main_device_id)
         else:
             model = DataSerial(model)
         return model
@@ -330,9 +384,9 @@ class XPU(ub.NiceRepr):
             >>> assert isinstance(xpu.move(data), torch.FloatTensor)
         """
         if xpu.is_gpu():
-            return data.cuda(xpu.main_device, **kwargs)
+            return data.to(xpu._main_device_id, **kwargs)
         else:
-            return data.cpu()
+            return data.to('cpu')
 
     def variable(xpu, item, **kw):
         """
@@ -398,7 +452,7 @@ class XPU(ub.NiceRepr):
             >>>     assert torch.cuda.current_device() == 0
         """
         if xpu.is_gpu():
-            torch.cuda.set_device(xpu.main_device)
+            torch.cuda.set_device(xpu._main_device_id)
         else:
             torch.cuda.set_device(-1)
 
@@ -440,7 +494,7 @@ class XPU(ub.NiceRepr):
             torch.Storage : the storage
         """
         if xpu.is_gpu():
-            return storage.cuda(xpu.main_device)
+            return storage.cuda(xpu._main_device_id)
         else:
             return storage
 

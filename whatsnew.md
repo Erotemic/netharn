@@ -1,3 +1,10 @@
+Version 0.0.22
+==============
+Better support for torch.device with nh.XPU
+Minor reorganization of FitHarn, added more callbacks
+
+
+
 Version 0.0.21
 ==============
 Fixed issue with unseeded random states. Now defaults to the global np.random state.
