@@ -19,6 +19,7 @@ def seed_global(seed, offset=0):
     random.seed((seed) % _SEED_MAX)
     np.random.seed((seed + offset) % _SEED_MAX)
     torch.random.manual_seed((seed + 2 * offset) % _SEED_MAX)
+    torch.cuda.manual_seed_all((seed + 3 * offset) % _SEED_MAX)
 
 
 def shuffle(items, rng=None):

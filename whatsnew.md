@@ -1,3 +1,8 @@
+Version 0.0.23
+==============
+Fixed bug where seed_global did not set call `torch.cuda.manual_seed_all`
+
+
 Version 0.0.22
 ==============
 Better support for torch.device with nh.XPU
