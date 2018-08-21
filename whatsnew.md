@@ -1,3 +1,8 @@
+Version 0.0.24
+==============
+Fixed tests and raised better errors if tensorflow does not exist
+
+
 Version 0.0.23
 ==============
 Fixed bug where seed_global did not set call `torch.cuda.manual_seed_all`

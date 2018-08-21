@@ -154,7 +154,7 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
         https://discuss.pytorch.org/t/how-to-implement-focal-loss-in-pytorch/6469/11
 
     Example:
-        >>> self = FocalLoss(reduce=False)
+        >>> self = FocalLoss(reduction='none')
         >>> # input is of size N x C
         >>> N, C = 8, 5
         >>> data = autograd.Variable(torch.randn(N, C), requires_grad=True)
@@ -228,7 +228,8 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             >>> input = autograd.Variable(torch.randn(N, C), requires_grad=True)
             >>> # Check to be sure that when gamma=0, FL becomes CE
             >>> loss0 = FocalLoss(reduction='none', focus=0).focal_loss(input, target)
-            >>> loss1 = F.cross_entropy(input, target, reduction='none')
+            >>> #loss1 = F.cross_entropy(input, target, reduction='none')
+            >>> loss1 = F.cross_entropy(input, target, size_average=False, reduce=False)
             >>> loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, reduction='none')
             >>> assert np.all(np.abs((loss1 - loss0).data.numpy()) < 1e-6)
             >>> assert np.all(np.abs((loss2 - loss0).data.numpy()) < 1e-6)

@@ -21,11 +21,15 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
     Example:
         >>> from netharn.initializers.nninit_core import *
         >>> from netharn.models import toynet
-        >>> self = Orthogonal()
-        >>> model = toynet.ToyNet2d()
-        >>> self(model)
-        >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
-        >>> self(layer)
+        >>> from os.path import join
+        >>> model1 = toynet.ToyNet2d()
+        >>> dpath = ub.ensure_app_cache_dir('netharn', 'tests')
+        >>> fpath = join(dpath, 'toynet_weights.pt')
+        >>> torch.save(model1.state_dict(), fpath)
+        >>> model2 = toynet.ToyNet2d()
+        >>> self = Pretrained(fpath)
+        >>> self(model2)
+        >>> #model2.state_dict() == model1.state_dict()
     """
     def __init__(self, fpath, initializer=None, info=None):
         self.fpath = fpath
@@ -100,7 +104,11 @@ class Orthogonal(nninit_base._BaseInitializer):
         >>> from netharn.models import toynet
         >>> self = Orthogonal()
         >>> model = toynet.ToyNet2d()
-        >>> self(model)
+        >>> try:
+        >>>     self(model)
+        >>> except RuntimeError:
+        >>>     import pytest
+        >>>     pytest.skip('geqrf: Lapack probably not availble')
         >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
         >>> self(layer)
     """

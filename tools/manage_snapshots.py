@@ -1,4 +1,76 @@
 
+
+def _devcheck_remove_dead_runs(workdir):
+    """
+    TODO:
+         Look for directories in runs that have no / very few snapshots
+         and no eval metrics that have a very old modified time and
+         put them into a list as candidates for deletion
+
+    """
+    import ubelt as ub
+    workdir = ub.truepath('~/work/foobar')
+    from os.path import join, exists
+    import os
+    nice_dpath = join(workdir, 'fit', 'nice')
+
+    def get_file_info(fpath):
+        import os
+        from collections import OrderedDict
+        statbuf = os.stat(fpath)
+
+        from pwd import getpwuid
+        owner = getpwuid(os.stat(fpath).st_uid).pw_name
+
+        info = OrderedDict([
+            # ('filesize', get_file_nBytes_str(fpath)),
+            ('last_modified', statbuf.st_mtime),
+            ('last_accessed', statbuf.st_atime),
+            ('created', statbuf.st_ctime),
+            ('owner', owner)
+        ])
+        return info
+
+    bad_dpaths = []
+    iffy_dpaths = []
+
+    import datetime
+    now = datetime.datetime.now()
+    yesterday = now - datetime.timedelta(days=1)
+
+    for dname in os.listdir(nice_dpath):
+        dpath = join(nice_dpath, dname)
+
+        contents = [join(dpath, c) for c in os.listdir(dpath)]
+        timestamps = [get_file_info(c)['last_modified'] for c in contents]
+
+        snap_dpath = join(dpath, 'torch_snapshots')
+        if exists(snap_dpath):
+            snapshots = os.listdir(snap_dpath)
+            if len(snapshots) < 15:
+                unixtime = max(timestamps)
+                dt = datetime.datetime.fromtimestamp(unixtime)
+
+                if dt < yesterday:
+                    timefmt = '%Y/%m/%d %H:%M:%S'
+                    print('---')
+                    print(dt.strftime(timefmt))
+                    print('dt = {!r}'.format(dt))
+                    print('unixtime = {!r}'.format(unixtime))
+                    dpath
+                    print(len(snapshots))
+                    print('dpath = {!r}'.format(dpath))
+                    iffy_dpaths.append(dpath)
+
+        else:
+            bad_dpaths.append(dpath)
+
+    if False:
+        for p in iffy_dpaths:
+            print('DELETE p = {!r}'.format(p))
+            ub.delete(p)
+
+
 def _devcheck_manage_snapshots(workdir):
     """
     Sometimes netharn produces too many snapshots. The Monitor class attempts
