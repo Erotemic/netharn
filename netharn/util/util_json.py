@@ -41,7 +41,7 @@ class LossyJSONEncoder(json.JSONEncoder):
         >>>         return {self.__class__.__name__: self.__dict__}
         >>> self = MyClass()
         >>> text = json.dumps(self, cls=LossyJSONEncoder)
-        >>> print(text)
+        >>> print(ub.repr2(text, nl=0))
         {"MyClass": {"foo": "bar", "spam": 32, "eggs": [32]}}
     """
     def default(self, obj):
