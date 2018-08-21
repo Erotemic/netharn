@@ -1,3 +1,8 @@
+Version 0.0.25
+==============
+Fixed issue with per-instance FitHarn class loggers
+
+
 Version 0.0.24
 ==============
 Fixed tests and raised better errors if tensorflow does not exist

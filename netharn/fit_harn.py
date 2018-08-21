@@ -296,8 +296,8 @@ class InitializeMixin:
         use_py_logger = True
         if use_py_logger and harn._log is None:
 
-            _log = logging.getLogger(harn.__class__.__name__)
-            # _log.propagate = False
+            _log = logging.getLogger(harn.__class__.__name__ + ':' + str(id(harn)))
+            _log.propagate = False
             _log.setLevel(logging.DEBUG)
 
             f_formatter = logging.Formatter('%(asctime)s : %(levelname)s : %(message)s')
@@ -544,7 +544,10 @@ class LogMixin:
     def info(harn, msg):
         harn._ensure_prog_newline()
         if harn._log:
-            harn._log.info(msg)
+            try:
+                harn._log.info(msg)
+            except Exception:
+                pass
         else:
             print(msg)
 
