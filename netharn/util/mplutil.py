@@ -1643,14 +1643,23 @@ def set_mpl_backend(backend, verbose=None):
     current_backend = mpl.get_backend()
     if verbose:
         print('* current_backend = {!r}'.format(current_backend))
-    if backend != mpl.get_backend():
+    if backend != current_backend:
         # If we have already imported pyplot, then we need to use experimental
         # behavior. Otherwise, we can just set the backend.
         if 'matplotlib.pyplot' in sys.modules:
             from matplotlib import pyplot as plt
+            if verbose:
+                print('plt.switch_backend({!r})'.format(current_backend))
             plt.switch_backend(backend)
         else:
+            if verbose:
+                print('mpl.use({!r})'.format(current_backend))
             mpl.use(backend)
+    else:
+        if verbose:
+            print('not changing backends')
+    if verbose:
+        print('* new_backend = {!r}'.format(mpl.get_backend()))
 
 
 def autompl(verbose=0):
@@ -1661,6 +1670,9 @@ def autompl(verbose=0):
 
     References:
         https://stackoverflow.com/questions/637005/how-to-check-if-x-server-is-running
+
+    CommandLine:
+        python -c "import netharn as nh; nh.util.autompl(verbose=1)"
     """
     import os
     import sys
