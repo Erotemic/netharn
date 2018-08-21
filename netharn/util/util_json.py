@@ -41,8 +41,9 @@ class LossyJSONEncoder(json.JSONEncoder):
         >>>         return {self.__class__.__name__: self.__dict__}
         >>> self = MyClass()
         >>> text = json.dumps(self, cls=LossyJSONEncoder)
-        >>> print(ub.repr2(text, nl=0))
-        {"MyClass": {"foo": "bar", "spam": 32, "eggs": [32]}}
+        >>> reloaded = json.loads(text)
+        >>> expected = {'MyClass': {'foo': 'bar', 'spam': 32, 'eggs': [32]}}
+        >>> assert reloaded == expected
     """
     def default(self, obj):
         if hasattr(obj, '__json__'):
