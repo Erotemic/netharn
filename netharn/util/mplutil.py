@@ -1653,7 +1653,7 @@ def set_mpl_backend(backend, verbose=None):
             plt.switch_backend(backend)
         else:
             if verbose:
-                print('mpl.use({!r})'.format(current_backend))
+                print('mpl.use({!r})'.format(backend))
             mpl.use(backend)
     else:
         if verbose:
