@@ -1,6 +1,7 @@
 import ubelt as ub
 import torch
 from netharn.output_shape_for import OutputShapeFor
+import six
 from netharn import util
 
 import six
@@ -28,7 +29,7 @@ def rectify_nonlinearity(key=ub.NoParam, dim=2):
     if key is ub.NoParam:
         key = 'relu'
 
-    if isinstance(key, str):
+    if isinstance(key, six.string_types):
         if key == 'relu':
             key = {'type': 'relu'}
         elif key == 'leaky_relu':
@@ -79,7 +80,7 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
     if key is ub.NoParam:
         key = 'batch'
 
-    if isinstance(key, str):
+    if isinstance(key, six.string_types):
         if key == 'batch':
             key = {'type': 'batch'}
         elif key == 'group':

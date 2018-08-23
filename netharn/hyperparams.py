@@ -545,7 +545,7 @@ class HyperParams(object):
         """
         if hyper.augment is None:
             return None
-        elif isinstance(hyper.augment, str):
+        elif isinstance(hyper.augment, six.string_types):
             return hyper.augment
         # if isinstance(hyper.augment, (dict, list)):  # cant check for list because Seq inherits from it
         elif isinstance(hyper.augment, ub.odict):

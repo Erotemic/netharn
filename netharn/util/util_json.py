@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import json
+import six
 import numpy as np
 import ubelt as ub
 import pandas as pd
@@ -114,7 +115,7 @@ def read_json(fpath):
     """
     Write human readable json files
     """
-    if isinstance(fpath, str):
+    if isinstance(fpath, six.string_types):
         return json.load(open(fpath, 'r'))
     else:
         return json.load(fpath)
