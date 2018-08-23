@@ -121,6 +121,7 @@ Example:
         tensorboard --logdir ...tests/demo/fit/nice
     exiting fit harness.
 """
+from __future__ import absolute_import, division, print_function, unicode_literals
 import glob
 import itertools as it
 import logging
@@ -129,6 +130,7 @@ import parse
 import shutil
 import time
 import sys
+import six
 import warnings
 import functools
 from os.path import join
@@ -296,7 +298,7 @@ class InitializeMixin:
         use_py_logger = True
         if use_py_logger and harn._log is None:
 
-            _log = logging.getLogger(harn.__class__.__name__ + ':' + str(id(harn)))
+            _log = logging.getLogger(harn.__class__.__name__ + ':' + six.text_type(id(harn)))
             _log.propagate = False
             _log.setLevel(logging.DEBUG)
 
@@ -569,7 +571,7 @@ class LogMixin:
 
     def debug(harn, msg):
         if harn._log:
-            msg = strip_ansi(str(msg))
+            msg = strip_ansi(six.text_type(msg))
             # Encode to prevent errors on windows terminals
             # On windows there is a sometimes a UnicodeEncodeError: For more details see: https://wiki.python.org/moin/PrintFails
             if sys.platform.startswith('win32'):
@@ -1433,8 +1435,11 @@ class CoreCallbacks:
         pass
 
 
+
 # Define the exposed class as a union of mixin classes
-class FitHarn(*MIXINS):
+class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
+              SnapshotCallbacks, ScheduleMixin, CoreMixin, ChecksMixin,
+              CoreCallbacks):
     """
     Basic harness for training a pytorch model.
 

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import cv2
 import numpy as np  # NOQA
 
@@ -5,6 +7,11 @@ import numpy as np  # NOQA
 def draw_boxes_on_image(img, boxes, color='blue', thickness=1,
                         box_format=None):
     """
+    Draws boxes on an image.
+
+    Args:
+        img (ndarray): image to copy and draw on
+        boxes (nh.util.Boxes): boxes to draw
 
     Example:
         >>> from netharn import util

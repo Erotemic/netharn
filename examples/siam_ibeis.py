@@ -413,7 +413,7 @@ class SiamHarness(nh.FitHarn):
     """
 
     def __init__(harn, *args, **kw):
-        super().__init__(*args, **kw)
+        super(SiamHarness).__init__(*args, **kw)
         harn.batch_confusions = []
 
     def prepare_batch(harn, raw_batch):

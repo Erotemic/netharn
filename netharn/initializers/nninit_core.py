@@ -6,7 +6,7 @@ import ubelt as ub
 from os.path import dirname, exists, join, normpath
 from netharn import util
 import torch
-
+import six
 from netharn.initializers import nninit_base
 
 
@@ -33,7 +33,7 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
     """
     def __init__(self, fpath, initializer=None, info=None):
         self.fpath = fpath
-        if isinstance(initializer, str):
+        if isinstance(initializer, six.string_types):
             from netharn import initializers
             initializer = getattr(initializers, initializer)()
         self.initializer = initializer
@@ -46,6 +46,8 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
         from netharn import XPU
         xpu = XPU.from_data(model)
         # model_state_dict = xpu.load(self.fpath)
+        if self.fpath is None:
+            raise ValueError('Pretrained fpath is None!')
         try:
             model_state_dict = xpu.load(util.zopen(self.fpath, 'rb', seekable=True))
         except Exception:

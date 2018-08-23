@@ -308,7 +308,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
 class YoloHarn(nh.FitHarn):
     def __init__(harn, **kw):
-        super().__init__(**kw)
+        super(YoloHarn, self).__init__(**kw)
         # harn.batch_confusions = []
         # harn.aps = {}
 

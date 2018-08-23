@@ -1,3 +1,8 @@
+Version 0.0.26
+==============
+Tentative Python2.7 support
+
+
 Version 0.0.25
 ==============
 Fixed issue with per-instance FitHarn class loggers

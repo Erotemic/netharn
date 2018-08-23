@@ -92,7 +92,7 @@ class Images(ObjectList1D):
     """
     """
     def __init__(self, ids, dset):
-        super().__init__(ids, dset, 'images')
+        super(Images, self).__init__(ids, dset, 'images')
 
     @property
     def gids(self):
@@ -147,7 +147,7 @@ class Annots(ObjectList1D):
     """
     """
     def __init__(self, ids, dset):
-        super().__init__(ids, dset, 'annotations')
+        super(Annots, self).__init__(ids, dset, 'annotations')
 
     @property
     def aids(self):

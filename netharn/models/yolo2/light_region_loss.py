@@ -126,7 +126,7 @@ class RegionLoss(BaseLossWithCudaState):
                  thresh=0.6, seen_thresh=12800,
                  small_boxes=False,
                  mse_factor=0.5):
-        super().__init__()
+        super(RegionLoss, self).__init__()
 
         self.num_classes = num_classes
 

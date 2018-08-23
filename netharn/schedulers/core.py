@@ -2,7 +2,7 @@ import torch.optim.lr_scheduler
 from collections import defaultdict
 
 
-class CommonMixin:
+class CommonMixin(object):
 
     def __getstate__(self):
         return self.state_dict()
@@ -149,7 +149,7 @@ class YOLOScheduler(NetharnScheduler):
                  burn_in=0,
                  points=None,
                  interpolate=False):
-        super().__init__()
+        super(YOLOScheduler, self).__init__()
         self.burn_in = burn_in
 
         assert batch_size is not None
