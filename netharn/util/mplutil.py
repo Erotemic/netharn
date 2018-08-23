@@ -1700,9 +1700,19 @@ def autompl(verbose=0):
             backend = 'agg'
         else:
             if ub.modname_to_modpath('PyQt5'):
-                backend = 'Qt5Agg'
+                try:
+                    import PyQt5  # NOQA
+                except ImportError:
+                    backend = 'agg'
+                else:
+                    backend = 'Qt5Agg'
             elif ub.modname_to_modpath('PyQt4'):
-                backend = 'Qt4Agg'
+                try:
+                    import Qt4Agg  # NOQA
+                except ImportError:
+                    backend = 'agg'
+                else:
+                    backend = 'Qt4Agg'
             else:
                 backend = 'agg'
 

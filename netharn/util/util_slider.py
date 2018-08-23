@@ -304,7 +304,7 @@ class SlidingSlices(ub.NiceRepr):
 
         # NOTE: if we have overshot, then basis shape will not perfectly
         # align to the original image. This shape will be a bit bigger.
-        slider.basis_slices = [list(nh.util.wide_strides_1d(**kw))
+        slider.basis_slices = [tuple(nh.util.wide_strides_1d(**kw))
                                for kw in stide_kw]
         slider.basis_shape = [len(b) for b in slider.basis_slices]
         slider.n_total = np.prod(slider.basis_shape)
