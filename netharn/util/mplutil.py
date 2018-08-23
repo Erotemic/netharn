@@ -1,4 +1,5 @@
-from __future__ import absolute_import, division, print_function
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import cv2
 import itertools as it
 import pandas as pd
@@ -2497,6 +2498,7 @@ class PlotNums(object):
                 nRows = int(np.ceil(nSubplots / nCols))
         return nRows, nCols
 
+    @staticmethod
     def _get_square_row_cols(nSubplots, max_cols=None, fix=False, inclusive=True):
         r"""
         Args:

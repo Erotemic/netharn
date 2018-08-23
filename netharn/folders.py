@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 # from os.path import join, normpath, dirname
 from os.path import dirname, join, normpath
 import ubelt as ub

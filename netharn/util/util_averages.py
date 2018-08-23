@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import collections
 import pandas as pd
 import ubelt as ub
@@ -165,7 +167,7 @@ class CumMovingAve(MovingAve):
             raise KeyError(self.nan_method)
 
     def average(self):
-        return {k: v / self.weights[k] for k, v in self.totals.items()}
+        return {k: v / float(self.weights[k]) for k, v in self.totals.items()}
 
     def update(self, other):
         for k, v in other.items():
@@ -209,7 +211,7 @@ class WindowedMovingAve(MovingAve):
         self.history = {}
 
     def average(self):
-        return {k: v / len(self.history[k]) for k, v in self.totals.items()}
+        return {k: v / float(len(self.history[k])) for k, v in self.totals.items()}
 
     def update(self, other):
         for k, v in other.items():

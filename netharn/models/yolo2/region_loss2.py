@@ -48,7 +48,7 @@ class RegionLoss(BaseLossWithCudaState):
     """
 
     def __init__(self, num_classes, anchors, reduction=32, seen=0, coord_scale=1.0, noobject_scale=1.0, object_scale=5.0, class_scale=1.0, thresh=0.6):
-        super().__init__()
+        super(RegionLoss, self).__init__()
         self.num_classes = num_classes
         self.num_anchors = len(anchors)
         self.anchor_step = len(anchors[0])

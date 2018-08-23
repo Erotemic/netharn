@@ -272,7 +272,7 @@ class DetectionMetrics:
 
 
 @profiler.profile
-def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5, bg_cls=-1, bias=0.0) -> dict:
+def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5, bg_cls=-1, bias=0.0):
     """ Classify detections by assigning to groundtruth boxes.
 
     Given predictions and truth for an image return (y_pred, y_true,
@@ -294,7 +294,7 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
         bias : for computing overlap either 1 or 0
 
     Returns:
-        pd.DataFrame: with relevant clf information
+        dict: with relevant clf information
 
     Ignore:
         from xinspect.dynamic_kwargs import get_func_kwargs
@@ -474,9 +474,11 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
     return y
 
 
-def _ave_precision(rec, prec, method='voc2012') -> float:
+def _ave_precision(rec, prec, method='voc2012'):
     """ Compute AP from precision and recall
 
+    Returns:
+        float
 
     ap = voc_ap(rec, prec, [use_07_metric])
     Compute VOC AP given precision and recall.
@@ -516,13 +518,16 @@ def _ave_precision(rec, prec, method='voc2012') -> float:
     return ap
 
 
-def score_detection_assignment(y, labels=None, method='voc2012') -> pd.DataFrame:
+def score_detection_assignment(y, labels=None, method='voc2012'):
     """ Measures scores of predicted detections assigned to groundtruth objects
 
     Args:
         y (pd.DataFrame): pre-measured frames of predictions, truth,
             weight and class.
         method (str): either voc2007 voc2012 or sklearn
+
+    Returns:
+        pd.DataFrame
 
     Example:
         >>> # xdoc: +IGNORE_WANT

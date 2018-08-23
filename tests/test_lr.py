@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import ubelt as ub
 import netharn as nh
 
@@ -32,7 +34,7 @@ def mwe():
 
 class MyHarn(nh.FitHarn):
     def __init__(self, *args, **kw):
-        super().__init__(*args, **kw)
+        super(MyHarn, self).__init__(*args, **kw)
         self.epoch_to_lr = ub.odict()
 
     def _run_epoch(harn, loader, tag, learn=False):

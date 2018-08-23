@@ -54,7 +54,7 @@ class LossyJSONEncoder(json.JSONEncoder):
             return obj.item()
         if isinstance(obj, np.ndarray):
             return obj.tolist()
-        return super().default(obj)
+        return super(LossyJSONEncoder, self).default(obj)
         # return json.JSONEncoder.default(self, obj)
 
 

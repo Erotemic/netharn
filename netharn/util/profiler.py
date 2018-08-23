@@ -297,6 +297,7 @@ def find_parent_class(fpath, funcname, lineno, readlines=None):
         >>> #lineno   = 264
         >>> readlines = lambda x: ub.readfrom(x, aslines=True)
         >>> classname = find_parent_class(fpath, funcname, lineno, readlines)
+        >>> print('classname = {!r}'.format(classname))
         >>> assert classname == 'KernprofParser'
     """
     if readlines is None:

@@ -683,6 +683,7 @@ def imread(fpath, **kw):
     reads image data in BGR format
 
     Example:
+        >>> # xdoctest: +REQUIRES(--network)
         >>> import tempfile
         >>> from os.path import splitext  # NOQA
         >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
@@ -696,6 +697,7 @@ def imread(fpath, **kw):
         >>> assert np.all(img2 == img1)
 
     Example:
+        >>> # xdoctest: +REQUIRES(--network)
         >>> import tempfile
         >>> #img1 = (np.arange(0, 12 * 12 * 3).reshape(12, 12, 3) % 255).astype(np.uint8)
         >>> img1 = imread(ub.grabdata('http://i.imgur.com/iXNf4Me.png', fname='ada.png'))
@@ -708,6 +710,7 @@ def imread(fpath, **kw):
         >>> assert np.all(tif_im == png_im)
 
     Example:
+        >>> # xdoctest: +REQUIRES(--network)
         >>> import tempfile
         >>> #img1 = (np.arange(0, 12 * 12 * 3).reshape(12, 12, 3) % 255).astype(np.uint8)
         >>> tif_fpath = ub.grabdata('https://ghostscript.com/doc/tiff/test/images/rgb-3c-16b.tiff')

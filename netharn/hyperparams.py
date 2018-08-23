@@ -45,6 +45,7 @@ Example:
 
 
 """
+from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 import ubelt as ub
 import torch
@@ -91,8 +92,12 @@ def _class_default_params(cls):
     """
     cls = torch.optim.Adam
     """
-    import inspect
-    sig = inspect.signature(cls)
+    if six.PY2:
+        import funcsigs
+        sig = funcsigs.signature(cls)
+    else:
+        import inspect
+        sig = inspect.signature(cls)
     default_params = {
         k: p.default
         for k, p in sig.parameters.items()
