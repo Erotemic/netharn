@@ -375,9 +375,9 @@ class OutputShapeFor(object):
         # N, *other, in_feat = input_shape
         N = input_shape[0]
         other = input_shape[1:-1]
-        in_feat = input_shape[-1]
+        in_feat = input_shape[-1]  # NOQA
 
-        output_shape = [N] + other + [module.out_features]
+        output_shape = [N] + list(other) + [module.out_features]
         return SHAPE_CLS(output_shape)
 
     @staticmethod
