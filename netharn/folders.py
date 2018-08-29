@@ -161,6 +161,8 @@ class Folders(object):
 
             # HACKED IN
             ('augment', hyper.augment_json()),
+
+            ('extra', hyper.extra),
         ])
         return train_info
 
@@ -181,6 +183,8 @@ class Folders(object):
 
         train_info_fpath = join(train_dpath, 'train_info.json')
 
+        # TODO: if train_info already exists, and it is not the same as this
+        # train info, keep a backup of the old ones.
         util.write_json(train_info_fpath, train_info)
 
         # setup symlinks

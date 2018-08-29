@@ -334,7 +334,8 @@ class HyperParams(object):
                  dynamics=None,
                  monitor=None,
                  augment=None,
-                 other=None,
+                 other=None,  # incorporated into the hash
+                 extra=None,  # ignored when computing the hash
                  ):
         kwargs = {}
 
@@ -377,6 +378,7 @@ class HyperParams(object):
 
         hyper.augment = augment
         hyper.other = other
+        hyper.extra = extra
 
     def make_model(hyper):
         """ Instanciate the model defined by the hyperparams """
