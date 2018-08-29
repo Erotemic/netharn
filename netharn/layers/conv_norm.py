@@ -3,7 +3,6 @@ import torch
 from netharn.output_shape_for import OutputShapeFor
 import six
 from netharn import util
-
 if six.PY2:
     from fractions import gcd
 else:
