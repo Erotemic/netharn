@@ -17,13 +17,13 @@ class LocLight(object):
 
 
 class DataFrameLight(ub.NiceRepr):
-    """
+    r"""
     Implements a subset of the pandas.DataFrame API
 
     The API is restricted to facilitate speed tradeoffs
 
     CommandLine:
-        python -m netharn.util.util_dataframe DataFrameLight
+        python -m netharn.util.util_dataframe DataFrameLight:1 --bench
 
     Example:
         >>> self = DataFrameLight({})
@@ -32,6 +32,70 @@ class DataFrameLight(ub.NiceRepr):
         >>> print('self = {!r}'.format(self))
         >>> item = self[0]
         >>> print('item = {!r}'.format(item))
+
+    Example:
+        >>> # BENCHMARK
+        >>> # xdoc: +REQUIRES(--bench)
+        >>> from netharn.util.util_dataframe import *
+        >>> import ubelt as ub
+        >>> NUM = 1000
+        >>> print('NUM = {!r}'.format(NUM))
+        >>> # to_dict conversions
+        >>> print('==============')
+        >>> print('====== to_dict conversions =====')
+        >>> _keys = ['list', 'dict', 'series', 'split', 'records', 'index']
+        >>> results = []
+        >>> df = DataFrameLight._demodata(num=NUM)._pandas()
+        >>> ti = ub.Timerit(verbose=False, unit='ms')
+        >>> for key in _keys:
+        >>>     result = ti.reset(key).call(lambda: df.to_dict(orient=key))
+        >>>     results.append((result.mean(), result.report()))
+        >>> print('\n'.join([t[1] for t in sorted(results)]))
+        >>> print('==============')
+        >>> print('====== DFLight Conversions =======')
+        >>> ti = ub.Timerit(verbose=True, unit='ms')
+        >>> key = 'self._pandas'
+        >>> self = DataFrameLight(df)
+        >>> result = ti.reset(key).call(lambda: self._pandas())
+        >>> results.append((result.mean(), result.report()))
+        >>> key = 'light-from-pandas'
+        >>> result = ti.reset(key).call(lambda: DataFrameLight(df))
+        >>> results.append((result.mean(), result.report()))
+        >>> key = 'light-from-dict'
+        >>> result = ti.reset(key).call(lambda: DataFrameLight(self._data))
+        >>> results.append((result.mean(), result.report()))
+        >>> best = 'series'
+        >>> print('==============')
+        >>> print('====== BENCHMARK: .LOC[] =======')
+        >>> from netharn.util.util_dataframe import *
+        >>> ti = ub.Timerit(verbose=True, unit='ms')
+        >>> df_light = DataFrameLight._demodata(num=NUM)
+        >>> df_heavy = df_light._pandas()
+        >>> series_data = df_heavy.to_dict(orient='series')
+        >>> for timer in ti.reset('DF-heavy.iloc'):
+        >>>     with timer:
+        >>>         for i in range(NUM):
+        >>>             df_heavy.iloc[i]
+        >>> for timer in ti.reset('DF-heavy.loc'):
+        >>>     with timer:
+        >>>         for i in range(NUM):
+        >>>             df_heavy.iloc[i]
+        >>> for timer in ti.reset('dict[SERIES].loc'):
+        >>>     with timer:
+        >>>         for i in range(NUM):
+        >>>             {key: series_data[key].loc[i] for key in series_data.keys()}
+        >>> for timer in ti.reset('dict[SERIES].iloc'):
+        >>>     with timer:
+        >>>         for i in range(NUM):
+        >>>             {key: series_data[key].iloc[i] for key in series_data.keys()}
+        >>> for timer in ti.reset('dict[SERIES][]'):
+        >>>     with timer:
+        >>>         for i in range(NUM):
+        >>>             {key: series_data[key][i] for key in series_data.keys()}
+        >>> for timer in ti.reset('DF-Light.iloc/loc'):
+        >>>     with timer:
+        >>>         for i in range(NUM):
+        >>>             df_light.iloc[i]
     """
     def __init__(self, data=None):
         self._raw = data
@@ -54,32 +118,6 @@ class DataFrameLight(ub.NiceRepr):
             xdoctest netharn.util.util_dataframe DataFrameLight._demodata
 
             xdoctest -m netharn.util.util_dataframe DataFrameLight:._pandas:0 --bench
-
-        Example:
-            >>> from netharn.util.util_dataframe import *
-            >>> _keys = ['list', 'dict', 'series', 'split', 'records', 'index']
-            >>> results = []
-            >>> df = DataFrameLight._demodata(num=10000)._pandas()
-            >>> ti = ub.Timerit(verbose=True, unit='ms')
-            >>> for key in _keys:
-            >>>     result = ti.reset(key).call(lambda: df.to_dict(orient=key))
-            >>>     results.append((result.mean(), result.report()))
-            >>> # Custom keys
-            >>> key = 'self._pandas'
-            >>> self = DataFrameLight(df)
-            >>> result = ti.reset(key).call(lambda: self._pandas())
-            >>> results.append((result.mean(), result.report()))
-            >>> key = 'light-from-pandas'
-            >>> result = ti.reset(key).call(lambda: DataFrameLight(df))
-            >>> results.append((result.mean(), result.report()))
-            >>> key = 'light-from-dict'
-            >>> result = ti.reset(key).call(lambda: DataFrameLight(self._data))
-            >>> results.append((result.mean(), result.report()))
-            >>> print('==============')
-            >>> print('\n'.join([t[1] for t in sorted(results)]))
-            >>> best = 'series'
-            >>> x = df.to_dict(orient=best)
-
 
         Example:
             >>> from netharn.util.util_dataframe import *
@@ -108,22 +146,6 @@ class DataFrameLight(ub.NiceRepr):
             >>> print('both = {!r}'.format(both))
             >>> assert both is not self
             >>> assert other is not self
-
-        Example:
-            >>> # BENCHMARK
-            >>> # xdoc: +REQUIRES(--bench)
-            >>> from netharn.util.util_dataframe import *
-            >>> import ubelt as ub
-            >>> df_light = DataFrameLight._demodata(num=100)
-            >>> df_heavy = df_light._pandas()
-            >>> for timer in ub.Timerit(100, bestof=10, label='DF-heavy'):
-            >>>     with timer:
-            >>>         for i in range(10):
-            >>>             df_heavy.iloc[i]
-            >>> for timer in ub.Timerit(100, bestof=10, label='DF-Light'):
-            >>>     with timer:
-            >>>         for i in range(10):
-            >>>             df_light.iloc[i]
         """
         demodata = {
             'foo': [0] * num,
@@ -183,8 +205,11 @@ class DataFrameLight(ub.NiceRepr):
             vals2 = other._data[key]
             vals1.extend(vals2)
 
+    def copy(self):
+        return copy.copy(self)
+
     def union(self, other):
-        both = copy.copy(self)
+        both = self.copy()
         both.extend(other)
         return both
 
