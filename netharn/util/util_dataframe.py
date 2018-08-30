@@ -199,9 +199,14 @@ class DataFrameLight(ub.NiceRepr):
     def _getcol(self, key):
         return self._data[key]
 
-    def __getitem__(self, index):
-        assert self._keys is not None
-        return self._getcol(index)
+    def __getitem__(self, key):
+        # if isinstance(key, slice):
+        #     self._getrow(
+        #     pass
+        return self._getcol(key)
+
+    def __setitem__(self, key, value):
+        self._data[key] = value
 
     def extend(self, other):
         for key in self._keys:

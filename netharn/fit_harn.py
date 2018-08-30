@@ -941,6 +941,7 @@ class CoreMixin:
         if not harn._initialized:
             harn.initialize()
 
+        harn.info('ARGV:\n    ' + sys.executable + ' ' + ' '.join(sys.argv))
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
             harn.info('dont forget to start:\n'
