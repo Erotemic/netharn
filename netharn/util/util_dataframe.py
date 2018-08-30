@@ -22,6 +22,10 @@ class DataFrameLight(ub.NiceRepr):
 
     The API is restricted to facilitate speed tradeoffs
 
+    Notes:
+        pandas.DataFrame is slow. DataFrameLight is faster.
+        It is a tad more restrictive though.
+
     CommandLine:
         python -m netharn.util.util_dataframe DataFrameLight:1 --bench
 
