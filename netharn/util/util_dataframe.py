@@ -2,6 +2,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ubelt as ub
 import pandas as pd
+import numpy as np
 import copy
 
 
@@ -34,7 +35,7 @@ class DataFrameLight(ub.NiceRepr):
         >>> print('self = {!r}'.format(self))
         >>> self = DataFrameLight({'a': [0, 1, 2], 'b': [2, 3, 4]})
         >>> print('self = {!r}'.format(self))
-        >>> item = self[0]
+        >>> item = self.iloc[0]
         >>> print('item = {!r}'.format(item))
 
     Example:
@@ -54,28 +55,29 @@ class DataFrameLight(ub.NiceRepr):
         >>> for key in _keys:
         >>>     result = ti.reset(key).call(lambda: df.to_dict(orient=key))
         >>>     results.append((result.mean(), result.report()))
+        >>> key = 'series+numpy'
+        >>> result = ti.reset(key).call(lambda: {k: v.values for k, v in df.to_dict(orient='series').items()})
+        >>> results.append((result.mean(), result.report()))
         >>> print('\n'.join([t[1] for t in sorted(results)]))
         >>> print('==============')
         >>> print('====== DFLight Conversions =======')
         >>> ti = ub.Timerit(verbose=True, unit='ms')
         >>> key = 'self._pandas'
         >>> self = DataFrameLight(df)
-        >>> result = ti.reset(key).call(lambda: self._pandas())
-        >>> results.append((result.mean(), result.report()))
+        >>> ti.reset(key).call(lambda: self._pandas())
         >>> key = 'light-from-pandas'
-        >>> result = ti.reset(key).call(lambda: DataFrameLight(df))
-        >>> results.append((result.mean(), result.report()))
+        >>> ti.reset(key).call(lambda: DataFrameLight(df))
         >>> key = 'light-from-dict'
-        >>> result = ti.reset(key).call(lambda: DataFrameLight(self._data))
-        >>> results.append((result.mean(), result.report()))
-        >>> best = 'series'
+        >>> ti.reset(key).call(lambda: DataFrameLight(self._data))
         >>> print('==============')
         >>> print('====== BENCHMARK: .LOC[] =======')
         >>> from netharn.util.util_dataframe import *
-        >>> ti = ub.Timerit(verbose=True, unit='ms')
+        >>> ti = ub.Timerit(num=20, bestof=4, verbose=True, unit='ms')
         >>> df_light = DataFrameLight._demodata(num=NUM)
         >>> df_heavy = df_light._pandas()
         >>> series_data = df_heavy.to_dict(orient='series')
+        >>> list_data = df_heavy.to_dict(orient='list')
+        >>> np_data = {k: v.values for k, v in df_heavy.to_dict(orient='series').items()}
         >>> for timer in ti.reset('DF-heavy.iloc'):
         >>>     with timer:
         >>>         for i in range(NUM):
@@ -96,12 +98,30 @@ class DataFrameLight(ub.NiceRepr):
         >>>     with timer:
         >>>         for i in range(NUM):
         >>>             {key: series_data[key][i] for key in series_data.keys()}
+        >>> for timer in ti.reset('dict[NDARRAY][]'):
+        >>>     with timer:
+        >>>         for i in range(NUM):
+        >>>             {key: np_data[key][i] for key in np_data.keys()}
+        >>> for timer in ti.reset('dict[list][]'):
+        >>>     with timer:
+        >>>         for i in range(NUM):
+        >>>             {key: list_data[key][i] for key in np_data.keys()}
         >>> for timer in ti.reset('DF-Light.iloc/loc'):
         >>>     with timer:
         >>>         for i in range(NUM):
         >>>             df_light.iloc[i]
+        >>> for timer in ti.reset('DF-Light._getrow'):
+        >>>     with timer:
+        >>>         for i in range(NUM):
+        >>>             df_light._getrow(i)
     """
-    def __init__(self, data=None):
+    def __init__(self, data=None, columns=None):
+        if columns is not None:
+            if data is None:
+                data = ub.odict(zip(columns, [[]] * len(columns)))
+            else:
+                data = ub.odict(zip(columns, data.T))
+
         self._raw = data
         self._keys = None
         self._data = None
@@ -116,6 +136,9 @@ class DataFrameLight(ub.NiceRepr):
     def loc(self):
         return self._localizer
 
+    def to_string(self, *args, **kwargs):
+        return self._pandas().to_string(*args, **kwargs)
+
     def _pandas(self):
         """
         CommandLine:
@@ -128,7 +151,7 @@ class DataFrameLight(ub.NiceRepr):
             >>> df_light = DataFrameLight._demodata(num=7)
             >>> df_heavy = df_light._pandas()
             >>> got = DataFrameLight(df_heavy)
-            >>> assert got._data == df_light.data
+            >>> assert got._data == df_light._data
         """
         return pd.DataFrame(self._data, columns=self._keys)
 
@@ -160,11 +183,12 @@ class DataFrameLight(ub.NiceRepr):
         return self
 
     def __nice__(self):
-        return 'keys: {}, len={}'.format(self._keys, len(self))
+        return 'keys: {}, len={}'.format(list(self.keys()), len(self))
 
     def __len__(self):
         if self._data:
-            return len(self._data[self._keys[0]])
+            key = next(iter(self.keys()))
+            return len(self._data[key])
         else:
             return 0
 
@@ -173,54 +197,158 @@ class DataFrameLight(ub.NiceRepr):
             self._data = {}
             self.keys = []
         elif isinstance(self._raw, dict):
-            self._keys = list(self._raw.keys())
             self._data = self._raw
             if __debug__:
                 lens = []
                 for d in self._data.values():
-                    assert isinstance(d, list)
+                    if not isinstance(d, (list, np.ndarray)):
+                        raise TypeError(type(d))
                     lens.append(len(d))
                 assert ub.allsame(lens)
-
+        elif isinstance(self._raw, DataFrameLight):
+            self._data = copy.copy(self._raw._data)
         elif isinstance(self._raw, pd.DataFrame):
-            # self._data = self._raw.to_dict(orient='index')
-            self._keys = list(self._raw.keys())
-            # self._data = self._raw.to_dict(orient='series')
             self._data = self._raw.to_dict(orient='list')
         else:
             raise TypeError('Unknown _raw type')
 
+    @property
+    def columns(self):
+        return list(self.keys())
+
+    def sort_values(self, key, inplace=False):
+        sortx = np.argsort(self._getcol(key))
+        return self.take(sortx, inplace=inplace)
+
     def keys(self):
-        return iter(self._keys)
+        return self._data.keys()
 
     def _getrow(self, index):
-        return {key: self._data[key][index] for key in self._keys}
+        return {key: self._data[key][index] for key in self._data.keys()}
 
     def _getcol(self, key):
         return self._data[key]
 
     def __getitem__(self, key):
-        # if isinstance(key, slice):
-        #     self._getrow(
-        #     pass
         return self._getcol(key)
 
     def __setitem__(self, key, value):
         self._data[key] = value
 
+    def compress(self, flags, inplace=False):
+        if not inplace:
+            self = self.copy()
+        for key in self._data.keys():
+            self._data[key] = list(ub.compress(self._data[key], flags))
+        return self
+
+    def take(self, indices, inplace=False):
+        if not inplace:
+            self = self.copy()
+        for key in self._data.keys():
+            self._data[key] = list(ub.take(self._data[key], indices))
+        return self
+
     def extend(self, other):
-        for key in self._keys:
+        for key in self._data.keys():
+            # TODO: handle numpy values
             vals1 = self._data[key]
             vals2 = other._data[key]
-            vals1.extend(vals2)
+            try:
+                vals1.extend(vals2)
+            except AttributeError:
+                if isinstance(vals1, np.ndarray):
+                    self._data[key] = np.hstack([vals1, vals2])
 
     def copy(self):
         return copy.copy(self)
 
-    def union(self, other):
-        both = self.copy()
-        both.extend(other)
+    def union(self, *others):
+        if isinstance(self, DataFrameLight):
+            first = self
+            rest = others
+        else:
+            if len(others) == 0:
+                return DataFrameLight()
+            first = others[0]
+            rest = others[1:]
+
+        both = first.copy()
+        if not both.keys:
+            for other in rest:
+                if other.keys:
+                    both.keys = copy.copy(other.keys)
+                    break
+
+        for other in rest:
+            both.extend(other)
         return both
+
+    @classmethod
+    def concat(cls, others):
+        return cls.union(*others)
+
+    def reset_index(self, drop=False):
+        """ noop for compatability, the light version doesnt store an index """
+        return self
+
+    def groupby(self, *args, **kw):
+        """ hacked slow pandas implementation of groupby """
+        return self._pandas().gropuby(*args, **kw)
+
+    def rename(self, columns, inplace=False):
+        if not inplace:
+            self = self.copy()
+        for old, new in columns.items():
+            if old in self._data:
+                self._data[new] = self._data.pop(old)
+        return self
+
+
+class DataFrameArray(DataFrameLight):
+    """
+    Take and compress are much faster, but extend and union are slower
+    """
+
+    def __normalize__(self):
+        if self._raw is None:
+            self._data = {}
+            self.keys = []
+        elif isinstance(self._raw, dict):
+            self._data = self._raw
+            if __debug__:
+                lens = []
+                for d in self._data.values():
+                    if not isinstance(d, (list, np.ndarray)):
+                        raise TypeError(type(d))
+                    lens.append(len(d))
+                assert ub.allsame(lens)
+        elif isinstance(self._raw, DataFrameLight):
+            self._data = copy.copy(self._raw._data)
+        elif isinstance(self._raw, pd.DataFrame):
+            self._data = {k: v.values for k, v in self._raw.to_dict(orient='series').items()}
+        else:
+            raise TypeError('Unknown _raw type')
+
+    def extend(self, other):
+        for key in self._data.keys():
+            vals1 = self._data[key]
+            vals2 = other._data[key]
+            self._data[key] = np.hstack([vals1, vals2])
+
+    def compress(self, flags, inplace=False):
+        if not inplace:
+            self = self.copy()
+        for key in self._data.keys():
+            self._data[key] = self._data[key][flags]
+        return self
+
+    def take(self, indices, inplace=False):
+        if not inplace:
+            self = self.copy()
+        for key in self._data.keys():
+            self._data[key] = self._data[key][indices]
+        return self
 
 if __name__ == '__main__':
     """

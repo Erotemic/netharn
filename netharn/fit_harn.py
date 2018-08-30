@@ -1134,7 +1134,21 @@ class CoreMixin:
             prog.begin()
         with util.grad_context(learn):
             harn.debug('Making batch iterator')
-            batch_iter = iter(loader)
+
+            n_trys_remain = 3
+            while n_trys_remain > 0:
+                try:
+                    batch_iter = iter(loader)
+                except OSError as ex:
+                    if 'Cannot allocate memory' in str(ex):
+                        harn.warning('Cannot allocate memory for the data loader')
+                    if n_trys_remain <= 0:
+                        harn.error('Cannot allocate enough memory')
+                        raise
+                else:
+                    break
+                n_trys_remain -= 0
+
             harn.debug('Starting batch iteration for tag={}, epoch={}'.format(
                 tag, harn.epoch))
 

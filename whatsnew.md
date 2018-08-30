@@ -1,3 +1,9 @@
+Version 0.0.27
+==============
+Added DataFrameLight to util, which provides a subset of pandas DataFrame
+functionality, but much much faster.
+
+
 Version 0.0.26
 ==============
 Tentative Python2.7 support

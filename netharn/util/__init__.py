@@ -82,7 +82,8 @@ else:
     from netharn.util.util_cachestamp import (CacheStamp,)
     from netharn.util.util_cv2 import (draw_boxes_on_image, draw_text_on_image,
                                        putMultiLineText,)
-    from netharn.util.util_dataframe import (DataFrameLight, LocLight,)
+    from netharn.util.util_dataframe import (DataFrameArray, DataFrameLight,
+                                             LocLight,)
     from netharn.util.util_demodata import (grab_test_image,
                                             grab_test_image_fpath,)
     from netharn.util.util_fname import (align_paths, check_aligned, dumpsafe,
@@ -115,19 +116,20 @@ else:
     from netharn.util.util_zip import (split_archive, zopen,)
 
     __all__ = ['Boxes', 'CV2_INTERPOLATION_TYPES', 'CacheStamp', 'Color',
-               'CumMovingAve', 'DataFrameLight', 'DisableBatchNorm',
-               'ExpMovingAve', 'IS_PROFILING', 'InternalRunningStats',
-               'KernprofParser', 'LocLight', 'LossyJSONEncoder', 'ModuleMixin',
-               'MovingAve', 'NumpyEncoder', 'PlotNums', 'RunningStats',
-               'SlidingIndexDataset', 'SlidingSlices', 'SlidingWindow', 'Stitcher',
-               'SupressPrint', 'WindowedMovingAve', 'absdev', 'adjust_gamma',
-               'adjust_subplots', 'aggensure', 'align_paths', 'apply_grouping',
-               'argsubmax', 'argsubmaxima', 'atleast_3channels', 'atleast_nd',
-               'autompl', 'axes_extent', 'box_ious', 'check_aligned', 'colorbar',
-               'colorbar_image', 'compact_idstr', 'convert_colorspace',
-               'copy_figure_to_clipboard', 'dict_intersection', 'distinct_colors',
-               'distinct_markers', 'draw_border', 'draw_boxes',
-               'draw_boxes_on_image', 'draw_line_segments', 'draw_text_on_image',
+               'CumMovingAve', 'DataFrameArray', 'DataFrameLight',
+               'DisableBatchNorm', 'ExpMovingAve', 'IS_PROFILING',
+               'InternalRunningStats', 'KernprofParser', 'LocLight',
+               'LossyJSONEncoder', 'ModuleMixin', 'MovingAve', 'NumpyEncoder',
+               'PlotNums', 'RunningStats', 'SlidingIndexDataset', 'SlidingSlices',
+               'SlidingWindow', 'Stitcher', 'SupressPrint', 'WindowedMovingAve',
+               'absdev', 'adjust_gamma', 'adjust_subplots', 'aggensure',
+               'align_paths', 'apply_grouping', 'argsubmax', 'argsubmaxima',
+               'atleast_3channels', 'atleast_nd', 'autompl', 'axes_extent',
+               'box_ious', 'check_aligned', 'colorbar', 'colorbar_image',
+               'compact_idstr', 'convert_colorspace', 'copy_figure_to_clipboard',
+               'dict_intersection', 'distinct_colors', 'distinct_markers',
+               'draw_border', 'draw_boxes', 'draw_boxes_on_image',
+               'draw_line_segments', 'draw_text_on_image',
                'dump_global_profile_report', 'dumpsafe', 'dynamic_profile',
                'ensure_alpha_channel', 'ensure_float01', 'ensure_fnum',
                'ensure_grayscale', 'ensure_rng', 'ensure_ulimit',
