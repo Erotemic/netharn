@@ -195,7 +195,6 @@ class DataFrameLight(ub.NiceRepr):
     def __normalize__(self):
         if self._raw is None:
             self._data = {}
-            self.keys = []
         elif isinstance(self._raw, dict):
             self._data = self._raw
             if __debug__:
@@ -221,7 +220,9 @@ class DataFrameLight(ub.NiceRepr):
         return self.take(sortx, inplace=inplace)
 
     def keys(self):
-        return self._data.keys()
+        if self._data:
+            for key in self._data.keys():
+                yield key
 
     def _getrow(self, index):
         return {key: self._data[key][index] for key in self._data.keys()}
@@ -236,18 +237,20 @@ class DataFrameLight(ub.NiceRepr):
         self._data[key] = value
 
     def compress(self, flags, inplace=False):
-        if not inplace:
-            self = self.copy()
+        subset = self if inplace else self.__class__()
         for key in self._data.keys():
-            self._data[key] = list(ub.compress(self._data[key], flags))
-        return self
+            subset._data[key] = list(ub.compress(self._data[key], flags))
+        return subset
 
     def take(self, indices, inplace=False):
-        if not inplace:
-            self = self.copy()
-        for key in self._data.keys():
-            self._data[key] = list(ub.take(self._data[key], indices))
-        return self
+        subset = self if inplace else self.__class__()
+        if isinstance(indices, slice):
+            for key in self._data.keys():
+                subset._data[key] = self._data[key][indices]
+        else:
+            for key in self._data.keys():
+                subset._data[key] = list(ub.take(self._data[key], indices))
+        return subset
 
     def extend(self, other):
         for key in self._data.keys():
@@ -313,7 +316,6 @@ class DataFrameArray(DataFrameLight):
     def __normalize__(self):
         if self._raw is None:
             self._data = {}
-            self.keys = []
         elif isinstance(self._raw, dict):
             self._data = self._raw
             if __debug__:
@@ -337,18 +339,16 @@ class DataFrameArray(DataFrameLight):
             self._data[key] = np.hstack([vals1, vals2])
 
     def compress(self, flags, inplace=False):
-        if not inplace:
-            self = self.copy()
+        subset = self if inplace else self.__class__()
         for key in self._data.keys():
-            self._data[key] = self._data[key][flags]
-        return self
+            subset._data[key] = self._data[key][flags]
+        return subset
 
     def take(self, indices, inplace=False):
-        if not inplace:
-            self = self.copy()
+        subset = self if inplace else self.__class__()
         for key in self._data.keys():
-            self._data[key] = self._data[key][indices]
-        return self
+            subset._data[key] = self._data[key][indices]
+        return subset
 
 if __name__ == '__main__':
     """
