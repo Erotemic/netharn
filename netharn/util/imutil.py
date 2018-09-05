@@ -734,7 +734,32 @@ def imread(fpath, **kw):
         assert int(Image.PILLOW_VERSION.split('.')[0]) > 4
     """
     try:
-        if fpath.endswith(('.tif', '.tiff')):
+        if fpath.lower().endswith(('.ntf', '.nitf')):
+            try:
+                import gdal
+            except ImportError:
+                raise Exception('cannot read NITF images without gdal')
+            try:
+                gdal_dset = gdal.Open(fpath)
+                if gdal_dset.RasterCount == 1:
+                    band = gdal_dset.GetRasterBand(1)
+                    image = np.array(band.ReadAsArray())
+                elif gdal_dset.RasterCount == 3:
+                    bands = [
+                        gdal_dset.GetRasterBand(i)
+                        for i in [1, 2, 3]
+                    ]
+                    channels = [np.array(band.ReadAsArray()) for band in bands]
+                    image = np.dstack(channels)
+                else:
+                    raise NotImplementedError(
+                        'Can only read 1 or 3 channel NTF images. '
+                        'Got {}'.format(gdal_dset.RasterCount))
+            except Exception:
+                raise
+            finally:
+                gdal_dset = None
+        elif fpath.lower().endswith(('.tif', '.tiff')):
             import skimage.io
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")

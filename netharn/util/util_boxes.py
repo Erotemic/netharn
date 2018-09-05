@@ -627,8 +627,8 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             num (int): number of boxes to generate
             scale (float): size of imgdims
             format (str): format of boxes to be created (e.g. tlbr, xywh)
-            anchors (ndarray): width / heights of anchor boxes to perterb and
-                randomly place.
+            anchors (ndarray): normalized width / heights of anchor boxes to
+                perterb and randomly place. (must be in range 0-1)
 
         Example:
             >>> # xdoctest: +IGNORE_WHITESPACE
@@ -666,6 +666,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             tlbr[:, 2] = br_x
             tlbr[:, 3] = br_y
         else:
+            anchors = np.asarray(anchors)
             assert np.all(anchors <= 1.0)
             assert np.all(anchors > 0.0)
             anchor_xs = rng.randint(0, len(anchors), size=num)
