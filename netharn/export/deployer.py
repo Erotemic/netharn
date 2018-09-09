@@ -190,7 +190,7 @@ def _package_deploy(train_dpath):
     if not snap_fpath:
         raise FileNotFoundError('No weights are associated with the model')
 
-    weights_hash = ub.hash_file(snap_fpath, base='abc', hasher='sha512')[0:8]
+    weights_hash = ub.hash_file(snap_fpath, base='abc', hasher='sha512')[0:6].upper()
 
     train_info_fpath = join(train_dpath, 'train_info.json')
 
@@ -211,9 +211,9 @@ def _package_deploy(train_dpath):
     except Exception:
         epoch = 'UNKNOWN-EPOCH'
 
-    deploy_name = 'deploy_{arch}_{train}_{epoch}_{weights}'.format(
-        arch=model_name,
-        train=train_hash,
+    deploy_name = 'deploy_{model}_{trainid}_{epoch}_{weights}'.format(
+        model=model_name,
+        trainid=train_hash,
         epoch=epoch,
         weights=weights_hash)
 
@@ -283,6 +283,9 @@ def unpack_model_info(path):
 class DeployedModel(ub.NiceRepr):
     """
     Can setup an initializer and model from a deployed zipfile or a train path
+
+    CommandLine:
+        xdoctest -m netharn.export.deployer DeployedModel
 
     Example:
         >>> # Test the train folder as the model deployment
