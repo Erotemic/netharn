@@ -61,7 +61,7 @@ def _parse_static_node_value(node):
         # disregard pathological python2 corner cases
         value = {'None': None, 'True': True, 'False': False}[node.id]
     else:
-        print(node.__dict__)
+        print('node.__dict__ = {!r}'.format(node.__dict__))
         raise TypeError('Cannot parse a static value from non-static node '
                         'of type: {!r}'.format(type(node)))
     return value

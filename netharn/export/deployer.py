@@ -12,7 +12,7 @@ The following docstring illustrates how this module may be used.
 
 CommandLine:
     # Runs the following example
-    xdoctest -m netharn.export.deployer _demodata_trained_dpath
+    xdoctest -m netharn.export.deployer __doc__:0
 
     # Runs all the doctests
     xdoctest -m netharn.export.deployer all
@@ -70,7 +70,7 @@ Example:
     >>> ##########################################
     >>> print('--- STEP 2: DEPLOY THE MODEL ---')
     >>> # First we export the model topology to a standalone file
-    >>> # (In the future (pending PR) this will be done automatically)
+    >>> # (This step is not done in the run itself)
     >>> from netharn.export import exporter
     >>> topo_fpath = exporter.export_model_code(harn.train_dpath, harn.hyper.model_cls, harn.hyper.model_params)
     >>> # Now create an instance of deployed model that points to the
@@ -163,6 +163,9 @@ def _package_deploy(train_dpath):
     """
     Combine the model, weights, and info files into a single deployable file
 
+    CommandLine:
+        xdoctest -m netharn.export.deployer _package_deploy
+
     Args:
         train_dpath (PathLike): the netharn training directory
 
@@ -172,8 +175,10 @@ def _package_deploy(train_dpath):
         >>> ub.touch(join(train_dpath, 'final_snapshot.pt'))
         >>> ub.touch(join(train_dpath, 'my_model.py'))
         >>> zipfpath = _package_deploy(train_dpath)
+        >>> print(os.path.basename(zipfpath))
+        deploy_UNKNOWN-ARCH_my_train_dpath_UNKNOWN-EPOCH_qooeztnl.zip
     """
-    print('[PYTORCH_EXPORT] Deploy to dpath={}'.format(train_dpath))
+    print('[DEPLOYER] Deploy to dpath={}'.format(train_dpath))
     snap_fpath = find_best_snapshot(train_dpath)
 
     model_fpaths = glob.glob(join(train_dpath, '*.py'))
@@ -185,16 +190,32 @@ def _package_deploy(train_dpath):
     if not snap_fpath:
         raise FileNotFoundError('No weights are associated with the model')
 
+    weights_hash = ub.hash_file(snap_fpath, base='abc', hasher='sha512')[0:8]
+
     train_info_fpath = join(train_dpath, 'train_info.json')
+
     if exists(train_info_fpath):
         train_info = json.load(open(train_info_fpath, 'r'))
         model_name = train_info['hyper']['model'][0].split('.')[-1]
         train_hash = ub.hash_data(train_info['train_id'], hasher='sha512',
                                   base='abc', types=True)[0:8]
-        deploy_name = 'deploy_{}_{}'.format(model_name, train_hash)
     else:
-        deploy_name = os.path.basename(train_dpath)
+        model_name = 'UNKNOWN-ARCH'
+        train_hash = os.path.basename(train_dpath)
         print('WARNING: Training metadata does not exist')
+
+    try:
+        import torch
+        state = torch.load(snap_fpath)
+        epoch = '{:03d}'.format(state['epoch'])
+    except Exception:
+        epoch = 'UNKNOWN-EPOCH'
+
+    deploy_name = 'deploy_{arch}_{train}_{epoch}_{weights}'.format(
+        arch=model_name,
+        train=train_hash,
+        epoch=epoch,
+        weights=weights_hash)
 
     deploy_fname = deploy_name + '.zip'
 
@@ -202,13 +223,6 @@ def _package_deploy(train_dpath):
         if fname is None:
             fname = relpath(fpath, train_dpath)
         myzip.write(fpath, arcname=join(deploy_name, fname))
-
-    # TODO: Check if the model contains epoch info
-    # try:
-    #     import torch
-    #     torch.load(snap_fpath)
-    # except Exception:
-    #     pass
 
     zipfpath = join(train_dpath, deploy_fname)
     with zipfile.ZipFile(zipfpath, 'w') as myzip:
@@ -222,7 +236,7 @@ def _package_deploy(train_dpath):
         #     zwrite(myzip, bestacc_fpath)
         for p in glob.glob(join(train_dpath, 'glance/*')):
             zwrite(myzip, p)
-    print('[PYTORCH_EXPORT] Deployed zipfpath={}'.format(zipfpath))
+    print('[DEPLOYER] Deployed zipfpath={}'.format(zipfpath))
     return zipfpath
 
 
@@ -294,7 +308,7 @@ class DeployedModel(ub.NiceRepr):
         >>> initializer(model)
         ...
         >>> print('model.__module__ = {!r}'.format(model.__module__))
-        model.__module__ = 'deploy_ToyNet2d_rljhgepw/ToyNet2d_2a3f49'
+        model.__module__ = 'deploy_ToyNet2d_rljhgepw_001_.../ToyNet2d_2a3f49'
     """
     def __init__(self, path):
         self.path = path
