@@ -175,8 +175,9 @@ def _package_deploy(train_dpath):
         >>> ub.touch(join(train_dpath, 'final_snapshot.pt'))
         >>> ub.touch(join(train_dpath, 'my_model.py'))
         >>> zipfpath = _package_deploy(train_dpath)
+        ...
         >>> print(os.path.basename(zipfpath))
-        deploy_UNKNOWN-ARCH_my_train_dpath_UNKNOWN-EPOCH_qooeztnl.zip
+        deploy_UNKNOWN-ARCH_my_train_dpath_UNKNOWN-EPOCH_QOOEZT.zip
     """
     print('[DEPLOYER] Deploy to dpath={}'.format(train_dpath))
     snap_fpath = find_best_snapshot(train_dpath)

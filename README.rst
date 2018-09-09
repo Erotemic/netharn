@@ -2,7 +2,7 @@
 
 
 NetHarn - a PyTorch Network Harness
--------
+-----------------------------------
 
 NAME:
     NetHarn (pronounced "net-harn")

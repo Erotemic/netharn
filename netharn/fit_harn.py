@@ -1058,6 +1058,7 @@ class CoreMixin:
         """
         deploy_fpath = export.DeployedModel(harn.train_dpath).package()
         harn.info('wrote single-file deployment to: {!r}'.format(deploy_fpath))
+        return deploy_fpath
 
     @profiler.profile
     def _run_tagged_epochs(harn, train_loader, vali_loader, test_loader):
