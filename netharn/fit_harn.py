@@ -145,6 +145,7 @@ from netharn.exceptions import StopTraining, CannotResume, TrainingDiverged
 
 from netharn import util
 from netharn.util import profiler
+from netharn import export
 from xdoctest.utils import strip_ansi
 
 try:
@@ -234,7 +235,7 @@ class InitializeMixin:
         """
         if reset == 'delete':
             print('RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR')
-            if harn.train_dpath is None:
+            if harn.train_info is None:
                 # Need to determine which path needs deletion.
                 harn._setup_paths()
             for path in glob.glob(join(harn.train_dpath, '*')):
@@ -242,10 +243,16 @@ class InitializeMixin:
         elif reset:
             print('RESET HARNESS BY RESTARTING FROM EPOCH 0')
 
-        if harn.train_dpath is None:
+        if harn.train_info is None:
             harn._setup_paths()
         else:
             ub.ensuredir(harn.train_dpath)
+
+        # Dump training info to disk
+        # TODO: if train_info already exists, and it is not the same as this
+        # train info, keep a backup of the old ones.
+        train_info_fpath = join(harn.train_dpath, 'train_info.json')
+        util.write_json(train_info_fpath, harn.train_info)
 
         harn._setup_loggers()
 
@@ -273,6 +280,7 @@ class InitializeMixin:
                 harn.snapshot_dpath))
         else:
             harn.warn('harn.train_dpath is None, all computation is in memory')
+
         harn._initialized = True
         harn.after_initialize()
 
@@ -281,7 +289,7 @@ class InitializeMixin:
             harn.warn('harn.train_dpath is None, cannot setup_paths')
         else:
             paths = folders.Folders(hyper=harn.hyper)
-            train_info = paths.setup_dpath()
+            train_info = paths.setup_dpath(train_dpath=harn.train_dpath)
             harn.train_info = train_info
             harn.nice_dpath = train_info['nice_dpath']
             harn.train_dpath = train_info['train_dpath']
@@ -404,6 +412,13 @@ class InitializeMixin:
 
         harn.debug('Make dynamics')
         harn.dynamics = harn.hyper.dynamics.copy()
+
+        # Export the model topology to the train_dpath
+        model_cls = harn.hyper.model_cls
+        model_params = harn.hyper.model_params
+        export.export_model_code(harn.train_dpath, model_cls,
+                                 initkw=model_params)
+        # TODO: might be good to check for multiple model exports at this time
 
     def reset_weights(harn):
         """
@@ -942,6 +957,7 @@ class CoreMixin:
             harn.initialize()
 
         harn.info('ARGV:\n    ' + sys.executable + ' ' + ' '.join(sys.argv))
+
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
             harn.info('dont forget to start:\n'
@@ -1029,8 +1045,20 @@ class CoreMixin:
             harn.info('view tensorboard results for this run via:\n'
                       '    tensorboard --logdir ' + ub.compressuser(train_base))
 
+        harn._deploy()
+
         harn.on_complete()
         harn.info('exiting fit harness.')
+
+    def _deploy(harn):
+        """
+        Packages the best validation (or most recent) weights with the exported
+        model topology into a single-file model deployment that is "mostly"
+        independent of the code used to train the model.
+        """
+        deploy_fpath = export.DeployedModel(harn.train_dpath).package()
+        harn.info('wrote single-file deployment to: {!r}'.format(deploy_fpath))
+        return deploy_fpath
 
     @profiler.profile
     def _run_tagged_epochs(harn, train_loader, vali_loader, test_loader):
@@ -1450,7 +1478,6 @@ class CoreCallbacks:
         pass
 
 
-
 # Define the exposed class as a union of mixin classes
 class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
               SnapshotCallbacks, ScheduleMixin, CoreMixin, ChecksMixin,
@@ -1526,6 +1553,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
         # Output directories
         harn.train_dpath = train_dpath
         harn.nice_dpath = None
+        harn.train_info = None
 
         # Progress bars
         harn.main_prog = None

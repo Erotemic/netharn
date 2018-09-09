@@ -2,7 +2,7 @@
 
 
 NetHarn - a PyTorch Network Harness
--------
+-----------------------------------
 
 NAME:
     NetHarn (pronounced "net-harn")
@@ -13,7 +13,7 @@ FEATURES:
     * training directory management
     * callback-based public API 
     * XPU - code abstraction for [cpu, gpu, multi-gpu].
-    * single-file deployments (pending public release).
+    * single-file deployments (NEW in version ``0.1.0``).
     * reasonable test coverage using pytest and xdoctest
     * CI testing on appveyor and travis (note a few tests are failing due to minor issues)
     * A rich utility set
@@ -111,7 +111,7 @@ NetHarn separates the problem of training a model into the following core hyperp
 the datasets, model, criterion, initializer, optimizer, and learning rate scheduler.
 Runs with different hyperparameters are automatically logged to separate directories which makes it simple
   to compare the results of two experiments.
-NetHarn also has the ability (pending public release) to create a single-file deployment of a trained model
+NetHarn also has the ability to create a single-file deployment of a trained model
   that is independent of the system used to train it.
 This makes it fast and simple for research results to be externally verified and moved into production.
 
