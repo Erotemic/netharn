@@ -15,6 +15,7 @@ CommandLine:
 
     xdoctest -m netharn.export.exporter all
 """
+from __future__ import absolute_import, division, print_function, unicode_literals
 import ast
 import re
 import hashlib
@@ -27,14 +28,12 @@ import types
 import ubelt as ub
 import warnings
 from collections import OrderedDict
+from os.path import abspath, join
 import six
-from os.path import abspath
-from os.path import join
 
 __all__ = ['export_model_code']
 
 
-# __pt_export_version__ = '0.3.3'
 __pt_export_version__ = '0.4.0'
 
 
@@ -73,7 +72,7 @@ def undefined_names(sourcecode):
     Parses source code for undefined names
 
     Example:
-        >>> print(undefined_names('x = y'))
+        >>> print(ub.repr2(undefined_names('x = y'), nl=0))
         {'y'}
     """
     import pyflakes.api
@@ -111,7 +110,7 @@ class ImportVisitor(ast.NodeVisitor):
     """
 
     def __init__(visitor, fpath):
-        super().__init__()
+        super(ImportVisitor, visitor).__init__()
         visitor.import_names = []
         visitor.modules = []
         visitor.top_level = True
@@ -238,12 +237,14 @@ def source_closure(model_class):
     module_name = model_class.__module__
     module = sys.modules[module_name]
     sourcecode = inspect.getsource(model_class)
+    sourcecode = ub.ensure_unicode(sourcecode)
     names = undefined_names(sourcecode)
 
     # try:
     # module_source = ub.readfrom(module.__file__)
     # except OSError:
     module_source = inspect.getsource(module)
+    module_source = ub.ensure_unicode(module_source)
 
     pt = ast.parse(module_source)
     visitor = ImportVisitor(module.__file__)
@@ -335,6 +336,7 @@ def remove_comments_and_docstrings(source):
         >>> assert got == want
 
     """
+    source = ub.ensure_unicode(source)
     io_obj = io.StringIO(source)
     out = ''
     prev_toktype = tokenize.INDENT
@@ -405,9 +407,10 @@ def hash_code(sourcecode):
         6949c223
     """
     # Strip docstrings before making a parse tree
+    sourcecode = ub.ensure_unicode(sourcecode)
     stripped = remove_comments_and_docstrings(sourcecode)
 
-    # Also remove this tool's version info (not sure if correct?)
+    # Also remove pytorch_export version info (not sure if correct?)
     stripped = re.sub('__pt_export_version__ = .*', '', stripped)
 
     parse_tree = ast.parse(stripped)
@@ -472,8 +475,8 @@ def export_model_code(dpath, model, initkw=None):
     else:
         # First see if we can get away with a simple encoding of initkw
         try:
-            # Do not use repr. The text produced is non-determenistic for
-            # dictionaries. Instead, use ub.repr2, which is determenistic.
+            # Do not use repr. The text produced is non-deterministic for
+            # dictionaries. Instead, use ub.repr2, which is deterministic.
             init_text = ub.repr2(initkw, nl=1)
             eval(init_text, {})
             init_code = ub.codeblock(
@@ -482,7 +485,7 @@ def export_model_code(dpath, model, initkw=None):
         except Exception:
             # fallback to pickle
             warnings.warn('Initialization params might not be serialized '
-                          'determenistically')
+                          'deterministically')
             init_bytes = repr(pickle.dumps(initkw, protocol=0))
             init_code = ub.codeblock(
                 '''
@@ -544,8 +547,3 @@ def export_model_code(dpath, model, initkw=None):
     with open(static_modpath, 'w') as file:
         file.write(sourcecode)
     return static_modpath
-
-
-if __name__ == '__main__':
-    import xdoctest
-    xdoctest.doctest_module(__file__)

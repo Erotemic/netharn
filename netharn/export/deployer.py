@@ -281,7 +281,7 @@ class DeployedModel(ub.NiceRepr):
         >>> initializer(model)
         ...
         >>> print('model.__module__ = {!r}'.format(model.__module__))
-        model.__module__ = 'ToyNet2d_3dd520'
+        model.__module__ = 'ToyNet2d_2a3f49'
 
     Example:
         >>> # Test the zip file as the model deployment
@@ -291,12 +291,10 @@ class DeployedModel(ub.NiceRepr):
         >>> initializer_ = self.initializer_definition()
         >>> model = model_[0](**model_[1])
         >>> initializer = initializer_[0](**initializer_[1])
-        >>> # TODO: check the info that goes into the hash
-        >>> # as well for a sanity test
         >>> initializer(model)
         ...
         >>> print('model.__module__ = {!r}'.format(model.__module__))
-        model.__module__ = 'deploy_ToyNet2d_rljhgepw/ToyNet2d_3dd520'
+        model.__module__ = 'deploy_ToyNet2d_rljhgepw/ToyNet2d_2a3f49'
     """
     def __init__(self, path):
         self.path = path
@@ -379,6 +377,9 @@ class DeployedModel(ub.NiceRepr):
 
         initializer_ = self.initializer_definition()
         initializer = initializer_[0](**initializer_[1])
+
+        assert model is not None
+
         initializer(model)
         return model
 
@@ -404,20 +405,18 @@ def _demodata_trained_dpath():
         'monitor'     : (nh.Monitor, {'max_epoch': 1}),
     })
     harn = nh.FitHarn(hyper)
-    harn.run()  # don't relearn if we already finished this one
-    # TODO: eventually make this something that FitHarn does on init by default
-    from . import exporter
-    exporter.export_model_code(harn.train_dpath, harn.hyper.model_cls, harn.hyper.model_params)
-
+    harn.run()  # TODO: make this run faster if we don't need to rerun
     if len(list(glob.glob(join(harn.train_dpath, '*.py')))) > 1:
         # If multiple models are deployed some hash changed. Need to reset
         harn.initialize(reset='delete')
         harn.run()  # don't relearn if we already finished this one
-        exporter.export_model_code(harn.train_dpath, harn.hyper.model_cls, harn.hyper.model_params)
-
     return harn.train_dpath
 
 
 if __name__ == '__main__':
+    """
+    CommandLine:
+        xdoctest -m netharn.export.deployer
+    """
     import xdoctest
     xdoctest.doctest_module(__file__)

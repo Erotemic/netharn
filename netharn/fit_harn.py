@@ -273,6 +273,7 @@ class InitializeMixin:
                 harn.snapshot_dpath))
         else:
             harn.warn('harn.train_dpath is None, all computation is in memory')
+
         harn._initialized = True
         harn.after_initialize()
 
@@ -404,6 +405,16 @@ class InitializeMixin:
 
         harn.debug('Make dynamics')
         harn.dynamics = harn.hyper.dynamics.copy()
+
+        if True:
+            # Export the model topology to the train_dpath
+            from netharn.export import exporter
+            model_cls = harn.hyper.model_cls
+            model_params = harn.hyper.model_params
+            exporter.export_model_code(harn.train_dpath, model_cls,
+                                       initkw=model_params)
+            # TODO:
+            # might be good to check for multiple model exports at this time
 
     def reset_weights(harn):
         """
@@ -1448,7 +1459,6 @@ class CoreCallbacks:
         custom callback run only once before all (train/vali/test) epochs.
         """
         pass
-
 
 
 # Define the exposed class as a union of mixin classes
