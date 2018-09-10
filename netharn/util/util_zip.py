@@ -162,7 +162,7 @@ class zopen(ub.NiceRepr):
 if __name__ == '__main__':
     """
     CommandLine:
-        xdoctest -m netharn.util.util_zip
+        xdoctest -m netharn.util.util_zip all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

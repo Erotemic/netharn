@@ -465,7 +465,7 @@ class InitializeMixin:
         for load_path in reversed(prev_states):
             try:
                 harn.load_snapshot(load_path)
-            except RuntimeError:
+            except (RuntimeError, EOFError):
                 harn.info('Failed to load {}. Skiping.'.format(load_path))
             else:
                 success = True
