@@ -2,7 +2,7 @@
 """
 Deployment component of the Pytorch exporter.
 
-This file contains DeployedModel, which consists of logic to take the the
+This file contains DeployedModel, which consists of logic to take the
 model topology definition along with the "best" snapshot in a training
 directory and package it up into a standalone zipfile. The DeployedModel can
 also be used to reload model from this zipfile. Thus this zipfile can be passed
