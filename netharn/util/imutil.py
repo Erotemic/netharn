@@ -802,6 +802,14 @@ def imwrite(fpath, image, **kw):
         return cv2.imwrite(fpath, image)
 
 
+def stack_multiple_images(images, axis=0, resize=None, interpolation=None, overlap=0):
+    img1 = images[0]
+    for img2 in images[1:]:
+        img1 = stack_images(img1, img2, axis=axis, resize=resize,
+                            interpolation=interpolation, overlap=overlap)[0]
+    return img1
+
+
 def stack_images(img1, img2, axis=0, resize=None, interpolation=None,
                  overlap=0):
     """
@@ -819,6 +827,9 @@ def stack_images(img1, img2, axis=0, resize=None, interpolation=None,
             only used if resize or overlap > 0
         overlap (int): number of pixels to overlap. Using a negative
             number results in a border.
+
+    Returns:
+        Tuple[ndarray, Tuple, Tuple]: imgB, offset_tup, sf_tup
 
     Example:
         >>> from netharn import util
