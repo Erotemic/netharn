@@ -1,5 +1,6 @@
 Version 0.1.1
 ==============
+* Added `__json__` method to XPU
 * Fixed bug where snapshots are corrupted with an EOFError
 * Fixed bug where temporary directories were not cleaned up
 * `harn._export` is now its own function

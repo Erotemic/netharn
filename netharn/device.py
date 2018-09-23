@@ -328,6 +328,21 @@ class XPU(ub.NiceRepr):
         else:
             return 'CPU'
 
+    def __json__(xpu):
+        """
+        CommandLine:
+            xdoctest -m ~/code/netharn/netharn/device.py XPU.__json__
+
+        Example:
+            >>> print(XPU(None).__json__())
+            CPU
+            >>> print(XPU(0, check=False).__json__())
+            GPU(0)
+            >>> print(XPU([1, 2, 3], check=False).__json__())
+            GPU(1*,2,3)
+        """
+        return str(xpu)
+
     def __int__(xpu):
         return xpu._main_device_id
 
