@@ -1,4 +1,3 @@
-
 from os.path import join
 import os
 import torch
@@ -208,9 +207,26 @@ class GraphTripletDataset(torch.utils.data.Dataset):
         return item
 
 
-def prepare_datasets():
+def prepare_datasets(tags=['train', 'test', 'vali']):
+    """
+    Example:
+        >>> import sys, ubelt
+        >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
+        >>> from ggr2_matching import *
+        >>> datasets = prepare_datasets(['vali'])
+        >>> dset = datasets['train']
+        >>> item = dset[0]
+        >>> data = item['data']
+        >>> img1, img2, img3 = [d.cpu().numpy().transpose(1, 2, 0) for d in data]
+        >>> stacked = nh.util.imutil.stack_multiple_images([img1, img2, img3], axis=1)
+        >>> # xdoc: +REQUIRES(--show)
+        >>> nh.util.autompl()
+        >>> nh.util.imshow(stacked)
+    """
     import ubelt as ub
-    base = ub.truepath('~/remote/192.168.222.4/data/ggr2-coco')
+    import json
+    base = ub.pathlike('~/remote/192.168.222.4/data/ggr2-coco')
+    print('Begin prepare_datasets')
 
     annot_fpaths = {
         'train': os.path.join(base, 'annotations/instances_train2018.json'),
@@ -226,11 +242,10 @@ def prepare_datasets():
 
     datasets = {}
 
-    for tag in ['train']:
+    for tag in tags:
         annot_fpath = annot_fpaths[tag]
         image_dpath = image_dpaths[tag]
 
-        import json
         data = json.load(open(annot_fpath, 'r'))
         coco_dset = nh.data.CocoDataset(data=data, tag=tag, img_root=image_dpath)
 
@@ -287,7 +302,7 @@ def setup_harness(**kwargs):
 
     datasets = prepare_datasets(dbname, dim=dim)
     if workdir is None:
-        workdir = ub.truepath(os.path.join('~/work/siam-ibeis3', dbname))
+        workdir = ub.pathlike(os.path.join('~/work/siam-ibeis3', dbname))
     ub.ensuredir(workdir)
 
     for k, v in datasets.items():
