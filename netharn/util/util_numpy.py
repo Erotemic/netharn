@@ -57,6 +57,16 @@ def iter_reduce_ufunc(ufunc, arr_iter, out=None):
 
 def isect_flags(arr, other):
     """
+    Check which items in an array intersect with another set of items
+
+    Args:
+        arr (ndarray): items to check
+        other (Iterable): items to check if they exist in arr
+
+    Returns:
+        ndarray: booleans corresponding to arr indicating if that item is
+            also contained in other.
+
     Example:
         >>> arr = np.array([
         >>>     [1, 2, 3, 4],
@@ -70,8 +80,7 @@ def isect_flags(arr, other):
          [False  True False  True]
          [ True  True False  True]]
     """
-    flags = iter_reduce_ufunc(np.logical_or, (arr == item for item in other)).ravel()
-    flags.shape = arr.shape
+    flags = iter_reduce_ufunc(np.logical_or, (arr == item for item in other))
     return flags
 
 

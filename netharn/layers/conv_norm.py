@@ -139,6 +139,17 @@ class _ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
             if None, then normalization is disabled.
         noli (str, dict, nn.Module): Type of nonlinearity,
             if None, then normalization is disabled.
+
+    Example:
+        >>> from netharn.layers.conv_norm import _ConvNormNd
+        >>> self = _ConvNormNd(dim=2, in_channels=16, out_channels=64,
+        >>>                    kernel_size=3)
+        >>> print(self)
+        _ConvNormNd(
+          (conv): Conv2d(16, 64, kernel_size=(3, 3), stride=(1, 1))
+          (norm): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          (noli): ReLU(inplace)
+        )
     """
     def __init__(self, dim, in_channels, out_channels, kernel_size, stride=1,
                  bias=True, padding=0, noli='relu', norm='batch',

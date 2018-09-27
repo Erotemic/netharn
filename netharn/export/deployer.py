@@ -262,6 +262,8 @@ def unpack_model_info(path):
                 info['snap_fpath'] = join(root, fpath)
             if fpath.endswith('.py'):
                 if info['model_fpath'] is not None:
+                    # TODO: warn the user and take the most recently
+                    # modified path.
                     raise Exception('Multiple model paths!')
                 info['model_fpath'] = join(root, fpath)
 
@@ -320,6 +322,9 @@ class DeployedModel(ub.NiceRepr):
         self._model = None
 
     def __nice__(self):
+        return self.path
+
+    def __json__(self):
         return self.path
 
     def package(self):
