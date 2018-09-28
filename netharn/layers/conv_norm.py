@@ -127,6 +127,33 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
     return cls(**key)
 
 
+def rectify_conv(dim=2):
+    conv_cls = {
+        1: torch.nn.Conv1d,
+        2: torch.nn.Conv2d,
+        3: torch.nn.Conv3d,
+    }[dim]
+    return conv_cls
+
+
+def rectify_dropout(dim=2):
+    conv_cls = {
+        1: torch.nn.Dropout,
+        2: torch.nn.Dropout2d,
+        3: torch.nn.Dropout3d,
+    }[dim]
+    return conv_cls
+
+
+def rectify_maxpool(dim=2):
+    conv_cls = {
+        1: torch.nn.MaxPool1d,
+        2: torch.nn.MaxPool2d,
+        3: torch.nn.MaxPool3d,
+    }[dim]
+    return conv_cls
+
+
 class _ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
     """
     Backbone convolution component. The convolution hapens first, normalization
@@ -156,12 +183,7 @@ class _ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
                  groups=1):
         super(_ConvNormNd, self).__init__()
 
-        conv_cls = {
-            1: torch.nn.Conv1d,
-            2: torch.nn.Conv2d,
-            3: torch.nn.Conv3d,
-        }[dim]
-
+        conv_cls = rectify_conv(dim)
         conv = conv_cls(in_channels, out_channels, kernel_size=kernel_size,
                         padding=padding, stride=stride, groups=groups,
                         bias=bias)

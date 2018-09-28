@@ -97,7 +97,7 @@ def apply_initializer(input, func, funckw):
             apply_initializer(item, func, funckw)
 
 
-def load_partial_state(model, model_state_dict, initializer=None):
+def load_partial_state(model, model_state_dict, initializer=None, verbose=1):
     """
     CommandLine:
         python -m netharn.initializers.nninit_base load_partial_state
@@ -213,7 +213,8 @@ def load_partial_state(model, model_state_dict, initializer=None):
                 else:
                     initializer(self_state[key])
     else:
-        print('Pretrained weights are a perfect fit')
+        if verbose:
+            print('Pretrained weights are a perfect fit')
     model.load_state_dict(self_state)
 
 if __name__ == '__main__':
