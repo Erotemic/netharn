@@ -74,7 +74,12 @@ def cpu_nms(np.ndarray[np.float32_t, ndim=2] tlbr,
                     # detection, which we just kept.
                     inter = w * h
                     ovr = inter / (iarea + areas[j] - inter)
-                    if ovr >= thresh:
+                    # NOTE: We are using following convention:
+                    #     * suppress if overlap > thresh
+                    #     * consider if overlap <= thresh
+                    # This convention has the property that when thresh=0, we dont just
+                    # remove everything.
+                    if ovr > thresh:
                         suppressed[j] = 1
 
     return keep

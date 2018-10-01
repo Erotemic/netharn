@@ -77,6 +77,11 @@ __global__ void nms_kernel(const int n_boxes,
     }
     for (i = start; i < col_size; i++) 
     {
+      //  NOTE: We are using following convention:
+      //      * suppress if overlap > thresh
+      //      * consider if overlap <= thresh
+      //  This convention has the property that when thresh=0, we dont just
+      //  remove everything.
       if (devIoU(cur_box, block_boxes + i * nCols, bias) > nms_overlap_thresh) 
       {
         t |= 1ULL << i;

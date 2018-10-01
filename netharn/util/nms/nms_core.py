@@ -25,6 +25,10 @@ except Exception:
     warnings.warn('gpu_nms is not available')
 
 
+def available_nms_impls():
+    return list(_impls.keys())
+
+
 @profiler.profile
 def non_max_supression(tlbr, scores, thresh, bias=0.0, classes=None,
                        impl='auto'):
@@ -64,6 +68,19 @@ def non_max_supression(tlbr, scores, thresh, bias=0.0, classes=None,
         >>> keep = non_max_supression(dets, scores, thresh, impl='py')
         >>> print('keep = {!r}'.format(keep))
         keep = [2, 1, 3]
+        >>> thresh = 0.0
+        >>> if 'py' in available_nms_impls():
+        >>>     keep = non_max_supression(dets, scores, thresh, impl='py')
+        >>>     assert list(keep) == [2, 1]
+        >>> if 'cpu' in available_nms_impls():
+        >>>     keep = non_max_supression(dets, scores, thresh, impl='cpu')
+        >>>     assert list(keep) == [2, 1]
+        >>> if 'gpu' in available_nms_impls():
+        >>>     keep = non_max_supression(dets, scores, thresh, impl='gpu')
+        >>>     assert list(keep) == [2, 1]
+        >>> if 'torch' in available_nms_impls():
+        >>>     keep = non_max_supression(dets, scores, thresh, impl='torch')
+        >>>     assert set(keep.tolist()) == {2, 1}
 
     Example:
         >>> import ubelt as ub
@@ -121,9 +138,9 @@ def non_max_supression(tlbr, scores, thresh, bias=0.0, classes=None,
             if impl == 'gpu':
                 # HACK: we should parameterize which device is used
                 device = torch.cuda.current_device()
-                keep = nms(tlbr, scores, thresh, bias=float(bias), device_id=device)
+                keep = nms(tlbr, scores, float(thresh), bias=float(bias), device_id=device)
             else:
-                keep = nms(tlbr, scores, thresh, bias=float(bias))
+                keep = nms(tlbr, scores, float(thresh), bias=float(bias))
         return keep
 
 

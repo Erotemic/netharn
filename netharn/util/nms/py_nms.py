@@ -19,7 +19,7 @@ def py_nms(np_tlbr, np_scores, thresh, bias=1):
     order = np_scores.argsort()[::-1]
 
     keep = []
-    n_conflicts = 0
+    # n_conflicts = 0
     while order.size > 0:
         i = order[0]
         keep.append(i)
@@ -35,13 +35,13 @@ def py_nms(np_tlbr, np_scores, thresh, bias=1):
         inter = w * h
         ovr = inter / (areas[i] + areas[js_remain] - inter)
 
-        # Filter down to the indices that do not overlap with this item
+        # Remove any indices that (significantly) overlap with this item
+        # NOTE: We are using following convention:
+        #     * suppress if overlap > thresh
+        #     * consider if overlap <= thresh
+        # This convention has the property that when thresh=0, we dont just
+        # remove everything.
         inds = np.where(ovr <= thresh)[0]
-        # print('i = {!r}'.format(i))
-        # print('inds = {!r}'.format(inds))
-        # print('js_remain = {!r}'.format(js_remain[ovr > thresh]))
-
-        n_conflicts += (ovr > thresh).sum()
         order = order[inds + 1]
 
     return keep
