@@ -36,6 +36,9 @@ class HiddenShapesFor(object):
             shapes: Dict: The hidden shape (can be complex due to nesting)
             shape: Tuple[int, ...]: (always a simple fixed-depth type)
 
+    CommandLine:
+        xdoctest -m ~/code/netharn/netharn/hidden_shapes_for.py HiddenShapesFor
+
     Example:
         >>> # Case where we have a registered func
         >>> from netharn.hidden_shapes_for import *
@@ -45,7 +48,7 @@ class HiddenShapesFor(object):
         >>> )
         >>> shapes, shape = HiddenShapesFor(self)([1, 1, 7, 11])
         >>> print('shapes = {}'.format(ub.repr2(shapes, nl=1)))
-        >>> print('shape = {}'.format(shape))
+        >>> print('shape = {}'.format(ub.repr2(shape, nl=0)))
         shapes = {
             '0': (1, 3, 5, 9),
             '1': (1, 5, 3, 7),
@@ -58,9 +61,9 @@ class HiddenShapesFor(object):
         >>> from netharn.hidden_shapes_for import *
         >>> self = nn.Conv2d(2, 3, kernel_size=3)
         >>> shapes, shape = HiddenShapesFor(self)([1, 1, 7, 11])
-        >>> print('shapes = {}'.format(ub.repr2(shapes, nl=1)))
+        >>> print('shapes = {}'.format(ub.repr2(shapes, nl=0)))
         >>> print('shape = {}'.format(shape))
-        shapes = None
+        shapes = (1, 3, 5, 9)
         shape = (1, 3, 5, 9)
 
     """
@@ -98,8 +101,8 @@ class HiddenShapesFor(object):
                 # a simple pytorch func
                 shapes, shape = self._func(*args, **kwargs)
         else:
-            shapes = None
             shape = OutputShapeFor(self.module)(*args, **kwargs)
+            shapes = shape
         return shapes, shape
 
     @staticmethod
@@ -116,7 +119,7 @@ class HiddenShapesFor(object):
             >>>     nn.Conv2d(5, 7, kernel_size=3),
             >>> )
             >>> shapes, shape = HiddenShapesFor(self)([1, 1, 7, 11])
-            >>> print('shape = {}'.format(shape))
+            >>> print('shape = {}'.format(ub.repr2(shape, nl=0)))
             >>> print('shapes = {}'.format(ub.repr2(shapes, nl=1)))
             shape = (1, 7, 1, 5)
             shapes = {
@@ -128,10 +131,11 @@ class HiddenShapesFor(object):
         shape = input_shape
         shapes = ub.odict()
         for key, child in module._modules.items():
+            # shapes, shape = HiddenShapesFor(child)(shape)
             if hasattr(child, 'hidden_shapes_for'):
                 shapes[key], shape = child.hidden_shapes_for(shape)
             else:
-                shapes[key] = shape = OutputShapeFor(child)(shape)
+                shapes[key], shape = HiddenShapesFor(child)(shape)
         return shapes, shape
 
 

@@ -206,7 +206,8 @@ class _ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
         return OutputShapeFor.sequential(self, input_shape)
 
     def hidden_shapes_for(self, input_shape):
-        return OutputShapeFor.sequential(self, input_shape)
+        shape = OutputShapeFor.sequential(self, input_shape)
+        return shape, shape
 
 
 class ConvNorm1d(_ConvNormNd):
