@@ -570,6 +570,13 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         >>>             assert box1 == back
     """
     def __init__(self, data, format=None):
+        if isinstance(data, Boxes):
+            if format is not None:
+                data = data.toformat(format).data
+            else:
+                data = data.data
+                format = data.format
+
         if format is None:
             print('WARNING: format for Boxes not specified, default to tlwh')
             format = 'tlwh'

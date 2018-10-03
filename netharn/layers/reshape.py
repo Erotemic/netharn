@@ -8,7 +8,10 @@ class Reshape(nn.Module):
     Wrapper class around `torch.view` that implements `output_shape_for`
 
     Args:
-        *shape: same ars that would be passed to view
+        *shape: same ars that would be passed to view.
+            if an item in shape is None it means that the output
+            shape should keep the input shap value in that dimension
+
 
     Example:
         >>> OutputShapeFor(Reshape(-1, 3))._check_consistency((20, 6, 20))
@@ -17,17 +20,39 @@ class Reshape(nn.Module):
         (100, 3, 5)
         >>> Reshape(7, -1, 3).output_shape_for((None, 1))  # broken?
         (7, None, 3)
+        >>> OutputShapeFor(Reshape(None, -1, 4))._check_consistency((10, 32, 32, 16))
+
+    Ignore:
+        >>> self = Reshape(None, -1, 4)
+        >>> input_shape = (10, 32, 32, 16)
     """
     def __init__(self, *shape):
         super(Reshape, self).__init__()
         self.shape = shape
         if len(shape) == 0:
             raise ValueError('Reshape dims cannot be empty')
-        if sum(d < 0 for d in shape) > 1:
+
+        self._none_dims = []
+        self._neg_dims = []
+        for i, d in enumerate(shape):
+            if d is None:
+                self._none_dims.append(i)
+            elif d < 0:
+                self._neg_dims.append(i)
+        if len(self._neg_dims) > 1:
             raise ValueError('Can only specify one negative dimension')
 
     def forward(self, input):
-        return input.view(self.shape)
+        if not self._none_dims:
+            output_shape = self.shape
+        else:
+            output_shape = list(self.shape)
+            input_shape = input.shape
+            for i in self._none_dims:
+                if i >= len(input_shape):
+                    raise ValueError('input shape does not correspond')
+                output_shape[i] = input_shape[i]
+        return input.view(*output_shape)
 
     def extra_repr(self):
         """
@@ -46,6 +71,15 @@ class Reshape(nn.Module):
         if len(input_shape) == 0:
             raise ValueError('input shape cannot be empty')
 
+        # If any dim in output_shape is set to None, it should use whatever the
+        # corresonding value in input shape is. This feature is not part of
+        # standard torch.view
+        output_shape = list(self.shape)
+        for i in self._none_dims:
+            if i >= len(input_shape):
+                raise ValueError('input shape does not correspond')
+            output_shape[i] = input_shape[i]
+
         # Check how many total numbers are in the input / if the input
         # has an unspecified batch dimension.
         input_has_none = input_shape[0] is None
@@ -61,8 +95,7 @@ class Reshape(nn.Module):
         # Check the total numbers that the output shape wants
         neg_dims = []
         unused = input_total
-        output_shape = list(self.shape)
-        for j, s in enumerate(self.shape):
+        for j, s in enumerate(output_shape):
             if s == -1:
                 neg_dims.append(j)
             else:

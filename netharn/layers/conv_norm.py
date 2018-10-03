@@ -179,14 +179,14 @@ class _ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
         )
     """
     def __init__(self, dim, in_channels, out_channels, kernel_size, stride=1,
-                 bias=True, padding=0, noli='relu', norm='batch',
-                 groups=1):
+                 padding=0, dilation=1, groups=1, bias=True, noli='relu',
+                 norm='batch'):
         super(_ConvNormNd, self).__init__()
 
         conv_cls = rectify_conv(dim)
         conv = conv_cls(in_channels, out_channels, kernel_size=kernel_size,
                         padding=padding, stride=stride, groups=groups,
-                        bias=bias)
+                        bias=bias, dilation=dilation)
 
         norm = rectify_normalizer(out_channels, norm, dim=dim)
         noli = rectify_nonlinearity(noli, dim=dim)
@@ -226,14 +226,14 @@ class ConvNorm1d(_ConvNormNd):
         (2, 7, 3)
     """
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 bias=True, padding=0, noli='relu', norm='batch',
-                 groups=1):
+                 padding=0, dilation=1, groups=1, bias=True, noli='relu',
+                 norm='batch'):
         super(ConvNorm1d, self).__init__(dim=1, in_channels=in_channels,
                                          out_channels=out_channels,
                                          kernel_size=kernel_size,
                                          stride=stride, bias=bias,
                                          padding=padding, noli=noli, norm=norm,
-                                         groups=groups)
+                                         dilation=dilation, groups=groups)
 
 
 class ConvNorm2d(_ConvNormNd):
@@ -257,14 +257,14 @@ class ConvNorm2d(_ConvNormNd):
         (2, 11, 3, 5)
     """
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 bias=True, padding=0, noli='relu', norm='batch',
-                 groups=1):
+                 padding=0, dilation=1, groups=1, bias=True, noli='relu',
+                 norm='batch'):
         super(ConvNorm2d, self).__init__(dim=2, in_channels=in_channels,
                                          out_channels=out_channels,
                                          kernel_size=kernel_size,
                                          stride=stride, bias=bias,
                                          padding=padding, noli=noli, norm=norm,
-                                         groups=groups)
+                                         dilation=dilation, groups=groups)
 
 
 class ConvNorm3d(_ConvNormNd):
