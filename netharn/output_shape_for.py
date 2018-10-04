@@ -24,7 +24,6 @@ def compute_type(type):
 
 
 class OutputShapeFor(object):
-
     math = math  # for hacking in sympy
 
     def __init__(self, module):

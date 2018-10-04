@@ -3,6 +3,7 @@ import torch
 from netharn.output_shape_for import OutputShapeFor
 import six
 from netharn import util
+from torch import nn
 if six.PY2:
     from fractions import gcd
 else:
@@ -204,6 +205,9 @@ class _ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
     def output_shape_for(self, input_shape):
         return OutputShapeFor.sequential(self, input_shape)
 
+    def hidden_shapes_for(self, input_shape):
+        return OutputShapeFor.sequential(self, input_shape)
+
 
 class ConvNorm1d(_ConvNormNd):
     """
@@ -296,6 +300,38 @@ class ConvNorm3d(_ConvNormNd):
                                          stride=stride, bias=bias,
                                          padding=padding, noli=noli, norm=norm,
                                          groups=groups)
+
+
+class Sequential(nn.Sequential, util.ModuleMixin):
+    """
+    Like torch.sequential but implements hidden_shapes_for
+
+    CommandLine:
+        xdoctest -m ~/code/netharn/netharn/layers/conv_norm.py Sequential
+
+    Example:
+        >>> self = Sequential(
+        >>>     nn.Conv2d(2, 3, kernel_size=3),
+        >>>     nn.Conv2d(3, 5, kernel_size=3),
+        >>>     nn.Conv2d(5, 7, kernel_size=3),
+        >>> )
+        >>> shapes, shape = self.hidden_shapes_for([1, 1, 7, 11])
+        >>> print('shape = {}'.format(shape))
+        >>> print('shapes = {}'.format(ub.repr2(shapes, nl=1)))
+        shape = (1, 7, 1, 5)
+        shapes = {
+            '0': (1, 3, 5, 9),
+            '1': (1, 5, 3, 7),
+            '2': (1, 7, 1, 5),
+        }
+    """
+    def hidden_shapes_for(self, input_shape):
+        from netharn.hidden_shapes_for import HiddenShapesFor
+        return HiddenShapesFor.sequential(self, input_shape)
+
+    def output_shape_for(self, input_shape):
+        from netharn.output_shape_for import OutputShapeFor
+        return OutputShapeFor.sequential(self, input_shape)
 
 
 if __name__ == '__main__':

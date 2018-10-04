@@ -1,5 +1,6 @@
 Version 0.1.1
 ==============
+* Adding hidden_state_for
 * Fixed bug where `OutputShapeFor(_MaxPoolNd)` did not respect `ceil_mode`.
 * Fixed bug where cpu implementation of NMS was different
 * Added `__json__` method to XPU
