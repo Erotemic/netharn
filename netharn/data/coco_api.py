@@ -83,7 +83,22 @@ class ObjectList1D(ub.NiceRepr):
         return len(self._ids)
 
     def take(self, idxs):
-        subids = list(ub.take(self._rowids, idxs))
+        """
+        Example:
+            >>> self = CocoDataset.demo().annots()
+            >>> assert len(self.take([0, 2, 3])) == 3
+        """
+        subids = list(ub.take(self._ids, idxs))
+        newself = self.__class__(subids, self._dset)
+        return newself
+
+    def compress(self, flags):
+        """
+        Example:
+            >>> self = CocoDataset.demo().images()
+            >>> assert len(self.take([True, False, True])) == 2
+        """
+        subids = list(ub.compress(self._ids, flags))
         newself = self.__class__(subids, self._dset)
         return newself
 

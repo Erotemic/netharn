@@ -1,5 +1,7 @@
 Version 0.1.1
 ==============
+* Fixed take in ObjectList1D in CocoAPI
+* Added compress to ObjectList1D in CocoAPI
 * Adding hidden_state_for
 * Fixed bug where `OutputShapeFor(_MaxPoolNd)` did not respect `ceil_mode`.
 * Fixed bug where cpu implementation of NMS was different
