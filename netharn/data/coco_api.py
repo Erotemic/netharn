@@ -96,7 +96,7 @@ class ObjectList1D(ub.NiceRepr):
         """
         Example:
             >>> self = CocoDataset.demo().images()
-            >>> assert len(self.take([True, False, True])) == 2
+            >>> assert len(self.compress([True, False, True])) == 2
         """
         subids = list(ub.compress(self._ids, flags))
         newself = self.__class__(subids, self._dset)
