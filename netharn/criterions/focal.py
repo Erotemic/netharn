@@ -97,7 +97,19 @@ def _backwards_compat_reduction_kw(size_average, reduce, reduction):
             raise Exception(
                 'Must specify both size_average and reduce in '
                 'torch < 0.4.1, or specify neither and use reduction')
-    return size_average, reduce
+        else:
+            if not size_average and not reduce:
+                reduction = 'none'
+            elif size_average and not reduce:
+                reduction = 'none'
+            elif size_average and reduce:
+                reduction = 'elementwise_mean'
+            elif not size_average and reduce:
+                reduction = 'sum'
+            else:
+                raise ValueError(
+                    'Impossible combination of size_average and reduce')
+    return size_average, reduce, reduction
 
 
 class FocalLoss(torch.nn.modules.loss._WeightedLoss):
@@ -189,14 +201,15 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
     def __init__(self, focus=2, weight=None, size_average=None, reduce=None,
                  reduction='elementwise_mean', ignore_index=-100):
 
+        size_average, reduce, reduction = _backwards_compat_reduction_kw(
+            size_average, reduce, reduction)
         if _HAS_REDUCTION:
-            super(FocalLoss, self).__init__(weight=weight, reduce=reduce,
-                                            size_average=size_average,
+            super(FocalLoss, self).__init__(weight=weight,
+                                            # reduce=reduce,
+                                            # size_average=size_average,
                                             reduction=reduction)
         else:
-            size_average, reduce = _backwards_compat_reduction_kw(
-                size_average, reduce, reduction)
-            super(FocalLoss, self).__init__(weight=weight,
+            super(FocalLoss, self).__init__(weight=weight, reduce=reduce,
                                             size_average=size_average)
             self.size_average = size_average  # fix for travis?
             self.reduce = reduce

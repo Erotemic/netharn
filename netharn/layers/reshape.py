@@ -1,9 +1,9 @@
-from torch import nn
+import torch
 from netharn.output_shape_for import OutputShapeFor  # NOQA
 from netharn.output_shape_for import SHAPE_CLS
 
 
-class Reshape(nn.Module):
+class Reshape(torch.nn.Module):
     """
     Wrapper class around `torch.view` that implements `output_shape_for`
 
@@ -18,9 +18,12 @@ class Reshape(nn.Module):
         (800, 3)
         >>> OutputShapeFor(Reshape(100, -1, 5))._check_consistency((10, 10, 15))
         (100, 3, 5)
-        >>> Reshape(7, -1, 3).output_shape_for((None, 1))  # broken?
+        >>> Reshape(7, -1, 3).output_shape_for((None, 1))  # weird case
         (7, None, 3)
         >>> OutputShapeFor(Reshape(None, -1, 4))._check_consistency((10, 32, 32, 16))
+        (10, 4096, 4)
+        >>> Reshape(None, -1, 4).output_shape_for((None, 32, 32, 16))
+        (None, 4096, 4)
 
     Ignore:
         >>> self = Reshape(None, -1, 4)
@@ -43,6 +46,17 @@ class Reshape(nn.Module):
             raise ValueError('Can only specify one negative dimension')
 
     def forward(self, input):
+        """
+        Example:
+            >>> self = Reshape(None, -1, 4)
+            >>> input_shape = (10, 32, 32, 16)
+            >>> input = torch.rand(input_shape)
+            >>> output = self.forward(input)
+            >>> print(tuple(output.shape))
+            (10, 4096, 4)
+            >>> print(tuple(self.output_shape_for(input_shape)))
+            >>> OutputShapeFor(self)._check_consistency(input_shape)
+        """
         if not self._none_dims:
             output_shape = self.shape
         else:
@@ -94,12 +108,12 @@ class Reshape(nn.Module):
 
         # Check the total numbers that the output shape wants
 
-        can_check_fit =  not input_has_none or (self._none_dims == [0] and input_has_none)
+        can_check_fit = not input_has_none or (self._none_dims == [0] and input_has_none)
 
         if can_check_fit:
             unused = input_total
             for j, s in enumerate(output_shape):
-                if j not in self._neg_dims and j not in self._none_dims:
+                if j not in self._neg_dims and not (j in self._none_dims and input_has_none):
                     # if not input_has_none:
                     if s > input_total or input_total % s != 0:
                         raise ValueError('does not fit')

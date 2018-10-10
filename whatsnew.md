@@ -1,5 +1,8 @@
 Version 0.1.1
 ==============
+* Deprecated and removed irrelevant parts of CocoAPI
+* Removing annotations and categories now dynamically updates indexes CocoAPI
+* Added remove categories to CocoAPI
 * Added experimental `_build_hashid` to CocoAPI
 * Fixed take in ObjectList1D in CocoAPI
 * Added compress to ObjectList1D in CocoAPI
