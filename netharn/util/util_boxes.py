@@ -3,11 +3,14 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import numpy as np
 import torch
 import ubelt as ub
+from distutils.version import LooseVersion
 
 try:
     from netharn.util.cython_boxes import bbox_ious_c as _bbox_ious_c
 except ImportError:
     _bbox_ious_c = None
+
+TORCH_HAS_EMPTY_SHAPE = LooseVersion(torch.__version__) >= LooseVersion('1.0.0')
 
 
 def box_ious(boxes1, boxes2, bias=0, mode=None):
@@ -795,8 +798,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>> from functools import partial
             >>> assert ub.allsame(results.values(), partial(np.allclose, atol=1e-07))
         """
-
-        other_is_1d = (len(other.shape) == 1)
+        other_is_1d = len(other) > 0 and (len(other.shape) == 1)
         if other_is_1d:
             # `box_ious` expect 2d input
             other = other[None, :]
@@ -806,7 +808,13 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         #     self = self[None, :]
 
         if len(other) == 0 or len(self) == 0:
-            ious = np.empty((len(self), len(other)))
+            if torch.is_tensor(self.data) or torch.is_tensor(other.data):
+                if TORCH_HAS_EMPTY_SHAPE:
+                    torch.empty((len(self), len(other)))
+                else:
+                    ious = torch.empty(0)
+            else:
+                ious = np.empty((len(self), len(other)))
         else:
             self_tlbr = self.to_tlbr(copy=False)
             other_tlbr = other.to_tlbr(copy=False)
