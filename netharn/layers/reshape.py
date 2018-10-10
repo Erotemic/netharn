@@ -93,27 +93,27 @@ class Reshape(nn.Module):
             input_total *= d
 
         # Check the total numbers that the output shape wants
-        neg_dims = []
-        unused = input_total
-        for j, s in enumerate(output_shape):
-            if s == -1:
-                neg_dims.append(j)
-            else:
-                if not input_has_none:
+
+        can_check_fit =  not input_has_none or (self._none_dims == [0] and input_has_none)
+
+        if can_check_fit:
+            unused = input_total
+            for j, s in enumerate(output_shape):
+                if j not in self._neg_dims and j not in self._none_dims:
+                    # if not input_has_none:
                     if s > input_total or input_total % s != 0:
                         raise ValueError('does not fit')
                     unused = unused // s
 
-        if neg_dims:
-            if len(neg_dims) > 1:
+        if self._neg_dims:
+            if len(self._neg_dims) > 1:
                 raise ValueError('Can only specify -1 in reshape dim once')
-            j = neg_dims[0]
-            if input_has_none:
-                output_shape[j] = None
-            else:
+            j = self._neg_dims[0]
+            if can_check_fit:
                 output_shape[j] = unused
-        else:
-            if not input_has_none:
-                assert unused == 1
+            else:
+                output_shape[j] = None
+        elif can_check_fit:
+            assert unused == 1
 
         return SHAPE_CLS(output_shape)
