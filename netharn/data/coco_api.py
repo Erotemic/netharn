@@ -227,132 +227,16 @@ class ImageGroups(ObjectGroups):
     pass
 
 
-class MixinCocoExtras(object):
+class MixinCocoDepricate(object):
     """
-    Misc functions for coco
+    These functions are marked for deprication and may be removed at any time
     """
-
-    @classmethod
-    def demo(cls):
-        dataset = demo_coco_data()
-        self = cls(dataset, tag='demo')
-        return self
-
-    def _run_fixes(self):
-        """
-        Fixes issues in conversion scripts. Published (non-phase0) data should
-        not have these issues.
-        """
-        for ann in self.dataset['annotations']:
-
-            if 'roi_category' in ann:
-                cid = ann['roi_category']
-                if 'category_id' not in ann:
-                    ann['category_id'] = cid
-                else:
-                    ann.pop('roi_category')
-                    # assert ann['category_id'] == cid, ub.repr2(ann)
-
-            if 'roi_shape' not in ann:
-                isect = set(ann).intersection({'bbox', 'keypoints', 'line'})
-                if isect == {'bbox'}:
-                    ann['roi_shape'] = 'bbox'
-                elif isect == {'keypoints'}:
-                    ann['roi_shape'] = 'keypoints'
-                elif isect == {'line'}:
-                    ann['roi_shape'] = 'line'
-
-            if ann['roi_shape'] == 'circle':
-                # We should simply remove this annotation
-                pass
-
-                # # the circle format is simply a line that defines the radius
-                # x1, y1, x2, y2 = ann['bbox']
-                # xc = (x1 + x2) / 2
-                # yc = (y1 + y2) / 2
-                # radius = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-                # length = radius * 2
-                # bbox = [(xc - radius), (yc - radius), length, length]
-                # ann['bbox'] = bbox
-                # ann['radius'] = [x1, y1, x2, y2]
-                # ann['roi_shape'] = 'bbox'
-
-            if ann['roi_shape'] == 'point' and 'keypoints' not in ann:
-                x, y, w, h = ann.pop('bbox')
-                ann.pop('area', None)
-                assert w == 0 and h == 0
-                ann['keypoints'] = [x, y, 1]
-                ann['roi_shape'] = 'keypoints'
-
-            if ann['roi_shape'] == 'boundingBox':
-                # standard coco bbox is [x,y,width,height]
-                x1, y1, x2, y2 = ann['bbox']
-                assert x2 >= x1
-                assert y2 >= y1
-                w = x2 - x1
-                h = y2 - y1
-                ann['bbox'] = [x1, y1, w, h]
-                ann['roi_shape'] = 'bbox'
-
-            if ann['roi_shape'] == 'line' and 'line' not in ann:
-                # hack in a decent bounding box to fix the roi.
-                # Assume the line is the diameter of an enscribed circle
-                x1, y1, x2, y2 = ann['bbox']
-                xc = (x1 + x2) / 2
-                yc = (y1 + y2) / 2
-                length = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-                bbox = [(xc - length / 2), (yc - length / 2), length, length]
-                ann['bbox'] = bbox
-                ann['line'] = [x1, y1, x2, y2]
-
-            if 'line' in ann and 'bbox' not in ann:
-                x1, y1, x2, y2 = ann['line']
-                xc = (x1 + x2) / 2
-                yc = (y1 + y2) / 2
-                length = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-                bbox = [(xc - length / 2), (yc - length / 2), length, length]
-                ann['bbox'] = bbox
-                ann['roi_shape'] = 'line'
-
-            if 'roi_shape' in ann:
-                assert ann['roi_shape'] in ['keypoints', 'line', 'bbox'], (
-                    ub.repr2(ann))
-
-            if 'keypoints' in ann:
-                assert len(ann['keypoints']) % 3 == 0
-
-            # to make detectron happy
-            if 'bbox' in ann:
-                x, y, w, h = ann['bbox']
-                ann['area'] = w * h
-
-            ann['segmentation'] = []
-            ann['iscrowd'] = 0
-
-    def _ensure_imgsize(self):
-        """
-        Populate the imgsize field if it does not exist.
-
-        Example:
-            >>> self = CocoDataset.demo()
-            >>> self._ensure_imgsize()
-            >>> assert self.imgs[1]['width'] == 512
-            >>> assert self.imgs[2]['width'] == 300
-            >>> assert self.imgs[3]['width'] == 256
-        """
-        from PIL import Image
-        for img in ub.ProgIter(list(self.imgs.values()), desc='ensure imgsize'):
-            gpath = join(self.img_root, img['file_name'])
-            if 'width' not in img:
-                pil_img = Image.open(gpath)
-                w, h = pil_img.size
-                pil_img.close()
-                img['width'] = w
-                img['height'] = h
 
     def lookup_imgs(self, filename=None):
         """
         Linear search for an images with specific attributes
+
+        # DEPRICATE
 
         Ignore:
             filename = '201503.20150525.101841191.573975.png'
@@ -374,6 +258,8 @@ class MixinCocoExtras(object):
         """
         Linear search for an annotations with specific attributes
 
+        # DEPRICATE
+
         Ignore:
             list(self.lookup_anns(has='radius'))
             gid = 112888
@@ -389,6 +275,8 @@ class MixinCocoExtras(object):
     def _mark_annotated_images(self):
         """
         Mark any image that explicitly has annotations.
+
+        # DEPRICATE
         """
         for gid, img in self.imgs.items():
             aids = self.gid_to_aids.get(gid, [])
@@ -414,6 +302,144 @@ class MixinCocoExtras(object):
                 if ann['category_id'] not in self.cats:
                     to_remove.append(ann)
         return to_remove
+
+    def _remove_keypoint_annotations(self, rebuild=True):
+        """
+        Remove annotations with keypoints only
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> self._remove_keypoint_annotations()
+        """
+        to_remove = []
+        for ann in self.dataset['annotations']:
+            roi_shape = ann.get('roi_shape', None)
+            if roi_shape is None:
+                if 'keypoints' in ann and ann.get('bbox', None) is None:
+                    to_remove.append(ann)
+            elif roi_shape == 'keypoints':
+                to_remove.append(ann)
+        print('Removing {} keypoint annotations'.format(len(to_remove)))
+        self.remove_annotations(to_remove)
+        if rebuild:
+            self._build_index()
+
+    def _remove_bad_annotations(self, rebuild=True):
+        # DEPRICATE
+        to_remove = []
+        for ann in self.dataset['annotations']:
+            if ann['image_id'] is None or ann['category_id'] is None:
+                to_remove.append(ann)
+        print('Removing {} bad annotations'.format(len(to_remove)))
+        self.remove_annotations(to_remove)
+        if rebuild:
+            self._build_index()
+
+    def _remove_radius_annotations(self, rebuild=False):
+        # DEPRICATE
+        to_remove = []
+        for ann in self.dataset['annotations']:
+            if 'radius' in ann:
+                to_remove.append(ann)
+        print('Removing {} radius annotations'.format(len(to_remove)))
+        self.remove_annotations(to_remove)
+        if rebuild:
+            self._build_index()
+
+    def _remove_empty_images(self):
+        to_remove = []
+        for gid in self.imgs.keys():
+            aids = self.gid_to_aids.get(gid, [])
+            if not aids:
+                to_remove.append(self.imgs[gid])
+        print('Removing {} empty images'.format(len(to_remove)))
+        for img in to_remove:
+            self.dataset['images'].remove(img)
+        self._build_index()
+
+
+class MixinCocoExtras(object):
+    """
+    Misc functions for coco
+    """
+
+    @classmethod
+    def demo(cls):
+        dataset = demo_coco_data()
+        self = cls(dataset, tag='demo')
+        return self
+
+    def _build_hashid(self, hash_pixels=True, verbose=0):
+        """
+        Construct a hash that uniquely identifies the state of this dataset.
+
+        Args:
+            hash_pixels (bool): If False the image data is not included in the
+                hash, which can speed up computation. Defaults to True.
+            verbose (int): verbosity level
+
+        CommandLine:
+            xdoctest -m netharn.data.coco_api MixinCocoExtras._build_hashid
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> self._build_hashid(hash_pixels=True)
+            >>> print(ub.repr2(self.hashid_parts))
+            >>> print(self.hashid)
+            c9c3e3c185ea...
+        """
+        hashid_parts = ub.odict()
+
+        gids = sorted(self.imgs.keys())
+        aids = sorted(self.anns.keys())
+        cids = sorted(self.cats.keys())
+        if hash_pixels:
+            gpaths = [join(self.img_root, gname)
+                      for gname in self.images(gids)._lookup('file_name')]
+            gpath_sha512s = [
+                ub.hash_file(gpath, hasher='sha512')
+                for gpath in ub.ProgIter(gpaths, desc='hashing images',
+                                         verbose=verbose)
+            ]
+            hashid_parts['image_data'] = ub.hash_data(gpath_sha512s)
+
+        # Hash individual components
+        hashid_parts['annotations'] = ub.hash_data(json.dumps(
+            [sorted(self.anns[aid].items()) for aid in aids]))
+        hashid_parts['images']  = ub.hash_data(json.dumps([
+            sorted(self.imgs[gid].items()) for gid in gids]))
+        hashid_parts['categories'] = ub.hash_data(json.dumps([
+            sorted(self.cats[cid].items()) for cid in cids]))
+
+        hashid_parts['n_anns'] = len(aids)
+        hashid_parts['n_imgs'] = len(gids)
+        hashid_parts['n_cats'] = len(cids)
+
+        hashid = ub.hash_data(hashid_parts)
+        self.hashid = hashid
+        self.hashid_parts = hashid_parts
+        return hashid
+
+    def _ensure_imgsize(self):
+        """
+        Populate the imgsize field if it does not exist.
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> self._ensure_imgsize()
+            >>> assert self.imgs[1]['width'] == 512
+            >>> assert self.imgs[2]['width'] == 300
+            >>> assert self.imgs[3]['width'] == 256
+        """
+        from PIL import Image
+        for img in ub.ProgIter(list(self.imgs.values()), desc='ensure imgsize'):
+            gpath = join(self.img_root, img['file_name'])
+            if 'width' not in img:
+                pil_img = Image.open(gpath)
+                w, h = pil_img.size
+                pil_img.close()
+                img['width'] = w
+                img['height'] = h
 
     def _resolve_to_aid(self, aid_or_ann):
         """
@@ -444,58 +470,6 @@ class MixinCocoExtras(object):
             resolved_ann = aid_or_ann
         return resolved_ann
 
-    def _remove_keypoint_annotations(self, rebuild=True):
-        """
-        Remove annotations with keypoints only
-
-        Example:
-            >>> self = CocoDataset.demo()
-            >>> self._remove_keypoint_annotations()
-        """
-        to_remove = []
-        for ann in self.dataset['annotations']:
-            roi_shape = ann.get('roi_shape', None)
-            if roi_shape is None:
-                if 'keypoints' in ann and ann.get('bbox', None) is None:
-                    to_remove.append(ann)
-            elif roi_shape == 'keypoints':
-                to_remove.append(ann)
-        print('Removing {} keypoint annotations'.format(len(to_remove)))
-        self.remove_annotations(to_remove)
-        if rebuild:
-            self._build_index()
-
-    def _remove_bad_annotations(self, rebuild=True):
-        to_remove = []
-        for ann in self.dataset['annotations']:
-            if ann['image_id'] is None or ann['category_id'] is None:
-                to_remove.append(ann)
-        print('Removing {} bad annotations'.format(len(to_remove)))
-        self.remove_annotations(to_remove)
-        if rebuild:
-            self._build_index()
-
-    def _remove_radius_annotations(self, rebuild=False):
-        to_remove = []
-        for ann in self.dataset['annotations']:
-            if 'radius' in ann:
-                to_remove.append(ann)
-        print('Removing {} radius annotations'.format(len(to_remove)))
-        self.remove_annotations(to_remove)
-        if rebuild:
-            self._build_index()
-
-    def _remove_empty_images(self):
-        to_remove = []
-        for gid in self.imgs.keys():
-            aids = self.gid_to_aids.get(gid, [])
-            if not aids:
-                to_remove.append(self.imgs[gid])
-        print('Removing {} empty images'.format(len(to_remove)))
-        for img in to_remove:
-            self.dataset['images'].remove(img)
-        self._build_index()
-
     def category_graph(self):
         """
             >>> self = CocoDataset.demo()
@@ -514,12 +488,12 @@ class MixinCocoExtras(object):
                 graph.add_edge(cat['supercategory'], cat['name'])
         return graph
 
-    def missing_images(dset):
+    def missing_images(self):
         import os
         bad_paths = []
-        for index in ub.ProgIter(range(len(dset.dataset['images']))):
-            img = dset.dataset['images'][index]
-            gpath = join(dset.img_root, img['file_name'])
+        for index in ub.ProgIter(range(len(self.dataset['images']))):
+            img = self.dataset['images'][index]
+            gpath = join(self.img_root, img['file_name'])
             if not os.path.exists(gpath):
                 bad_paths.append((index, gpath))
         return bad_paths
@@ -1104,7 +1078,8 @@ class MixinCocoAddRemove(object):
 
 
 class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
-                  MixinCocoAttrs, MixinCocoDraw, MixinCocoExtras):
+                  MixinCocoAttrs, MixinCocoDraw, MixinCocoExtras,
+                  MixinCocoDepricate):
     """
     Notes:
         A keypoint annotation
@@ -1151,14 +1126,12 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
     Example:
         >>> dataset = demo_coco_data()
         >>> self = CocoDataset(dataset, tag='demo')
-        >>> self._run_fixes()
         >>> # xdoctest: +REQUIRES(--show)
         >>> self.show_image(gid=2)
         >>> from matplotlib import pyplot as plt
         >>> plt.show()
     """
-    def __init__(self, data=None, tag=None, img_root=None, autobuild=True,
-                 autofix=False):
+    def __init__(self, data=None, tag=None, img_root=None, autobuild=True):
         if data is None:
             data = {
                 'categories': [],
@@ -1196,9 +1169,6 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
         # Keep track of an unused id we may use
         self._next_ids = _NextId(self)
-
-        if autofix:
-            self._run_fixes()
 
         if autobuild:
             self._build_index()

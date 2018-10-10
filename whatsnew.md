@@ -1,5 +1,6 @@
 Version 0.1.1
 ==============
+* Added experimental `_build_hashid` to CocoAPI
 * Fixed take in ObjectList1D in CocoAPI
 * Added compress to ObjectList1D in CocoAPI
 * Adding hidden_state_for
