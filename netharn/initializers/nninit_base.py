@@ -97,7 +97,8 @@ def apply_initializer(input, func, funckw):
             apply_initializer(item, func, funckw)
 
 
-def load_partial_state(model, model_state_dict, initializer=None, verbose=1):
+def load_partial_state(model, model_state_dict, initializer=None,
+                       ignore_unset=False, verbose=2):
     """
     CommandLine:
         python -m netharn.initializers.nninit_base load_partial_state
@@ -146,7 +147,7 @@ def load_partial_state(model, model_state_dict, initializer=None, verbose=1):
 
     other_state = _fix_keys(model_state_dict)
 
-    self_unused_keys = set(self_state.keys())  # will end up as keys in our that were not set
+    self_unset_keys = set(self_state.keys())  # will end up as keys in our that were not set
     other_unused_keys = set(other_state.keys())  # will end up as keys in the other model that were not used
 
     seen_keys = ub.ddict(set)
@@ -159,7 +160,7 @@ def load_partial_state(model, model_state_dict, initializer=None, verbose=1):
             self_value = self_state[key]
             if other_value.size() == self_value.size():
                 self_state[key] = other_value
-                self_unused_keys.remove(key)
+                self_unset_keys.remove(key)
                 other_unused_keys.remove(key)
                 seen_keys['full_add'].add(key)
             elif len(other_value.size()) == len(self_value.size()):
@@ -192,7 +193,7 @@ def load_partial_state(model, model_state_dict, initializer=None, verbose=1):
                         #     # might help the network recover in case this is
                         #     # not a good idea
                         #     shock(self_state[key], func=initializer)
-                        self_unused_keys.remove(key)
+                        self_unset_keys.remove(key)
                         other_unused_keys.remove(key)
                         seen_keys['partial_add'].add(key)
             else:
@@ -201,19 +202,26 @@ def load_partial_state(model, model_state_dict, initializer=None, verbose=1):
                 print(' * other = {!r}'.format(other_value.size()))
                 seen_keys['skipped'].add(key)
 
-    if self_unused_keys or other_unused_keys:
+    if ignore_unset is True:
+        self_unset_keys = []
+    elif ignore_unset:
+        self_unset_keys = list(ub.oset(self_unset_keys) - set(ignore_unset))
+
+    if self_unset_keys or other_unused_keys:
         print('Seen Keys: {}'.format(ub.repr2(seen_keys, nl=2)))
-        print('Self Unused Keys: {}'.format(ub.repr2(self_unused_keys, nl=1)))
+
+        print('Self Unset Keys: {}'.format(ub.repr2(self_unset_keys, nl=1)))
+
         print('Other Unused keys: {}'.format(ub.repr2(other_unused_keys, nl=1)))
         if initializer:
             print('Initializing unused keys using {}'.format(initializer))
-            for key in self_unused_keys:
+            for key in self_unset_keys:
                 if key.endswith('.bias'):
                     self_state[key].fill_(0)
                 else:
                     initializer(self_state[key])
     else:
-        if verbose:
+        if verbose > 1:
             print('Pretrained weights are a perfect fit')
     model.load_state_dict(self_state)
 
