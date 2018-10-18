@@ -58,6 +58,16 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
             model_state_dict = model_state_dict['model_state_dict']
         elif 'weights' in model_state_dict:
             model_state_dict = model_state_dict['weights']
+        else:
+            # If the dictionary is flat (i.e. all values are tensors) then it
+            # is safe to assume this file only contains weights.
+            # Otherwise raise an exception.
+            if not all(torch.is_tensor(v) for v in model_state_dict.values()):
+                raise Exception(
+                    'snapshot file is nested, but does not have expected keys: '
+                    'model_state_dict or weights. Root keys are {}'.format(
+                        sorted(model_state_dict.keys())
+                    ))
         nninit_base.load_partial_state(model, model_state_dict,
                                        initializer=self.initializer)
 
