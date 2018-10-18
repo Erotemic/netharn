@@ -1317,6 +1317,9 @@ class ChecksMixin:
         state = harn.model.module.state_dict()
         sums = ub.map_vals(torch.sum, state)
         weight_sum = sum(sums.values())
+        if 'torch' in str(type(weight_sum)):  # torch 0.3 / 0.4 / 1.0 compat
+            weight_sum = weight_sum.cpu().numpy()
+
         if not np.isfinite(weight_sum):
             flags = [not np.isfinite(s) for s in sums.values()]
             bad_layers = ub.odict(zip(

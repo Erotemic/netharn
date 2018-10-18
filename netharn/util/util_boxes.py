@@ -677,8 +677,8 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             tlbr[:, 3] = br_y
         else:
             anchors = np.asarray(anchors)
-            assert np.all(anchors <= 1.0)
-            assert np.all(anchors > 0.0)
+            assert np.all(anchors <= 1.0), 'anchors must be normalized'
+            assert np.all(anchors > 0.0), 'anchors must be normalized'
             anchor_xs = rng.randint(0, len(anchors), size=num)
             base_whs = anchors[anchor_xs]
             rand_whs = np.clip(
@@ -727,7 +727,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>> self.compress([False])
             <Boxes(tlbr, array([], shape=(0, 4), dtype=int64))>
         """
-        if len(self.data.shape) != 2:
+        if len(self.data.shape) != 2 and _numel(self.data) > 0:
             raise ValueError('data must be 2d got {}d'.format(len(self.data.shape)))
         self2 = self if inplace else self.copy()
         self2.data = self2.data.compress(flags, axis=axis)
@@ -744,7 +744,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>> self.take([])
             <Boxes(tlbr, array([], shape=(0, 4), dtype=int64))>
         """
-        if len(self) and len(self.data.shape) != 2:
+        if len(self.data.shape) != 2 and _numel(self.data) > 0:
             raise ValueError('data must be 2d got {}d'.format(len(self.data.shape)))
         self2 = self if inplace else self.copy()
         self2.data = self2.data.take(idxs, axis=axis)

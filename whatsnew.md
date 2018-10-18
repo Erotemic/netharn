@@ -1,3 +1,9 @@
+Version 0.1.2
+==============
+* Fixed bug in `FitHarn._check_divergence`
+* Added dependency on astunparse to fix bug where exporter could not handle complex assignments
+
+
 Version 0.1.1
 ==============
 * Deprecated and removed irrelevant parts of CocoAPI

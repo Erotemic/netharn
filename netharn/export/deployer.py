@@ -123,6 +123,7 @@ __all__ = ['DeployedModel']
 
 
 def existing_snapshots(train_dpath):
+    # NOTE: Specific to netharn directory structure
     import parse
     snapshot_dpath = join(train_dpath, 'torch_snapshots/')
     prev_states = sorted(glob.glob(join(snapshot_dpath, '_epoch_*.pt')))
@@ -136,6 +137,7 @@ def find_best_snapshot(train_dpath):
     Returns snapshot written by monitor if available otherwise takes the last
     one.
     """
+    # NOTE: Specific to netharn directory structure
     # Netharn should populate best_snapshot.pt if there is a validation set.
     # Other names are to support older codebases.
     expected_names = [
@@ -179,6 +181,8 @@ def _package_deploy(train_dpath):
         >>> print(os.path.basename(zipfpath))
         deploy_UNKNOWN-ARCH_my_train_dpath_UNKNOWN-EPOCH_QOOEZT.zip
     """
+    # NOTE: Specific to netharn directory structure
+    # FIXME: This can be generalized
     print('[DEPLOYER] Deploy to dpath={}'.format(train_dpath))
     snap_fpath = find_best_snapshot(train_dpath)
 
@@ -317,9 +321,38 @@ class DeployedModel(ub.NiceRepr):
         model.__module__ = 'deploy_ToyNet2d_rljhgepw_001_.../ToyNet2d_2a3f49'
     """
     def __init__(self, path):
+
         self.path = path
 
         self._model = None
+
+    @classmethod
+    def custom(cls, model, snap_fpath, train_info_fpath=None):
+        """
+        Create a deployed model even if the model wasnt trained with FitHarn
+
+        This just requires specifying a bit more information, which FitHarn
+        would have tracked.
+
+        Args:
+            model (PathLike or Tuple): can either be
+                (1) a path to model topology (created via `export_model_code`)
+                (2) a Tuple[type, dict] - model class + initkw tuple
+
+            snap_fpath (PathLike):
+                path to the exported weights file
+
+            train_info_fpath (PathLike, optional):
+                path to a json file containing additional training metadata
+        """
+        # TODO: allow the user to specify either
+        #     zip_fpath
+        # OR
+        #     model_fpath OR model class + kwargs,  # required
+        #     snap_fpath,   # required
+        #     output_directory,   # required
+        #     train_info_fpath=None,
+        raise NotImplementedError
 
     def __nice__(self):
         return self.path

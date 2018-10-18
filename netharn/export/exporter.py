@@ -17,6 +17,7 @@ CommandLine:
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ast
+import astunparse
 import re
 import hashlib
 import inspect
@@ -61,9 +62,11 @@ def _parse_static_node_value(node):
         # disregard pathological python2 corner cases
         value = {'None': None, 'True': True, 'False': False}[node.id]
     else:
-        print('node.__dict__ = {!r}'.format(node.__dict__))
-        raise TypeError('Cannot parse a static value from non-static node '
-                        'of type: {!r}'.format(type(node)))
+        msg = ('Cannot parse a static value from non-static node '
+               'of type: {!r}'.format(type(node)))
+        # print('node.__dict__ = {!r}'.format(node.__dict__))
+        # print('msg = {!r}'.format(msg))
+        raise TypeError(msg)
     return value
 
 
@@ -199,7 +202,7 @@ class ImportVisitor(ast.NodeVisitor):
 def source_closure(model_class):
     """
     Hacky way to pull just the minimum amount of code needed to define a
-    model_class.
+    model_class. Uses a combination of dynamic and static introspection.
 
     Args:
         model_class (type): class used to define the model_class
@@ -254,19 +257,28 @@ def source_closure(model_class):
         pass
 
     def closure_(obj, name):
-        # TODO: handle assignments
+        """
+        Given a live-object and its assigned name in a file find the lines of
+        code that define it.
+        """
         if name in visitor.import_lines:
             # Check and see if the name was imported from elsewhere
             return 'import', visitor.import_lines[name]
         elif name in visitor.assignments:
+            # TODO: better handling of assignments
             type_, value = visitor.assignments[name]
             if type_ == 'node':
-                # TODO, need to handle non-simple expressions
-                return type_, '{} = {}'.format(name, value.value.id)
-            else:
-                # when value is a dict we need to be sure it is
-                # extracted in the same order as we see it
+                # Use ast unparser to generate the rhs of the assignment
+                # May be able to use astunparse elsewhere to reduce bloat
+                value = astunparse.unparse(value.value)  # .rstrip()
+                return type_, '{} = {}'.format(name, value)
+            elif type_ == 'static':
+                # We were able to pre-extract a static value.
+                # Note, when value is a dict we need to be sure it is extracted
+                # in the same order as we see it
                 return type_, '{} = {}'.format(name, ub.repr2(value))
+            else:
+                raise NotImplementedError(type_)
         elif isinstance(obj, types.FunctionType):
             if obj.__module__ == module_name:
                 sourcecode = inspect.getsource(obj)

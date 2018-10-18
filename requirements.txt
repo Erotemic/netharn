@@ -31,6 +31,7 @@ progiter >= 0.0.2
 parse >= 1.8.4
 packaging >= 17.1
 pyflakes >= 1.6.0
+astunparse >= 1.6.1
 
 
 # Optional(ish)

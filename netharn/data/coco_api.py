@@ -594,7 +594,7 @@ class MixinCocoExtras(object):
         if rebuild:
             self._build_index()
         else:
-            self._clear_index()
+            self.index.clear()
 
     def _aspycoco(self):
         # Converts to the official pycocotools.coco.COCO object
@@ -903,7 +903,7 @@ class MixinCocoAddRemove(object):
         img.update(**kw)
         self.dataset['images'].append(img)
         if self.imgs is not None:
-            # self._clear_index()
+            # self.index.clear()
             self.imgs[gid] = img
             self.gid_to_aids[gid] = []
         return gid
@@ -945,7 +945,7 @@ class MixinCocoAddRemove(object):
         self.dataset['annotations'].append(ann)
 
         if self.anns is not None:
-            # self._clear_index()
+            # self.index.clear()
             self.anns[aid] = ann
             self.gid_to_aids[gid].append(aid)
             self.cid_to_aids[cid].append(aid)
@@ -1054,7 +1054,7 @@ class MixinCocoAddRemove(object):
         # Do the simple thing, its O(n) anyway,
         remove_ann = self._resolve_to_ann(aid_or_ann)
         self.dataset['annotations'].remove(remove_ann)
-        self._clear_index()
+        self.index.clear()
 
     def remove_annotations(self, aids_or_anns):
         """
@@ -1092,7 +1092,7 @@ class MixinCocoAddRemove(object):
                     cid = ann['category_id']
                     self.cid_to_aids[cid].remove(aid)
                     self.gid_to_aids[gid].remove(aid)
-            # self._clear_index()
+            # self.index.clear()
 
     def remove_categories(self, cids_or_cats):
         """
@@ -1132,9 +1132,142 @@ class MixinCocoAddRemove(object):
                     del self.name_to_cat[cat['name']]
 
 
+class CocoIndex(object):
+    """
+    Fast lookup index
+    """
+
+    def __init__(self):
+        self.anns = None
+        self.imgs = None
+        self.cats = None
+        self.gid_to_aids = None
+        self.cid_to_aids = None
+        self.name_to_cat = None
+
+    def clear(self):
+        self.anns = None
+        self.imgs = None
+        self.cats = None
+        self.gid_to_aids = None
+        self.cid_to_aids = None
+        self.name_to_cat = None
+
+    def build(self, parent):
+        """
+        build reverse indexes
+
+        Notation:
+            aid - Annotation ID
+            gid - imaGe ID
+            cid - Category ID
+        """
+        # create index
+        _set = ub.oset
+        anns, cats, imgs = {}, {}, {}
+        gid_to_aids = ub.ddict(_set)
+        cid_to_aids = ub.ddict(_set)
+
+        # Build one-to-one self-lookup maps
+        for cat in parent.dataset.get('categories', []):
+            cid = cat['id']
+            if cid in cat:
+                warnings.warn('Categories have the same id in {}:\n{} and\n{}'.format(
+                    parent, cats[cid], cat))
+            cats[cid] = cat
+
+        for img in parent.dataset.get('images', []):
+            gid = img['id']
+            if gid in imgs:
+                warnings.warn('Images have the same id in {}:\n{} and\n{}'.format(
+                    parent, imgs[gid], img))
+            imgs[gid] = img
+
+        for ann in parent.dataset.get('annotations', []):
+            aid = ann['id']
+            if aid in anns:
+                warnings.warn('Annotations at index {} and {} '
+                              'have the same id in {}:\n{} and\n{}'.format(
+                                  parent.dataset['annotations'].index(anns[aid]),
+                                  parent.dataset['annotations'].index(ann),
+                                  parent, anns[aid], ann))
+            anns[aid] = ann
+
+        # Build one-to-many lookup maps
+        for ann in anns.values():
+            try:
+                aid = ann['id']
+                gid = ann['image_id']
+                cid = ann['category_id']
+            except KeyError:
+                raise KeyError('Annotation does not have ids {}'.format(ann))
+
+            if not isinstance(aid, INT_TYPES):
+                raise TypeError('bad aid={} type={}'.format(aid, type(aid)))
+            if not isinstance(gid, INT_TYPES):
+                raise TypeError('bad gid={} type={}'.format(gid, type(gid)))
+            if not isinstance(cid, INT_TYPES):
+                raise TypeError('bad cid={} type={}'.format(cid, type(cid)))
+
+            gid_to_aids[gid].add(aid)
+            cid_to_aids[cid].add(aid)
+            if gid not in imgs:
+                warnings.warn('Annotation {} in {} references '
+                              'unknown image_id'.format(ann, parent))
+            if cid not in cats:
+                warnings.warn('Annotation {} in {} references '
+                              'unknown category_id'.format(ann, parent))
+
+        # Fix one-to-zero cases
+        for cid in cats.keys():
+            if cid not in cid_to_aids:
+                cid_to_aids[cid] = _set()
+
+        for gid in imgs.keys():
+            if gid not in gid_to_aids:
+                gid_to_aids[gid] = _set()
+
+        # create class members
+        self.anns = anns
+        self.imgs = imgs
+        self.cats = cats
+        self.gid_to_aids = gid_to_aids
+        self.cid_to_aids = cid_to_aids
+        self.name_to_cat = {cat['name']: cat for cat in self.cats.values()}
+
+
+class MixinCocoIndex(object):
+    """
+    Give the dataset top level access to index attributes
+    """
+    @property
+    def anns(self):
+        return self.index.anns
+
+    @property
+    def imgs(self):
+        return self.index.imgs
+
+    @property
+    def cats(self):
+        return self.index.cats
+
+    @property
+    def gid_to_aids(self):
+        return self.index.gid_to_aids
+
+    @property
+    def cid_to_aids(self):
+        return self.index.cid_to_aids
+
+    @property
+    def name_to_cat(self):
+        return self.index.name_to_cat
+
+
 class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                   MixinCocoAttrs, MixinCocoDraw, MixinCocoExtras,
-                  MixinCocoDepricate):
+                  MixinCocoIndex, MixinCocoDepricate):
     """
     Notes:
         A keypoint annotation
@@ -1210,16 +1343,11 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         if img_root is None:
             img_root = '.'
 
+        self.index = CocoIndex()
+
         self.tag = tag
         self.dataset = data
         self.img_root = img_root
-
-        self.anns = None
-        self.imgs = None
-        self.cats = None
-        self.gid_to_aids = None
-        self.cid_to_aids = None
-        self.name_to_cat = None
 
         # Keep track of an unused id we may use
         self._next_ids = _NextId(self)
@@ -1239,6 +1367,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         """
         import copy
         new = copy.copy(self)
+        new.index = CocoIndex()
         new.dataset = copy.deepcopy(self.dataset)
         new._build_index()
         return new
@@ -1299,94 +1428,10 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         assert self.name_to_cat == new.name_to_cat
 
     def _build_index(self):
-        """
-        build reverse indexes
-
-        Notation:
-            aid - Annotation ID
-            gid - imaGe ID
-            cid - Category ID
-        """
-        # create index
-        _set = ub.oset
-        anns, cats, imgs = {}, {}, {}
-        gid_to_aids = ub.ddict(_set)
-        cid_to_aids = ub.ddict(_set)
-
-        # Build one-to-one self-lookup maps
-        for cat in self.dataset.get('categories', []):
-            cid = cat['id']
-            if cid in cat:
-                warnings.warn('Categories have the same id in {}:\n{} and\n{}'.format(
-                    self, cats[cid], cat))
-            cats[cid] = cat
-
-        for img in self.dataset.get('images', []):
-            gid = img['id']
-            if gid in imgs:
-                warnings.warn('Images have the same id in {}:\n{} and\n{}'.format(
-                    self, imgs[gid], img))
-            imgs[gid] = img
-
-        for ann in self.dataset.get('annotations', []):
-            aid = ann['id']
-            if aid in anns:
-                warnings.warn('Annotations at index {} and {} '
-                              'have the same id in {}:\n{} and\n{}'.format(
-                                  self.dataset['annotations'].index(anns[aid]),
-                                  self.dataset['annotations'].index(ann),
-                                  self, anns[aid], ann))
-            anns[aid] = ann
-
-        # Build one-to-many lookup maps
-        for ann in anns.values():
-            try:
-                aid = ann['id']
-                gid = ann['image_id']
-                cid = ann['category_id']
-            except KeyError:
-                raise KeyError('Annotation does not have ids {}'.format(ann))
-
-            if not isinstance(aid, INT_TYPES):
-                raise TypeError('bad aid={} type={}'.format(aid, type(aid)))
-            if not isinstance(gid, INT_TYPES):
-                raise TypeError('bad gid={} type={}'.format(gid, type(gid)))
-            if not isinstance(cid, INT_TYPES):
-                raise TypeError('bad cid={} type={}'.format(cid, type(cid)))
-
-            gid_to_aids[gid].add(aid)
-            cid_to_aids[cid].add(aid)
-            if gid not in imgs:
-                warnings.warn('Annotation {} in {} references '
-                              'unknown image_id'.format(ann, self))
-            if cid not in cats:
-                warnings.warn('Annotation {} in {} references '
-                              'unknown category_id'.format(ann, self))
-
-        # Fix one-to-zero cases
-        for cid in cats.keys():
-            if cid not in cid_to_aids:
-                cid_to_aids[cid] = _set()
-
-        for gid in imgs.keys():
-            if gid not in gid_to_aids:
-                gid_to_aids[gid] = _set()
-
-        # create class members
-        self.anns = anns
-        self.imgs = imgs
-        self.cats = cats
-        self.gid_to_aids = gid_to_aids
-        self.cid_to_aids = cid_to_aids
-        self.name_to_cat = {cat['name']: cat for cat in self.cats.values()}
+        self.index.build(self)
 
     def _clear_index(self):
-        self.anns = None
-        self.imgs = None
-        self.cats = None
-        self.gid_to_aids = None
-        self.cid_to_aids = None
-        self.name_to_cat = None
+        self.index.clear()
 
     @classmethod
     def union(CocoDataset, *others, **kw):
