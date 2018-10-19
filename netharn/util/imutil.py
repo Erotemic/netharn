@@ -133,9 +133,6 @@ def make_channels_comparable(img1, img2):
     """
     Broadcasts image arrays so they can have elementwise operations applied
 
-    CommandLine:
-        python -m netharn.util.imutil make_channels_comparable
-
     Example:
         >>> import itertools as it
         >>> wh_basis = [(5, 5), (3, 5), (5, 3), (1, 1), (1, 3), (3, 1)]
@@ -997,9 +994,5 @@ def stack_images(img1, img2, axis=0, resize=None, interpolation=None,
 
 
 if __name__ == '__main__':
-    r"""
-    CommandLine:
-        python -m netharn.util.imutil all
-    """
     import xdoctest
     xdoctest.doctest_module(__file__)

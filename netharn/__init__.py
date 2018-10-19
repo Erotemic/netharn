@@ -16,6 +16,7 @@ from netharn import models
 from netharn import monitor
 from netharn import optimizers
 from netharn import output_shape_for
+from netharn import hidden_shapes_for
 from netharn import pred_harn
 from netharn import schedulers
 from netharn import util
@@ -26,9 +27,10 @@ from netharn.folders import (Folders,)
 from netharn.hyperparams import (HyperParams,)
 from netharn.monitor import (Monitor,)
 from netharn.output_shape_for import OutputShapeFor
+from netharn.hidden_shapes_for import HiddenShapesFor
 
 __all__ = ['criterions', 'data', 'device', 'exceptions', 'export', 'fit_harn',
            'folders', 'hyperparams', 'initializers', 'layers', 'metrics',
            'models', 'monitor', 'optimizers', 'output_shape_for', 'pred_harn',
            'schedulers', 'util', 'FitHarn', 'XPU', 'Monitor', 'HyperParams',
-           'OutputShapeFor', 'Folders']
+           'OutputShapeFor', 'Folders', 'hidden_shapes_for', 'HiddenShapesFor']

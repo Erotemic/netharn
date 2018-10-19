@@ -300,7 +300,6 @@ if DO_COMPILE:
         ),
     ]
 
-
     ext_modules += [
         Extension(util_m + 'nms.gpu_nms',
                   [join(util_p, 'nms/nms_kernel.cu'),

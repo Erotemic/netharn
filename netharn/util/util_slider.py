@@ -94,6 +94,7 @@ class SlidingWindow(ub.NiceRepr):
         stride, overlap = self._compute_stride(overlap, stride, shape,
                                                window)
 
+        print('stride = {!r}'.format(stride))
         if not all(stride):
             raise ValueError(
                 'Step must be positive everywhere. Got={}'.format(stride))
@@ -110,6 +111,8 @@ class SlidingWindow(ub.NiceRepr):
             overshoot = final_pos % kw['step']
             undershot_shape.append(n_steps + 1)
             overshoots.append(overshoot)
+
+        self._final_step = overshoots
 
         if not allow_overshoot and any(overshoots):
             raise ValueError('overshoot={} stide_kw={}'.format(overshoots,
@@ -142,6 +145,11 @@ class SlidingWindow(ub.NiceRepr):
         Ensures that stride hasoverlap the correct shape.  If stride is not provided,
         compute stride from desired overlap.
         """
+        if isinstance(stride, np.ndarray):
+            stride = tuple(stride)
+        if isinstance(overlap, np.ndarray):
+            overlap = tuple(overlap)
+
         if not (overlap is None) ^ (stride is None):
             raise ValueError('specify overlap({}) XOR stride ({})'.format(
                 overlap, stride))
@@ -779,7 +787,6 @@ class Stitcher(ub.NiceRepr):
                 stitcher.weightview[ravel_index] += weight.view(-1)
         else:
             # TODO: maybe check if the input is a tensor?
-
             shape = stitcher.shape
             n_classes = shape[-1]
             # if we assume we get data in order, its even faster

@@ -1056,7 +1056,7 @@ class MixinCocoAddRemove(object):
         self.dataset['annotations'].remove(remove_ann)
         self.index.clear()
 
-    def remove_annotations(self, aids_or_anns):
+    def remove_annotations(self, aids_or_anns, verbose=0):
         """
         Remove multiple annotations from the dataset.
 
@@ -1079,22 +1079,49 @@ class MixinCocoAddRemove(object):
                 for index, ann in enumerate(self.dataset['annotations'])
             }
             remove_aids = list(map(self._resolve_to_id, aids_or_anns))
+
             # Lookup the indices to remove, sort in descending order
-            toremove = sorted(ub.take(aid_to_index, remove_aids))[::-1]
-            for idx in toremove:
-                del self.dataset['annotations'][idx]
+            if verbose > 1:
+                print('Removing annotations')
+
+            remove_idxs = list(ub.take(aid_to_index, remove_aids))
+            delitems(self.dataset['annotations'], remove_idxs)
 
             if self.anns:
-                # dynamically update the annotation index
-                for aid in remove_aids:
-                    ann = self.anns.pop(aid)
-                    gid = ann['image_id']
-                    cid = ann['category_id']
-                    self.cid_to_aids[cid].remove(aid)
-                    self.gid_to_aids[gid].remove(aid)
+                if verbose > 1:
+                    print('Updating annotation index')
+
+                if False:
+                    # dynamically update the annotation index
+                    anns = [self.anns.pop(aid) for aid in remove_aids]
+                    cids = [ann['category_id'] for ann in anns]
+                    gids = [ann['image_id'] for ann in anns]
+
+                    rm_cid_to_aids = ub.group_items(remove_aids, cids)
+                    rm_gid_to_aids = ub.group_items(remove_aids, gids)
+
+                    for cid, aids in rm_cid_to_aids.items():
+                        # self.cid_to_aids[cid] = self.cid_to_aids[cid].difference(aids)
+                        self.cid_to_aids[cid].difference_update(aids)  # current oset implementation is very inefficeint!
+
+                    for gid, aids in rm_gid_to_aids.items():
+                        # self.gid_to_aids[gid] = self.gid_to_aids[gid].difference(aids)
+                        self.gid_to_aids[gid].difference_update(aids)
+                else:
+                    # This is faster for simple set cid_to_aids
+                    for aid in remove_aids:
+                        ann = self.anns.pop(aid)
+                        gid = ann['image_id']
+                        cid = ann['category_id']
+                        self.cid_to_aids[cid].remove(aid)
+                        self.gid_to_aids[gid].remove(aid)
+
+                if verbose > 1:
+                    print('Updated annotation index')
+
             # self.index.clear()
 
-    def remove_categories(self, cids_or_cats):
+    def remove_categories(self, cids_or_cats, verbose=0):
         """
         Remove categories and all annotations in those categories.
         Currently does not change any heirarchy information
@@ -1110,19 +1137,29 @@ class MixinCocoAddRemove(object):
             >>> self._check_index()
         """
         if cids_or_cats:
+
+            if verbose > 1:
+                print('Removing annots of removed categories')
+
             remove_cids = list(map(self._resolve_to_id, cids_or_cats))
             # First remove any annotation that belongs to those categories
-            remove_aids = list(it.chain(*[self.cid_to_aids[cid] for cid in remove_cids]))
-            self.remove_annotations(remove_aids)
+            if self.cid_to_aids:
+                remove_aids = list(it.chain(*[self.cid_to_aids[cid] for cid in remove_cids]))
+            else:
+                remove_aids = [ann['id'] for ann in self.dataset['annotations']
+                               if ann['category_id'] in remove_cids]
 
+            self.remove_annotations(remove_aids, verbose=verbose)
+
+            if verbose > 1:
+                print('Removing category entries')
             cid_to_index = {
                 cat['id']: index
                 for index, cat in enumerate(self.dataset['categories'])
             }
             # Lookup the indices to remove, sort in descending order
-            toremove = sorted(ub.take(cid_to_index, remove_cids))[::-1]
-            for idx in toremove:
-                del self.dataset['categories'][idx]
+            remove_idxs = list(ub.take(cid_to_index, remove_cids))
+            delitems(self.dataset['categories'], remove_idxs)
 
             if self.cats:
                 # dynamically update the category index
@@ -1130,6 +1167,8 @@ class MixinCocoAddRemove(object):
                     cat = self.cats.pop(cid)
                     del self.cid_to_aids[cid]
                     del self.name_to_cat[cat['name']]
+                if verbose > 2:
+                    print('Updated category index')
 
 
 class CocoIndex(object):
@@ -1163,7 +1202,8 @@ class CocoIndex(object):
             cid - Category ID
         """
         # create index
-        _set = ub.oset
+        # _set = ub.oset  # many operations are much slower for oset
+        _set = set
         anns, cats, imgs = {}, {}, {}
         gid_to_aids = ub.ddict(_set)
         cid_to_aids = ub.ddict(_set)
@@ -1569,6 +1609,19 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
         sub_dset = CocoDataset(new_dataset, img_root=self.img_root)
         return sub_dset
+
+
+def delitems(items, remove_idxs, thresh=750):
+    if len(remove_idxs) > thresh:
+        # Its typically faster to just make a new list when there are
+        # lots and lots of items to remove.
+        keep_idxs = sorted(set(range(len(items))) - set(remove_idxs))
+        newlist = [items[idx] for idx in keep_idxs]
+        items[:] = newlist
+    else:
+        # However, when there are a few hundred items to remove, del is faster.
+        for idx in sorted(remove_idxs, reverse=True):
+            del items[idx]
 
 
 def demo_coco_data():
