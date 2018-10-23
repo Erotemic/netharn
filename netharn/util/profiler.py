@@ -7,6 +7,7 @@ import sys
 import re
 import itertools as it
 from collections import defaultdict
+import parse
 
 if '--profile' in sys.argv:
     import line_profiler
@@ -29,34 +30,28 @@ if '--flamegraph' in sys.argv:
 
 
 @atexit.register
-def dump_global_profile_report():
+def _dump_global_profile_report():
     # if we are profiling, then dump out info at the end of the program
     if IS_PROFILING:
-        self = KernprofParser(profile)
-        # print('----')
-        # print('RAW')
-        # print('----')
-        # self.print_report()
-        # print('----')
-        # print('DUMPING')
-        # print('----')
+        self = _KernprofParser(profile)
         self.dump_text()
 
 
-def dynamic_profile(func):
-    import line_profiler
-    profile = line_profiler.LineProfiler()
-    new_func = profile(func)
-    new_func.profile_info = KernprofParser(profile)
-    new_func.print_report = new_func.profile_info.print_report
-    return new_func
-
-
 def profile_onthefly(func):
+    """
+    Automatically dumps a profile report whenever decorated function is called
+
+    Example:
+        >>> def foo():
+        >>>     a = [i for i in range(10)]
+        >>>     b = [i for i in range(100)]
+        >>>     c = [i for i in range(1000)]
+        >>> profile_onthefly(foo)()
+    """
     import line_profiler
     profile = line_profiler.LineProfiler()
     new_func = profile(func)
-    new_func.profile_info = KernprofParser(profile)
+    new_func.profile_info = _KernprofParser(profile)
     new_func.print_report = new_func.profile_info.print_report
 
     def wraper(*args, **kwargs):
@@ -67,7 +62,7 @@ def profile_onthefly(func):
     return wraper
 
 
-class KernprofParser(object):
+class _KernprofParser(object):
 
     def __init__(self, profile):
         self.profile = profile
@@ -185,7 +180,7 @@ class KernprofParser(object):
 
             if readlines:
                 # TODO: make robust
-                classname = find_parent_class(fpath, funcname, lineno, readlines)
+                classname = _find_parent_class(fpath, funcname, lineno, readlines)
                 if classname:
                     funcname = classname + '.' + funcname
                 # try:
@@ -197,7 +192,7 @@ class KernprofParser(object):
                 #         indent = len(funcline) - len(funcline).lstrip()
                 #         # function is nested. fixme
                 #         funcname = '<nested>:' + funcname
-                #         find_pyclass_above_row(lines, row, indent)
+                #         _find_pyclass_above_row(lines, row, indent)
                 # except Exception:
                 #     funcname = '<inspect_error>:' + funcname
             block_id = funcname + ':' + fpath + ':' + lineno
@@ -241,23 +236,11 @@ class KernprofParser(object):
         sorted_time_list = list(ub.take(time_list, sortx))
         sorted_blockid_list = list(ub.take(blockid_list, sortx))
 
-        import utool as ut
-        aligned_blockid_list = ut.util_str.align_lines(sorted_blockid_list, ':')
+        aligned_blockid_list = _align_lines(sorted_blockid_list, ':')
         summary_lines = [('%6.2f seconds - ' % time) + line
                          for time, line in
                          zip(sorted_time_list, aligned_blockid_list)]
-        #summary_header = ut.codeblock(
-        #    '''
-        #    CLEANED PROFILE OUPUT
 
-        #    The Pystone timings are not from kernprof, so they may include kernprof
-        #    overhead, whereas kernprof timings do not (unless the line being
-        #    profiled is also decorated with kernrof)
-
-        #    The kernprof times are reported in Timer Units
-
-        #    ''')
-        # summary_lines_ = ut.listclip(summary_lines, maxlines, fromback=True)
         summary_text = '\n'.join(summary_lines[-maxlines:])
         return summary_text
 
@@ -287,21 +270,21 @@ class KernprofParser(object):
         return output_text
 
 
-def find_parent_class(fpath, funcname, lineno, readlines=None):
+def _find_parent_class(fpath, funcname, lineno, readlines=None):
     """
     Example:
         >>> from netharn.util import profiler
         >>> import ubelt as ub
         >>> funcname = 'clean_lprof_file'
-        >>> func = getattr(profiler.KernprofParser, funcname)
+        >>> func = getattr(profiler._KernprofParser, funcname)
         >>> lineno = func.__code__.co_firstlineno
         >>> fpath = profiler.__file__
         >>> #fpath = ub.truepath('~/code/netharn/netharn/util/profiler.py')
         >>> #lineno   = 264
         >>> readlines = lambda x: open(x, 'r').readlines()
-        >>> classname = find_parent_class(fpath, funcname, lineno, readlines)
+        >>> classname = _find_parent_class(fpath, funcname, lineno, readlines)
         >>> print('classname = {!r}'.format(classname))
-        >>> assert classname == 'KernprofParser'
+        >>> assert classname == '_KernprofParser'
     """
     if readlines is None:
         def readlines(fpath):
@@ -316,12 +299,12 @@ def find_parent_class(fpath, funcname, lineno, readlines=None):
             # get indentation
             # function is nested. fixme
             funcname = '<nested>:' + funcname
-            return find_pyclass_above_row(line_list, row, indent)
+            return _find_pyclass_above_row(line_list, row, indent)
     except Exception:
         pass
 
 
-def find_pyclass_above_row(line_list, row, indent):
+def _find_pyclass_above_row(line_list, row, indent):
     """
     originally part of the vim plugin
 
@@ -329,15 +312,14 @@ def find_pyclass_above_row(line_list, row, indent):
     """
     # Get text posision
     pattern = '^class [a-zA-Z_]'
-    classline, classpos = find_pattern_above_row(pattern, line_list, row,
-                                                 indent, maxIter=None)
-    import parse
+    classline, classpos = _find_pattern_above_row(pattern, line_list, row,
+                                                  indent, maxIter=None)
     result = parse.parse('class {name}({rest}', classline)
     classname = result.named['name']
     return classname
 
 
-def find_pattern_above_row(pattern, line_list, row, indent, maxIter=None):
+def _find_pattern_above_row(pattern, line_list, row, indent, maxIter=None):
     """
     searches a few lines above the curror until it **matches** a pattern
     """
@@ -366,6 +348,131 @@ def find_pattern_above_row(pattern, line_list, row, indent, maxIter=None):
             retval = searchline, pos
             break
     return retval
+
+
+def _align_lines(line_list, character='=', replchar=None, pos=0):
+    r"""
+    Left justifies text on the left side of character
+
+    TODO:
+        clean up and move to ubelt?
+
+    Args:
+        line_list (list of strs):
+        character (str):
+        pos (int or list or None): does one alignment for all chars beyond this
+            column position. If pos is None, then all chars are aligned.
+
+    Returns:
+        list: new_lines
+
+    Example:
+        >>> line_list = 'a = b\none = two\nthree = fish'.split('\n')
+        >>> character = '='
+        >>> new_lines = _align_lines(line_list, character)
+        >>> result = ('\n'.join(new_lines))
+        >>> print(result)
+        a     = b
+        one   = two
+        three = fish
+
+    Example:
+        >>> line_list = 'foofish:\n    a = b\n    one    = two\n    three    = fish'.split('\n')
+        >>> character = '='
+        >>> new_lines = _align_lines(line_list, character)
+        >>> result = ('\n'.join(new_lines))
+        >>> print(result)
+        foofish:
+            a        = b
+            one      = two
+            three    = fish
+
+    Example:
+        >>> import ubelt as ub
+        >>> character = ':'
+        >>> text = ub.codeblock('''
+            {'max': '1970/01/01 02:30:13',
+             'mean': '1970/01/01 01:10:15',
+             'min': '1970/01/01 00:01:41',
+             'range': '2:28:32',
+             'std': '1:13:57',}''').split('\n')
+        >>> new_lines = _align_lines(text, ':', ' :')
+        >>> result = '\n'.join(new_lines)
+        >>> print(result)
+        {'max'   : '1970/01/01 02:30:13',
+         'mean'  : '1970/01/01 01:10:15',
+         'min'   : '1970/01/01 00:01:41',
+         'range' : '2:28:32',
+         'std'   : '1:13:57',}
+
+    Example:
+        >>> line_list = 'foofish:\n a = b = c\n one = two = three\nthree=4= fish'.split('\n')
+        >>> character = '='
+        >>> # align the second occurence of a character
+        >>> new_lines = _align_lines(line_list, character, pos=None)
+        >>> print(('\n'.join(line_list)))
+        >>> result = ('\n'.join(new_lines))
+        >>> print(result)
+        foofish:
+         a   = b   = c
+         one = two = three
+        three=4    = fish
+    """
+
+    # FIXME: continue to fix ansi
+    if pos is None:
+        # Align all occurences
+        num_pos = max([line.count(character) for line in line_list])
+        pos = list(range(num_pos))
+
+    # Allow multiple alignments
+    if isinstance(pos, list):
+        pos_list = pos
+        # recursive calls
+        new_lines = line_list
+        for pos in pos_list:
+            new_lines = _align_lines(new_lines, character=character,
+                                     replchar=replchar, pos=pos)
+        return new_lines
+
+    # base case
+    if replchar is None:
+        replchar = character
+
+    # the pos-th character to align
+    lpos = pos
+    rpos = lpos + 1
+
+    tup_list = [line.split(character) for line in line_list]
+
+    handle_ansi = True
+    if handle_ansi:
+        # Remove ansi from length calculation
+        # References: http://stackoverflow.com/questions/14693701remove-ansi
+        ansi_escape = re.compile(r'\x1b[^m]*m')
+
+    # Find how much padding is needed
+    maxlen = 0
+    for tup in tup_list:
+        if len(tup) >= rpos + 1:
+            if handle_ansi:
+                tup = [ansi_escape.sub('', x) for x in tup]
+            left_lenlist = list(map(len, tup[0:rpos]))
+            left_len = sum(left_lenlist) + lpos * len(replchar)
+            maxlen = max(maxlen, left_len)
+
+    # Pad each line to align the pos-th occurence of the chosen character
+    new_lines = []
+    for tup in tup_list:
+        if len(tup) >= rpos + 1:
+            lhs = character.join(tup[0:rpos])
+            rhs = character.join(tup[rpos:])
+            # pad the new line with requested justification
+            newline = lhs.ljust(maxlen) + replchar + rhs
+            new_lines.append(newline)
+        else:
+            new_lines.append(replchar.join(tup))
+    return new_lines
 
 
 if __name__ == '__main__':
