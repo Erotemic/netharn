@@ -52,6 +52,10 @@ __all__ = [
 ]
 
 
+# _set = ub.oset  # many operations are much slower for oset
+_set = set
+
+
 INT_TYPES = (int, np.integer)
 
 
@@ -905,7 +909,7 @@ class MixinCocoAddRemove(object):
         if self.imgs is not None:
             # self.index.clear()
             self.imgs[gid] = img
-            self.gid_to_aids[gid] = []
+            self.gid_to_aids[gid] = _set()
         return gid
 
     @util.profile
@@ -947,8 +951,8 @@ class MixinCocoAddRemove(object):
         if self.anns is not None:
             # self.index.clear()
             self.anns[aid] = ann
-            self.gid_to_aids[gid].append(aid)
-            self.cid_to_aids[cid].append(aid)
+            self.gid_to_aids[gid].add(aid)
+            self.cid_to_aids[cid].add(aid)
         return aid
 
     @util.profile
@@ -962,8 +966,8 @@ class MixinCocoAddRemove(object):
             new_anns = dict(zip(aids, anns))
             self.anns.update(new_anns)
             for gid, cid, aid in zip(gids, cids, aids):
-                self.gid_to_aids[gid].append(aid)
-                self.cid_to_aids[cid].append(aid)
+                self.gid_to_aids[gid].add(aid)
+                self.cid_to_aids[cid].add(aid)
 
     @util.profile
     def add_images(self, imgs):
@@ -1006,7 +1010,7 @@ class MixinCocoAddRemove(object):
         # And add to the indexes
         if self.cats is not None:
             self.cats[cid] = cat
-            self.cid_to_aids[cid] = []
+            self.cid_to_aids[cid] = _set()
             self.name_to_cat[name] = cat
         return cid
 
@@ -1202,8 +1206,6 @@ class CocoIndex(object):
             cid - Category ID
         """
         # create index
-        # _set = ub.oset  # many operations are much slower for oset
-        _set = set
         anns, cats, imgs = {}, {}, {}
         gid_to_aids = ub.ddict(_set)
         cid_to_aids = ub.ddict(_set)
