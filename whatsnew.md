@@ -2,6 +2,7 @@ Version 0.1.2
 ==============
 * Fixed bug in `FitHarn._check_divergence`
 * Added dependency on astunparse to fix bug where exporter could not handle complex assignments
+* Pretrained initializer now only requires the path to the deploy zipfile. It can figure out which files in the deployment are the weights.
 
 
 Version 0.1.1
