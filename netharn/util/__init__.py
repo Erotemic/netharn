@@ -29,6 +29,7 @@ else:
     from netharn.util import util_cv2
     from netharn.util import util_dataframe
     from netharn.util import util_demodata
+    from netharn.util import util_filesys
     from netharn.util import util_fname
     from netharn.util import util_groups
     from netharn.util import util_idstr
@@ -82,6 +83,7 @@ else:
                                              LocLight,)
     from netharn.util.util_demodata import (grab_test_image,
                                             grab_test_image_fpath,)
+    from netharn.util.util_filesys import (get_file_info,)
     from netharn.util.util_fname import (align_paths, check_aligned, dumpsafe,
                                          shortest_unique_prefixes,
                                          shortest_unique_suffixes,)
@@ -128,12 +130,12 @@ else:
                'draw_boxes_on_image', 'draw_line_segments', 'draw_text_on_image',
                'dumpsafe', 'ensure_alpha_channel', 'ensure_float01', 'ensure_fnum',
                'ensure_grayscale', 'ensure_rng', 'ensure_ulimit',
-               'extract_axes_extents', 'figure', 'get_num_channels',
-               'grab_test_image', 'grab_test_image_fpath', 'grad_context',
-               'group_consecutive', 'group_consecutive_indices', 'group_indices',
-               'group_items', 'image_slices', 'imread', 'imscale', 'imshow',
-               'imutil', 'imwrite', 'interpolated_colormap', 'isect_flags',
-               'iter_reduce_ufunc', 'legend', 'load_image_paths',
+               'extract_axes_extents', 'figure', 'get_file_info',
+               'get_num_channels', 'grab_test_image', 'grab_test_image_fpath',
+               'grad_context', 'group_consecutive', 'group_consecutive_indices',
+               'group_indices', 'group_items', 'image_slices', 'imread', 'imscale',
+               'imshow', 'imutil', 'imwrite', 'interpolated_colormap',
+               'isect_flags', 'iter_reduce_ufunc', 'legend', 'load_image_paths',
                'make_channels_comparable', 'make_heatmask', 'make_idstr',
                'make_legend_img', 'make_short_idstr', 'mplutil', 'multi_plot',
                'next_fnum', 'nms', 'non_max_supression', 'number_of_parameters',
@@ -149,9 +151,9 @@ else:
                'show_if_requested', 'shuffle', 'split_archive', 'stack_images',
                'stack_multiple_images', 'stats_dict', 'trainable_layers',
                'util_averages', 'util_boxes', 'util_cachestamp', 'util_cv2',
-               'util_dataframe', 'util_demodata', 'util_fname', 'util_groups',
-               'util_idstr', 'util_io', 'util_iter', 'util_json', 'util_misc',
-               'util_numpy', 'util_random', 'util_resources', 'util_slider',
-               'util_subextreme', 'util_tensorboard', 'util_torch', 'util_zip',
-               'walk_json', 'wide_strides_1d', 'write_arr', 'write_h5arr',
-               'write_json', 'zopen']
+               'util_dataframe', 'util_demodata', 'util_filesys', 'util_fname',
+               'util_groups', 'util_idstr', 'util_io', 'util_iter', 'util_json',
+               'util_misc', 'util_numpy', 'util_random', 'util_resources',
+               'util_slider', 'util_subextreme', 'util_tensorboard', 'util_torch',
+               'util_zip', 'walk_json', 'wide_strides_1d', 'write_arr',
+               'write_h5arr', 'write_json', 'zopen']

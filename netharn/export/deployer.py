@@ -162,90 +162,6 @@ def find_best_snapshot(train_dpath):
     return snap_fpath
 
 
-# def _package_deploy(train_dpath):
-#     """
-#     Combine the model, weights, and info files into a single deployable file
-
-#     CommandLine:
-#         xdoctest -m netharn.export.deployer _package_deploy
-
-#     Args:
-#         train_dpath (PathLike): the netharn training directory
-
-#     Example:
-#         >>> dpath = ub.ensure_app_cache_dir('netharn', 'tests/_package_deploy')
-#         >>> train_dpath = ub.ensuredir((dpath, 'my_train_dpath'))
-#         >>> ub.touch(join(train_dpath, 'final_snapshot.pt'))
-#         >>> ub.touch(join(train_dpath, 'my_model.py'))
-#         >>> zipfpath = _package_deploy(train_dpath)
-#         ...
-#         >>> print(os.path.basename(zipfpath))
-#         deploy_UNKNOWN-ARCH_my_train_dpath_UNKNOWN-EPOCH_QOOEZT.zip
-#     """
-#     # NOTE: Specific to netharn directory structure
-#     # FIXME: This can be generalized
-#     print('[DEPLOYER] Deploy to dpath={}'.format(train_dpath))
-#     snap_fpath = find_best_snapshot(train_dpath)
-
-#     model_fpaths = glob.glob(join(train_dpath, '*.py'))
-#     if len(model_fpaths) == 0:
-#         raise FileNotFoundError('The model topology cannot be found')
-#     elif len(model_fpaths) > 1:
-#         warnings.warn('There are multiple models here: {}'.format(model_fpaths))
-
-#     if not snap_fpath:
-#         raise FileNotFoundError('No weights are associated with the model')
-
-#     weights_hash = ub.hash_file(snap_fpath, base='abc', hasher='sha512')[0:6].upper()
-
-#     train_info_fpath = join(train_dpath, 'train_info.json')
-
-#     if exists(train_info_fpath):
-#         train_info = json.load(open(train_info_fpath, 'r'))
-#         model_name = train_info['hyper']['model'][0].split('.')[-1]
-#         train_hash = ub.hash_data(train_info['train_id'], hasher='sha512',
-#                                   base='abc', types=True)[0:8]
-#     else:
-#         model_name = 'UNKNOWN-ARCH'
-#         train_hash = os.path.basename(train_dpath)
-#         print('WARNING: Training metadata does not exist')
-
-#     try:
-#         import torch
-#         state = torch.load(snap_fpath)
-#         epoch = '{:03d}'.format(state['epoch'])
-#     except Exception:
-#         epoch = 'UNKNOWN-EPOCH'
-
-#     deploy_name = 'deploy_{model}_{trainid}_{epoch}_{weights}'.format(
-#         model=model_name,
-#         trainid=train_hash,
-#         epoch=epoch,
-#         weights=weights_hash)
-
-#     deploy_fname = deploy_name + '.zip'
-
-#     def zwrite(myzip, fpath, fname=None):
-#         if fname is None:
-#             fname = relpath(fpath, train_dpath)
-#         myzip.write(fpath, arcname=join(deploy_name, fname))
-
-#     zipfpath = join(train_dpath, deploy_fname)
-#     with zipfile.ZipFile(zipfpath, 'w') as myzip:
-#         if exists(train_info_fpath):
-#             zwrite(myzip, train_info_fpath)
-#         zwrite(myzip, snap_fpath, fname='deploy_snapshot.pt')
-#         for model_fpath in model_fpaths:
-#             zwrite(myzip, model_fpath)
-#         # Add some quick glanceable info
-#         # for bestacc_fpath in glob.glob(join(train_dpath, 'best_epoch_*')):
-#         #     zwrite(myzip, bestacc_fpath)
-#         for p in glob.glob(join(train_dpath, 'glance/*')):
-#             zwrite(myzip, p)
-#     print('[DEPLOYER] Deployed zipfpath={}'.format(zipfpath))
-#     return zipfpath
-
-
 def unpack_model_info(path):
     """
     return paths to the most relevant files in a zip or path deployment.
@@ -274,11 +190,17 @@ def unpack_model_info(path):
                 info['snap_fpath'] = join(root, fpath)
             if fpath.endswith('.py'):
                 if info['model_fpath'] is not None:
-                    # TODO: warn the user and take the most recently
-                    # modified path.
-                    raise Exception('Multiple model paths!')
+                    # Try to take the most recent path if possible.
+                    # This will fail if the file is in a zipfile
+                    # (because we should not package multiple models)
+                    try:
+                        cur_time = os.stat(info['model_fpath']).st_mtime
+                        new_time = os.stat(fpath).st_mtime
+                        if new_time < cur_time:
+                            continue  # Keep the current path
+                    except OSError:
+                        raise Exception('Multiple model paths!')
                 info['model_fpath'] = join(root, fpath)
-
             # TODO: make including arbitrary files easier
             if fpath.startswith(('glance/', 'glance\\')):
                 info['glance'].append(join(root, fpath))
@@ -332,7 +254,8 @@ def _make_package_name2(info):
     except Exception:
         epoch = 'UNKNOWN-EPOCH'
 
-    weights_hash = ub.hash_file(snap_fpath, base='abc', hasher='sha512')[0:6].upper()
+    weights_hash = ub.hash_file(snap_fpath, base='abc',
+                                hasher='sha512')[0:6].upper()
 
     deploy_name = 'deploy_{model}_{trainid}_{epoch}_{weights}'.format(
         model=model_name, trainid=train_hash, epoch=epoch,
