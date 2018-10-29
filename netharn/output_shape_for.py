@@ -156,6 +156,13 @@ class OutputShapeFor(object):
         # First try to lookup the output_shape_for func
         self._func = getattr(module, 'output_shape_for', None)
         if self._func is None:
+            # Check for hidden_shapes_for
+            alt_func = getattr(module, 'hidden_shapes_for', None)
+            if alt_func is not None:
+                def _output_shape_for(self, input_shape):
+                    return self.hidden_shapes_for(input_shape)
+
+        if self._func is None:
             # Lookup shape func if we can't find it
             for type, _func in REGISTERED_OUTPUT_SHAPE_TYPES:
                 try:
