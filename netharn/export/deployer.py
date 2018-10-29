@@ -189,18 +189,21 @@ def unpack_model_info(path):
             if fpath.endswith('.pt'):
                 info['snap_fpath'] = join(root, fpath)
             if fpath.endswith('.py'):
+                new_fpath = join(root, fpath)
                 if info['model_fpath'] is not None:
-                    # Try to take the most recent path if possible.
-                    # This will fail if the file is in a zipfile
-                    # (because we should not package multiple models)
                     try:
+                        # Try to take the most recent path if possible.
+                        # This will fail if the file is in a zipfile
+                        # (because we should not package multiple models)
                         cur_time = os.stat(info['model_fpath']).st_mtime
-                        new_time = os.stat(fpath).st_mtime
+                        new_time = os.stat(new_fpath).st_mtime
                         if new_time < cur_time:
                             continue  # Keep the current path
                     except OSError:
-                        raise Exception('Multiple model paths!')
-                info['model_fpath'] = join(root, fpath)
+                        raise Exception(
+                            'Multiple model paths! {} and {}'.format(
+                                info['model_fpath'], fpath))
+                info['model_fpath'] = new_fpath
             # TODO: make including arbitrary files easier
             if fpath.startswith(('glance/', 'glance\\')):
                 info['glance'].append(join(root, fpath))

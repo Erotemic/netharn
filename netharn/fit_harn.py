@@ -133,6 +133,7 @@ import sys
 import six
 import warnings
 import functools
+import traceback
 from os.path import join
 
 import torch
@@ -966,72 +967,67 @@ class CoreMixin:
             harn.info('dont forget to start:\n'
                       '    tensorboard --logdir ' + ub.compressuser(train_base))
 
-        if harn._check_termination():
-            return
-
-        action = 'resume' if harn.epoch > 0 else 'begin'
-        if harn.config['prog_backend'] == 'progiter':
-            harn.info(ub.color_text('=== {} training {!r} / {!r} : {} ==='.format(
-                action, harn.epoch, harn.monitor.max_epoch,
-                harn.hyper.nice), 'white'))
-        else:
-            harn.info(ub.color_text('=== {} training : {} ==='.format(
-                action, harn.hyper.nice), 'white'))
-
-        harn.main_prog = harn._make_prog(desc='epoch',
-                                         total=harn.monitor.max_epoch,
-                                         disable=not harn.config['show_prog'],
-                                         leave=True, dynamic_ncols=True,
-                                         position=0, initial=harn.epoch)
-        harn._update_main_prog_desc()
-
-        # Loader dict should be ordered
-        harn.loaders = ub.odict([
-            (key, harn.loaders[key]) for key in ['train', 'vali', 'test']
-            if key in harn.loaders
-        ])
-
-        train_loader = harn.loaders.get('train', None)
-        vali_loader  = harn.loaders.get('vali', None)
-        test_loader  = harn.loaders.get('test', None)
-
-        harn._check_thread_safety()
-
-        if not vali_loader:
-            # if harn.monitor:
-            #     harn.warn('Need a validation set to use nh.Monitor')
-            if harn.scheduler:
-                if harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
-                    raise ValueError(
-                            'need a validataion dataset to use ReduceLROnPlateau')
-
-        # keep track of moving metric averages across epochs
-        harn._run_metrics = {
-            tag: util.WindowedMovingAve(window=len(loader))
-            for tag, loader in harn.loaders.items()
-        }
-
-        # if harn.scheduler:
-        #     # prestep scheduler?
-        #     if getattr(harn.scheduler, 'last_epoch', 0) == -1:
-        #         harn.scheduler.step()
-
         try:
-            if DUMMY:
-                for harn.epoch in it.count(harn.epoch):
-                    harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
-                    if harn.epoch > 5:
-                        break
+            if harn._check_termination():
+                raise StopTraining()
+
+            action = 'resume' if harn.epoch > 0 else 'begin'
+            if harn.config['prog_backend'] == 'progiter':
+                harn.info(ub.color_text('=== {} training {!r} / {!r} : {} ==='.format(
+                    action, harn.epoch, harn.monitor.max_epoch,
+                    harn.hyper.nice), 'white'))
             else:
-                for harn.epoch in it.count(harn.epoch):
-                    harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
+                harn.info(ub.color_text('=== {} training : {} ==='.format(
+                    action, harn.hyper.nice), 'white'))
+
+            harn.main_prog = harn._make_prog(desc='epoch',
+                                             total=harn.monitor.max_epoch,
+                                             disable=not harn.config['show_prog'],
+                                             leave=True, dynamic_ncols=True,
+                                             position=0, initial=harn.epoch)
+            harn._update_main_prog_desc()
+
+            # Loader dict should be ordered
+            harn.loaders = ub.odict([
+                (key, harn.loaders[key]) for key in ['train', 'vali', 'test']
+                if key in harn.loaders
+            ])
+
+            train_loader = harn.loaders.get('train', None)
+            vali_loader  = harn.loaders.get('vali', None)
+            test_loader  = harn.loaders.get('test', None)
+
+            harn._check_thread_safety()
+
+            if not vali_loader:
+                # if harn.monitor:
+                #     harn.warn('Need a validation set to use nh.Monitor')
+                if harn.scheduler:
+                    if harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
+                        raise ValueError(
+                                'need a validataion dataset to use ReduceLROnPlateau')
+
+            # keep track of moving metric averages across epochs
+            harn._run_metrics = {
+                tag: util.WindowedMovingAve(window=len(loader))
+                for tag, loader in harn.loaders.items()
+            }
+
+            # if harn.scheduler:
+            #     # prestep scheduler?
+            #     if getattr(harn.scheduler, 'last_epoch', 0) == -1:
+            #         harn.scheduler.step()
+
+            for harn.epoch in it.count(harn.epoch):
+                harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
+                if DUMMY and harn.epoch > 5:
+                    break
         except StopTraining:
             pass
         except Exception as ex:
             harn.error('\n\n\n')
             harn.error('an {} error occurred in the train loop: {}'.format(
                 type(ex), repr(ex)))
-            import traceback
             tb = traceback.format_exc()
             harn.info(tb)
             harn._close_prog()
@@ -1068,6 +1064,9 @@ class CoreMixin:
         """
         Runs one epoch of train, validation, and testing
         """
+        if harn._check_termination():
+            raise StopTraining()
+
         harn.debug('=== start epoch {} ==='.format(harn.epoch))
 
         current_lr = max(harn._current_lrs())
