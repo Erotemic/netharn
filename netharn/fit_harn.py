@@ -284,6 +284,7 @@ class InitializeMixin:
 
         harn._initialized = True
         harn.after_initialize()
+        return harn
 
     def _setup_paths(harn):
         if harn.hyper is None:
@@ -421,8 +422,9 @@ class InitializeMixin:
         # TODO: might be good to check for multiple model exports at this time
         model_cls = harn.hyper.model_cls
         model_params = harn.hyper.model_params
-        export.export_model_code(harn.train_dpath, model_cls,
-                                 initkw=model_params)
+        static_modpath = export.export_model_code(harn.train_dpath, model_cls,
+                                                  initkw=model_params)
+        harn.info('Exported model topology to {}'.format(static_modpath))
 
     def reset_weights(harn):
         """

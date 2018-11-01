@@ -411,12 +411,38 @@ class MixinCocoExtras(object):
             hashid_parts['image_data'] = ub.hash_data(gpath_sha512s)
 
         # Hash individual components
-        hashid_parts['annotations'] = ub.hash_data(json.dumps(
-            [sorted(self.anns[aid].items()) for aid in aids]))
-        hashid_parts['images']  = ub.hash_data(json.dumps([
-            sorted(self.imgs[gid].items()) for gid in gids]))
-        hashid_parts['categories'] = ub.hash_data(json.dumps([
-            sorted(self.cats[cid].items()) for cid in cids]))
+        with ub.Timer(label='hash coco parts', verbose=verbose > 1):
+            # Dumping annots to json takes the lonest amount of time
+            # However, its faster than hashing the data directly
+            """
+            if False:
+                import ubelt as ub
+                for timer in ub.Timerit(20, bestof=5, label='organize'):
+                    with timer:
+                        anns_ordered = [sorted(self.anns[aid].items()) for aid in aids]
+
+                from collections import OrderedDict
+                import ubelt as ub
+                for timer in ub.Timerit(20, bestof=3, label='organize-alt'):
+                    with timer:
+                        anns_ordered = [self.anns[aid] for aid in aids]
+                        anns_ordered = [list(ann.items()) if isinstance(ann, ub.odict) else sorted(ann.items()) for ann in anns_ordered]
+                with ub.Timer('to_json'):
+                    anns_text = json.dumps(anns_ordered)
+                with ub.Timer('alt_hash'):
+                    ub.hash_data(anns_ordered)
+            """
+            def _ditems(d):
+                # return sorted(d.items())
+                return list(d.items()) if isinstance(d, OrderedDict) else sorted(d.items())
+            _anns_ordered = (self.anns[aid] for aid in aids)
+            anns_ordered = [_ditems(ann) for ann in _anns_ordered]
+            anns_text = json.dumps(anns_ordered)
+            hashid_parts['annotations'] = ub.hash_data(anns_text)
+            hashid_parts['images']  = ub.hash_data(json.dumps([
+                _ditems(self.imgs[gid]) for gid in gids]))
+            hashid_parts['categories'] = ub.hash_data(json.dumps([
+                _ditems(self.cats[cid]) for cid in cids]))
 
         hashid_parts['n_anns'] = len(aids)
         hashid_parts['n_imgs'] = len(gids)
@@ -438,16 +464,21 @@ class MixinCocoExtras(object):
             >>> assert self.imgs[2]['width'] == 300
             >>> assert self.imgs[3]['width'] == 256
         """
-        from PIL import Image
-        for img in ub.ProgIter(self.dataset['images'], desc='ensure imgsize',
-                               verbose=verbose):
-            gpath = join(self.img_root, img['file_name'])
-            if 'width' not in img:
-                pil_img = Image.open(gpath)
-                w, h = pil_img.size
-                pil_img.close()
-                img['width'] = w
-                img['height'] = h
+        if any('width' not in img for img in self.dataset['images']):
+            from PIL import Image
+            if self.tag:
+                desc = 'populate imgsize for ' + self.tag
+            else:
+                desc = 'populate imgsize for untagged coco dataset'
+            for img in ub.ProgIter(self.dataset['images'], desc=desc,
+                                   verbose=verbose):
+                gpath = join(self.img_root, img['file_name'])
+                if 'width' not in img:
+                    pil_img = Image.open(gpath)
+                    w, h = pil_img.size
+                    pil_img.close()
+                    img['width'] = w
+                    img['height'] = h
 
     def _resolve_to_id(self, id_or_dict):
         """
@@ -457,6 +488,18 @@ class MixinCocoExtras(object):
             resolved_id = id_or_dict
         else:
             resolved_id = id_or_dict['id']
+        return resolved_id
+
+    def _resolve_to_cid(self, id_or_name_or_dict):
+        """
+        Ensures output is an category id
+        """
+        if isinstance(id_or_name_or_dict, INT_TYPES):
+            resolved_id = id_or_name_or_dict
+        elif isinstance(id_or_name_or_dict, six.string_types):
+            resolved_id = self.index.name_to_cat[id_or_name_or_dict]['id']
+        else:
+            resolved_id = id_or_name_or_dict['id']
         return resolved_id
 
     def _resolve_to_ann(self, aid_or_ann):
@@ -491,7 +534,7 @@ class MixinCocoExtras(object):
         import networkx as nx
         graph = nx.DiGraph()
         for cat in self.dataset['categories']:
-            graph.add_node(cat['name'])
+            graph.add_node(cat['name'], **cat)
             if 'supercategory' in cat:
                 graph.add_edge(cat['supercategory'], cat['name'])
         return graph
@@ -1064,11 +1107,11 @@ class MixinCocoAddRemove(object):
         Currently does not change any heirarchy information
 
         Args:
-            cids_or_cats (List): list of category dicts or ids
+            cids_or_cats (List): list of category dicts, names, or ids
 
         Example:
             >>> self = CocoDataset.demo()
-            >>> cids_or_cats = [self.cats[1], 2, 3]
+            >>> cids_or_cats = [self.cats[1], 'rocket', 3]
             >>> self.remove_categories(cids_or_cats)
             >>> assert len(self.dataset['categories']) == 4
             >>> self._check_index()
@@ -1078,7 +1121,7 @@ class MixinCocoAddRemove(object):
             if verbose > 1:
                 print('Removing annots of removed categories')
 
-            remove_cids = list(map(self._resolve_to_id, cids_or_cats))
+            remove_cids = list(map(self._resolve_to_cid, cids_or_cats))
             # First remove any annotation that belongs to those categories
             if self.cid_to_aids:
                 remove_aids = list(it.chain(*[self.cid_to_aids[cid]
@@ -1117,6 +1160,7 @@ class CocoIndex(object):
         self.gid_to_aids = None
         self.cid_to_aids = None
         self.name_to_cat = None
+        self.file_name_to_img = None
 
     def __bool__(self):
         return self.anns is not None
@@ -1127,12 +1171,15 @@ class CocoIndex(object):
         if self.imgs is not None:
             self.imgs[gid] = img
             self.gid_to_aids[gid] = self._set()
+            self.file_name_to_img[img['file_name']] = img
 
     def _add_images(self, imgs):
         if self.imgs is not None:
             gids = [img['id'] for img in imgs]
             new_imgs = dict(zip(gids, imgs))
             self.imgs.update(new_imgs)
+            self.file_name_to_img.update(
+                {img['file_name']: img for img in imgs.values()})
             for gid in gids:
                 self.gid_to_aids[gid] = self._set()
 
@@ -1174,6 +1221,7 @@ class CocoIndex(object):
             self.imgs.clear()
             self.anns.clear()
             self.gid_to_aids.clear()
+            self.file_name_to_img.clear()
             for _ in self.index.cid_to_aids.values():
                 _.clear()
 
@@ -1206,6 +1254,7 @@ class CocoIndex(object):
         self.gid_to_aids = None
         self.cid_to_aids = None
         self.name_to_cat = None
+        self.file_name_to_img = None
 
     def build(self, parent):
         """
@@ -1290,6 +1339,7 @@ class CocoIndex(object):
         self.gid_to_aids = gid_to_aids
         self.cid_to_aids = cid_to_aids
         self.name_to_cat = {cat['name']: cat for cat in self.cats.values()}
+        self.file_name_to_img = {img['file_name']: img for img in self.imgs.values()}
 
 
 class MixinCocoIndex(object):
@@ -1473,12 +1523,13 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         new = copy.copy(self)
         new.dataset = copy.deepcopy(self.dataset)
         new._build_index()
-        assert self.anns == new.anns
-        assert self.imgs == new.imgs
-        assert self.cats == new.cats
-        assert self.gid_to_aids == new.gid_to_aids
-        assert self.cid_to_aids == new.cid_to_aids
-        assert self.name_to_cat == new.name_to_cat
+        assert self.index.anns == new.index.anns
+        assert self.index.imgs == new.index.imgs
+        assert self.index.cats == new.index.cats
+        assert self.index.gid_to_aids == new.index.gid_to_aids
+        assert self.index.cid_to_aids == new.index.cid_to_aids
+        assert self.index.name_to_cat == new.index.name_to_cat
+        assert self.index.file_name_to_img == new.index.file_name_to_img
 
     def _build_index(self):
         self.index.build(self)
