@@ -355,24 +355,40 @@ class XPU(ub.NiceRepr):
         return xpu._main_device_id is not None
         # return 'gpu' in xpu.mode
 
+    def raw(xpu, model):
+        """
+        Unmounts the original core model if it is mounted.
+
+        Args:
+            model (torch.nn.Module): a model (potentially mounted)
+
+        Returns:
+            torch.nn.Module:
+                if `model` is mounted returns `model.module`
+                otherwise, returns `model`
+        """
+        if isinstance(model, (MountedModel, torch.nn.DataParallel)):
+            # Unwrap the core model
+            model = model.module
+        return model
+
     def mount(xpu, model):
         """
-        Like move, but only for models. Creates an instance
+        Like move, but only for models.
 
+        Args:
+            model (torch.nn.Module): the model to mount
 
-        Mounts a model on the xpu.
-        (Note this may be multiple gpus).
-
-        Unlike move this function does NOT work in place.
+        Returns:
+            DataSerial | DataParallel :
+                the model mounted on the XPU (which may be multiple GPUs)
 
         Example:
             >>> model = torch.nn.Conv2d(1, 1, 1)
             >>> xpu = XPU()
         """
-        if isinstance(model, (MountedModel, torch.nn.DataParallel)):
-            # Unwrap the core model
-            model = model.module
-
+        # Unwrap the core model if necessary
+        model = xpu.raw(model)
         model = xpu.move(model)
         if xpu._device_ids:
             model = DataParallel(model, device_ids=xpu._device_ids,
@@ -383,12 +399,14 @@ class XPU(ub.NiceRepr):
 
     def move(xpu, data, **kwargs):
         """
+        Moves the model onto the primary GPU or CPU.
+
         Args:
             data (torch.Tensor): raw data
             **kwargs : forwarded to `data.cuda`
 
-        Notes:
-            this function operates inplace.
+        Returns:
+            torch.Tensor: the tensor with a dtype for this device
 
         Example:
             >>> data = torch.FloatTensor([0])
@@ -406,6 +424,8 @@ class XPU(ub.NiceRepr):
     def variable(xpu, item, **kw):
         """
         Moves data to this XPU and wraps it inside a `torch.autograd.Variable`
+
+        DEPRICATE
 
         Args:
             item (Tensor): a of tensors
@@ -440,6 +460,8 @@ class XPU(ub.NiceRepr):
     def variables(xpu, *args, **kw):
         """
         Convinience function to wrap multiple Tensors in Variables at once
+
+        DEPRICATE
         """
         for item in args:
             yield xpu.variable(item, **kw)
