@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
+import ubelt as ub
 import math
 import torch
 import torch.nn as nn
 import torchvision
+from six.moves import builtins
 try:
     from netharn.device import DataSerial
 except ImportError:
@@ -82,6 +84,17 @@ def _brute_force_output_shape_for(self, input_shape):
     else:
         raise NotImplementedError('other output types')
     return output_shape
+
+
+def _simplify(shape):
+    import sympy
+    if isinstance(shape, (tuple, list)):
+        shape = shape.__class__([_simplify(v) for v in shape])
+    elif isinstance(shape, dict):
+        shape = shape.__class__([(k, _simplify(v)) for k, v in shape.items()])
+    elif isinstance(shape, sympy.Expr):
+        shape = sympy.simplify(shape)
+    return shape
 
 
 class OutputShapeFor(object):
@@ -189,6 +202,9 @@ class OutputShapeFor(object):
         else:
             # a simple pytorch func
             output_shape = self._func(*args, **kwargs)
+
+        # if self.math.__name__ == 'sympy':
+        #     output_shape = _simplify(output_shape)
         # debug = True
         # if debug:
         #     print('{}.output_shape = {}'.format(str(self._func.__name__), output_shape))
@@ -245,9 +261,12 @@ class OutputShapeFor(object):
         """
         math = OutputShapeFor.math
         (N, C, H_in, W_in) = input_shape
+        int = builtins.int if math.__name__ == 'math' else ub.identity
         H_out = int(math.floor(H_in * module.scale_factor))
         W_out = int(math.floor(W_in * module.scale_factor))
         output_shape = SHAPE_CLS([N, C, H_out, W_out])
+        if math.__name__ == 'sympy':
+            output_shape = _simplify(output_shape)
         return output_shape
 
     @staticmethod
@@ -278,6 +297,7 @@ class OutputShapeFor(object):
 
         if module.size is None:
             scale_factor = ensure_iterablen(module.scale_factor, len(DIMS_in))
+            int = builtins.int if math.__name__ == 'math' else ub.identity
             DIMS_out = [
                 int(math.floor(D_in * scale_factor[i]))
                 for i, D_in in enumerate(DIMS_in)
@@ -286,6 +306,8 @@ class OutputShapeFor(object):
             DIMS_out = ensure_iterablen(module.size, len(DIMS_in))
 
         output_shape = SHAPE_CLS([N, C] + DIMS_out)
+        if math.__name__ == 'sympy':
+            output_shape = _simplify(output_shape)
         return output_shape
 
     @staticmethod
@@ -388,6 +410,8 @@ class OutputShapeFor(object):
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C_out] + DIMS_out)
+        if math.__name__ == 'sympy':
+            output_shape = _simplify(output_shape)
         return output_shape
 
     @staticmethod
@@ -418,11 +442,16 @@ class OutputShapeFor(object):
         dilation = module.dilation
         kernel_size = module.kernel_size
 
+        int = builtins.int if math.__name__ == 'math' else ub.identity
         DIMS_out = [
-            int(math.floor((D_in  + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1))
+            int(math.floor(
+                (D_in + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1
+            ))
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C_out] + DIMS_out)
+        if math.__name__ == 'sympy':
+            output_shape = _simplify(output_shape)
         return output_shape
 
     @staticmethod
@@ -467,11 +496,15 @@ class OutputShapeFor(object):
 
         trunc = math.ceil if module.ceil_mode else math.floor
 
+        int = builtins.int if math.__name__ == 'math' else ub.identity
+
         DIMS_out = [
             int(trunc((D_in  + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1))
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C] + DIMS_out)
+        if math.__name__ == 'sympy':
+            output_shape = _simplify(output_shape)
         return output_shape
 
     @staticmethod
@@ -493,11 +526,15 @@ class OutputShapeFor(object):
         stride = ensure_iterablen(module.stride, n)
         kernel_size = ensure_iterablen(module.kernel_size, n)
 
+        int = builtins.int if math.__name__ == 'math' else ub.identity
+
         DIMS_out = [
             int(math.floor((D_in + 2 * padding[i] - kernel_size[i]) / stride[i] + 1))
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C] + DIMS_out)
+        if math.__name__ == 'sympy':
+            output_shape = _simplify(output_shape)
         return output_shape
 
     @staticmethod

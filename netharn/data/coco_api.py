@@ -993,13 +993,37 @@ class MixinCocoAddRemove(object):
 
     @util.profile
     def add_annotations(self, anns):
-        """ Faster less-safe multi-item alternative """
+        """
+        Faster less-safe multi-item alternative
+
+        Args:
+            anns (List[Dict]): list of annotation dictionaries
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> anns = [self.anns[aid] for aid in [2, 3, 5, 7]]
+            >>> self.remove_annotations(anns)
+            >>> assert self.n_annots == 7 and self._check_index()
+            >>> self.add_annotations(anns)
+            >>> assert self.n_annots == 11 and self._check_index()
+        """
         self.dataset['annotations'].extend(anns)
         self.index._add_annotations(anns)
 
     @util.profile
     def add_images(self, imgs):
-        """ Faster less-safe multi-item alternative """
+        """
+        Faster less-safe multi-item alternative
+
+        Args:
+            imgs (List[Dict]): list of image dictionaries
+
+        Example:
+            >>> imgs = CocoDataset.demo().dataset['images']
+            >>> self = CocoDataset()
+            >>> self.add_images(imgs)
+            >>> assert self.n_images == 3 and self._check_index()
+        """
         self.dataset['images'].extend(imgs)
         self.index._add_images(imgs)
 
@@ -1011,14 +1035,26 @@ class MixinCocoAddRemove(object):
             name (str): name of the new category
             supercategory (str, optional): parent of this category
             cid (int, optional): use this category id, if it was not taken
+
+        CommandLine:
+            xdoctest -m netharn.data.coco_api MixinCocoAddRemove.add_category
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> cid = self.add_category('dog', supercategory='object')
+            >>> assert self.cats[cid]['name'] == 'dog'
+            >>> assert self.n_cats == 8
+            >>> import pytest
+            >>> with pytest.raises(ValueError):
+            >>>     self.add_category('dog', supercategory='object')
         """
-        if self.cats is not None:
-            if name in self.name_to_cat:
-                raise ValueError(name)
+        index = self.index
+        if index.cats and name in index.name_to_cat:
+            raise ValueError('Category name={!r} already exists'.format(name))
 
         if cid is None:
             cid = self._next_ids.get('cid')
-        elif self.cats and cid in self.cats:
+        elif index.cats and cid in index.cats:
             raise IndexError('Category id={} already exists'.format(cid))
 
         cat = _dict()
@@ -1031,23 +1067,38 @@ class MixinCocoAddRemove(object):
         self.dataset['categories'].append(cat)
 
         # And add to the indexes
-        self.index._add_category(cid, name, cat)
+        index._add_category(cid, name, cat)
         return cid
 
-    def remove_all_images(self):
+    def clear_images(self):
         """
         Removes all images and annotations (but not categories)
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> self.clear_images()
+            >>> print(ub.repr2(self.basic_stats(), nobr=1, nl=0, si=1))
+            n_anns: 0, n_imgs: 0, n_cats: 7
         """
         self.dataset['images'].clear()
         self.dataset['annotations'].clear()
         self.index._remove_all_images()
 
-    def remove_all_annotations(self):
+    def clear_annotations(self):
         """
         Removes all annotations (but not images and categories)
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> self.clear_annotations()
+            >>> print(ub.repr2(self.basic_stats(), nobr=1, nl=0, si=1))
+            n_anns: 0, n_imgs: 3, n_cats: 7
         """
         self.dataset['annotations'].clear()
         self.index._remove_all_annotations()
+
+    remove_all_images = clear_images
+    remove_all_annotations = clear_annotations
 
     def remove_annotation(self, aid_or_ann):
         """
@@ -1179,7 +1230,7 @@ class CocoIndex(object):
             new_imgs = dict(zip(gids, imgs))
             self.imgs.update(new_imgs)
             self.file_name_to_img.update(
-                {img['file_name']: img for img in imgs.values()})
+                {img['file_name']: img for img in imgs})
             for gid in gids:
                 self.gid_to_aids[gid] = self._set()
 
@@ -1222,7 +1273,7 @@ class CocoIndex(object):
             self.anns.clear()
             self.gid_to_aids.clear()
             self.file_name_to_img.clear()
-            for _ in self.index.cid_to_aids.values():
+            for _ in self.cid_to_aids.values():
                 _.clear()
 
     def _remove_annotations(self, remove_aids, verbose=0):
@@ -1530,6 +1581,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         assert self.index.cid_to_aids == new.index.cid_to_aids
         assert self.index.name_to_cat == new.index.name_to_cat
         assert self.index.file_name_to_img == new.index.file_name_to_img
+        return True
 
     def _build_index(self):
         self.index.build(self)
