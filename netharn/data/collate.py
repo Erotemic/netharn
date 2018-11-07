@@ -42,13 +42,17 @@ def _collate_else(batch, collate_func):
         return batch
     elif isinstance(batch[0], collections.Mapping):
         # Hack the mapping collation implementation to print error info
-        collated = {}
-        try:
-            for key in batch[0]:
-                collated[key] = collate_func([d[key] for d in batch])
-        except Exception:
-            print('\n!!Error collating key = {!r}\n'.format(key))
-            raise
+        if __debug__:
+            collated = {}
+            try:
+                for key in batch[0]:
+                    collated[key] = collate_func([d[key] for d in batch])
+            except Exception:
+                print('\n!!Error collating key = {!r}\n'.format(key))
+                raise
+            return collated
+        else:
+            return {key: default_collate([d[key] for d in batch]) for key in batch[0]}
     elif isinstance(batch[0], collections.Sequence):
         transposed = zip(*batch)
         return [collate_func(samples) for samples in transposed]
