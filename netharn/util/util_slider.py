@@ -94,7 +94,7 @@ class SlidingWindow(ub.NiceRepr):
         stride, overlap = self._compute_stride(overlap, stride, shape,
                                                window)
 
-        print('stride = {!r}'.format(stride))
+        # print('stride = {!r}'.format(stride))
         if not all(stride):
             raise ValueError(
                 'Step must be positive everywhere. Got={}'.format(stride))
