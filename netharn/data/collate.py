@@ -41,7 +41,14 @@ def _collate_else(batch, collate_func):
     elif isinstance(batch[0], torch_data.dataloader.string_classes):
         return batch
     elif isinstance(batch[0], collections.Mapping):
-        return {key: collate_func([d[key] for d in batch]) for key in batch[0]}
+        # Hack the mapping collation implementation to print error info
+        collated = {}
+        try:
+            for key in batch[0]:
+                collated[key] = collate_func([d[key] for d in batch])
+        except Exception:
+            print('\n!!Error collating key = {!r}\n'.format(key))
+            raise
     elif isinstance(batch[0], collections.Sequence):
         transposed = zip(*batch)
         return [collate_func(samples) for samples in transposed]
