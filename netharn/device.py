@@ -149,9 +149,13 @@ class XPU(ub.NiceRepr):
             >>> assert XPU('cpu', check=False) == XPU(None, check=False)
             >>> assert XPU([0, 1], check=False) == XPU([0, 1], check=False)
             >>> assert XPU([0, 1], check=False) != XPU([1, 0], check=False)
+            >>> assert 'numpy' != XPU([1, 0], check=False)
         """
-        return (xpu._main_device_id == other._main_device_id and
-                xpu._device_ids == other._device_ids)
+        try:
+            return (xpu._main_device_id == other._main_device_id and
+                    xpu._device_ids == other._device_ids)
+        except AttributeError:
+            return False
 
     @property
     def main_device(xpu):

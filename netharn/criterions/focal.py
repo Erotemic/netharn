@@ -80,7 +80,7 @@ def one_hot_embedding(labels, num_classes, dim=1):
                 dim_order.insert(dim, in_dims)
                 y_onehot = y_onehot.permute(*dim_order)
     else:
-        if dim != 1 or y.ndim == 2:
+        if dim != 1 or labels.ndim == 2:
             raise NotImplementedError('not implemented for this case')
         y = np.eye(int(num_classes))
         y_onehot = y[labels]
@@ -250,12 +250,15 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
 
         size_average, reduce, reduction = _backwards_compat_reduction_kw(
             size_average, reduce, reduction)
+        assert _HAS_REDUCTION
         if _HAS_REDUCTION:
+            print('reduction = {!r}'.format(reduction))
             super(FocalLoss, self).__init__(weight=weight,
                                             # reduce=reduce,
                                             # size_average=size_average,
                                             reduction=reduction)
         else:
+            raise AssertionError
             super(FocalLoss, self).__init__(weight=weight, reduce=reduce,
                                             size_average=size_average)
             self.size_average = size_average  # fix for travis?
@@ -288,10 +291,10 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             >>> input = torch.randn(N, C, requires_grad=True)
             >>> # Check to be sure that when gamma=0, FL becomes CE
             >>> loss0 = FocalLoss(reduction='none', focus=0).focal_loss(input, target)
-            >>> #loss1 = F.cross_entropy(input, target, reduction='none')
-            >>> loss1 = F.cross_entropy(input, target, size_average=False, reduce=False)
-            >>> #loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, reduction='none')
-            >>> loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, size_average=False, reduce=False)
+            >>> loss1 = F.cross_entropy(input, target, reduction='none')
+            >>> #loss1 = F.cross_entropy(input, target, size_average=False, reduce=False)
+            >>> loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, reduction='none')
+            >>> #loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, size_average=False, reduce=False)
             >>> assert np.all(np.abs((loss1 - loss0).data.numpy()) < 1e-6)
             >>> assert np.all(np.abs((loss2 - loss0).data.numpy()) < 1e-6)
             >>> lossF = FocalLoss(reduction='none', focus=2, ignore_index=0).focal_loss(input, target)
@@ -356,9 +359,9 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
 
 
 if __name__ == '__main__':
-    r"""
+    """
     CommandLine:
-        python -m netharn.loss
+        xdoctest -m netharn.criterions.focal all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
