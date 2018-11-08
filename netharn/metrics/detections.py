@@ -11,6 +11,13 @@ class DetectionMetrics(object):
     Attributes:
         true (nh.data.CocoAPI): ground truth dataset
         pred (nh.data.CocoAPI): predictions dataset
+
+    Example:
+        >>> dmet = DetectionMetrics.demo(
+        >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1))
+        >>> #print(dmet.score_coco()['mAP'])
+        >>> print(dmet.score_netharn(bias=0)['mAP'])
+        >>> print(dmet.score_voc(bias=0)['mAP'])
     """
     def __init__(dmet, true=None):
         import netharn as nh
@@ -25,12 +32,23 @@ class DetectionMetrics(object):
         Creates random true boxes and predicted boxes that have some noisy
         offset from the truth.
 
+        Kwargs:
+            nclasses (int): default: 1
+            nimgs (int): default: 1
+            nboxes (int): default: 1
+            n_fp (int): default: 0
+            n_fn (int): default: 0
+            box_noise (int): default: 0
+            cls_noise (int): default: 0
+            anchors (NoneType): default: None
+
+        Ignore:
+            kw = xinspect.get_kwargs(DetectionMetrics.demo)
+            for key, val in kw.items():
+                print('{} ({}): default: {}'.format(key, type(val).__name__, val))
+
         Example:
-            >>> dmet = DetectionMetrics.demo(
-            >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1))
-            >>> #print(dmet.score_coco()['mAP'])
-            >>> print(dmet.score_netharn(bias=0)['mAP'])
-            >>> print(dmet.score_voc(bias=0)['mAP'])
+            >>> dmet = DetectionMetrics.demo()
         """
         import netharn as nh
 
@@ -142,7 +160,17 @@ class DetectionMetrics(object):
         for bbox, cid, weight in zip(true_boxes.to_xywh(), true_cids, true_weights):
             dmet.true.add_annotation(true_gid, cid, bbox=bbox, weight=weight)
 
-    def score_netharn(dmet, ovthresh=0.5, bias=0, method='voc2012', gids=None):
+    def score_netharn(dmet, ovthresh=0.5, bias=0, method='voc2012', gids=None, ignore_cidxs=[-1]):
+        """
+        Ignore:
+            >>> dmet = DetectionMetrics.demo(
+            >>>     nimgs=100, nboxes=(0, 100), n_fp=(0, 1))
+            >>> import kwil
+            >>> kwil.profile_now(dmet.score_netharn)(bias=0)['mAP']
+
+            import xinspect
+            globals().update(xinspect.get_kwargs(dmet.score_netharn))
+        """
         y_accum = ub.ddict(list)
         # confusions = []
         if gids is None:
@@ -167,7 +195,11 @@ class DetectionMetrics(object):
             for k, v in y.items():
                 y_accum[k].extend(v)
 
-        y_df = pd.DataFrame(y_accum)
+        if 1:
+            # Avoid pandas when possible
+            y_df = util.DataFrameArray(ub.map_vals(np.array, y_accum))
+        else:
+            y_df = pd.DataFrame(y_accum)
 
         # class agnostic score
         ap, prec, rec = pr_curves(y_df)
@@ -273,7 +305,9 @@ class DetectionMetrics(object):
 
 
 @profiler.profile
-def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5, bg_cls=-1, bias=0.0):
+def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
+                         pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5,
+                         bg_cls=-1, bias=0.0):
     """ Classify detections by assigning to groundtruth boxes.
 
     Given predictions and truth for an image return (y_pred, y_true,
@@ -382,9 +416,17 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
 
     # Group true boxes by class
     # Keep track which true boxes are unused / not assigned
-    cx_to_idxs = ub.group_items(range(len(true_cxs)), true_cxs)
-    cx_to_tboxes = util.group_items(true_boxes, true_cxs, axis=0)
-    cx_to_tweight = util.group_items(true_weights, true_cxs, axis=0)
+    if True:
+        unique_cxs, groupxs = util.group_indices(true_cxs)
+        tbox_groups = util.apply_grouping(true_boxes, groupxs, axis=0)
+        tweight_groups = util.apply_grouping(true_weights, groupxs, axis=0)
+        cx_to_idxs = dict(zip(unique_cxs, groupxs))
+        cx_to_tboxes = dict(zip(unique_cxs, tbox_groups))
+        cx_to_tweight = dict(zip(unique_cxs, tweight_groups))
+    else:
+        cx_to_idxs = ub.group_items(range(len(true_cxs)), true_cxs)
+        cx_to_tboxes = util.group_items(true_boxes, true_cxs, axis=0)
+        cx_to_tweight = util.group_items(true_weights, true_cxs, axis=0)
 
     # cx_to_boxes = ub.group_items(true_boxes, true_cxs)
     # cx_to_boxes = ub.map_vals(np.array, cx_to_boxes)
@@ -408,8 +450,6 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
         if len(cls_true_idxs):
             cls_true_boxes = cx_to_tboxes[cx]
             cls_true_weights = cx_to_tweight[cx]
-            # cls_true_boxes = true_boxes.take(cls_true_idxs, axis=0)
-            # cls_true_weights = true_weights.take(cls_true_idxs, axis=0)
 
             overlaps = cls_true_boxes.ious(box, bias=bias)
 
@@ -470,8 +510,6 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
         'txs': y_txs,  # index into the original true box for this row
         'pxs': y_pxs,  # index into the original pred box for this row
     }
-    # print('y = {}'.format(ub.repr2(y, nl=1)))
-    # y = pd.DataFrame(y)
     return y
 
 
@@ -538,7 +576,7 @@ def score_detection_assignment(y, labels=None, method='voc2012'):
         >>>     'true': y_true,
         >>>     'pred': y_pred,
         >>> })
-        >>> y['score'] = 0.99
+        >>> y['score'] = np.linspace(.1, .9, len(y))
         >>> y['weight'] = 1.0
         >>> ave_precs = ave_precisions(y, method='voc2007')
         >>> print(ave_precs)
@@ -561,30 +599,41 @@ def score_detection_assignment(y, labels=None, method='voc2012'):
         >>> mAP = np.nanmean(ave_precs['ap'])
         >>> print('mAP = {:.4f}'.format(mAP))
         mAP = 0.5875
+        >>> y2 = util.DataFrameArray(y)
+        >>> ave_precs = ave_precisions(y2, method='voc2007')
+        >>> assert np.allclose(ave_precs._pandas(), ave_precisions(y, method='voc2007'))
     """
     if method not in ['sklearn', 'voc2007', 'voc2012']:
         raise KeyError(method)
 
-    if 'cx' not in y:
+    IS_PANDAS = isinstance(y, pd.DataFrame)
+
+    if 'cx' not in y.columns:
         cx = y['true'].copy()
         flags = cx == -1
         cx[flags] = y['pred'][flags]
         y['cx'] = cx
 
     if labels is None:
-        labels = pd.unique(y['cx'])
+        labels = np.unique(y['cx'])
 
     # because we use -1 to indicate a wrong prediction we can use max to
     # determine the class groupings.
     cx_to_group = dict(iter(y.groupby('cx')))
     class_aps = []
     for cx in labels:
-        # for cx, group in cx_to_group.items():
         group = cx_to_group.get(cx, None)
         ap, prec, rec = pr_curves(group, method)
         class_aps.append((cx, ap))
 
-    ave_precs = pd.DataFrame(class_aps, columns=['cx', 'ap'])
+    if IS_PANDAS:
+        ave_precs = pd.DataFrame(class_aps, columns=['cx', 'ap'])
+    else:
+        coldata = zip(*class_aps)
+        columns = ['cx', 'ap']
+        data = dict(zip(columns, map(np.array, coldata)))
+        ave_precs = util.DataFrameArray(data)
+
     return ave_precs
 
 
@@ -592,8 +641,31 @@ def pr_curves(y, method='voc2012'):  # -> Tuple[float, ndarray, ndarray]:
     """ Compute a PR curve from a method
 
     Args:
-        y (pd.DataFrame): output of detection_confusions
+        y (pd.DataFrame | util.DataFrameArray): output of detection_confusions
+
+    Example:
+        >>> y1 = pd.DataFrame.from_records([
+        >>>     {'cx': 0.00, 'gid': 0.00, 'pred': 0.00, 'pxs': 44.00, 'score': 10.00, 'true': -1.00, 'txs': -1.00, 'weight': 1.00},
+        >>>     {'cx': 0.00, 'gid': 9.00, 'pred': 0.00, 'pxs': 12.00, 'score': 1.65, 'true': 0.00, 'txs': 12.00, 'weight': 1.00},
+        >>>     {'cx': 0.00, 'gid': 16.00, 'pred': 0.00, 'pxs': 38.00, 'score': 8.64, 'true': -1.00, 'txs': -1.00, 'weight': 1.00},
+        >>>     {'cx': 0.00, 'gid': 26.00, 'pred': 0.00, 'pxs': 21.00, 'score': 3.97, 'true': 0.00, 'txs': 21.00, 'weight': 1.00},
+        >>>     {'cx': 0.00, 'gid': 38.00, 'pred': 0.00, 'pxs': 8.00, 'score': 1.68, 'true': 0.00, 'txs': 40.00, 'weight': 1.00},
+        >>>     {'cx': 0.00, 'gid': 46.00, 'pred': 0.00, 'pxs': 43.00, 'score': 5.06, 'true': 0.00, 'txs': 43.00, 'weight': 1.00},
+        >>>     {'cx': 0.00, 'gid': 57.00, 'pred': 0.00, 'pxs': 2.00, 'score': 0.25, 'true': 0.00, 'txs': 2.00, 'weight': 1.00},
+        >>>     {'cx': 0.00, 'gid': 72.00, 'pred': 0.00, 'pxs': 15.00, 'score': 1.75, 'true': 0.00, 'txs': 15.00, 'weight': 1.00},
+        >>>     {'cx': 0.00, 'gid': 85.00, 'pred': 0.00, 'pxs': 75.00, 'score': 8.52, 'true': 0.00, 'txs': 75.00, 'weight': 1.00},
+        >>>     {'cx': 0.00, 'gid': 94.00, 'pred': 0.00, 'pxs': 40.00, 'score': 5.20, 'true': 0.00, 'txs': 18.00, 'weight': 1.00},
+        >>> ])
+        >>> y2 = util.DataFrameArray(y1)
+        >>> pr_curves(y2)
+        >>> pr_curves(y1)
+
+    Ignore
+        ub.Timerit(unit='us').call(lambda: pr_curves(y1)).print()
+        ub.Timerit(unit='us').call(lambda: pr_curves(y2)).print()
     """
+    IS_PANDAS = isinstance(y, pd.DataFrame)
+
     if method not in ['sklearn', 'voc2007', 'voc2012']:
         raise KeyError(method)
 
@@ -618,12 +690,17 @@ def pr_curves(y, method='voc2012'):  # -> Tuple[float, ndarray, ndarray]:
         # In the future, we should simply use the sklearn version
         # which gives nice easy to reproduce results.
         import sklearn.metrics
-        df = y
-        ap = sklearn.metrics.average_precision_score(
-            y_true=(df['true'].values == df['pred'].values).astype(np.int),
-            y_score=df['score'].values,
-            sample_weight=df['weight'].values,
-        )
+        if IS_PANDAS:
+            df = y
+            ap = sklearn.metrics.average_precision_score(
+                y_true=(df['true'].values == df['pred'].values).astype(np.int),
+                y_score=df['score'].values, sample_weight=df['weight'].values,
+            )
+        else:
+            ap = sklearn.metrics.average_precision_score(
+                y_true=(y['true'] == y['pred']).astype(np.int),
+                y_score=y['score'], sample_weight=y['weight'],
+            )
         raise NotImplementedError('todo: return pr curves')
         return ap, [], []
     elif method == 'voc2007' or method == 'voc2012':
@@ -638,11 +715,17 @@ def pr_curves(y, method='voc2012'):  # -> Tuple[float, ndarray, ndarray]:
             npos = 0
             dets = []
         else:
-            npos = y[y.true >= 0].weight.sum()
-            dets = y[y.pred > -1]
+            if IS_PANDAS:
+                npos = y[y['true'] >= 0].weight.sum()
+                dets = y[y['pred'] > -1]
+            else:
+                npos = y.compress(y['true'] >= 0)['weight'].sum()
+                dets = y.compress(y['pred'] > -1)
 
         if npos > 0 and len(dets) > 0:
-            tp = (dets.pred == dets.true).values.astype(np.int)
+            tp = (dets['pred'] == dets['true'])
+            if IS_PANDAS:
+                tp = tp.values.astype(np.int)
             fp = 1 - tp
             fp_cum = np.cumsum(fp)
             tp_cum = np.cumsum(tp)

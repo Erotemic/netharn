@@ -1,5 +1,6 @@
 Version 0.1.2
 ==============
+* Added new layers: GaussianBlurNd, L2Norm, Permute, Conv1d_pad, Conv2d_pad
 * nh.XPU now supports `__eq__`
 * Fixed bug in `FitHarn._check_divergence`
 * Added dependency on astunparse to fix bug where exporter could not handle complex assignments

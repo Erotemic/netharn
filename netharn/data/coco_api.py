@@ -192,6 +192,8 @@ class Annots(ObjectList1D):
     @property
     def boxes(self):
         """
+        Returns netharn-style boxes
+
         Example:
             >>> self = CocoDataset.demo().annots([1, 2, 11])
             >>> print(self.boxes)
@@ -204,6 +206,22 @@ class Annots(ObjectList1D):
         xywh = self._lookup('bbox')
         boxes = nh.util.Boxes(xywh, 'xywh')
         return boxes
+
+    @property
+    def xywh(self):
+        """
+        Returns raw boxes
+
+        Example:
+            >>> self = CocoDataset.demo().annots([1, 2, 11])
+            >>> print(self.boxes)
+            <Boxes(tlwh,
+                array([[ 10,  10, 360, 490],
+                       [350,   5, 130, 290],
+                       [124,  96,  45,  18]]))>
+        """
+        xywh = self._lookup('bbox')
+        return xywh
 
 
 class ObjectGroups(ub.NiceRepr):

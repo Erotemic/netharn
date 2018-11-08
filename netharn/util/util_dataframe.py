@@ -191,6 +191,9 @@ class DataFrameLight(ub.NiceRepr):
         else:
             return 0
 
+    def __contains__(self, item):
+        return item in self.keys()
+
     def __normalize__(self):
         if self._raw is None:
             self._data = {}
@@ -214,8 +217,10 @@ class DataFrameLight(ub.NiceRepr):
     def columns(self):
         return list(self.keys())
 
-    def sort_values(self, key, inplace=False):
+    def sort_values(self, key, inplace=False, ascending=True):
         sortx = np.argsort(self._getcol(key))
+        if not ascending:
+            sortx = sortx[::-1]
         return self.take(sortx, inplace=inplace)
 
     def keys(self):
@@ -315,8 +320,27 @@ class DataFrameLight(ub.NiceRepr):
         return self
 
     def groupby(self, *args, **kw):
-        """ hacked slow pandas implementation of groupby """
-        return self._pandas().gropuby(*args, **kw)
+        """
+        hacked slow pandas implementation of groupby
+
+        Ignore:
+            >>> from netharn.util.util_dataframe import *
+            >>> self = DataFrameLight._demodata(num=1000)
+            >>> args = ['cx']
+            >>> self['cx'] = (np.random.rand(len(self)) * 10).astype(np.int)
+            >>> # As expected, our custom restricted implementation is faster
+            >>> # than pandas
+            >>> ub.Timerit(100).call(lambda: dict(list(self._pandas().groupby('cx')))).print()
+            >>> ub.Timerit(100).call(lambda: dict(self.groupby('cx'))).print()
+        """
+        if len(args) == 1:
+            from netharn import util
+            key = args[0]
+            unique, groupxs = util.group_indices(self[key])
+            groups = [self.take(idxs) for idxs in groupxs]
+            return zip(unique, groups)
+        else:
+            return self._pandas().groupby(*args, **kw)
 
     def rename(self, columns, inplace=False):
         if not inplace:
