@@ -627,14 +627,20 @@ def pr_curves(y, method='voc2012'):  # -> Tuple[float, ndarray, ndarray]:
         raise NotImplementedError('todo: return pr curves')
         return ap, [], []
     elif method == 'voc2007' or method == 'voc2012':
-        y = y.sort_values('score', ascending=False)
-        # if True:
-        #     # ignore "difficult" matches
-        #     y = y[y.weight > 0]
+        try:
+            y = y.sort_values('score', ascending=False)
+            # if True:
+            #     # ignore "difficult" matches
+            #     y = y[y.weight > 0]
 
-        # npos = sum(y.true >= 0)
-        npos = y[y.true >= 0].weight.sum()
-        dets = y[y.pred > -1]
+            # npos = sum(y.true >= 0)
+        except KeyError:
+            npos = 0
+            dets = []
+        else:
+            npos = y[y.true >= 0].weight.sum()
+            dets = y[y.pred > -1]
+
         if npos > 0 and len(dets) > 0:
             tp = (dets.pred == dets.true).values.astype(np.int)
             fp = 1 - tp
