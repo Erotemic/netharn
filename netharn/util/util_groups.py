@@ -171,7 +171,7 @@ def group_indices(idx2_groupid, assume_sorted=False):
         http://stackoverflow.com/questions/21888406/
         getting-the-indexes-to-the-duplicate-columns-of-a-numpy-array
     """
-    if idx2_groupid.dtype.kind == 'U':
+    if idx2_groupid.dtype.kind in {'U', 'O'}:
         # hack for string based data
         group = ub.group_items(range(len(idx2_groupid)), idx2_groupid)
         keys = np.array(list(group.keys()))
