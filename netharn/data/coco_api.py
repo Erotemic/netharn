@@ -382,7 +382,8 @@ class MixinCocoExtras(object):
         CommandLine:
             xdoctest -m netharn.data.coco_api MixinCocoExtras._build_hashid
 
-        Example:
+        Ignore:
+            >>> # IGNORE_DOCTEST
             >>> self = CocoDataset.demo()
             >>> self._build_hashid(hash_pixels=True)
             >>> print(ub.repr2(self.hashid_parts))
