@@ -184,6 +184,20 @@ def _disjoint_dict_update(a, b):
 
 @register_mixin
 class ExtraMixins:
+
+    def _demo_epoch(harn, tag='vali', learn=False):
+        """
+        Runs an epoch (usually for testing / demo purposes).
+        """
+        harn.current_tag = None
+        harn._run_metrics = {
+            tag: util.WindowedMovingAve(window=len(loader))
+            for tag, loader in harn.loaders.items()
+        }
+        loader = harn.loaders[tag]
+        epoch_metrics = harn._run_epoch(loader, tag='vali', learn=learn)
+        return epoch_metrics
+
     def _demo_batch(harn, index=0, tag='train', raw=False):
         """
         Returns a single batch for testing / demo purposes.
@@ -348,7 +362,7 @@ class InitializeMixin:
             harn._tlog = tensorboard_logger.Logger(harn.train_dpath,
                                                      flush_secs=2)
         else:
-            harn.warning('Tensorboard is not available')
+            harn.warn('Tensorboard is not available')
 
     def _setup_modules(harn):
         """
@@ -995,11 +1009,17 @@ class CoreMixin:
                 if key in harn.loaders
             ])
 
+            # keep track of moving metric averages across epochs
+            harn._run_metrics = {
+                tag: util.WindowedMovingAve(window=len(loader))
+                for tag, loader in harn.loaders.items()
+            }
+
+            harn._check_thread_safety()
+
             train_loader = harn.loaders.get('train', None)
             vali_loader  = harn.loaders.get('vali', None)
             test_loader  = harn.loaders.get('test', None)
-
-            harn._check_thread_safety()
 
             if not vali_loader:
                 # if harn.monitor:
@@ -1008,12 +1028,6 @@ class CoreMixin:
                     if harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
                         raise ValueError(
                                 'need a validataion dataset to use ReduceLROnPlateau')
-
-            # keep track of moving metric averages across epochs
-            harn._run_metrics = {
-                tag: util.WindowedMovingAve(window=len(loader))
-                for tag, loader in harn.loaders.items()
-            }
 
             # if harn.scheduler:
             #     # prestep scheduler?
@@ -1153,8 +1167,11 @@ class CoreMixin:
         bsize = loader.batch_sampler.batch_size
         msg = harn._batch_msg({'loss': -1}, bsize, learn)
         desc = tag + ' ' + msg
-        position = (list(harn.loaders.keys()).index(tag) +
-                    harn.main_prog.pos + 1)
+        if harn.main_prog is None:
+            position = 1
+        else:
+            position = (list(harn.loaders.keys()).index(tag) +
+                        harn.main_prog.pos + 1)
         prog = harn._make_prog(desc=desc, total=len(loader),
                                disable=not harn.config['show_prog'],
                                position=position,
@@ -1173,7 +1190,7 @@ class CoreMixin:
                     batch_iter = iter(loader)
                 except OSError as ex:
                     if 'Cannot allocate memory' in str(ex):
-                        harn.warning('Cannot allocate memory for the data loader')
+                        harn.warn('Cannot allocate memory for the data loader')
                     if n_trys_remain <= 0:
                         harn.error('Cannot allocate enough memory')
                         raise

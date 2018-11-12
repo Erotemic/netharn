@@ -97,7 +97,9 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
                     'model_state_dict or weights. Root keys are {}'.format(
                         sorted(model_state_dict.keys())
                     ))
-        nninit_base.load_partial_state(model, model_state_dict,
+        # Remove any DataParallel / DataSerial
+        raw_model = xpu.raw(model)
+        nninit_base.load_partial_state(raw_model, model_state_dict,
                                        initializer=self.initializer)
 
     def history(self):
