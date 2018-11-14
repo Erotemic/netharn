@@ -1,3 +1,4 @@
+# coding=utf8
 import math
 import numpy as np
 import torch
@@ -177,7 +178,8 @@ class GaussianBlurNd(common.Module):
     def forward(self, input):
         if self.separable:
             # Apply the 1d gaussian filter in each dimension
-            b, c, *dims = input.shape
+            b, c = input.shape[0:2]
+            dims = input.shape[2:]
             x = input
             major_dim = 2  # tensor dim corresponding to major spatial axis
             for axis, d in enumerate(dims):
