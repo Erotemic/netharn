@@ -387,6 +387,7 @@ class HyperParams(object):
 
     def make_optimizer(hyper, parameters):
         """ Instanciate the optimizer defined by the hyperparams """
+        # What happens if we want to group parameters
         optimizer = hyper.optimizer_cls(parameters, **hyper.optimizer_params)
         return optimizer
 
@@ -394,10 +395,8 @@ class HyperParams(object):
         """ Instanciate the lr scheduler defined by the hyperparams """
         if hyper.scheduler_cls is None:
             return None
-
         kw = hyper.scheduler_params.copy()
         kw['optimizer'] = optimizer
-        # scheduler = hyper.scheduler_cls(optimizer, **hyper.scheduler_params)
         scheduler = hyper.scheduler_cls(**kw)
         return scheduler
 
