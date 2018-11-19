@@ -1,9 +1,10 @@
 import torch
+from netharn import util
 from netharn.output_shape_for import OutputShapeFor  # NOQA
 from netharn.output_shape_for import SHAPE_CLS
 
 
-class Reshape(torch.nn.Module):
+class Reshape(torch.nn.Module, util.ModuleMixin):
     """
     Wrapper class around `torch.view` that implements `output_shape_for`
 
@@ -131,3 +132,15 @@ class Reshape(torch.nn.Module):
             assert unused == 1
 
         return SHAPE_CLS(output_shape)
+
+
+class Permute(torch.nn.Module, util.ModuleMixin):
+    def __init__(self, *dims):
+        super().__init__()
+        self.dims = dims
+
+    def forward(self, x):
+        return x.permute(*self.dims)
+
+    def output_shape_for(self, input_shape):
+        return tuple([input_shape[i] for i in self.dims])

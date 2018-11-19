@@ -211,31 +211,42 @@ def source_closure(model_class):
         str: closed_sourcecode: text defining a new python module.
 
     Example:
+        >>> import torchvision
         >>> from torchvision import models
+        >>> got = {}
 
         >>> model_class = models.AlexNet
         >>> text = source_closure(model_class)
         >>> assert not undefined_names(text)
-        >>> print(hash_code(text))
-        18a043fc0563bcf8f97b2ee76d...
+        >>> got['alexnet'] = hash_code(text)
 
         >>> model_class = models.DenseNet
         >>> text = source_closure(model_class)
         >>> assert not undefined_names(text)
-        >>> print(hash_code(text))
-        d52175ef0d52ec5ca155bdb1037...
+        >>> got['densenet'] = hash_code(text)
 
         >>> model_class = models.resnet50
         >>> text = source_closure(model_class)
         >>> assert not undefined_names(text)
-        >>> print(hash_code(text))
-        ad683af44142b58c85b6c2314...
+        >>> got['resnet50'] = hash_code(text)
 
         >>> model_class = models.Inception3
         >>> text = source_closure(model_class)
         >>> assert not undefined_names(text)
-        >>> print(hash_code(text))
-        bd7c67c37e292ffad6beb8532324d3...
+        >>> got['inception3'] = hash_code(text)
+
+        >>> # The hashes will depend on torchvision itself
+        >>> if torchvision.__version__ == '0.2.1':
+        >>>     want = {
+        >>>         'alexnet': '18a043fc0563bcf8f97b2ee76d',
+        >>>         'densenet': 'f51adb0173b2b96ce4a402',
+        >>>         'resnet50': 'eed9f0aa2f36d1328c408595f',
+        >>>         'inception3': '0b337ffd09e7812fd4549a3c0',
+        >>>     }
+        >>>     for k in want:
+        >>>         assert got[k].startswith(want[k])
+        >>> else:
+        >>>     warnings.warn('Unsupported version of torchvision')
     """
     module_name = model_class.__module__
     module = sys.modules[module_name]
@@ -317,7 +328,7 @@ def source_closure(model_class):
 
 
 def remove_comments_and_docstrings(source):
-    """
+    r"""
     Args:
         source (str): uft8 text of source code
 
@@ -466,7 +477,7 @@ def export_model_code(dpath, model, initkw=None):
         >>> static_modpath = export_model_code(dpath, model, initkw)
         >>> print('static_modpath = {!r}'.format(static_modpath))
         >>> print(basename(static_modpath))
-        DenseNet_c662ba.py
+        DenseNet_b84356.py
         >>> # now the module can be loaded
         >>> module = ub.import_module_from_path(static_modpath)
         >>> loaded = module.make()
@@ -559,3 +570,12 @@ def export_model_code(dpath, model, initkw=None):
     with open(static_modpath, 'w') as file:
         file.write(sourcecode)
     return static_modpath
+
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        xdoctest -m netharn.export.exporter
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

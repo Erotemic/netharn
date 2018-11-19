@@ -1,2 +1,2 @@
 #!/bin/bash
-xdoctest netharn --style=google all
+xdoctest netharn --style=google all $@

@@ -2,13 +2,12 @@ import math
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch import nn
-from netharn.util.util_torch import ModuleMixin
 import scipy
 import scipy.ndimage
+from netharn.layers import common
 
 
-class Conv1d_pad(torch.nn.Conv1d):
+class Conv1d_pad(torch.nn.Conv1d, common.ModuleMixin):
     """
     Extends convolutions to include the type of mode used in padding
     """
@@ -27,7 +26,7 @@ class Conv1d_pad(torch.nn.Conv1d):
         return super().forward(x)
 
 
-class Conv2d_pad(torch.nn.Conv2d):
+class Conv2d_pad(torch.nn.Conv2d, common.ModuleMixin):
     """
     Extends convolutions to include the type of mode used in padding
     """
@@ -46,7 +45,7 @@ class Conv2d_pad(torch.nn.Conv2d):
         return super().forward(x)
 
 
-class GaussianBlurNd(nn.Module, ModuleMixin):
+class GaussianBlurNd(common.Module):
     """
     Convolves a signal with a Gaussian kernel.
 

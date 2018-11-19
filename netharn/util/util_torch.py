@@ -6,7 +6,7 @@ import torch
 
 class ModuleMixin(object):
     """
-    Adds convenince functions to a torch module
+    Adds convenience functions to a torch module
     """
     def number_of_parameters(self, trainable=True):
         return number_of_parameters(self, trainable)
