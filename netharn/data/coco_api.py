@@ -108,6 +108,37 @@ class ObjectList1D(ub.NiceRepr):
         newself = self.__class__(subids, self._dset)
         return newself
 
+    def _lookup(self, key):
+        raise NotImplementedError('must be implemented')
+
+    def _ilookup(self, key):
+        raise NotImplementedError('must be implemented')
+
+
+class ObjectGroups(ub.NiceRepr):
+    def __init__(self, groups, dset):
+        self._groups = groups
+
+    def _lookup(self, key):
+        return [group._lookup(key) for group in self._groups]
+
+    def _ilookup(self, key):
+        return (group._lookup(key) for group in self._groups)
+
+    def __nice__(self):
+        # import timerit
+        # mu = timerit.core._trychar('μ', 'm')
+        # sigma = timerit.core._trychar('σ', 's')
+        mu = 'm'
+        sigma = 's'
+        len_list = list(map(len, self._groups))
+        num = len(self._groups)
+        mean = np.mean(len_list)
+        std = np.std(len_list)
+        nice = 'n={!r}, {}={:.1f}, {}={:.1f}'.format(
+            num, mu, mean, sigma, std)
+        return nice
+
 
 class Images(ObjectList1D):
     """
@@ -121,6 +152,9 @@ class Images(ObjectList1D):
 
     def _lookup(self, key):
         return [img[key] for img in ub.take(self._dset.imgs, self._ids)]
+
+    def _ilookup(self, key):
+        return (img[key] for img in ub.take(self._dset.imgs, self._ids))
 
     @property
     def width(self):
@@ -140,7 +174,29 @@ class Images(ObjectList1D):
             >>> print(self.size)
             [(512, 512), (300, 250), (256, 256)]
         """
-        return list(zip(self.width, self.height))
+        return list(zip(self._ilookup('width'), self._ilookup('height')))
+
+    @property
+    def area(self):
+        """
+        Example:
+            >>> from netharn.data.coco_api import *
+            >>> self = CocoDataset.demo().images()
+            >>> self._dset._ensure_imgsize()
+            >>> print(self.area)
+            [262144, 75000, 65536]
+        """
+        return [w * h for w, h in zip(self._ilookup('width'), self._ilookup('height'))]
+
+    @property
+    def n_annots(self):
+        """
+        Example:
+            >>> self = CocoDataset.demo().images()
+            >>> print(ub.repr2(self.n_annots, nl=0))
+            [9, 2, 0]
+        """
+        return list(map(len, ub.take(self._dset.gid_to_aids, self._ids)))
 
     @property
     def aids(self):
@@ -189,6 +245,9 @@ class Annots(ObjectList1D):
     def _lookup(self, key):
         return [ann[key] for ann in ub.take(self._dset.anns, self._ids)]
 
+    def _ilookup(self, key):
+        return (ann[key] for ann in ub.take(self._dset.anns, self._ids))
+
     @property
     def boxes(self):
         """
@@ -224,27 +283,10 @@ class Annots(ObjectList1D):
         return xywh
 
 
-class ObjectGroups(ub.NiceRepr):
-    def __init__(self, groups, dset):
-        self._groups = groups
-
-    def __nice__(self):
-        # import timerit
-        # mu = timerit.core._trychar('μ', 'm')
-        # sigma = timerit.core._trychar('σ', 's')
-        mu = 'm'
-        sigma = 's'
-        len_list = list(map(len, self._groups))
-        num = len(self._groups)
-        mean = np.mean(len_list)
-        std = np.std(len_list)
-        nice = 'n={!r}, {}={:.1f}, {}={:.1f}'.format(
-            num, mu, mean, sigma, std)
-        return nice
-
-
 class AnnotGroups(ObjectGroups):
-    pass
+    @property
+    def cids(self):
+        return self._lookup('category_id')
 
 
 class ImageGroups(ObjectGroups):
