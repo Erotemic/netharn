@@ -920,8 +920,11 @@ class MixinCocoDraw(object):
         gpath = join(self.img_root, img['file_name'])
         with Image.open(gpath) as pil_img:
             np_img = np.array(pil_img)
+
+        fig = plt.gcf()
+        ax = fig.gca()
+        ax.cla()
         plt.imshow(np_img)
-        ax = plt.gca()
 
         # Show all annotations inside it
         for (x1, y1, catname, textkw) in texts:
