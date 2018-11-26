@@ -1,5 +1,6 @@
 Version 0.1.2
 ==============
+* Fixed Python2.7 bugs. 
 * `nh.CocoAPI.show_image` now correctly clears the axis before drawing
 * Added `_demo_epoch` function to `FitHarn` which runs a single epoch for testing purposes.
 * Added new layers: `GaussianBlurNd`, `L2Norm`, `Permute`, `Conv1d_pad`, `Conv2d_pad`
