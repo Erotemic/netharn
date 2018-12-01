@@ -210,6 +210,9 @@ def source_closure(model_class):
     Returns:
         str: closed_sourcecode: text defining a new python module.
 
+    CommandLine:
+        xdoctest -m netharn.export.exporter source_closure
+
     Example:
         >>> import torchvision
         >>> from torchvision import models
@@ -239,12 +242,17 @@ def source_closure(model_class):
         >>> if torchvision.__version__ == '0.2.1':
         >>>     want = {
         >>>         'alexnet': '18a043fc0563bcf8f97b2ee76d',
-        >>>         'densenet': 'f51adb0173b2b96ce4a402',
-        >>>         'resnet50': 'eed9f0aa2f36d1328c408595f',
-        >>>         'inception3': '0b337ffd09e7812fd4549a3c0',
+        >>>         'densenet': 'd52175ef0d52ec5ca155bdb10',
+        >>>         'resnet50': 'ad683af44142b58c85b6c2',
+        >>>         'inception3': 'bd7c67c37e292ffad6beb',
         >>>     }
+        >>>     failed = []
         >>>     for k in want:
-        >>>         assert got[k].startswith(want[k])
+        >>>         if not got[k].startswith(want[k]):
+        >>>             item = (k, got[k], want[k])
+        >>>             print('failed item = {!r}'.format(item))
+        >>>             failed.append(item)
+        >>>     assert not failed, str(failed)
         >>> else:
         >>>     warnings.warn('Unsupported version of torchvision')
     """
@@ -476,8 +484,9 @@ def export_model_code(dpath, model, initkw=None):
         >>> dpath = ub.ensure_app_cache_dir('netharn/tests')
         >>> static_modpath = export_model_code(dpath, model, initkw)
         >>> print('static_modpath = {!r}'.format(static_modpath))
+        ...
         >>> print(basename(static_modpath))
-        DenseNet_b84356.py
+        DenseNet_c662ba.py
         >>> # now the module can be loaded
         >>> module = ub.import_module_from_path(static_modpath)
         >>> loaded = module.make()
