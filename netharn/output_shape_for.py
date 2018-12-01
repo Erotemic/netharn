@@ -24,7 +24,6 @@ def compute_type(type):
 
 
 class OutputShapeFor(object):
-
     math = math  # for hacking in sympy
 
     def __init__(self, module):
@@ -311,6 +310,14 @@ class OutputShapeFor(object):
             >>> print('output_shape = {!r}'.format(output_shape))
             output_shape = (1, 3, 128, 128)
 
+        Example:
+            >>> from netharn.output_shape_for import *
+            >>> input_shape = (1, 512, 37, 37)
+            >>> module = nn.MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=True)
+            >>> output_shape = tuple(OutputShapeFor(module)(input_shape))
+            >>> print('output_shape = {!r}'.format(output_shape))
+            output_shape = (1, 512, 19, 19)
+
         Shape:
             2d Case:
             Same as conv2 forumla except C2 = C1
@@ -329,8 +336,10 @@ class OutputShapeFor(object):
         dilation = ensure_iterablen(module.dilation, n)
         kernel_size = ensure_iterablen(module.kernel_size, n)
 
+        trunc = math.ceil if module.ceil_mode else math.floor
+
         DIMS_out = [
-            int(math.floor((D_in  + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1))
+            int(trunc((D_in  + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1))
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C] + DIMS_out)

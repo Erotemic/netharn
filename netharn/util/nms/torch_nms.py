@@ -76,6 +76,11 @@ def torch_nms(tlbr, scores, classes=None, thresh=.5, bias=0, fast=False):
     #     ious = intersections / unions
 
     # Filter based on iou (and class)
+    # NOTE: We are using following convention:
+    #     * suppress if overlap > thresh
+    #     * consider if overlap <= thresh
+    # This convention has the property that when thresh=0, we dont just
+    # remove everything.
     conflicting = (ious > thresh).triu(1)
 
     if classes is not None:

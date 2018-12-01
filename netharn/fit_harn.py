@@ -413,12 +413,15 @@ class InitializeMixin:
         harn.debug('Make dynamics')
         harn.dynamics = harn.hyper.dynamics.copy()
 
-        # Export the model topology to the train_dpath
+        harn._export()
+
+    def _export(harn):
+        """ Export the model topology to the train_dpath """
+        # TODO: might be good to check for multiple model exports at this time
         model_cls = harn.hyper.model_cls
         model_params = harn.hyper.model_params
         export.export_model_code(harn.train_dpath, model_cls,
                                  initkw=model_params)
-        # TODO: might be good to check for multiple model exports at this time
 
     def reset_weights(harn):
         """
@@ -462,7 +465,7 @@ class InitializeMixin:
         for load_path in reversed(prev_states):
             try:
                 harn.load_snapshot(load_path)
-            except RuntimeError:
+            except (RuntimeError, EOFError):
                 harn.info('Failed to load {}. Skiping.'.format(load_path))
             else:
                 success = True

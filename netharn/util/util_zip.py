@@ -131,9 +131,9 @@ class zopen(ub.NiceRepr):
             if self._seekable:
                 # If we need data to be seekable, then we must extract it to a
                 # temporary file first.
-                temp_dpath = tempfile.mkdtemp()
-                temp_fpath = join(temp_dpath, internal)
-                myzip.extract(internal, temp_dpath)
+                self._temp_dpath = tempfile.mkdtemp()
+                temp_fpath = join(self._temp_dpath, internal)
+                myzip.extract(internal, self._temp_dpath)
                 _handle = open(temp_fpath, self.mode)
             else:
                 # Try to load data directly from the zipfile
@@ -157,3 +157,12 @@ class zopen(ub.NiceRepr):
 
     def __exit__(self, *args):
         self.close()
+
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        xdoctest -m netharn.util.util_zip all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
