@@ -1,3 +1,8 @@
+Version 0.1.3
+==============
+* Added ReceptiveFieldFor
+
+
 Version 0.1.2
 ==============
 * Fixed Python2.7 bugs. 

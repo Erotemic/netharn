@@ -17,6 +17,7 @@ from netharn import monitor
 from netharn import optimizers
 from netharn import output_shape_for
 from netharn import hidden_shapes_for
+from netharn import receptive_field_for
 from netharn import pred_harn
 from netharn import schedulers
 from netharn import util
@@ -28,9 +29,11 @@ from netharn.hyperparams import (HyperParams,)
 from netharn.monitor import (Monitor,)
 from netharn.output_shape_for import OutputShapeFor
 from netharn.hidden_shapes_for import HiddenShapesFor
+from netharn.receptive_field_for import ReceptiveFieldFor
 
 __all__ = ['criterions', 'data', 'device', 'exceptions', 'export', 'fit_harn',
            'folders', 'hyperparams', 'initializers', 'layers', 'metrics',
            'models', 'monitor', 'optimizers', 'output_shape_for', 'pred_harn',
            'schedulers', 'util', 'FitHarn', 'XPU', 'Monitor', 'HyperParams',
-           'OutputShapeFor', 'Folders', 'hidden_shapes_for', 'HiddenShapesFor']
+           'OutputShapeFor', 'Folders', 'hidden_shapes_for', 'HiddenShapesFor',
+           'receptive_field_for', 'ReceptiveFieldFor']
