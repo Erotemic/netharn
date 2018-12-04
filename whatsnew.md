@@ -1,6 +1,7 @@
 Version 0.1.3
 ==============
-* Added ReceptiveFieldFor
+* Add `nh.ReceptiveFieldFor`
+* `train_info.json` now gets backed up if it would be overwritten
 
 
 Version 0.1.2

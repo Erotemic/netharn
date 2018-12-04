@@ -243,7 +243,7 @@ class ExtraMixins:
 @register_mixin
 class InitializeMixin:
 
-    def initialize(harn, reset=False):
+    def initialize(harn, reset=False, overwrite=True):
         """
         Uses the hyper parameters to initialize the necessary resources and
         restart from previously
@@ -252,22 +252,32 @@ class InitializeMixin:
             print('RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR')
             if harn.train_info is None:
                 # Need to determine which path needs deletion.
-                harn._setup_paths()
+                harn._setup_paths_and_train_info()
             for path in glob.glob(join(harn.train_dpath, '*')):
                 ub.delete(path)
         elif reset:
             print('RESET HARNESS BY RESTARTING FROM EPOCH 0')
 
         if harn.train_info is None:
-            harn._setup_paths()
+            harn._setup_paths_and_train_info()
         else:
             ub.ensuredir(harn.train_dpath)
 
         # Dump training info to disk
-        # TODO: if train_info already exists, and it is not the same as this
+        # - [X] if train_info already exists, and it is not the same as this
         # train info, keep a backup of the old ones.
-        train_info_fpath = join(harn.train_dpath, 'train_info.json')
-        util.write_json(train_info_fpath, harn.train_info)
+        if harn.train_dpath and overwrite:
+            train_info_fpath = join(harn.train_dpath, 'train_info.json')
+            if os.path.exists(train_info_fpath):
+                if overwrite:
+                    old_train_info = util.read_json(train_info_fpath)
+                    if old_train_info != harn.train_info:
+                        backup_dpath = ub.ensuredir((harn.train_dpath, '_backup'))
+                        backup_fpath = join(backup_dpath, 'train_info.json.' + ub.timestamp() + '.backup')
+                        shutil.move(train_info_fpath, backup_fpath)
+                    util.write_json(train_info_fpath, harn.train_info)
+            else:
+                util.write_json(train_info_fpath, harn.train_info)
 
         harn._setup_loggers()
 
@@ -300,12 +310,20 @@ class InitializeMixin:
         harn.after_initialize()
         return harn
 
-    def _setup_paths(harn):
+    def _setup_paths_and_train_info(harn):
         if harn.hyper is None:
             harn.warn('harn.train_dpath is None, cannot setup_paths')
         else:
+            # TODO: we may fold the functionality of Folders into Hyperparams
             paths = folders.Folders(hyper=harn.hyper)
-            train_info = paths.setup_dpath(train_dpath=harn.train_dpath)
+            train_info = paths.train_info(harn.train_dpath)
+            ub.ensuredir(train_info['train_dpath'])
+            if train_info['nice_dpath']:
+                # Link the hashed run dir to the human friendly nice dir
+                ub.ensuredir(os.path.dirname(train_info['nice_dpath']))
+                ub.symlink(train_info['train_dpath'], train_info['nice_dpath'],
+                           overwrite=True, verbose=3)
+
             harn.train_info = train_info
             harn.nice_dpath = train_info['nice_dpath']
             harn.train_dpath = train_info['train_dpath']
@@ -362,6 +380,9 @@ class InitializeMixin:
             harn._tlog = tensorboard_logger.Logger(harn.train_dpath,
                                                      flush_secs=2)
         else:
+            # TODO:
+            # - [ ] setup an alternative database to record epoch measures for
+            # plotting if tensorboard is not available.
             harn.warn('Tensorboard is not available')
 
     def _setup_modules(harn):
@@ -1125,6 +1146,10 @@ class CoreMixin:
             if harn.check_interval('cleanup', harn.epoch):
                 harn.cleanup_snapshots()
 
+        if tensorboard_logger:
+            # Perhaps dump tensorboard metrics to png / pickle?
+            pass
+
         harn.after_epochs()
 
         # check for termination
@@ -1424,8 +1449,8 @@ class CoreCallbacks:
         Overload is generally not necessary for this function.
 
         TODO:
-            perhaps remove dynamics as a netharn core component and simply
-            allow the end-application to take care of that detail.
+            - [ ] perhaps remove dynamics as a netharn core component and
+            simply allow the end-application to take care of that detail.
         """
         loss.backward()
 

@@ -232,11 +232,11 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
     ax = kwargs.get('ax', None)
     if ax is None:
         doclf = kwargs.get('doclf', False)
-        fig = figure(fnum=fnum, pnum=pnum, docla=False, doclf=doclf)
+        fig = figure(fnum=fnum, pnum=pnum, docla=False, doclf=doclf)  # NOQA
         ax = plt.gca()
     else:
         plt.sca(ax)
-        fig = ax.figure
+        # fig = ax.figure  # NOQA
 
     # +---------------
     # Draw plot lines
@@ -579,8 +579,7 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
         use_darkbackground = not lightbg
     if use_darkbackground:
         _dark_background(force=use_darkbackground is True)
-    # TODO: return better info
-    return fig
+    return ax
 
 
 def figure(fnum=None, pnum=(1, 1, 1), title=None, figtitle=None, doclf=False,

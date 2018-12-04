@@ -387,7 +387,8 @@ class XPU(ub.NiceRepr):
         return xpu._main_device_id is not None
         # return 'gpu' in xpu.mode
 
-    def raw(xpu, model):
+    @staticmethod
+    def raw(model):
         """
         Unmounts the original core model if it is mounted.
 

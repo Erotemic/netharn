@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
-# from os.path import join, normpath, dirname
-from os.path import dirname, join, normpath
+from os.path import join
+from os.path import normpath
 import ubelt as ub
-import os
 import sys
 import warnings
 import platform
@@ -11,10 +10,17 @@ from netharn import util
 
 
 class Folders(object):
+    """
+    Constructs training info and folder names from the hyperparameters (does
+    not create any of these files).
+
+    TODO:
+        - [ ] Perhaps just fold this into HyperParams itself?
+    """
     def __init__(self, hyper):
         self.hyper = hyper
 
-    def train_info(self, train_dpath=None, short=True, hashed=True):
+    def train_info(self, train_dpath=None):
         """
         TODO: maybe this doesn't belong in folders?
 
@@ -85,6 +91,8 @@ class Folders(object):
             return ub.hash_data(data, hasher='sha512', base='abc', types=True)
 
         train_hyper_id_long = hyper.hyper_id()
+        short = True
+        hashed = True
         train_hyper_id_brief = hyper.hyper_id(short=short, hashed=hashed)
         train_hyper_hashid = _hash_data(train_hyper_id_long)[:8]
 
@@ -170,43 +178,6 @@ class Folders(object):
             ('argv', sys.argv),
             ('hostname', platform.node()),
         ])
-        return train_info
-
-    def setup_dpath(self, train_dpath, short=True, hashed=True):
-        train_info = self.train_info(train_dpath, short, hashed)
-
-        train_dpath = ub.ensuredir(train_info['train_dpath'])
-
-        # backwards compatability code,
-        # can eventually remove after a major version change
-        if True:
-            # backwards compatability code
-            if os.path.exists(train_info['old_train_dpath']) and not os.path.islink(train_info['old_train_dpath']):
-                ub.delete(train_info['train_dpath'])
-                ub.symlink(train_info['old_train_dpath'], train_info['train_dpath'],
-                           overwrite=True, verbose=3)
-
-        # setup symlinks
-        # ub.ensuredir(dirname(train_info['link_dpath']))
-        # ub.symlink(train_info['train_dpath'], train_info['link_dpath'],
-        #            overwrite=True, verbose=3)
-
-        if train_info['nice_dpath']:
-            ub.ensuredir(dirname(train_info['nice_dpath']))
-            ub.symlink(train_info['train_dpath'], train_info['nice_dpath'],
-                       overwrite=True, verbose=3)
-
-        verbose = 0
-        if verbose:
-            print('+=========')
-            # print('hyper_strid = {!r}'.format(params.hyper_id()))
-            # print('train_init_id = {!r}'.format(train_info['input_id']))
-            # print('arch = {!r}'.format(train_info['arch_id']))
-            # print('train_hyper_hashid = {!r}'.format(train_info['train_hyper_hashid']))
-            print('hyper = {}'.format(ub.repr2(train_info['hyper'], nl=3)))
-            print('train_hyper_id_brief = {!r}'.format(train_info['train_hyper_id_brief']))
-            print('train_id = {!r}'.format(train_info['train_id']))
-            print('+=========')
         return train_info
 
 if __name__ == '__main__':
