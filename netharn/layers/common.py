@@ -40,3 +40,7 @@ class Sequential(nn.Sequential, util.ModuleMixin):
     def output_shape_for(self, input_shape):
         from netharn.output_shape_for import OutputShapeFor
         return OutputShapeFor.sequential(self, input_shape)
+
+    def receptive_field_for(self, input_field=None):
+        from netharn.receptive_field_for import ReceptiveFieldFor
+        return ReceptiveFieldFor.sequential(self, input_field)

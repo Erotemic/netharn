@@ -11,16 +11,17 @@ try:
 except ImportError:
     DataSerial = None
 
-REGISTERED_OUTPUT_SHAPE_TYPES = []
+REGISTERED_TYPES = []
 
 
 SHAPE_CLS = tuple  # We exepct shapes to be specified as this class
 
 
-def compute_type(type):
+def compute_type(*types):
     def _wrap(func):
-        if type is not None:
-            REGISTERED_OUTPUT_SHAPE_TYPES.append((type, func))
+        for type in types:
+            if type is not None:
+                REGISTERED_TYPES.append((type, func))
         return func
     return _wrap
 
@@ -177,17 +178,30 @@ class OutputShapeFor(object):
 
         if self._func is None:
             # Lookup shape func if we can't find it
-            for type, _func in REGISTERED_OUTPUT_SHAPE_TYPES:
+            # for type, _func in REGISTERED_TYPES:
+            #     try:
+            #         if module is type or isinstance(module, type):
+            #             self._func = _func
+            #     except TypeError:
+            #         pass
+            # if not self._func:
+            #     if force:
+            #         self._func = _brute_force_output_shape_for
+            #     else:
+            #         raise TypeError('Unknown module type {}'.format(module))
+            found = []
+            for type, _func in REGISTERED_TYPES:
                 try:
                     if module is type or isinstance(module, type):
-                        self._func = _func
+                        found.append(_func)
                 except TypeError:
                     pass
-            if not self._func:
-                if force:
-                    self._func = _brute_force_output_shape_for
-                else:
-                    raise TypeError('Unknown module type {}'.format(module))
+            if len(found) == 1:
+                self._func = found[0]
+            elif len(found) == 0:
+                raise TypeError('Unknown (output_shape) module type {}'.format(module))
+            else:
+                raise AssertionError('Ambiguous (output_shape) module {}. Found {}'.format(module, found))
 
     def __call__(self, *args, **kwargs):
         if isinstance(self.module, nn.Module):

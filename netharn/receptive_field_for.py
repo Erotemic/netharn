@@ -2,7 +2,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 import netharn as nh  # NOQA
 import torch  # NOQA
-import math
 import torch.nn as nn  # NOQA
 import torchvision
 import ubelt as ub
@@ -13,132 +12,438 @@ try:
 except ImportError:
     MountedModel = None
 
-REGISTERED_RECEPTIVE_FEILDS = []
+REGISTERED_TYPES = []
 
 
-SHAPE_CLS = tuple  # We exepct shapes to be specified as this class
+def ensure_array_nd(data, n):
+    if ub.iterable(data):
+        return np.array(data)
+    else:
+        return np.array([data] * n)
 
 
-def compute_type(type):
+def compute_type(*types):
     def _wrap(func):
-        if type is not None:
-            REGISTERED_RECEPTIVE_FEILDS.append((type, func))
+        for type in types:
+            if type is not None:
+                REGISTERED_TYPES.append((type, func))
         return func
     return _wrap
 
 
-class _MixinPrimatives(object):
+class ReceptiveField(ub.NiceRepr):
+    """ container for holding a receptive feild """
+    def __init__(self, stride, size, start_center, start_left, start_right):
+        self.data = {
+            'stride': stride,
+            'size': size,
+            # Note: at the end, assert start_right - start_left == stride
+            'start_center': start_center,
+            # Sides of the start pixel
+            'start_left': start_left,    # upper left corner (left side)
+            'start_right': start_right,  # upper left corner (right side)
+        }
+
+    def __nice__(self):
+        return ub.repr2(self.data, nl=1)
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+
+class _TorchMixin(object):
     """
-    Receptive field formulas for pytorch primatives
+    Receptive field formulas for PyTorch primatives
     """
 
     @staticmethod
-    def input(prev=None):
+    def input(input_field=None, n=2):
         """
         Basic input receptive field is just a single pixel
         """
-        if prev is not None:
+        if input_field is not None:
             raise ValueError('nothing can precede the input')
-        prev = {
-            'stride': np.array([1, 1]),  # receptive field stride
-            'size': np.array([1, 1]),  # receptive field size
-            # Note: at the end, assert start_right - start_left == j
-            'start_center': np.array([0.5, 0.5]),  # upper left corner center
+        input_field = ReceptiveField(**{
+            'stride': ensure_array_nd(1, n),  # receptive field stride
+            'size': ensure_array_nd(1, n),  # receptive field size
+            # Note: at the end, assert start_right - start_left == stride
+            'start_center': ensure_array_nd(0.5, n),  # upper left corner center
             # Sides of the start pixel
-            'start_left': np.array([0.0, 0.0]),  # upper left corner (left side)
-            'start_right': np.array([1.0, 1.0]),  # upper left corner (right side)
-        }
-        return prev, prev
+            'start_left': ensure_array_nd(0.0, n),   # upper left corner (left side)
+            'start_right': ensure_array_nd(1.0, n),  # upper left corner (right side)
+        })
+        return input_field, input_field
 
     @staticmethod
-    def _conv(module, prev=None):
-        """ Receptive field formula for convolutional layers """
-        if prev is None:
-            prev = ReceptiveFieldFor.input()[1]
-        k = np.array(module.kernel_size)
-        s = np.array(module.stride)
-        p = np.array(module.padding)
-        field = {
-            'stride': prev['stride'] * s,
-            'size': prev['size'] + (k - 1) * prev['stride'],
-            'start_center': prev['start_center'] + ((k - 1) / 2 - p) * prev['stride'],
-            'start_left': prev['start_left'] + (np.floor((k - 1) / 2) - p) * prev['stride'],
-            'start_right': prev['start_right'] + (np.ceil((k - 1) / 2) - p) * prev['stride'],
-        }
+    def _kernelized(module, input_field=None):
+        """
+        Receptive field formula for general sliding kernel based layers
+        This works for both convolutional and pooling layers.
+
+        Notes:
+            Baseline formulas are from [1]. Information about how to include
+            dilation (atrous) convolutions can be found in [2, 3].  Better info
+            seems to be available in [4].
+
+            * tensorflow has similar functionality
+            https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/receptive_field/python/util/receptive_field.py
+
+            * To preserve spatial extent, padding should equal `(k - 1) * d / 2`.
+
+        References:
+            [1] https://medium.com/mlreview/a-guide-to-receptive-field-arithmetic-for-convolutional-neural-networks-e0f514068807
+            [2] http://www.erogol.com/dilated-convolution/
+            [3] https://stackoverflow.com/questions/35582521/how-to-calculate-receptive-field-size
+            [4] https://arxiv.org/pdf/1603.07285.pdf
+
+        Example:
+            >>> module = nn.Conv2d(1, 1, kernel_size=5, stride=2, padding=2, dilation=3)
+            >>> ReceptiveFieldFor._kernelized(module)[1]
+
+            >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=2)
+            >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=1)
+            >>> ReceptiveFieldFor(module)()[1]
+        """
+        # impl = ReceptiveFieldFor.impl
+        if input_field is None:
+            input_field = ReceptiveFieldFor.input()[1]
+
+        # Hack to get the number of space-time dimensions
+        ndim = None
+        try:
+            if module.__name__.endswith('1d'):
+                ndim = 1
+            elif module.__name__.endswith('2d'):
+                ndim = 2
+            elif module.__name__.endswith('3d'):
+                ndim = 3
+        except AttributeError:
+            pass
+
+        k = ensure_array_nd(module.kernel_size, ndim)
+        s = ensure_array_nd(module.stride, ndim)
+        p = ensure_array_nd(module.padding, ndim)
+        d = ensure_array_nd(module.dilation, ndim)
+
+        # To calculate receptive feild we first need to find the SUPPORT of
+        # this layer. The support is the number/extent of extra surrounding
+        # pixels adding this layer will take into account. Given this, we can
+        # compute the receptive feild wrt the original input by combining this
+        # information with the previous receptive feild.
+        #
+        # In the normal case (with no dilation, d=1) the support is (k - 1).
+        # This is because because the operation is able to see a window of size
+        # k in the input, and produces a single output pixel (hence the k). The
+        # center input pixel corresponds with the output, so it does not expand
+        # the receptive feild (hence the -1), but all other input pixels do
+        # expand the field (thus the k-1).
+        #
+        # The stride of this layer will not affect the support.
+        #
+        # The dilation of the current layer DOES impact the support.
+        # This expands the effective kernel size, but it does cause the data
+        # each operation sees to become more diffuse. However, even though what
+        # it sees in that extent is more diffuse, the RF is just a bound, so we
+        # can ignore the diffuseness effect and simply scale the input kernel
+        # size by the dilation amount. Hense we get
+        support = (k - 1) * d
+
+        """
+        Note the above is correct because:
+
+            import sympy as sym
+            k, d = sym.symbols('k, d')
+
+            # Compute the support from formula in 5.1 of [4]
+            # To understand the relationship tying the dilation rate d and the
+            # output size o, it is useful to think of the impact of d on the
+            # effective kernel size. A kernel of size k dilated by a factor d
+            # has an effective size.
+            effective_kernel_size = k + (k - 1) * (d - 1)
+            support_v1 = sym.expand(effective_kernel_size - 1)
+
+            # Compute support from our method
+            support_v2 = sym.expand((k - 1) * d)
+
+            # They are equivalent. QED ☐
+            assert sym.Eq(support_v1, support_v2)
+        """
+
+        field = ReceptiveField(**{
+            # The new stride only depends on the layer stride and the previous
+            # stride.
+            'stride': input_field['stride'] * s,
+
+            # The stride of the current layer does not impact the receptive
+            # feild, however the stride of the previous layer does. This is
+            # because each pixel in the incoming layer really corresponds
+            # `input_field['stride']` pixels in the original input.
+            'size':   input_field['size'] + support * input_field['stride'],
+
+            # Padding does not influence the RF size, but it does influence
+            # where the start pixel is (i.e. without the right amount of
+            # padding the the edge of the previous layer is cropped).
+            'start_center': input_field['start_center'] + ((support / 2) - p) * input_field['stride'],
+            'start_left':   input_field['start_left']   + (np.floor(support / 2) - p) * input_field['stride'],
+            'start_right':  input_field['start_right']  + (np.ceil(support / 2) - p) * input_field['stride'],
+        })
         return field, field
 
     @staticmethod
-    def _pool(module, prev=None):
-        """ Receptive field formula for pooling layers """
-        if prev is None:
-            prev = ReceptiveFieldFor.input()[1]
-        ndim = 2
-        k = np.array([module.kernel_size] * ndim)
-        s = np.array([module.stride] * ndim)
-        p = np.array([module.padding] * ndim)
-
-        field = {
-            'stride': prev['stride'] * s,
-            'size': prev['size'] + (k - 1) * prev['stride'],
-            'start_center': prev['start_center'] + ((k - 1) / 2 - p) * prev['stride'],
-            'start_left': prev['start_left'] + (np.floor((k - 1) / 2) - p) * prev['stride'],
-            'start_right': prev['start_right'] + (np.ceil((k - 1) / 2) - p) * prev['stride'],
-        }
-        return field, field
-
-    @staticmethod
-    def _unchanged(module, prev=None):
+    def _unchanged(module, input_field=None):
         """ Formula for layers that do not change the receptive field """
-        if prev is None:
-            prev = ReceptiveFieldFor.input()[1]
-        return prev, prev
+        if input_field is None:
+            input_field = ReceptiveFieldFor.input()[1]
+        return input_field, input_field
 
     @staticmethod
     @compute_type(nn.Linear)
-    def linear(module, prev=None):
+    def linear(module, input_field=None):
         # Linear layers (sort-of) dont change the RF
-        return ReceptiveFieldFor._unchanged(module, prev)
+        return ReceptiveFieldFor._unchanged(module, input_field)
         # Perhaps we could do this if we knew the input shape
         # raise NotImplementedError(
         #     'Cannot compute receptive field size on a Linear layer')
 
-    @compute_type(nn.modules.conv._ConvNd)
-    def convnd(module, prev=None):
-        return ReceptiveFieldFor._conv(module, prev)
+    @compute_type(nn.modules.conv._ConvTransposeMixin)
+    def convT(module, input_field=None):
+        """
+        Receptive field formula for pooling layers
+
+        Example:
+            >>> from netharn.receptive_field_for import *
+            >>> from netharn.output_shape_for import *
+            >>> from netharn.hidden_shapes_for import *
+            >>> module = nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, padding=2)
+            >>> ReceptiveFieldFor(module)()[1]
+
+            >>> # This network should effectively invert itself
+            >>> module = nn.Sequential(ub.odict([
+            >>>     #('a', nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)),
+            >>>     ('c1', nn.Conv2d(1, 1, kernel_size=3, stride=2)),
+            >>>     ('c2', nn.Conv2d(1, 1, kernel_size=3, stride=2)),
+            >>>     ('c3', nn.Conv2d(1, 1, kernel_size=3, stride=2)),
+            >>>     ('c3T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2)),
+            >>>     ('c2T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2)),
+            >>>     ('c1T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2)),
+            >>> ]))
+            >>> print(ub.repr2(ReceptiveFieldFor(module)()[0]))
+            >>> ReceptiveFieldFor(module)()[1]
+            >>> OutputShapeFor(module)._check_consistency([1, 1, 32, 32])
+
+            >>> module = nn.Sequential(ub.odict([
+            >>>     #('a', nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)),
+            >>>     ('c1', nn.Conv2d(1, 1, kernel_size=3, stride=2, dilation=2)),
+            >>>     ('c2', nn.Conv2d(1, 1, kernel_size=3, stride=2, dilation=2)),
+            >>>     ('c3', nn.Conv2d(1, 1, kernel_size=3, stride=2, dilation=2)),
+            >>>     ('c3T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, dilation=2)),
+            >>>     ('c2T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, dilation=2)),
+            >>>     ('c1T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, dilation=2)),
+            >>> ]))
+            >>> print(ub.repr2(ReceptiveFieldFor(module)()[0]))
+
+            >>> # This network is pathological
+            >>> module = nn.Sequential(ub.odict([
+            >>>     #('a', nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)),
+            >>>     ('c1', nn.Conv2d(1, 1, kernel_size=3, stride=7, dilation=2)),
+            >>>     ('c2', nn.Conv2d(1, 1, kernel_size=5, stride=6, padding=1)),
+            >>>     ('c3', nn.Conv2d(1, 1, kernel_size=7, stride=5)),
+            >>>     ('c3T', nn.ConvTranspose2d(1, 1, kernel_size=7, stride=5)),
+            >>>     ('c2T', nn.ConvTranspose2d(1, 1, kernel_size=5, stride=6, padding=1)),
+            >>>     ('c1T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=7, dilation=2)),
+            >>> ]))
+            >>> print(ub.repr2(ReceptiveFieldFor(module)()[0]))
+            >>> ReceptiveFieldFor(module)()[1]
+            >>> OutputShapeFor(module)([1, 1, 900, 900])
+            >>> Hidd(module)([1, 1, 900, 900])
+            >>> OutputShapeFor(module)._check_consistency([1, 1, 900, 900])
+
+
+            >>> module = nn.Sequential(
+            >>>     nn.Conv2d(1, 1, kernel_size=3, stride=2),
+            >>>     nn.Conv2d(1, 1, kernel_size=3, stride=2),
+            >>>     nn.Conv2d(1, 1, kernel_size=3, stride=2),
+            >>>     nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2),
+            >>>     nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2),
+            >>>     nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2),
+            >>> )
+            >>> ReceptiveFieldFor(module)()[1]
+
+            >>> module = nn.Conv2d(1, 1, kernel_size=3, stride=2, padding=1)
+            >>> ReceptiveFieldFor(module)()[1]
+
+            >>> OutputShapeFor(nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, padding=0, output_padding=(1, 1)))._check_consistency([1, 1, 1, 1])
+
+            >>> # Figure 4.4
+            >>> OutputShapeFor(nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=2))([1, 1, 5, 5])
+            >>> OutputShapeFor(nn.ConvTranspose2d(1, 1, kernel_size=3, stride=1, padding=2))._check_consistency([1, 1, 5, 5])
+            >>> OutputShapeFor(nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=0))([1, 1, 7, 7])
+
+            >>> # Figure 4.5
+            >>> OutputShapeFor(nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, padding=0))._check_consistency([1, 1, 5, 5])
+            >>> OutputShapeFor(nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=0))([1, 1, 7, 7])
+
+            >>> ReceptiveFieldFor(module)()
+        """
+        # impl = ReceptiveFieldFor.impl
+        if input_field is None:
+            input_field = ReceptiveFieldFor.input()[1]
+
+        # Hack to get the number of space-time dimensions
+        ndim = None
+        try:
+            if module.__name__.endswith('1d'):
+                ndim = 1
+            elif module.__name__.endswith('2d'):
+                ndim = 2
+            elif module.__name__.endswith('3d'):
+                ndim = 3
+        except AttributeError:
+            pass
+
+        # A non-trivial transpose convolution should:
+        # * decrease the stride (because the stride is fractional)
+        # the padding has to be equal to the size of the kernel minus one
+        """
+        From [4]:
+
+        A convolution described by k, s and p has an associated transposed convolution described by:
+        * k' = k,
+        * s' = 1,
+        * p' = k - p - 1,
+        * i' = the size of the stretched input obtained by adding s − 1 zeros
+            between each input unit,
+        * a = (i + 2p − k) % s, represents the number of zeros added to the
+         bottom and right edges of the input,
+
+         And has output size:
+             o' = s(i' - 1) + a + k - 2p
+
+        For convT it is always the case that s'=1, howver, note that s' is not
+        what we use to compute the new stride of the output, because that is
+        actually a fractional stride.
+        """
+
+        # Definitions:
+        # In the following comments we discuss 3 distinct layers
+        # (1) The original convolution (conv)
+        # (2) The transpose convolution that inverts the original (convT)
+        # (3) The regular convolution that is equivalent to the transpose
+        # convolution given a specially transformed input tensor (convE)
+
+        # The parameters of a convT are actually the parameters of conv, the
+        # convolution we are trying to "undo", but we will refer to them as
+        # parameters of convT (because they are that as well).
+        k_ = ensure_array_nd(module.kernel_size, ndim)
+        s_ = ensure_array_nd(module.stride, ndim)
+        p_ = ensure_array_nd(module.padding, ndim)
+        d_ = ensure_array_nd(module.dilation, ndim)
+
+        # TODO: incorporate output padding
+        out_pad = ensure_array_nd(module.output_padding, ndim)
+        assert np.all(out_pad == 0), 'cannot handle nonzero yet'
+
+        # Howver, there is an equivalent way of forumulating a convT as convE:
+        # a regular conv applied on a specially padded input tensor.
+        # The parameters that define convE are:
+        k = k_
+        d = d_
+        s = 1  # stride is always 1 because of the special input transform
+        # p = k_ - p_ - 1  # NOTE: original formula likely assumed dilation=1
+        p = (k_ - 1) * d_ - p_
+
+        # In order for convE to be equivalent to convT, we need to apply convE
+        # to a specially transformed (padded) input tensor.
+        # The padding applied to the input tensor puts extra zeros between each
+        # row/col. The number of extra zeros is the stride of the convT - 1.
+        # The left and right sides of the input tensor are also padded but that
+        # wont factor into the RF calculation.
+        extra_zeros = s_ - 1
+        # This means that the effective support added to the RF size by convE
+        # will be less than it normally would because we don't count the extra
+        # zeros in our transformed input as real pixels.
+        effective_support = (k - 1 - extra_zeros) * d
+        # NOTE; if the stride is larger than the kernel, some output pixels
+        # will actually just be zeros and have no receptive feild.
+        effective_support = np.maximum(0, effective_support)
+
+        # This special input transform also has the effect of decreasing the RF
+        # stride.  Transpose conv are sometimes called fractional-stride
+        # convolutions This is because they have an effective stride of 1 / s_
+        effective_stride = 1 / s_
+
+        # We calculate the support of convE as if were applied to a normal
+        # input tensor in order to calculate how the start (top-left) pixel
+        # position is modified.
+        support = (k - 1) * d
+
+        # After transformation the effective stride of the input is
+        effective_input_stride = input_field['stride'] * effective_stride
+
+        # how much does the center of the input pixel shift
+        center_shift = ((support / 2) - p) * effective_input_stride
+        # print('center_shift = {!r}'.format(center_shift))
+
+        print('effective_support = {!r}'.format(effective_support))
+
+        field = ReceptiveField(**{
+            # The new stride only depends on the layer stride and the previous
+            # stride.
+            'stride': effective_input_stride * s,
+
+            # The stride of the current layer does not impact the receptive
+            # feild, however the stride of the previous layer does. This is
+            # because each pixel in the incoming layer really corresponds
+            # `input_field['stride']` pixels in the original input.
+            'size':   input_field['size'] + effective_support * input_field['stride'],
+
+            # Padding does not influence the RF size, but it does influence
+            # where the start pixel is (i.e. without the right amount of
+            # padding the the edge of the previous layer is cropped).
+            'start_center': input_field['start_center'] + center_shift,
+            'start_left':   input_field['start_left']   + (np.floor(support / 2) - p) * effective_input_stride,
+            'start_right':  input_field['start_right']  + (np.ceil(support / 2) - p) * effective_input_stride,
+        })
+        return field, field
+        # raise NotImplementedError('todo')
+
+    @compute_type(nn.modules.conv.Conv1d, nn.modules.conv.Conv2d, nn.modules.conv.Conv3d)
+    def convnd(module, input_field=None):
+        return ReceptiveFieldFor._kernelized(module, input_field)
 
     @staticmethod
     @compute_type(nn.modules.pooling._MaxPoolNd)
-    def maxpoolnd(module, prev=None):
-        return ReceptiveFieldFor._pool(module, prev)
+    def maxpoolnd(module, input_field=None):
+        return ReceptiveFieldFor._kernelized(module, input_field)
 
     @staticmethod
     @compute_type(nn.modules.pooling._AvgPoolNd)
-    def avepoolnd(module, prev=None):
-        return ReceptiveFieldFor._pool(module, prev)
+    def avepoolnd(module, input_field=None):
+        return ReceptiveFieldFor._kernelized(module, input_field)
 
     @staticmethod
     @compute_type(nn.ReLU)
-    def relu(module, prev=None):
-        return ReceptiveFieldFor._unchanged(module, prev)
+    def relu(module, input_field=None):
+        return ReceptiveFieldFor._unchanged(module, input_field)
 
     @staticmethod
     @compute_type(nn.LeakyReLU)
-    def leaky_relu(module, prev=None):
-        return ReceptiveFieldFor._unchanged(module, prev)
+    def leaky_relu(module, input_field=None):
+        return ReceptiveFieldFor._unchanged(module, input_field)
 
     @staticmethod
     @compute_type(nn.modules.batchnorm._BatchNorm)
-    def batchnorm(module, prev=None):
-        return ReceptiveFieldFor._unchanged(module, prev)
+    def batchnorm(module, input_field=None):
+        return ReceptiveFieldFor._unchanged(module, input_field)
 
     @staticmethod
     @compute_type(nn.modules.dropout._DropoutNd)
-    def dropout(module, prev=None):
-        return ReceptiveFieldFor._unchanged(module, prev)
+    def dropout(module, input_field=None):
+        return ReceptiveFieldFor._unchanged(module, input_field)
 
     @staticmethod
     @compute_type(nn.Sequential)
-    def sequential(module, prev=None):
+    def sequential(module, input_field=None):
         """
         Example:
             >>> self = nn.Sequential(
@@ -156,9 +461,9 @@ class _MixinPrimatives(object):
                 'stride': np.array([1, 1]),
             }
         """
-        if prev is None:
-            prev = ReceptiveFieldFor.input()[1]
-        rfield = prev
+        if input_field is None:
+            input_field = ReceptiveFieldFor.input()[1]
+        rfield = input_field
         rfields = ub.odict()
         for key, child in module._modules.items():
             if hasattr(child, 'receptive_field_for'):
@@ -180,7 +485,7 @@ class _TorchvisionMixin(object):
 
     @staticmethod
     @compute_type(torchvision.models.resnet.BasicBlock)
-    def resent_basic_block(module, prev=None):
+    def resent_basic_block(module, input_field=None):
         """
         Example:
             >>> # xdoctest: +REQUIRES(--network)
@@ -189,12 +494,12 @@ class _TorchvisionMixin(object):
             >>> fields, field = ReceptiveFieldFor(module)()
             >>> print(ub.repr2(fields, nl=2, with_dtype=False))
         """
-        if prev is None:
-            prev = ReceptiveFieldFor.input()[1]
+        if input_field is None:
+            input_field = ReceptiveFieldFor.input()[1]
         rfields = ub.odict()
 
-        residual_field = prev
-        rfield = prev
+        residual_field = input_field
+        rfield = input_field
 
         rfields['conv1'], rfield = ReceptiveFieldFor(module.conv1)(rfield)
         rfields['bn1'], rfield = ReceptiveFieldFor(module.bn1)(rfield)
@@ -205,14 +510,14 @@ class _TorchvisionMixin(object):
         rfields['relu2'], rfield = ReceptiveFieldFor(module.relu)(rfield)
 
         if module.downsample is not None:
-            rfields['downsample'], residual_field = ReceptiveFieldFor(module.downsample)(prev)
+            rfields['downsample'], residual_field = ReceptiveFieldFor(module.downsample)(input_field)
 
         rfield = ReceptiveFieldFor(module.relu)(rfield)
         return rfields, rfield
 
     @staticmethod
     @compute_type(torchvision.models.resnet.Bottleneck)
-    def resent_bottleneck(module, prev=None):
+    def resent_bottleneck(module, input_field=None):
         """
         Example:
             >>> # xdoctest: +REQUIRES(--network)
@@ -221,10 +526,10 @@ class _TorchvisionMixin(object):
             >>> fields, field = ReceptiveFieldFor(module)()
             >>> print(ub.repr2(fields[-1], nl=1, with_dtype=False))
         """
-        if prev is None:
-            prev = ReceptiveFieldFor.input()[1]
-        residual_field = prev
-        rfield = prev
+        if input_field is None:
+            input_field = ReceptiveFieldFor.input()[1]
+        residual_field = input_field
+        rfield = input_field
 
         rfields = ub.odict()
 
@@ -240,14 +545,14 @@ class _TorchvisionMixin(object):
         rfields['bn3'], rfield = ReceptiveFieldFor(module.bn3)(rfield)
 
         if module.downsample is not None:
-            rfields['downsample'], residual_field = ReceptiveFieldFor(module.downsample)(prev)
+            rfields['downsample'], residual_field = ReceptiveFieldFor(module.downsample)(input_field)
 
         rfield = ReceptiveFieldFor(module.relu)(rfield)
         return rfield
 
     @staticmethod
     @compute_type(torchvision.models.resnet.ResNet)
-    def resnet_model(module, prev=None, input_shape=None):
+    def resnet_model(module, input_field=None, input_shape=None):
         """
         Example:
             >>> # xdoctest: +REQUIRES(--network)
@@ -262,9 +567,9 @@ class _TorchvisionMixin(object):
 
             OutputShapeFor(module)(input_shape)
         """
-        if prev is None:
-            prev = ReceptiveFieldFor.input()[1]
-        rfield = prev
+        if input_field is None:
+            input_field = ReceptiveFieldFor.input()[1]
+        rfield = input_field
         rfields = ub.odict()
         rfields['conv1'], rfield = ReceptiveFieldFor(module.conv1)(rfield)
         rfields['bn1'], rfield = ReceptiveFieldFor(module.bn1)(rfield)
@@ -309,7 +614,7 @@ class _TorchvisionMixin(object):
         return rfields, rfield
 
 
-class ReceptiveFieldFor(_MixinPrimatives, _TorchvisionMixin):
+class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
     """
     Knows how to compute the receptive fields for many pytorch primatives and
     some torchvision components.
@@ -391,21 +696,26 @@ class ReceptiveFieldFor(_MixinPrimatives, _TorchvisionMixin):
             'stride': np.array([32, 32]),
         }
     """
-    math = math  # for hacking in sympy
+    # impl = math  # for hacking in sympy
 
     def __init__(self, module):
         self.module = module
         self._func = getattr(module, 'receptive_field_for', None)
         if self._func is None:
             # Lookup rfield func if we can't find it
-            for type, _func in REGISTERED_RECEPTIVE_FEILDS:
+            found = []
+            for type, _func in REGISTERED_TYPES:
                 try:
                     if module is type or isinstance(module, type):
-                        self._func = _func
+                        found.append(_func)
                 except TypeError:
                     pass
-            if not self._func:
+            if len(found) == 1:
+                self._func = found[0]
+            elif len(found) == 0:
                 raise TypeError('Unknown (rf) module type {}'.format(module))
+            else:
+                raise AssertionError('Ambiguous (rf) module {}. Found {}'.format(module, found))
 
     def __call__(self, *args, **kwargs):
         if isinstance(self.module, nn.Module):
