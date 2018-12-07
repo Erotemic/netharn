@@ -256,32 +256,27 @@ class OutputShapeFor(object):
             )
         return expected_output_shape
 
-    @staticmethod
-    @compute_type(nn.UpsamplingBilinear2d)
-    def UpsamplingBilinear2d(module, input_shape):
-        r"""
-        - Input: :math:`(N, C, H_{in}, W_{in})`
-        - Output: :math:`(N, C, H_{out}, W_{out})` where
-            :math:`H_{out} = floor(H_{in} * scale\_factor)`
-            :math:`W_{out} = floor(W_{in}  * scale\_factor)`
+    # @staticmethod
+    # @compute_type(nn.UpsamplingBilinear2d)
+    # def UpsamplingBilinear2d(module, input_shape):
+    #     r"""
+    #     - Input: :math:`(N, C, H_{in}, W_{in})`
+    #     - Output: :math:`(N, C, H_{out}, W_{out})` where
+    #         :math:`H_{out} = floor(H_{in} * scale\_factor)`
+    #         :math:`W_{out} = floor(W_{in}  * scale\_factor)`
 
-        Example:
-            >>> from netharn.output_shape_for import *
-            >>> input_shape = (1, 3, 256, 256)
-            >>> module = nn.UpsamplingBilinear2d(scale_factor=2)
-            >>> output_shape = OutputShapeFor(module)(input_shape)
-            >>> print('output_shape = {!r}'.format(output_shape))
-            output_shape = (1, 3, 512, 512)
-        """
-        math = OutputShapeFor.math
-        (N, C, H_in, W_in) = input_shape
-        int = builtins.int if math.__name__ == 'math' else ub.identity
-        H_out = int(math.floor(H_in * module.scale_factor))
-        W_out = int(math.floor(W_in * module.scale_factor))
-        output_shape = SHAPE_CLS([N, C, H_out, W_out])
-        if math.__name__ == 'sympy':
-            output_shape = _simplify(output_shape)
-        return output_shape
+    #     Example:
+    #         >>> from netharn.output_shape_for import *
+    #     """
+    #     math = OutputShapeFor.math
+    #     (N, C, H_in, W_in) = input_shape
+    #     int = builtins.int if math.__name__ == 'math' else ub.identity
+    #     H_out = int(math.floor(H_in * module.scale_factor))
+    #     W_out = int(math.floor(W_in * module.scale_factor))
+    #     output_shape = SHAPE_CLS([N, C, H_out, W_out])
+    #     if math.__name__ == 'sympy':
+    #         output_shape = _simplify(output_shape)
+    #     return output_shape
 
     @staticmethod
     @compute_type(nn.Upsample)
@@ -303,6 +298,11 @@ class OutputShapeFor(object):
             >>> output_shape = OutputShapeFor(module)(input_shape)
             >>> print('output_shape = {!r}'.format(output_shape))
             output_shape = (1, 3, 100, 100, 100)
+            >>> input_shape = (1, 3, 256, 256)
+            >>> module = nn.UpsamplingBilinear2d(scale_factor=2)
+            >>> output_shape = OutputShapeFor(module)(input_shape)
+            >>> print('output_shape = {!r}'.format(output_shape))
+            output_shape = (1, 3, 512, 512)
         """
         math = OutputShapeFor.math
         # N, C, *DIMS_in = input_shape
@@ -418,9 +418,12 @@ class OutputShapeFor(object):
         stride = module.stride
         kernel_size = module.kernel_size
         output_padding = module.output_padding
+        dilation = module.dilation
+
         padding = module.padding
         DIMS_out = [
-            (D_in - 1) * stride[i] - 2 * padding[i] + kernel_size[i] + output_padding[i]
+            # Fix the docs: https://github.com/pytorch/pytorch/issues/14099
+            (D_in - 1) * stride[i] - 2 * padding[i] + (kernel_size[i] - 1) * dilation[i] + output_padding[i] + 1
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C_out] + DIMS_out)

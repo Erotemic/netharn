@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
-import netharn as nh  # NOQA
-import torch  # NOQA
-import torch.nn as nn  # NOQA
+import torch
+import torch.nn as nn
 import torchvision
 import ubelt as ub
 import numpy as np
@@ -31,24 +30,23 @@ def compute_type(*types):
     return _wrap
 
 
-class ReceptiveField(ub.NiceRepr):
-    """ container for holding a receptive feild """
-    def __init__(self, stride, size, start_center, start_left, start_right):
-        self.data = {
-            'stride': stride,
-            'size': size,
-            # Note: at the end, assert start_right - start_left == stride
-            'start_center': start_center,
-            # Sides of the start pixel
-            'start_left': start_left,    # upper left corner (left side)
-            'start_right': start_right,  # upper left corner (right side)
-        }
+# class ReceptiveField(ub.NiceRepr):
+#     """ container for holding a receptive feild """
+#     def __init__(self, stride, size, crop):
+#         self.data = {
+#             'stride': stride,  # The stride / scale factor of the network
+#             'size': size,  # The receptive feild size of a single output pixel
+#             'crop': crop,  # The amount of cropping / starting pixel location
+#         }
 
-    def __nice__(self):
-        return ub.repr2(self.data, nl=1)
+#     def __nice__(self):
+#         return ub.repr2(self.data, nl=1)
 
-    def __getitem__(self, key):
-        return self.data[key]
+#     def __getitem__(self, key):
+#         return self.data[key]
+
+
+ReceptiveField = dict
 
 
 class _TorchMixin(object):
@@ -59,23 +57,22 @@ class _TorchMixin(object):
     @staticmethod
     def input(input_field=None, n=2):
         """
-        Basic input receptive field is just a single pixel
+        Basic input receptive field is just a single pixel.
         """
         if input_field is not None:
             raise ValueError('nothing can precede the input')
         input_field = ReceptiveField(**{
-            'stride': ensure_array_nd(1, n),  # receptive field stride
-            'size': ensure_array_nd(1, n),  # receptive field size
-            # Note: at the end, assert start_right - start_left == stride
-            'start_center': ensure_array_nd(0.5, n),  # upper left corner center
-            # Sides of the start pixel
-            'start_left': ensure_array_nd(0.0, n),   # upper left corner (left side)
-            'start_right': ensure_array_nd(1.0, n),  # upper left corner (right side)
+            # The input receptive field stride / scale factor is 1.
+            'stride': ensure_array_nd(1, n),
+            # The input receptive field size is 1 pixel.
+            'size': ensure_array_nd(1, n),
+            # Use the coordinate system where the top left corner is 0, 0 ( This is unlike [1], which uses 0.5)
+            'crop': ensure_array_nd(0.0, n),
         })
         return input_field, input_field
 
     @staticmethod
-    def _kernelized(module, input_field=None):
+    def _kernelized(module, input_field=None, ndim=None):
         """
         Receptive field formula for general sliding kernel based layers
         This works for both convolutional and pooling layers.
@@ -109,16 +106,23 @@ class _TorchMixin(object):
             input_field = ReceptiveFieldFor.input()[1]
 
         # Hack to get the number of space-time dimensions
-        ndim = None
-        try:
-            if module.__name__.endswith('1d'):
-                ndim = 1
-            elif module.__name__.endswith('2d'):
-                ndim = 2
-            elif module.__name__.endswith('3d'):
-                ndim = 3
-        except AttributeError:
-            pass
+        if ndim is None:
+            try:
+                if module.__class__.__name__.endswith('1d'):
+                    ndim = 1
+                elif module.__class__.__name__.endswith('2d'):
+                    ndim = 2
+                elif module.__class__.__name__.endswith('3d'):
+                    ndim = 3
+            except AttributeError:
+                if module.__name__.endswith('1d'):
+                    ndim = 1
+                elif module.__name__.endswith('2d'):
+                    ndim = 2
+                elif module.__name__.endswith('3d'):
+                    ndim = 3
+        if ndim is None:
+            raise ValueError('Cannot infer ndim from {}'.format(module))
 
         k = ensure_array_nd(module.kernel_size, ndim)
         s = ensure_array_nd(module.stride, ndim)
@@ -169,6 +173,9 @@ class _TorchMixin(object):
             assert sym.Eq(support_v1, support_v2)
         """
 
+        # Compute how many pixels this layer takes off the side
+        crop = ((support / 2) - p)
+
         field = ReceptiveField(**{
             # The new stride only depends on the layer stride and the previous
             # stride.
@@ -183,9 +190,7 @@ class _TorchMixin(object):
             # Padding does not influence the RF size, but it does influence
             # where the start pixel is (i.e. without the right amount of
             # padding the the edge of the previous layer is cropped).
-            'start_center': input_field['start_center'] + ((support / 2) - p) * input_field['stride'],
-            'start_left':   input_field['start_left']   + (np.floor(support / 2) - p) * input_field['stride'],
-            'start_right':  input_field['start_right']  + (np.ceil(support / 2) - p) * input_field['stride'],
+            'crop': input_field['crop'] + crop * input_field['stride'],
         })
         return field, field
 
@@ -248,16 +253,15 @@ class _TorchMixin(object):
             >>>     ('c1', nn.Conv2d(1, 1, kernel_size=3, stride=7, dilation=2)),
             >>>     ('c2', nn.Conv2d(1, 1, kernel_size=5, stride=6, padding=1)),
             >>>     ('c3', nn.Conv2d(1, 1, kernel_size=7, stride=5)),
-            >>>     ('c3T', nn.ConvTranspose2d(1, 1, kernel_size=7, stride=5)),
-            >>>     ('c2T', nn.ConvTranspose2d(1, 1, kernel_size=5, stride=6, padding=1)),
-            >>>     ('c1T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=7, dilation=2)),
+            >>>     ('c3T', nn.ConvTranspose2d(1, 1, kernel_size=7, stride=6)),
+            >>>     ('c2T', nn.ConvTranspose2d(1, 1, kernel_size=5, stride=7, padding=1)),
+            >>>     ('c1T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=8, dilation=2)),
             >>> ]))
             >>> print(ub.repr2(ReceptiveFieldFor(module)()[0]))
             >>> ReceptiveFieldFor(module)()[1]
             >>> OutputShapeFor(module)([1, 1, 900, 900])
-            >>> Hidd(module)([1, 1, 900, 900])
+            >>> HiddenShapesFor(module)([1, 1, 900, 900])
             >>> OutputShapeFor(module)._check_consistency([1, 1, 900, 900])
-
 
             >>> module = nn.Sequential(
             >>>     nn.Conv2d(1, 1, kernel_size=3, stride=2),
@@ -380,11 +384,10 @@ class _TorchMixin(object):
         # After transformation the effective stride of the input is
         effective_input_stride = input_field['stride'] * effective_stride
 
-        # how much does the center of the input pixel shift
-        center_shift = ((support / 2) - p) * effective_input_stride
-        # print('center_shift = {!r}'.format(center_shift))
+        # how many pixels does this layer crop off the sides of the input
+        crop = ((support / 2) - p)
 
-        print('effective_support = {!r}'.format(effective_support))
+        # print('effective_support = {!r}'.format(effective_support))
 
         field = ReceptiveField(**{
             # The new stride only depends on the layer stride and the previous
@@ -400,10 +403,9 @@ class _TorchMixin(object):
             # Padding does not influence the RF size, but it does influence
             # where the start pixel is (i.e. without the right amount of
             # padding the the edge of the previous layer is cropped).
-            'start_center': input_field['start_center'] + center_shift,
-            'start_left':   input_field['start_left']   + (np.floor(support / 2) - p) * effective_input_stride,
-            'start_right':  input_field['start_right']  + (np.ceil(support / 2) - p) * effective_input_stride,
+            'crop': input_field['crop'] + crop * effective_input_stride,
         })
+
         return field, field
         # raise NotImplementedError('todo')
 
@@ -454,10 +456,8 @@ class _TorchMixin(object):
             >>> rfields, rfield = ReceptiveFieldFor(self)()
             >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1, with_dtype=False)))
             rfield = {
+                'crop': np.array([3., 3.]),
                 'size': np.array([7, 7]),
-                'start_center': np.array([3.5, 3.5]),
-                'start_left': np.array([3., 3.]),
-                'start_right': np.array([4., 4.]),
                 'stride': np.array([1, 1]),
             }
         """
@@ -646,25 +646,19 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1)))
         rfields = {
             '0': {
+                'crop': np.array([1., 1.], dtype=np.float64),
                 'size': np.array([3, 3], dtype=np.int64),
-                'start_center': np.array([1.5, 1.5], dtype=np.float64),
-                'start_left': np.array([1., 1.], dtype=np.float64),
-                'start_right': np.array([2., 2.], dtype=np.float64),
                 'stride': np.array([1, 1], dtype=np.int64),
             },
             '1': {
+                'crop': np.array([2., 2.], dtype=np.float64),
                 'size': np.array([5, 5], dtype=np.int64),
-                'start_center': np.array([2.5, 2.5], dtype=np.float64),
-                'start_left': np.array([2., 2.], dtype=np.float64),
-                'start_right': np.array([3., 3.], dtype=np.float64),
                 'stride': np.array([1, 1], dtype=np.int64),
             },
         }
         rfield = {
+            'crop': np.array([2., 2.], dtype=np.float64),
             'size': np.array([5, 5], dtype=np.int64),
-            'start_center': np.array([2.5, 2.5], dtype=np.float64),
-            'start_left': np.array([2., 2.], dtype=np.float64),
-            'start_right': np.array([3., 3.], dtype=np.float64),
             'stride': np.array([1, 1], dtype=np.int64),
         }
 
@@ -675,10 +669,8 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         >>> rfields, rfield = ReceptiveFieldFor(self)()
         >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1)))
         rfield = {
+            'crop': np.array([1., 1.], dtype=np.float64),
             'size': np.array([3, 3], dtype=np.int64),
-            'start_center': np.array([1.5, 1.5], dtype=np.float64),
-            'start_left': np.array([1., 1.], dtype=np.float64),
-            'start_right': np.array([2., 2.], dtype=np.float64),
             'stride': np.array([1, 1], dtype=np.int64),
         }
 
@@ -689,10 +681,8 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         >>> fields, field = ReceptiveFieldFor(module)()
         >>> print(ub.repr2(fields[-1], nl=1, with_dtype=False))
         {
+            'crop': np.array([31., 31.]),
             'size': np.array([195, 195]),
-            'start_center': np.array([31.5, 31.5]),
-            'start_left': np.array([31., 31.]),
-            'start_right': np.array([32., 32.]),
             'stride': np.array([32, 32]),
         }
     """
@@ -731,6 +721,7 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
             # a simple pytorch func
             rfields, rfield = self._func(*args, **kwargs)
         return rfields, rfield
+
 
 
 if __name__ == '__main__':
