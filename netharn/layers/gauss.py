@@ -205,4 +205,4 @@ class GaussianBlurNd(common.Module):
     def receptive_field_for(self, prev=None):
         # Even though this does change the receptive feild a little bit
         # lets pretend that it doesnt
-        return prev
+        return prev, prev

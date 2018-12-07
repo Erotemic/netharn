@@ -53,6 +53,9 @@ class grad_context(object):
 
 
 class DisableBatchNorm(object):
+    """
+    Sets batch norm state of `model` to `enabled` within the context manager.
+    """
     def __init__(self, model, enabled=True):
         self.model = model
         self.enabled = enabled

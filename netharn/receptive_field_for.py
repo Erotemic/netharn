@@ -95,15 +95,16 @@ class _TorchMixin(object):
 
         Example:
             >>> module = nn.Conv2d(1, 1, kernel_size=5, stride=2, padding=2, dilation=3)
-            >>> ReceptiveFieldFor._kernelized(module)[1]
+            >>> ReceptiveFieldFor._kernelized(module)[0]
 
             >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=2)
             >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=1)
-            >>> ReceptiveFieldFor(module)()[1]
+            >>> module = nn.AvgPool2d(kernel_size=3, stride=2, padding=2, dilation=1)
+            >>> ReceptiveFieldFor(module)()[0]
         """
         # impl = ReceptiveFieldFor.impl
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[1]
+            input_field = ReceptiveFieldFor.input()[0]
 
         # Hack to get the number of space-time dimensions
         if ndim is None:
@@ -127,7 +128,7 @@ class _TorchMixin(object):
         k = ensure_array_nd(module.kernel_size, ndim)
         s = ensure_array_nd(module.stride, ndim)
         p = ensure_array_nd(module.padding, ndim)
-        d = ensure_array_nd(module.dilation, ndim)
+        d = ensure_array_nd(getattr(module, 'dilation', 1), ndim)
 
         # To calculate receptive feild we first need to find the SUPPORT of
         # this layer. The support is the number/extent of extra surrounding
@@ -198,7 +199,7 @@ class _TorchMixin(object):
     def _unchanged(module, input_field=None):
         """ Formula for layers that do not change the receptive field """
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[1]
+            input_field = ReceptiveFieldFor.input()[0]
         return input_field, input_field
 
     @staticmethod
@@ -220,7 +221,7 @@ class _TorchMixin(object):
             >>> from netharn.output_shape_for import *
             >>> from netharn.hidden_shapes_for import *
             >>> module = nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, padding=2)
-            >>> ReceptiveFieldFor(module)()[1]
+            >>> ReceptiveFieldFor(module)()[0]
 
             >>> # This network should effectively invert itself
             >>> module = nn.Sequential(ub.odict([
@@ -233,7 +234,7 @@ class _TorchMixin(object):
             >>>     ('c1T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2)),
             >>> ]))
             >>> print(ub.repr2(ReceptiveFieldFor(module)()[0]))
-            >>> ReceptiveFieldFor(module)()[1]
+            >>> ReceptiveFieldFor(module)()[0]
             >>> OutputShapeFor(module)._check_consistency([1, 1, 32, 32])
 
             >>> module = nn.Sequential(ub.odict([
@@ -258,7 +259,7 @@ class _TorchMixin(object):
             >>>     ('c1T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=8, dilation=2)),
             >>> ]))
             >>> print(ub.repr2(ReceptiveFieldFor(module)()[0]))
-            >>> ReceptiveFieldFor(module)()[1]
+            >>> ReceptiveFieldFor(module)()[0]
             >>> OutputShapeFor(module)([1, 1, 900, 900])
             >>> HiddenShapesFor(module)([1, 1, 900, 900])
             >>> OutputShapeFor(module)._check_consistency([1, 1, 900, 900])
@@ -271,10 +272,10 @@ class _TorchMixin(object):
             >>>     nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2),
             >>>     nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2),
             >>> )
-            >>> ReceptiveFieldFor(module)()[1]
+            >>> ReceptiveFieldFor(module)()[0]
 
             >>> module = nn.Conv2d(1, 1, kernel_size=3, stride=2, padding=1)
-            >>> ReceptiveFieldFor(module)()[1]
+            >>> ReceptiveFieldFor(module)()[0]
 
             >>> OutputShapeFor(nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, padding=0, output_padding=(1, 1)))._check_consistency([1, 1, 1, 1])
 
@@ -291,7 +292,7 @@ class _TorchMixin(object):
         """
         # impl = ReceptiveFieldFor.impl
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[1]
+            input_field = ReceptiveFieldFor.input()[0]
 
         # Hack to get the number of space-time dimensions
         ndim = None
@@ -341,7 +342,7 @@ class _TorchMixin(object):
         k_ = ensure_array_nd(module.kernel_size, ndim)
         s_ = ensure_array_nd(module.stride, ndim)
         p_ = ensure_array_nd(module.padding, ndim)
-        d_ = ensure_array_nd(module.dilation, ndim)
+        d_ = ensure_array_nd(getattr(module, 'dilation', 1), ndim)
 
         # TODO: incorporate output padding
         out_pad = ensure_array_nd(module.output_padding, ndim)
@@ -453,7 +454,7 @@ class _TorchMixin(object):
             >>>     nn.Conv2d(3, 5, kernel_size=3),
             >>>     nn.Conv2d(5, 7, kernel_size=3),
             >>> )
-            >>> rfields, rfield = ReceptiveFieldFor(self)()
+            >>> rfield, rfields = ReceptiveFieldFor(self)()
             >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1, with_dtype=False)))
             rfield = {
                 'crop': np.array([3., 3.]),
@@ -462,15 +463,15 @@ class _TorchMixin(object):
             }
         """
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[1]
+            input_field = ReceptiveFieldFor.input()[0]
         rfield = input_field
         rfields = ub.odict()
         for key, child in module._modules.items():
             if hasattr(child, 'receptive_field_for'):
-                rfields[key], rfield = child.receptive_field_for(rfield)
+                rfield, rfields[key] = child.receptive_field_for(rfield)
             else:
-                rfields[key], rfield = ReceptiveFieldFor(child)(rfield)
-        return rfields, rfield
+                rfield, rfields[key] = ReceptiveFieldFor(child)(rfield)
+        return rfield, rfields
 
     @staticmethod
     @compute_type(torch.nn.DataParallel)
@@ -495,25 +496,25 @@ class _TorchvisionMixin(object):
             >>> print(ub.repr2(fields, nl=2, with_dtype=False))
         """
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[1]
+            input_field = ReceptiveFieldFor.input()[0]
         rfields = ub.odict()
 
         residual_field = input_field
         rfield = input_field
 
-        rfields['conv1'], rfield = ReceptiveFieldFor(module.conv1)(rfield)
-        rfields['bn1'], rfield = ReceptiveFieldFor(module.bn1)(rfield)
-        rfields['relu1'], rfield = ReceptiveFieldFor(module.relu)(rfield)
+        rfield, rfields['conv1'] = ReceptiveFieldFor(module.conv1)(rfield)
+        rfield, rfields['bn1'] = ReceptiveFieldFor(module.bn1)(rfield)
+        rfield, rfields['relu1'] = ReceptiveFieldFor(module.relu)(rfield)
 
-        rfields['conv2'], rfield = ReceptiveFieldFor(module.conv2)(rfield)
-        rfields['bn2'], rfield = ReceptiveFieldFor(module.bn2)(rfield)
-        rfields['relu2'], rfield = ReceptiveFieldFor(module.relu)(rfield)
+        rfield, rfields['conv2'] = ReceptiveFieldFor(module.conv2)(rfield)
+        rfield, rfields['bn2'] = ReceptiveFieldFor(module.bn2)(rfield)
+        rfield, rfields['relu2'] = ReceptiveFieldFor(module.relu)(rfield)
 
         if module.downsample is not None:
-            rfields['downsample'], residual_field = ReceptiveFieldFor(module.downsample)(input_field)
+            residual_field, rfields['downsample'] = ReceptiveFieldFor(module.downsample)(input_field)
 
-        rfield = ReceptiveFieldFor(module.relu)(rfield)
-        return rfields, rfield
+        rfield, _ = ReceptiveFieldFor(module.relu)(rfield)
+        return rfield, rfields
 
     @staticmethod
     @compute_type(torchvision.models.resnet.Bottleneck)
@@ -527,28 +528,27 @@ class _TorchvisionMixin(object):
             >>> print(ub.repr2(fields[-1], nl=1, with_dtype=False))
         """
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[1]
+            input_field = ReceptiveFieldFor.input()[0]
         residual_field = input_field
         rfield = input_field
-
         rfields = ub.odict()
 
-        rfields['conv1'], rfield = ReceptiveFieldFor(module.conv1)(rfield)
-        rfields['bn1'], rfield = ReceptiveFieldFor(module.bn1)(rfield)
-        rfields['relu1'], rfield = ReceptiveFieldFor(module.relu)(rfield)
+        rfield, rfields['conv1'] = ReceptiveFieldFor(module.conv1)(rfield)
+        rfield, rfields['bn1'] = ReceptiveFieldFor(module.bn1)(rfield)
+        rfield, rfields['relu1'] = ReceptiveFieldFor(module.relu)(rfield)
 
-        rfields['conv2'], rfield = ReceptiveFieldFor(module.conv2)(rfield)
-        rfields['bn2'], rfield = ReceptiveFieldFor(module.bn2)(rfield)
-        rfields['relu2'], rfield = ReceptiveFieldFor(module.relu)(rfield)
+        rfield, rfields['conv2'] = ReceptiveFieldFor(module.conv2)(rfield)
+        rfield, rfields['bn2'] = ReceptiveFieldFor(module.bn2)(rfield)
+        rfield, rfields['relu2'] = ReceptiveFieldFor(module.relu)(rfield)
 
-        rfields['conv3'], rfield = ReceptiveFieldFor(module.conv3)(rfield)
-        rfields['bn3'], rfield = ReceptiveFieldFor(module.bn3)(rfield)
+        rfield, rfields['conv3'] = ReceptiveFieldFor(module.conv3)(rfield)
+        rfield, rfields['bn3'] = ReceptiveFieldFor(module.bn3)(rfield)
 
         if module.downsample is not None:
-            rfields['downsample'], residual_field = ReceptiveFieldFor(module.downsample)(input_field)
+            residual_field, rfields['downsample'] = ReceptiveFieldFor(module.downsample)(input_field)
 
-        rfield = ReceptiveFieldFor(module.relu)(rfield)
-        return rfield
+        rfield, _ = ReceptiveFieldFor(module.relu)(rfield)
+        return rfield, rfields
 
     @staticmethod
     @compute_type(torchvision.models.resnet.ResNet)
@@ -568,20 +568,20 @@ class _TorchvisionMixin(object):
             OutputShapeFor(module)(input_shape)
         """
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[1]
+            input_field = ReceptiveFieldFor.input()[0]
         rfield = input_field
         rfields = ub.odict()
-        rfields['conv1'], rfield = ReceptiveFieldFor(module.conv1)(rfield)
-        rfields['bn1'], rfield = ReceptiveFieldFor(module.bn1)(rfield)
-        rfields['relu1'], rfield = ReceptiveFieldFor(module.relu)(rfield)
-        rfields['maxpool'], rfield = ReceptiveFieldFor(module.maxpool)(rfield)
+        rfield, rfields['conv1'] = ReceptiveFieldFor(module.conv1)(rfield)
+        rfield, rfields['bn1'] = ReceptiveFieldFor(module.bn1)(rfield)
+        rfield, rfields['relu1'] = ReceptiveFieldFor(module.relu)(rfield)
+        rfield, rfields['maxpool'] = ReceptiveFieldFor(module.maxpool)(rfield)
 
-        rfields['layer1'], rfield = ReceptiveFieldFor(module.layer1)(rfield)
-        rfields['layer2'], rfield = ReceptiveFieldFor(module.layer2)(rfield)
-        rfields['layer3'], rfield = ReceptiveFieldFor(module.layer3)(rfield)
-        rfields['layer4'], rfield = ReceptiveFieldFor(module.layer4)(rfield)
+        rfield, rfields['layer1'] = ReceptiveFieldFor(module.layer1)(rfield)
+        rfield, rfields['layer2'] = ReceptiveFieldFor(module.layer2)(rfield)
+        rfield, rfields['layer3'] = ReceptiveFieldFor(module.layer3)(rfield)
+        rfield, rfields['layer4'] = ReceptiveFieldFor(module.layer4)(rfield)
 
-        rfields['avgpool'], rfield = ReceptiveFieldFor(module.avgpool)(rfield)
+        rfield, rfields['avgpool'] = ReceptiveFieldFor(module.avgpool)(rfield)
 
         if input_shape is None:
             raise ValueError('input shape is required')
@@ -610,8 +610,8 @@ class _TorchvisionMixin(object):
         # but it will depend on the output shape of the layer.
         # rfield = (rfield[0], prod(rfield[1:]))
 
-        rfields['fc'], rfield = ReceptiveFieldFor(module.fc)(rfield)
-        return rfields, rfield
+        rfield, rfields['fc'] = ReceptiveFieldFor(module.fc)(rfield)
+        return rfield, rfield
 
 
 class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
@@ -641,7 +641,7 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         >>>     nn.Conv2d(2, 3, kernel_size=3),
         >>>     nn.Conv2d(3, 5, kernel_size=3),
         >>> )
-        >>> rfields, rfield = ReceptiveFieldFor(self)()
+        >>> rfield, rfields = ReceptiveFieldFor(self)()
         >>> print('rfields = {}'.format(ub.repr2(rfields, nl=3)))
         >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1)))
         rfields = {
@@ -666,7 +666,7 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         >>> # Case where we haven't registered a func
         >>> # In this case rfields is not populated (but rfield is)
         >>> self = nn.Conv2d(2, 3, kernel_size=3)
-        >>> rfields, rfield = ReceptiveFieldFor(self)()
+        >>> rfield, rfields = ReceptiveFieldFor(self)()
         >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1)))
         rfield = {
             'crop': np.array([1., 1.], dtype=np.float64),
@@ -678,7 +678,7 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         >>> # xdoctest: +REQUIRES(--network)
         >>> import torchvision  # NOQA
         >>> module = torchvision.models.alexnet().features
-        >>> fields, field = ReceptiveFieldFor(module)()
+        >>> field, fields = ReceptiveFieldFor(module)()
         >>> print(ub.repr2(fields[-1], nl=1, with_dtype=False))
         {
             'crop': np.array([31., 31.]),
@@ -713,15 +713,181 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
             is_bound  = hasattr(self._func, '__func__') and getattr(self._func, '__func__', None) is not None
             is_bound |= hasattr(self._func, 'im_func') and getattr(self._func, 'im_func', None) is not None
             if is_bound:
-                rfields, rfield = self._func(*args, **kwargs)
+                rfield, rfields = self._func(*args, **kwargs)
             else:
                 # nn.Module with state
-                rfields, rfield = self._func(self.module, *args, **kwargs)
+                rfield, rfields = self._func(self.module, *args, **kwargs)
         else:
             # a simple pytorch func
-            rfields, rfield = self._func(*args, **kwargs)
-        return rfields, rfield
+            rfield, rfields = self._func(*args, **kwargs)
+        return rfield, rfields
 
+
+def effective_receptive_feild(module, input_shape=None, inputs=None,
+                              output_key=None, sigma=0, thresh=0.95):
+    """
+    Empirically measures the effective receptive feild of a network
+
+    Method from [0], implementation loosely based on [1].
+
+    Args:
+        sigma (float, default=0): smoothness factor (via gaussian blur)
+        thresh (float, default=0.95): only consider this fraction of the
+            data as meaningful (i.e. find the effective RF size that
+            explains 95% of the data).
+
+    References:
+        [0] https://arxiv.org/pdf/1701.04128.pdf
+        [1] https://github.com/rogertrullo/Receptive-Field-in-Pytorch/blob/master/compute_RF.py
+
+    Example:
+        >>> from netharn.receptive_field_for import *
+        >>> import torchvision  # NOQA
+        >>> module = nn.Sequential(*[nn.Conv2d(1, 1, 3) for i in range(5)])
+        >>> input_shape = (32, 1, 200, 200)
+        >>> emperical_field = effective_receptive_feild(module, input_shape)
+        >>> theoretic_field = ReceptiveFieldFor(module)()[0]
+        >>> # The emperical results should never be bigger than the theoretical
+        >>> assert np.all(emperical_field['size'] <= theoretic_field['size'])
+
+        >>> # xdoctest: +REQUIRES(--slow)
+        >>> module = torchvision.models.alexnet().features
+        >>> input_shape = (1, 3, 224, 224)
+        >>> emperical_field = effective_receptive_feild(module, input_shape)
+        >>> theoretic_field = ReceptiveFieldFor(module)()[0]
+        >>> # The emperical results should never be bigger than the theoretical
+        >>> assert np.all(emperical_field['size'] <= theoretic_field['size'])
+
+        >>> # xdoctest: +REQUIRES(--slow)
+        >>> import netharn as nh
+        >>> xpu = nh.XPU.cast('auto')
+        >>> module = xpu.move(torchvision.models.vgg11().features)
+        >>> input_shape = (1, 3, 224, 224)
+        >>> emperical_field = effective_receptive_feild(module, input_shape)
+        >>> theoretic_field = ReceptiveFieldFor(module)()[0]
+        >>> # The emperical results should never be bigger than the theoretical
+        >>> assert np.all(emperical_field['size'] <= theoretic_field['size'])
+
+    Ignore:
+        >>> nh.util.autompl()
+        >>> nh.util.imshow(emperical_field['impact'], doclf=True)
+
+        >>> module = torchvision.models.alexnet().features
+        >>> module = module.to(0)
+        >>> input_shape = (8, 3, 224, 224)
+        >>> emperical_field = effective_receptive_feild(module, input_shape)
+        >>> nh.util.autompl()
+        >>> nh.util.imshow(emperical_field['impact'], doclf=True)
+
+        >>> module = torchvision.models.alexnet()
+        >>> module = module.to(0)
+        >>> input_shape = (8, 3, 224, 224)
+        >>> emperical_field = effective_receptive_feild(module, input_shape)
+        >>> nh.util.autompl()
+        >>> nh.util.imshow(emperical_field['impact'], doclf=True)
+
+        >>> module = torchvision.models.resnet50().to(0)
+        >>> input_shape = (8, 3, 224, 224)
+        >>> emperical_field = effective_receptive_feild(module, input_shape)
+        >>> nh.util.autompl()
+        >>> nh.util.imshow(emperical_field['impact'], doclf=True)
+
+        ReceptiveFieldFor(module)()
+    """
+    import netharn as nh
+    device = nh.XPU.of(module).main_device
+
+    # input_shape = inputs.shape
+    # output_shape = nh.OutputShapeFor(module)(input_shape)
+
+    if inputs is None:
+        if input_shape is None:
+            raise ValueError('must provide inputs or input_shape')
+        else:
+            # If inputs is not given use random imputs
+            inputs = torch.rand(*input_shape).to(device)
+
+    inputs.requires_grad = True
+    assert inputs.grad is None
+
+    with nh.util.DisableBatchNorm(inputs, enabled=False):
+        outputs = module(inputs)
+
+    # Note: grab a single (likely FCN) output channel
+    if isinstance(outputs, torch.Tensor):
+        output_y = outputs
+    else:
+        if output_key is None:
+            raise NotImplementedError('choose a channel')
+        else:
+            output_y = outputs[output_key]
+
+    # Note: this still does the right thing if there is no spatial component.
+    # because all outputs are center outputs.
+    center_dims = (np.array(output_y.shape[2:]) // 2).tolist()
+    center_slice = [slice(None), slice(None)] + center_dims
+
+    # We dont need to compute a loss because we can explicitly set gradients.
+    # Yay torch!
+    # Explicilty set ∂l/∂y[:] = 0
+    # Explicilty set ∂l/∂y[center] = 1
+    grad_loss_wrt_y = torch.zeros_like(output_y)
+    grad_loss_wrt_y[...] = 0
+    grad_loss_wrt_y[center_slice] = 1
+
+    # Backpropogate as if the grad of the loss wrt to y[center] was 1.
+    output_y.backward(gradient=grad_loss_wrt_y)
+
+    # The input gradient is now a measure of how much it can impact the output.
+    impact = inputs.grad.abs()
+
+    # Average the impact over all batches and all channels
+    average_impact = impact.mean(dim=0).mean(dim=0)
+
+    idx_nonzeros = np.where(average_impact != 0)
+    rf_bounds = [(idx.min(), idx.max()) for idx in idx_nonzeros]
+    rf_size = [(mx - mn + 1) for mn, mx in rf_bounds]
+    rf_slice = [slice(mn, mx + 1) for mn, mx in rf_bounds]
+
+    # Crop out the average impact zone for visualization
+    # Normalize between zero and one
+    rf_impact = average_impact[rf_slice]
+    rf_impact /= rf_impact.max()
+
+    if sigma > 0:
+        # Smooth things out
+        _blur = nh.layers.GaussianBlurNd(dim=1, num_features=1, sigma=sigma)
+        _blur.to(rf_impact.device)
+        rf_impact = _blur(rf_impact[None, None])[0, 0]
+
+    if thresh < 1:
+        z = rf_impact.view(-1).cpu().numpy().copy()
+        z.sort()
+        z = z[::-1]
+        # Find the value threshold that explains thresh (e.g. 95%) of the data
+        idx = np.where(z.cumsum() > thresh * z.sum())[0]
+        lowval = float(z[idx[0]])
+
+        # kwil.imshow(rf_impact, pnum=(1, 2, 1), fnum=1)
+        # lowval = float(np.percentile(rf_impact.data.cpu().numpy(), [50])[0])
+        meaningful_impact = rf_impact * (rf_impact > lowval).float()
+        # kwil.imshow(meaningful_impact, pnum=(1, 2, 2), fnum=1)
+        meaningful_idx_nonzeros = np.where(meaningful_impact != 0)
+        meaningful_rf_bounds = [(idx.min(), idx.max()) for idx in meaningful_idx_nonzeros]  # NOQA
+        meaningful_size = [(mx - mn + 1) for mn, mx in meaningful_rf_bounds]
+        # del rf_bounds95
+    else:
+        meaningful_impact = impact
+        meaningful_rf_bounds = rf_size
+
+    emperical_field = {
+        'size': meaningful_size,
+        'impact': meaningful_impact,
+        'thresh': thresh,
+        'raw_impact': rf_impact,
+        'raw_size': rf_size,
+    }
+    return emperical_field
 
 
 if __name__ == '__main__':
