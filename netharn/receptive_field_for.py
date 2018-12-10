@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import torch
+import six
 import torch.nn as nn
 import torchvision
 import ubelt as ub
@@ -98,9 +99,13 @@ class _TorchMixin(object):
             >>> ReceptiveFieldFor._kernelized(module)[0]
 
             >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=2)
+            >>> ReceptiveFieldFor._kernelized(module)()[0]
+
             >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=1)
-            >>> module = nn.AvgPool2d(kernel_size=3, stride=2, padding=2, dilation=1)
-            >>> ReceptiveFieldFor(module)()[0]
+            >>> ReceptiveFieldFor._kernelized(module)()[0]
+
+            >>> module = nn.AvgPool2d(kernel_size=3, stride=2, padding=2)
+            >>> ReceptiveFieldFor._kernelized(module)()[0]
         """
         # impl = ReceptiveFieldFor.impl
         if input_field is None:
@@ -723,18 +728,35 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         return rfield, rfields
 
 
-def effective_receptive_feild(module, input_shape=None, inputs=None,
-                              output_key=None, sigma=0, thresh=0.95):
+def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
+                              thresh=1.00):
     """
     Empirically measures the effective receptive feild of a network
 
     Method from [0], implementation loosely based on [1].
 
     Args:
+        module (torch.nn.Module) : the network
+
+        inputs (torch.nn.Tensor) : the input to the network. Must share the
+            same device as `module`.
+
+        output_key (None | str | Callable): If the network outputs a non-tensor
+            then this should be a function that does postprocessing and returns
+            a relevant Tensor that can be used to compute gradients. If the
+            output is a dictionary then this can also be a string-based key
+            used to lookup the appropriate output.
+
         sigma (float, default=0): smoothness factor (via gaussian blur)
-        thresh (float, default=0.95): only consider this fraction of the
-            data as meaningful (i.e. find the effective RF size that
-            explains 95% of the data).
+
+        thresh (float, default=1.00): only consider this fraction of the
+            data as meaningful (i.e. find the effective RF size that explains
+            95% of the data). A threshold of 1.0 or greater does nothing.
+
+    Returns:
+        dict: containing keys
+            'size' containing the effective RF size and
+            'impact' which contains the thresholded distribution
 
     References:
         [0] https://arxiv.org/pdf/1701.04128.pdf
@@ -743,17 +765,17 @@ def effective_receptive_feild(module, input_shape=None, inputs=None,
     Example:
         >>> from netharn.receptive_field_for import *
         >>> import torchvision  # NOQA
-        >>> module = nn.Sequential(*[nn.Conv2d(1, 1, 3) for i in range(5)])
-        >>> input_shape = (32, 1, 200, 200)
-        >>> emperical_field = effective_receptive_feild(module, input_shape)
+        >>> module = nn.Sequential(*[nn.Conv2d(1, 1, 3) for i in range(20)])
+        >>> inputs = torch.rand(32, 1, 200, 200)
+        >>> emperical_field = effective_receptive_feild(module, inputs)
         >>> theoretic_field = ReceptiveFieldFor(module)()[0]
         >>> # The emperical results should never be bigger than the theoretical
         >>> assert np.all(emperical_field['size'] <= theoretic_field['size'])
 
         >>> # xdoctest: +REQUIRES(--slow)
         >>> module = torchvision.models.alexnet().features
-        >>> input_shape = (1, 3, 224, 224)
-        >>> emperical_field = effective_receptive_feild(module, input_shape)
+        >>> inputs = torch.rand(1, 3, 224, 224)
+        >>> emperical_field = effective_receptive_feild(module, inputs)
         >>> theoretic_field = ReceptiveFieldFor(module)()[0]
         >>> # The emperical results should never be bigger than the theoretical
         >>> assert np.all(emperical_field['size'] <= theoretic_field['size'])
@@ -761,66 +783,50 @@ def effective_receptive_feild(module, input_shape=None, inputs=None,
         >>> # xdoctest: +REQUIRES(--slow)
         >>> import netharn as nh
         >>> xpu = nh.XPU.cast('auto')
-        >>> module = xpu.move(torchvision.models.vgg11().features)
-        >>> input_shape = (1, 3, 224, 224)
-        >>> emperical_field = effective_receptive_feild(module, input_shape)
+        >>> module = xpu.move(torchvision.models.vgg11_bn().features)
+        >>> inputs = xpu.move(torch.rand(1, 3, 224, 224))
+        >>> emperical_field = effective_receptive_feild(module, inputs)
         >>> theoretic_field = ReceptiveFieldFor(module)()[0]
         >>> # The emperical results should never be bigger than the theoretical
         >>> assert np.all(emperical_field['size'] <= theoretic_field['size'])
 
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> nh.util.autompl()
+        >>> nh.util.imshow(emperical_field['impact'], doclf=True)
+
     Ignore:
+        >>> xpu = nh.XPU.cast('auto')
+        >>> module = xpu.move(torchvision.models.resnet50())
+        >>> inputs = xpu.move(torch.rand(8, 3, 224, 224))
+        >>> emperical_field = effective_receptive_feild(module, inputs)
         >>> nh.util.autompl()
         >>> nh.util.imshow(emperical_field['impact'], doclf=True)
-
-        >>> module = torchvision.models.alexnet().features
-        >>> module = module.to(0)
-        >>> input_shape = (8, 3, 224, 224)
-        >>> emperical_field = effective_receptive_feild(module, input_shape)
-        >>> nh.util.autompl()
-        >>> nh.util.imshow(emperical_field['impact'], doclf=True)
-
-        >>> module = torchvision.models.alexnet()
-        >>> module = module.to(0)
-        >>> input_shape = (8, 3, 224, 224)
-        >>> emperical_field = effective_receptive_feild(module, input_shape)
-        >>> nh.util.autompl()
-        >>> nh.util.imshow(emperical_field['impact'], doclf=True)
-
-        >>> module = torchvision.models.resnet50().to(0)
-        >>> input_shape = (8, 3, 224, 224)
-        >>> emperical_field = effective_receptive_feild(module, input_shape)
-        >>> nh.util.autompl()
-        >>> nh.util.imshow(emperical_field['impact'], doclf=True)
-
-        ReceptiveFieldFor(module)()
     """
     import netharn as nh
-    device = nh.XPU.of(module).main_device
-
-    # input_shape = inputs.shape
-    # output_shape = nh.OutputShapeFor(module)(input_shape)
-
-    if inputs is None:
-        if input_shape is None:
-            raise ValueError('must provide inputs or input_shape')
-        else:
-            # If inputs is not given use random imputs
-            inputs = torch.rand(*input_shape).to(device)
 
     inputs.requires_grad = True
-    assert inputs.grad is None
+    if inputs.grad is not None:
+        raise ValueError('inputs alread has accumulated gradients')
 
-    with nh.util.DisableBatchNorm(inputs, enabled=False):
+    # Completely ignore BatchNorm layers as they will give the entire input
+    # some negligable but non-zero effect on the receptive feild.
+    ignored = (torch.nn.modules.batchnorm._BatchNorm,)
+    with nh.util.IgnoreLayerContext(module, ignored):
         outputs = module(inputs)
 
     # Note: grab a single (likely FCN) output channel
-    if isinstance(outputs, torch.Tensor):
+    if isinstance(output_key, six.string_types):
+        output_y = outputs[output_key]
+    elif callable(output_key):
+        output_y = output_key(outputs)
+    elif output_key is None:
         output_y = outputs
     else:
-        if output_key is None:
-            raise NotImplementedError('choose a channel')
-        else:
-            output_y = outputs[output_key]
+        raise TypeError('output_key={} is not understood'.format(output_key))
+
+    if not isinstance(outputs, torch.Tensor):
+        raise TypeError('The output is not a tensor. Please specify '
+                        'output_key and ensure it returns a Tensor.')
 
     # Note: this still does the right thing if there is no spatial component.
     # because all outputs are center outputs.
@@ -850,7 +856,7 @@ def effective_receptive_feild(module, input_shape=None, inputs=None,
     rf_slice = [slice(mn, mx + 1) for mn, mx in rf_bounds]
 
     # Crop out the average impact zone for visualization
-    # Normalize between zero and one
+    # Normalize to have a maximum value of 1.0
     rf_impact = average_impact[rf_slice]
     rf_impact /= rf_impact.max()
 
@@ -861,31 +867,26 @@ def effective_receptive_feild(module, input_shape=None, inputs=None,
         rf_impact = _blur(rf_impact[None, None])[0, 0]
 
     if thresh < 1:
-        z = rf_impact.view(-1).cpu().numpy().copy()
-        z.sort()
-        z = z[::-1]
+        density = rf_impact.contiguous().view(-1).cpu().numpy().copy()
+        density.sort()
+        density = density[::-1]
         # Find the value threshold that explains thresh (e.g. 95%) of the data
-        idx = np.where(z.cumsum() > thresh * z.sum())[0]
-        lowval = float(z[idx[0]])
+        idx = np.where(density.cumsum() > thresh * density.sum())[0]
+        lowval = float(density[idx[0]])
 
-        # kwil.imshow(rf_impact, pnum=(1, 2, 1), fnum=1)
-        # lowval = float(np.percentile(rf_impact.data.cpu().numpy(), [50])[0])
         meaningful_impact = rf_impact * (rf_impact > lowval).float()
-        # kwil.imshow(meaningful_impact, pnum=(1, 2, 2), fnum=1)
         meaningful_idx_nonzeros = np.where(meaningful_impact != 0)
-        meaningful_rf_bounds = [(idx.min(), idx.max()) for idx in meaningful_idx_nonzeros]  # NOQA
+        meaningful_rf_bounds = [(idx.min(), idx.max()) for idx in meaningful_idx_nonzeros]
         meaningful_size = [(mx - mn + 1) for mn, mx in meaningful_rf_bounds]
-        # del rf_bounds95
     else:
-        meaningful_impact = impact
+        meaningful_impact = rf_impact
         meaningful_rf_bounds = rf_size
+        meaningful_size = rf_size
 
     emperical_field = {
         'size': meaningful_size,
         'impact': meaningful_impact,
         'thresh': thresh,
-        'raw_impact': rf_impact,
-        'raw_size': rf_size,
     }
     return emperical_field
 
