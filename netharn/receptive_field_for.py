@@ -96,16 +96,24 @@ class _TorchMixin(object):
 
         Example:
             >>> module = nn.Conv2d(1, 1, kernel_size=5, stride=2, padding=2, dilation=3)
-            >>> ReceptiveFieldFor._kernelized(module)[0]
+            >>> field = ReceptiveFieldFor._kernelized(module)[0]
+            >>> print(ub.repr2(field, nl=0, with_dtype=False))
+            {'crop': np.array([4., 4.]), 'size': np.array([13, 13]), 'stride': np.array([2, 2])}
 
             >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=2)
-            >>> ReceptiveFieldFor._kernelized(module)()[0]
+            >>> field = ReceptiveFieldFor._kernelized(module)[0]
+            >>> print(ub.repr2(field, nl=0, with_dtype=False))
+            {'crop': np.array([0., 0.]), 'size': np.array([5, 5]), 'stride': np.array([2, 2])}
 
             >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=1)
-            >>> ReceptiveFieldFor._kernelized(module)()[0]
+            >>> field = ReceptiveFieldFor._kernelized(module)[0]
+            >>> print(ub.repr2(field, nl=0, with_dtype=False))
+            {'crop': np.array([-1., -1.]), 'size': np.array([3, 3]), 'stride': np.array([2, 2])}
 
             >>> module = nn.AvgPool2d(kernel_size=3, stride=2, padding=2)
-            >>> ReceptiveFieldFor._kernelized(module)()[0]
+            >>> field = ReceptiveFieldFor._kernelized(module)[0]
+            >>> print(ub.repr2(field, nl=0, with_dtype=False))
+            {'crop': np.array([-1., -1.]), 'size': np.array([3, 3]), 'stride': np.array([2, 2])}
         """
         # impl = ReceptiveFieldFor.impl
         if input_field is None:
@@ -729,7 +737,7 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
 
 
 def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
-                              thresh=1.00):
+                              thresh=1.00, ignore_norms=True):
     """
     Empirically measures the effective receptive feild of a network
 
@@ -752,6 +760,12 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         thresh (float, default=1.00): only consider this fraction of the
             data as meaningful (i.e. find the effective RF size that explains
             95% of the data). A threshold of 1.0 or greater does nothing.
+
+        ignore_norms (bool, default=True): if True ignores normalization layers
+            like batch and group norm which adds negligable, but non-zero
+            impact everywhere and causes the ERF size estimation to be
+            dramatically greater than it should be (although the impact still
+            makes sense).
 
     Returns:
         dict: containing keys
@@ -810,8 +824,13 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
 
     # Completely ignore BatchNorm layers as they will give the entire input
     # some negligable but non-zero effect on the receptive feild.
-    ignored = (torch.nn.modules.batchnorm._BatchNorm,)
-    with nh.util.IgnoreLayerContext(module, ignored):
+    ignored = (
+        torch.nn.modules.normalization._BatchNorm,
+        torch.nn.modules.normalization.GroupNorm,
+        torch.nn.modules.normalization.LocalResponseNorm,
+        torch.nn.modules.normalization.LayerNorm,
+    )
+    with nh.util.IgnoreLayerContext(module, ignored, enabled=ignore_norms):
         outputs = module(inputs)
 
     # Note: grab a single (likely FCN) output channel
@@ -874,18 +893,18 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         idx = np.where(density.cumsum() > thresh * density.sum())[0]
         lowval = float(density[idx[0]])
 
-        meaningful_impact = rf_impact * (rf_impact > lowval).float()
-        meaningful_idx_nonzeros = np.where(meaningful_impact != 0)
-        meaningful_rf_bounds = [(idx.min(), idx.max()) for idx in meaningful_idx_nonzeros]
-        meaningful_size = [(mx - mn + 1) for mn, mx in meaningful_rf_bounds]
+        effective_impact = rf_impact * (rf_impact > lowval).float()
+        effective_idx_nonzeros = np.where(effective_impact != 0)
+        effective_rf_bounds = [(idx.min(), idx.max()) for idx in effective_idx_nonzeros]
+        effective_size = [(mx - mn + 1) for mn, mx in effective_rf_bounds]
     else:
-        meaningful_impact = rf_impact
-        meaningful_rf_bounds = rf_size
-        meaningful_size = rf_size
+        effective_impact = rf_impact
+        effective_rf_bounds = rf_size
+        effective_size = rf_size
 
     emperical_field = {
-        'size': meaningful_size,
-        'impact': meaningful_impact,
+        'size': effective_size,
+        'impact': effective_impact,
         'thresh': thresh,
     }
     return emperical_field

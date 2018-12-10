@@ -60,7 +60,12 @@ class IgnoreLayerContext(object):
 
     Args:
         model (torch.nn.Module): model to modify
+
         category (type): the module class to be ignored
+
+        enabled (bool, default=True): if True this context manager is enabled
+            otherwise it does nothing (i.e. the specified layers will not be
+            ignored).
 
     Example:
         >>> input = torch.rand(1, 1, 10, 10)
@@ -72,7 +77,7 @@ class IgnoreLayerContext(object):
         >>> assert torch.all(output3 == output1)
         >>> assert torch.all(output2 == input)
     """
-    def __init__(self, model, category):
+    def __init__(self, model, category=None, enabled=True):
         self.model = model
         self.category = category
         self.prev_state = None
@@ -82,7 +87,11 @@ class IgnoreLayerContext(object):
         def _forward(self, input, *args, **kwargs):
             return input
         for name, layer in trainable_layers(self.model, names=True):
-            if isinstance(layer, self.category):
+            needs_filter = False
+            if self.category is not None:
+                needs_filter |= isinstance(layer, self.category)
+
+            if needs_filter:
                 self.prev_state[name] = layer.forward
                 ub.inject_method(layer, _forward, name='forward')
         return self
