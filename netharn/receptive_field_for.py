@@ -737,7 +737,8 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
 
 
 def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
-                              thresh=1.00, ignore_norms=True):
+                              thresh=1.00, ignore_norms=True,
+                              ignore_extra=None):
     """
     Empirically measures the effective receptive feild of a network
 
@@ -766,6 +767,9 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
             impact everywhere and causes the ERF size estimation to be
             dramatically greater than it should be (although the impact still
             makes sense).
+
+        ignore_extra (List[type], optioanl): if specified, any layer that is a
+            subclass of one of these types is also ignored.
 
     Returns:
         dict: containing keys
@@ -824,13 +828,18 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
 
     # Completely ignore BatchNorm layers as they will give the entire input
     # some negligable but non-zero effect on the receptive feild.
-    ignored = (
-        torch.nn.modules.normalization._BatchNorm,
-        torch.nn.modules.normalization.GroupNorm,
-        torch.nn.modules.normalization.LocalResponseNorm,
-        torch.nn.modules.normalization.LayerNorm,
-    )
-    with nh.util.IgnoreLayerContext(module, ignored, enabled=ignore_norms):
+    ignored = []
+    if ignore_norms:
+        ignored += [
+            torch.nn.modules.normalization._BatchNorm,
+            torch.nn.modules.normalization.GroupNorm,
+            torch.nn.modules.normalization.LocalResponseNorm,
+            torch.nn.modules.normalization.LayerNorm,
+            nh.layers.L2Norm,
+        ]
+    if ignore_extra:
+        ignored += ignore_extra
+    with nh.util.IgnoreLayerContext(module, tuple(ignored)):
         outputs = module(inputs)
 
     # Note: grab a single (likely FCN) output channel
@@ -843,9 +852,10 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
     else:
         raise TypeError('output_key={} is not understood'.format(output_key))
 
-    if not isinstance(outputs, torch.Tensor):
-        raise TypeError('The output is not a tensor. Please specify '
-                        'output_key and ensure it returns a Tensor.')
+    if not isinstance(output_y, torch.Tensor):
+        raise TypeError(
+            'The output is a {}, not a tensor. Please specify '
+            'output_key and ensure it returns a Tensor.'.format(type(outputs)))
 
     # Note: this still does the right thing if there is no spatial component.
     # because all outputs are center outputs.
