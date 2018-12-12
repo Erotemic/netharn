@@ -64,9 +64,9 @@ class _TorchMixin(object):
             raise ValueError('nothing can precede the input')
         input_field = ReceptiveField(**{
             # The input receptive field stride / scale factor is 1.
-            'stride': ensure_array_nd(1, n),
+            'stride': ensure_array_nd(1.0, n),
             # The input receptive field size is 1 pixel.
-            'size': ensure_array_nd(1, n),
+            'size': ensure_array_nd(1.0, n),
             # Use the coordinate system where the top left corner is 0, 0 ( This is unlike [1], which uses 0.5)
             'crop': ensure_array_nd(0.0, n),
         })
@@ -98,22 +98,22 @@ class _TorchMixin(object):
             >>> module = nn.Conv2d(1, 1, kernel_size=5, stride=2, padding=2, dilation=3)
             >>> field = ReceptiveFieldFor._kernelized(module)[0]
             >>> print(ub.repr2(field, nl=0, with_dtype=False))
-            {'crop': np.array([4., 4.]), 'size': np.array([13, 13]), 'stride': np.array([2, 2])}
+            {'crop': np.array([4., 4.]), 'size': np.array([13., 13.]), 'stride': np.array([2., 2.])}
 
             >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=2)
             >>> field = ReceptiveFieldFor._kernelized(module)[0]
             >>> print(ub.repr2(field, nl=0, with_dtype=False))
-            {'crop': np.array([0., 0.]), 'size': np.array([5, 5]), 'stride': np.array([2, 2])}
+            {'crop': np.array([0., 0.]), 'size': np.array([5., 5.]), 'stride': np.array([2., 2.])}
 
             >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=1)
             >>> field = ReceptiveFieldFor._kernelized(module)[0]
             >>> print(ub.repr2(field, nl=0, with_dtype=False))
-            {'crop': np.array([-1., -1.]), 'size': np.array([3, 3]), 'stride': np.array([2, 2])}
+            {'crop': np.array([-1., -1.]), 'size': np.array([3., 3.]), 'stride': np.array([2., 2.])}
 
             >>> module = nn.AvgPool2d(kernel_size=3, stride=2, padding=2)
             >>> field = ReceptiveFieldFor._kernelized(module)[0]
             >>> print(ub.repr2(field, nl=0, with_dtype=False))
-            {'crop': np.array([-1., -1.]), 'size': np.array([3, 3]), 'stride': np.array([2, 2])}
+            {'crop': np.array([-1., -1.]), 'size': np.array([3., 3.]), 'stride': np.array([2., 2.])}
         """
         # impl = ReceptiveFieldFor.impl
         if input_field is None:
@@ -478,8 +478,8 @@ class _TorchMixin(object):
             >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1, with_dtype=False)))
             rfield = {
                 'crop': np.array([3., 3.]),
-                'size': np.array([7, 7]),
-                'stride': np.array([1, 1]),
+                'size': np.array([7., 7.]),
+                'stride': np.array([1., 1.]),
             }
         """
         if input_field is None:
@@ -662,24 +662,24 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         >>>     nn.Conv2d(3, 5, kernel_size=3),
         >>> )
         >>> rfield, rfields = ReceptiveFieldFor(self)()
-        >>> print('rfields = {}'.format(ub.repr2(rfields, nl=3)))
-        >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1)))
+        >>> print('rfields = {}'.format(ub.repr2(rfields, nl=3, with_dtype=False)))
+        >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1, with_dtype=False)))
         rfields = {
             '0': {
-                'crop': np.array([1., 1.], dtype=np.float64),
-                'size': np.array([3, 3], dtype=np.int64),
-                'stride': np.array([1, 1], dtype=np.int64),
+                'crop': np.array([1., 1.]),
+                'size': np.array([3., 3.]),
+                'stride': np.array([1., 1.]),
             },
             '1': {
-                'crop': np.array([2., 2.], dtype=np.float64),
-                'size': np.array([5, 5], dtype=np.int64),
-                'stride': np.array([1, 1], dtype=np.int64),
+                'crop': np.array([2., 2.]),
+                'size': np.array([5., 5.]),
+                'stride': np.array([1., 1.]),
             },
         }
         rfield = {
-            'crop': np.array([2., 2.], dtype=np.float64),
-            'size': np.array([5, 5], dtype=np.int64),
-            'stride': np.array([1, 1], dtype=np.int64),
+            'crop': np.array([2., 2.]),
+            'size': np.array([5., 5.]),
+            'stride': np.array([1., 1.]),
         }
 
     Example:
@@ -687,11 +687,11 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         >>> # In this case rfields is not populated (but rfield is)
         >>> self = nn.Conv2d(2, 3, kernel_size=3)
         >>> rfield, rfields = ReceptiveFieldFor(self)()
-        >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1)))
+        >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1, with_dtype=False)))
         rfield = {
-            'crop': np.array([1., 1.], dtype=np.float64),
-            'size': np.array([3, 3], dtype=np.int64),
-            'stride': np.array([1, 1], dtype=np.int64),
+            'crop': np.array([1., 1.]),
+            'size': np.array([3., 3.]),
+            'stride': np.array([1., 1.]),
         }
 
     Example:
@@ -699,11 +699,11 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         >>> import torchvision  # NOQA
         >>> module = torchvision.models.alexnet().features
         >>> field, fields = ReceptiveFieldFor(module)()
-        >>> print(ub.repr2(fields[-1], nl=1, with_dtype=False))
+        >>> print(ub.repr2(field, nl=1, with_dtype=False))
         {
             'crop': np.array([31., 31.]),
-            'size': np.array([195, 195]),
-            'stride': np.array([32, 32]),
+            'size': np.array([195., 195.]),
+            'stride': np.array([32., 32.]),
         }
     """
     # impl = math  # for hacking in sympy
