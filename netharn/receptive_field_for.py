@@ -228,8 +228,7 @@ class _TorchMixin(object):
         # raise NotImplementedError(
         #     'Cannot compute receptive field size on a Linear layer')
 
-    @compute_type(nn.modules.conv._ConvTransposeMixin)
-    def convT(module, input_field=None):
+    def _kernelized_tranpose(module, input_field=None):
         """
         Receptive field formula for pooling layers
 
@@ -322,6 +321,10 @@ class _TorchMixin(object):
                 ndim = 3
         except AttributeError:
             pass
+
+        if ndim is None:
+            if hasattr(module, '_dim'):
+                ndim = module._dim
 
         # A non-trivial transpose convolution should:
         # * decrease the stride (because the stride is fractional)
@@ -426,6 +429,10 @@ class _TorchMixin(object):
 
         return field, field
         # raise NotImplementedError('todo')
+
+    @compute_type(nn.modules.conv._ConvTransposeMixin)
+    def convT(module, input_field=None):
+        return ReceptiveFieldFor._kernelized_tranpose(module, input_field)
 
     @compute_type(nn.modules.conv.Conv1d, nn.modules.conv.Conv2d, nn.modules.conv.Conv3d)
     def convnd(module, input_field=None):

@@ -8,6 +8,9 @@ class Reshape(torch.nn.Module, util.ModuleMixin):
     """
     Wrapper class around `torch.view` that implements `output_shape_for`
 
+    TODO:
+        [ ] - Can we implement receptive_feild_for for this layer?
+
     Args:
         *shape: same ars that would be passed to view.
             if an item in shape is None it means that the output
