@@ -857,14 +857,13 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         outputs = module(inputs)
 
     # Note: grab a single (likely FCN) output channel
-    if isinstance(output_key, six.string_types):
-        output_y = outputs[output_key]
-    elif callable(output_key):
+    if callable(output_key):
         output_y = output_key(outputs)
     elif output_key is None:
         output_y = outputs
     else:
-        raise TypeError('output_key={} is not understood'.format(output_key))
+        output_y = outputs[output_key]
+        # raise TypeError('output_key={} is not understood'.format(output_key))
 
     if not isinstance(output_y, torch.Tensor):
         raise TypeError(
