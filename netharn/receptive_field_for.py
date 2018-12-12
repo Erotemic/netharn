@@ -183,11 +183,15 @@ class _TorchMixin(object):
             # Compute support from our method
             support_v2 = sym.expand((k - 1) * d)
 
-            # They are equivalent. QED ☐
+            # They are equivalent. QED
             assert sym.Eq(support_v1, support_v2)
         """
 
-        # Compute how many pixels this layer takes off the side
+        # Compute how many pixels this layer takes off the side Note that an
+        # even size kernel results in half pixel crops.  This is expected and
+        # correct. To use the crop in practice take the floor / ceil of the
+        # final result, but in this intermediate stage, subpixel crops are
+        # perfectly valid.
         crop = ((support / 2) - p)
 
         field = ReceptiveField(**{
