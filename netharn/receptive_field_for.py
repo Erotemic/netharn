@@ -836,9 +836,19 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
     """
     import netharn as nh
 
-    inputs.requires_grad = True
+    # zero gradients
+    for p in module.parameters():
+        if p.grad is not None:
+            p.grad.detach_()
+            p.grad.zero_()
+
     if inputs.grad is not None:
-        raise ValueError('inputs alread has accumulated gradients')
+        inputs.grad.detach_()
+        inputs.grad.zero_()
+
+    inputs.requires_grad = True
+    # if inputs.grad is not None:
+    #     raise ValueError('inputs alread has accumulated gradients')
 
     # Completely ignore BatchNorm layers as they will give the entire input
     # some negligable but non-zero effect on the receptive feild.
@@ -863,7 +873,9 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         output_y = outputs
     else:
         output_y = outputs[output_key]
-        # raise TypeError('output_key={} is not understood'.format(output_key))
+    # elif isinstance(output_key, (six.string_types, int)):
+    # else:
+    #     raise TypeError('output_key={} is not understood'.format(output_key))
 
     if not isinstance(output_y, torch.Tensor):
         raise TypeError(
