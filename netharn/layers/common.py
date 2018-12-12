@@ -44,3 +44,18 @@ class Sequential(nn.Sequential, util.ModuleMixin):
     def receptive_field_for(self, input_field=None):
         from netharn.receptive_field_for import ReceptiveFieldFor
         return ReceptiveFieldFor.sequential(self, input_field)
+
+
+class Identity(Sequential):
+    """
+    A identity-function layer.
+
+    Example:
+        >>> import torch
+        >>> self = Identity()
+        >>> a = torch.rand(3, 3)
+        >>> b = self(a)
+        >>> assert torch.all(a == b)
+    """
+    def __init__(self):
+        super(Identity, self).__init__()

@@ -452,8 +452,11 @@ class _TorchMixin(object):
         return ReceptiveFieldFor._unchanged(module, input_field)
 
     @staticmethod
-    @compute_type(nn.modules.batchnorm._BatchNorm)
-    def batchnorm(module, input_field=None):
+    @compute_type(torch.nn.modules.normalization._BatchNorm,
+                  torch.nn.modules.normalization.GroupNorm,
+                  torch.nn.modules.normalization.LocalResponseNorm,
+                  torch.nn.modules.normalization.LayerNorm)
+    def normalization(module, input_field=None):
         return ReceptiveFieldFor._unchanged(module, input_field)
 
     @staticmethod
