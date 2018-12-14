@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import torch
-import six
+import six  # NOQA
 import torch.nn as nn
 import torchvision
 import ubelt as ub
@@ -33,10 +33,10 @@ def compute_type(*types):
 
 # class ReceptiveField(ub.NiceRepr):
 #     """ container for holding a receptive feild """
-#     def __init__(self, stride, size, crop):
+#     def __init__(self, stride, shape, crop):
 #         self.data = {
 #             'stride': stride,  # The stride / scale factor of the network
-#             'size': size,  # The receptive feild size of a single output pixel
+#             'shape': shape,  # The receptive feild shape of a single output pixel
 #             'crop': crop,  # The amount of cropping / starting pixel location
 #         }
 
@@ -65,8 +65,8 @@ class _TorchMixin(object):
         input_field = ReceptiveField(**{
             # The input receptive field stride / scale factor is 1.
             'stride': ensure_array_nd(1.0, n),
-            # The input receptive field size is 1 pixel.
-            'size': ensure_array_nd(1.0, n),
+            # The input receptive field shape is 1 pixel.
+            'shape': ensure_array_nd(1.0, n),
             # Use the coordinate system where the top left corner is 0, 0 ( This is unlike [1], which uses 0.5)
             'crop': ensure_array_nd(0.0, n),
         })
@@ -91,29 +91,29 @@ class _TorchMixin(object):
         References:
             [1] https://medium.com/mlreview/a-guide-to-receptive-field-arithmetic-for-convolutional-neural-networks-e0f514068807
             [2] http://www.erogol.com/dilated-convolution/
-            [3] https://stackoverflow.com/questions/35582521/how-to-calculate-receptive-field-size
+            [3] https://stackoverflow.com/questions/35582521/how-to-calculate-receptive-field-shape
             [4] https://arxiv.org/pdf/1603.07285.pdf
 
         Example:
             >>> module = nn.Conv2d(1, 1, kernel_size=5, stride=2, padding=2, dilation=3)
             >>> field = ReceptiveFieldFor._kernelized(module)[0]
             >>> print(ub.repr2(field, nl=0, with_dtype=False))
-            {'crop': np.array([4., 4.]), 'size': np.array([13., 13.]), 'stride': np.array([2., 2.])}
+            {'crop': np.array([4., 4.]), 'shape': np.array([13., 13.]), 'stride': np.array([2., 2.])}
 
             >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=2)
             >>> field = ReceptiveFieldFor._kernelized(module)[0]
             >>> print(ub.repr2(field, nl=0, with_dtype=False))
-            {'crop': np.array([0., 0.]), 'size': np.array([5., 5.]), 'stride': np.array([2., 2.])}
+            {'crop': np.array([0., 0.]), 'shape': np.array([5., 5.]), 'stride': np.array([2., 2.])}
 
             >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=1)
             >>> field = ReceptiveFieldFor._kernelized(module)[0]
             >>> print(ub.repr2(field, nl=0, with_dtype=False))
-            {'crop': np.array([-1., -1.]), 'size': np.array([3., 3.]), 'stride': np.array([2., 2.])}
+            {'crop': np.array([-1., -1.]), 'shape': np.array([3., 3.]), 'stride': np.array([2., 2.])}
 
             >>> module = nn.AvgPool2d(kernel_size=3, stride=2, padding=2)
             >>> field = ReceptiveFieldFor._kernelized(module)[0]
             >>> print(ub.repr2(field, nl=0, with_dtype=False))
-            {'crop': np.array([-1., -1.]), 'size': np.array([3., 3.]), 'stride': np.array([2., 2.])}
+            {'crop': np.array([-1., -1.]), 'shape': np.array([3., 3.]), 'stride': np.array([2., 2.])}
         """
         # impl = ReceptiveFieldFor.impl
         if input_field is None:
@@ -150,7 +150,7 @@ class _TorchMixin(object):
         # information with the previous receptive feild.
         #
         # In the normal case (with no dilation, d=1) the support is (k - 1).
-        # This is because because the operation is able to see a window of size
+        # This is because because the operation is able to see a window of shape
         # k in the input, and produces a single output pixel (hence the k). The
         # center input pixel corresponds with the output, so it does not expand
         # the receptive feild (hence the -1), but all other input pixels do
@@ -159,11 +159,11 @@ class _TorchMixin(object):
         # The stride of this layer will not affect the support.
         #
         # The dilation of the current layer DOES impact the support.
-        # This expands the effective kernel size, but it does cause the data
+        # This expands the effective kernel shape, but it does cause the data
         # each operation sees to become more diffuse. However, even though what
         # it sees in that extent is more diffuse, the RF is just a bound, so we
         # can ignore the diffuseness effect and simply scale the input kernel
-        # size by the dilation amount. Hense we get
+        # shape by the dilation amount. Hense we get
         support = (k - 1) * d
 
         """
@@ -174,9 +174,9 @@ class _TorchMixin(object):
 
             # Compute the support from formula in 5.1 of [4]
             # To understand the relationship tying the dilation rate d and the
-            # output size o, it is useful to think of the impact of d on the
-            # effective kernel size. A kernel of size k dilated by a factor d
-            # has an effective size.
+            # output shape o, it is useful to think of the impact of d on the
+            # effective kernel shape. A kernel of shape k dilated by a factor d
+            # has an effective shape.
             effective_kernel_size = k + (k - 1) * (d - 1)
             support_v1 = sym.expand(effective_kernel_size - 1)
 
@@ -188,7 +188,7 @@ class _TorchMixin(object):
         """
 
         # Compute how many pixels this layer takes off the side Note that an
-        # even size kernel results in half pixel crops.  This is expected and
+        # even shape kernel results in half pixel crops.  This is expected and
         # correct. To use the crop in practice take the floor / ceil of the
         # final result, but in this intermediate stage, subpixel crops are
         # perfectly valid.
@@ -203,9 +203,9 @@ class _TorchMixin(object):
             # feild, however the stride of the previous layer does. This is
             # because each pixel in the incoming layer really corresponds
             # `input_field['stride']` pixels in the original input.
-            'size':   input_field['size'] + support * input_field['stride'],
+            'shape':   input_field['shape'] + support * input_field['stride'],
 
-            # Padding does not influence the RF size, but it does influence
+            # Padding does not influence the RF shape, but it does influence
             # where the start pixel is (i.e. without the right amount of
             # padding the the edge of the previous layer is cropped).
             'crop': input_field['crop'] + crop * input_field['stride'],
@@ -226,7 +226,7 @@ class _TorchMixin(object):
         return ReceptiveFieldFor._unchanged(module, input_field)
         # Perhaps we could do this if we knew the input shape
         # raise NotImplementedError(
-        #     'Cannot compute receptive field size on a Linear layer')
+        #     'Cannot compute receptive field shape on a Linear layer')
 
     def _kernelized_tranpose(module, input_field=None):
         """
@@ -328,7 +328,7 @@ class _TorchMixin(object):
 
         # A non-trivial transpose convolution should:
         # * decrease the stride (because the stride is fractional)
-        # the padding has to be equal to the size of the kernel minus one
+        # the padding has to be equal to the shape of the kernel minus one
         """
         From [4]:
 
@@ -336,12 +336,12 @@ class _TorchMixin(object):
         * k' = k,
         * s' = 1,
         * p' = k - p - 1,
-        * i' = the size of the stretched input obtained by adding s − 1 zeros
+        * i' = the shape of the stretched input obtained by adding s − 1 zeros
             between each input unit,
         * a = (i + 2p − k) % s, represents the number of zeros added to the
          bottom and right edges of the input,
 
-         And has output size:
+         And has output shape:
              o' = s(i' - 1) + a + k - 2p
 
         For convT it is always the case that s'=1, howver, note that s' is not
@@ -384,7 +384,7 @@ class _TorchMixin(object):
         # The left and right sides of the input tensor are also padded but that
         # wont factor into the RF calculation.
         extra_zeros = s_ - 1
-        # This means that the effective support added to the RF size by convE
+        # This means that the effective support added to the RF shape by convE
         # will be less than it normally would because we don't count the extra
         # zeros in our transformed input as real pixels.
         effective_support = (k - 1 - extra_zeros) * d
@@ -419,9 +419,9 @@ class _TorchMixin(object):
             # feild, however the stride of the previous layer does. This is
             # because each pixel in the incoming layer really corresponds
             # `input_field['stride']` pixels in the original input.
-            'size':   input_field['size'] + effective_support * input_field['stride'],
+            'shape':   input_field['shape'] + effective_support * input_field['stride'],
 
-            # Padding does not influence the RF size, but it does influence
+            # Padding does not influence the RF shape, but it does influence
             # where the start pixel is (i.e. without the right amount of
             # padding the the edge of the previous layer is cropped).
             'crop': input_field['crop'] + crop * effective_input_stride,
@@ -485,7 +485,7 @@ class _TorchMixin(object):
             >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1, with_dtype=False)))
             rfield = {
                 'crop': np.array([3., 3.]),
-                'size': np.array([7., 7.]),
+                'shape': np.array([7., 7.]),
                 'stride': np.array([1., 1.]),
             }
         """
@@ -626,11 +626,11 @@ class _TorchvisionMixin(object):
 
         spatial_shape = np.array(shape[2:])
 
-        # Keep everything the same except increase the RF size
+        # Keep everything the same except increase the RF shape
         # based on how many output pixels there are.
         rfield_flatten = rfield.copy()
         # not sure if this is 100% correct
-        rfield_flatten['size'] = rfield['size'] + (spatial_shape - 1) * rfield['stride']
+        rfield_flatten['shape'] = rfield['shape'] + (spatial_shape - 1) * rfield['stride']
         rfields['flatten'] = rfield = rfield_flatten
 
         # The reshape operation will blend the receptive fields of the inputs
@@ -674,18 +674,18 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         rfields = {
             '0': {
                 'crop': np.array([1., 1.]),
-                'size': np.array([3., 3.]),
+                'shape': np.array([3., 3.]),
                 'stride': np.array([1., 1.]),
             },
             '1': {
                 'crop': np.array([2., 2.]),
-                'size': np.array([5., 5.]),
+                'shape': np.array([5., 5.]),
                 'stride': np.array([1., 1.]),
             },
         }
         rfield = {
             'crop': np.array([2., 2.]),
-            'size': np.array([5., 5.]),
+            'shape': np.array([5., 5.]),
             'stride': np.array([1., 1.]),
         }
 
@@ -697,7 +697,7 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1, with_dtype=False)))
         rfield = {
             'crop': np.array([1., 1.]),
-            'size': np.array([3., 3.]),
+            'shape': np.array([3., 3.]),
             'stride': np.array([1., 1.]),
         }
 
@@ -709,7 +709,7 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         >>> print(ub.repr2(field, nl=1, with_dtype=False))
         {
             'crop': np.array([31., 31.]),
-            'size': np.array([195., 195.]),
+            'shape': np.array([195., 195.]),
             'stride': np.array([32., 32.]),
         }
     """
@@ -773,12 +773,12 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         sigma (float, default=0): smoothness factor (via gaussian blur)
 
         thresh (float, default=1.00): only consider this fraction of the
-            data as meaningful (i.e. find the effective RF size that explains
+            data as meaningful (i.e. find the effective RF shape that explains
             95% of the data). A threshold of 1.0 or greater does nothing.
 
         ignore_norms (bool, default=True): if True ignores normalization layers
             like batch and group norm which adds negligable, but non-zero
-            impact everywhere and causes the ERF size estimation to be
+            impact everywhere and causes the ERF shape estimation to be
             dramatically greater than it should be (although the impact still
             makes sense).
 
@@ -787,7 +787,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
 
     Returns:
         dict: containing keys
-            'size' containing the effective RF size and
+            'shape' containing the effective RF shape and
             'impact' which contains the thresholded distribution
 
     References:
@@ -802,7 +802,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         >>> emperical_field = effective_receptive_feild(module, inputs)
         >>> theoretic_field = ReceptiveFieldFor(module)()[0]
         >>> # The emperical results should never be bigger than the theoretical
-        >>> assert np.all(emperical_field['size'] <= theoretic_field['size'])
+        >>> assert np.all(emperical_field['shape'] <= theoretic_field['shape'])
 
         >>> # xdoctest: +REQUIRES(--slow)
         >>> module = torchvision.models.alexnet().features
@@ -810,7 +810,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         >>> emperical_field = effective_receptive_feild(module, inputs)
         >>> theoretic_field = ReceptiveFieldFor(module)()[0]
         >>> # The emperical results should never be bigger than the theoretical
-        >>> assert np.all(emperical_field['size'] <= theoretic_field['size'])
+        >>> assert np.all(emperical_field['shape'] <= theoretic_field['shape'])
 
         >>> # xdoctest: +REQUIRES(--slow)
         >>> import netharn as nh
@@ -820,7 +820,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         >>> emperical_field = effective_receptive_feild(module, inputs)
         >>> theoretic_field = ReceptiveFieldFor(module)()[0]
         >>> # The emperical results should never be bigger than the theoretical
-        >>> assert np.all(emperical_field['size'] <= theoretic_field['size'])
+        >>> assert np.all(emperical_field['shape'] <= theoretic_field['shape'])
 
         >>> # xdoctest: +REQUIRES(--show)
         >>> nh.util.autompl()
@@ -906,7 +906,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
 
     idx_nonzeros = np.where(average_impact != 0)
     rf_bounds = [(idx.min(), idx.max()) for idx in idx_nonzeros]
-    rf_size = [(mx - mn + 1) for mn, mx in rf_bounds]
+    rf_shape = [(mx - mn + 1) for mn, mx in rf_bounds]
     rf_slice = [slice(mn, mx + 1) for mn, mx in rf_bounds]
 
     # Crop out the average impact zone for visualization
@@ -931,14 +931,14 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         effective_impact = rf_impact * (rf_impact > lowval).float()
         effective_idx_nonzeros = np.where(effective_impact != 0)
         effective_rf_bounds = [(idx.min(), idx.max()) for idx in effective_idx_nonzeros]
-        effective_size = [(mx - mn + 1) for mn, mx in effective_rf_bounds]
+        effective_shape = [(mx - mn + 1) for mn, mx in effective_rf_bounds]
     else:
         effective_impact = rf_impact
-        effective_rf_bounds = rf_size
-        effective_size = rf_size
+        effective_rf_bounds = rf_shape
+        effective_shape = rf_shape
 
     emperical_field = {
-        'size': effective_size,
+        'shape': effective_shape,
         'impact': effective_impact,
         'thresh': thresh,
     }
