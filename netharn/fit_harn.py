@@ -1359,7 +1359,7 @@ class ChecksMixin:
         # num_batches_tracked once 0.5.0 lands
         state = harn.model.module.state_dict()
         sums = ub.map_vals(torch.sum, state)
-        weight_sum = sum(sums.values())
+        weight_sum = sum(s.float() for s in sums.values())
         if 'torch' in str(type(weight_sum)):  # torch 0.3 / 0.4 / 1.0 compat
             weight_sum = weight_sum.cpu().numpy()
 

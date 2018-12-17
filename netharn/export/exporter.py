@@ -280,6 +280,8 @@ def source_closure(model_class):
         Given a live-object and its assigned name in a file find the lines of
         code that define it.
         """
+        # if name == 'fcn_coder':
+        #     return 'import', 'from ovharn.models import fcn_coder'
         if name in visitor.import_lines:
             # Check and see if the name was imported from elsewhere
             return 'import', visitor.import_lines[name]
@@ -306,7 +308,6 @@ def source_closure(model_class):
             if obj.__module__ == module_name:
                 sourcecode = inspect.getsource(obj)
                 return 'code', sourcecode
-
         raise NotImplementedError(str(obj) + ' ' + str(name))
 
     import_lines = []
@@ -318,7 +319,15 @@ def source_closure(model_class):
         names = sorted(set(names))
         for name in names:
             obj = getattr(module, name)
-            type_, text = closure_(obj, name)
+            try:
+                type_, text = closure_(obj, name)
+            except NotImplementedError:
+                # TODO Fix issue with from . import statements
+                print('Error in import_lines: {!r}'.format(import_lines))
+                print('Error in lines: {}'.format('\n\n'.join(lines)))
+                print('Error with obj = {!r}'.format(obj))
+                print('Error with name = {!r}'.format(name))
+                raise
             if type_ == 'import':
                 import_lines.append(text)
             else:
