@@ -6,7 +6,10 @@ import numpy as np
 from packaging import version
 
 
-_HAS_REDUCTION = version.parse(torch.__version__) >= version.parse('0.4.1')
+if version.parse(torch.__version__) < version.parse('1.0.0'):
+    ELEMENTWISE_MEAN = 'elementwise_mean'
+else:
+    ELEMENTWISE_MEAN = 'mean'
 
 
 def one_hot_embedding(labels, num_classes, dim=1):
@@ -92,7 +95,7 @@ def _backwards_compat_reduction_kw(size_average, reduce, reduction):
         if reduction == 'none':
             size_average = False
             reduce = False
-        elif reduction == 'elementwise_mean':
+        elif reduction == ELEMENTWISE_MEAN:
             size_average = True
             reduce = True
         elif reduction == 'sum':
@@ -111,7 +114,7 @@ def _backwards_compat_reduction_kw(size_average, reduce, reduction):
             elif size_average and not reduce:
                 reduction = 'none'
             elif size_average and reduce:
-                reduction = 'elementwise_mean'
+                reduction = ELEMENTWISE_MEAN
             elif not size_average and reduce:
                 reduction = 'sum'
             else:
@@ -124,7 +127,15 @@ def nll_focal_loss(logits, targets, focus, dim, weight=None, ignore_index=None):
     """
     Focal loss given preprocessed logits (log probs) instead of raw outputs
 
+    Args:
+        logits (FloatTensor): log-probabilities for each class
+        targets (LongTensor): correct class indices for each example
+        focus (float): focus factor
+        dim (int): class dimension
+        weight (FloatTensor): per-class weights
+
     Example:
+        >>> from netharn.criterions.focal import *
         >>> C = 3
         >>> dim = 1
         >>> logits = F.log_softmax(torch.rand(10, C, 11, 12), dim=dim)
@@ -135,6 +146,15 @@ def nll_focal_loss(logits, targets, focus, dim, weight=None, ignore_index=None):
         >>> logits3 = logits.permute(0, 2, 3, 1)
         >>> loss3 = nll_focal_loss(logits3, targets, focus=0, dim=3)
         >>> assert torch.allclose(loss1, loss3)
+
+        >>> # with perclass weights
+        >>> logits = F.log_softmax(torch.rand(8, C, 2, 2), dim=dim)
+        >>> targets = (torch.rand(8, 2, 2) * C).long()
+        >>> weight = torch.FloatTensor([.1, 1.0, 10.0])
+        >>> focus = 2.0
+        >>> dim = 1
+        >>> ignore_index = 0
+        >>> output = nll_focal_loss(logits, targets, focus, dim, weight, ignore_index)
     """
     # Determine which entry in logits corresponds to the target
     num_classes = logits.shape[dim]
@@ -142,22 +162,26 @@ def nll_focal_loss(logits, targets, focus, dim, weight=None, ignore_index=None):
 
     # We only need the log(p) component corresponding to the target class
     target_logits = (logits * t).sum(dim=dim)  # sameas logits[t > 0]
-    target_p = torch.exp(target_logits)
 
     # Modulate the weight of examples based on hardness
+    target_p = torch.exp(target_logits)
     w = (1 - target_p).pow(focus)
+
+    # Factor in per-class `weight` to the a per-input weight
     if weight is not None:
-        w *= weight[targets]  # Factor in a per-input weight
+        class_weight = weight[targets]
+        w *= class_weight
+
+    if ignore_index is not None:
+        # remove any loss associated with ignore_label
+        ignore_mask = (targets != ignore_index).float()
+        w *= ignore_mask
 
     # Normal cross-entropy computation (but with augmented weights per example)
     # Recall the nll_loss of an aexample is simply its -log probability or the
     # real class, all other classes are not needed (due to softmax magic)
     output = w * -target_logits
 
-    if ignore_index is not None:
-        # remove any loss associated with ignore_label
-        mask = (targets != ignore_index).float()
-        output *= mask
     return output
 
 
@@ -246,24 +270,10 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
     """
 
     def __init__(self, focus=2, weight=None, size_average=None, reduce=None,
-                 reduction='elementwise_mean', ignore_index=-100):
-
+                 reduction=ELEMENTWISE_MEAN, ignore_index=-100):
         size_average, reduce, reduction = _backwards_compat_reduction_kw(
             size_average, reduce, reduction)
-        assert _HAS_REDUCTION
-        if _HAS_REDUCTION:
-            print('reduction = {!r}'.format(reduction))
-            super(FocalLoss, self).__init__(weight=weight,
-                                            # reduce=reduce,
-                                            # size_average=size_average,
-                                            reduction=reduction)
-        else:
-            raise AssertionError
-            super(FocalLoss, self).__init__(weight=weight, reduce=reduce,
-                                            size_average=size_average)
-            self.size_average = size_average  # fix for travis?
-            self.reduce = reduce
-
+        super(FocalLoss, self).__init__(weight=weight, reduction=reduction)
         self.focus = focus
         self.ignore_index = ignore_index
 
@@ -344,17 +354,10 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             (tensor) loss
         """
         output = self.focal_loss(input, target)
-        if _HAS_REDUCTION:
-            if self.reduction == 'elementwise_mean':
-                output = output.sum()
-                output = output / input.shape[0]
-            elif self.reduction == 'sum':
-                output = output.sum()
-        else:
-            if self.reduce:
-                output = output.sum()
-                if self.size_average:
-                    output = output / input.shape[0]
+        if self.reduction == ELEMENTWISE_MEAN:
+            output = output.mean()
+        elif self.reduction == 'sum':
+            output = output.sum()
         return output
 
 

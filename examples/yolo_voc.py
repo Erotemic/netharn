@@ -130,32 +130,6 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> inp_boxes = util.Boxes(norm_boxes, 'cxywh').scale(inp_size).data
             >>> mplutil.draw_boxes(inp_boxes, box_format='cxywh')
             >>> mplutil.show_if_requested()
-
-        Ignore:
-            >>> self = YoloVOCDataset(split='train')
-            for index in ub.ProgIter(range(len(self))):
-                chw01, label = self[index]
-                target = label[0]
-                wh = target[:, 3:5]
-                if np.any(wh == 0):
-                    raise ValueError()
-                pass
-            >>> # Check that we can collate this data
-            >>> self = YoloVOCDataset(split='train')
-            >>> inbatch = [self[index] for index in range(0, 16)]
-            >>> from netharn.data import collate
-            >>> batch = collate.padded_collate(inbatch)
-            >>> inputs, labels = batch
-            >>> assert len(labels) == len(inbatch[0][1])
-            >>> targets = labels['targets']
-            >>> orig_sizes = labels['orig_sizes']
-            >>> gt_weights = labels['gt_weights']
-            >>> indices = labels['indices']
-            >>> bg_weights = labels['bg_weights']
-            >>> assert list(target.shape) == [16, 6, 5]
-            >>> assert list(gt_weights.shape) == [16, 6]
-            >>> assert list(origsize.shape) == [16, 2]
-            >>> assert list(index.shape) == [16, 1]
         """
         if isinstance(index, tuple):
             # Get size index from the batch loader
@@ -308,10 +282,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
 class YoloHarn(nh.FitHarn):
     def __init__(harn, **kw):
-        super(YoloHarn, self).__init__(**kw)
-        # harn.batch_confusions = []
-        # harn.aps = {}
-
+        super(YoloHarn, harn).__init__(**kw)
         # Dictionary of detection metrics
         harn.dmets = {}  # Dict[str, nh.metrics.detections.DetectionMetrics]
         harn.chosen_indices = {}

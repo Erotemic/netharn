@@ -2,6 +2,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 import collections
 import pandas as pd
+import torch
 import ubelt as ub
 import numpy as np
 
@@ -64,6 +65,8 @@ def stats_dict(list_, axis=None, nan=False, sum=False, extreme=True,
         nparr = list_
     elif isinstance(list_, list):
         nparr = np.array(list_)
+    elif isinstance(list_, torch.Tensor):
+        nparr = list_.data.cpu().numpy()
     else:
         nparr = np.array(list(list_))
     # Check to make sure stats are feasible
