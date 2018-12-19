@@ -154,7 +154,8 @@ def load_partial_state(model, model_state_dict, initializer=None,
 
     for key, other_value in other_state.items():
         if key not in self_state:
-            print('Skipping {} because it does not exist'.format(key))
+            if verbose > 0:
+                print('Skipping {} because it does not exist'.format(key))
             seen_keys['skipped'].add(key)
         else:
             self_value = self_state[key]
@@ -165,20 +166,23 @@ def load_partial_state(model, model_state_dict, initializer=None,
                 seen_keys['full_add'].add(key)
             elif len(other_value.size()) == len(self_value.size()):
                 if key.endswith('bias'):
-                    print('Skipping {} due to incompatable size'.format(key))
-                    print(' * self  = {!r}'.format(self_value.size()))
-                    print(' * other = {!r}'.format(other_value.size()))
+                    if verbose > 0:
+                        print('Skipping {} due to incompatable size'.format(key))
+                        print(' * self  = {!r}'.format(self_value.size()))
+                        print(' * other = {!r}'.format(other_value.size()))
                     seen_keys['skipped'].add(key)
                 else:
                     if initializer is None:
-                        print('Skipping {} due to incompatable size and no default initializer'.format(key))
-                        print(' * self  = {!r}'.format(self_value.size()))
-                        print(' * other = {!r}'.format(other_value.size()))
+                        if verbose > 0:
+                            print('Skipping {} due to incompatable size and no default initializer'.format(key))
+                            print(' * self  = {!r}'.format(self_value.size()))
+                            print(' * other = {!r}'.format(other_value.size()))
                         seen_keys['skipped'].add(key)
                     else:
-                        print('Partially add {} with incompatable size'.format(key))
-                        print(' * self  = {!r}'.format(self_value.size()))
-                        print(' * other = {!r}'.format(other_value.size()))
+                        if verbose > 0:
+                            print('Partially add {} with incompatable size'.format(key))
+                            print(' * self  = {!r}'.format(self_value.size()))
+                            print(' * other = {!r}'.format(other_value.size()))
                         # Initialize all weights in case any are unspecified
                         if initializer is not None:
                             initializer(self_state[key])
@@ -197,9 +201,10 @@ def load_partial_state(model, model_state_dict, initializer=None,
                         other_unused_keys.remove(key)
                         seen_keys['partial_add'].add(key)
             else:
-                print('Skipping {} due to incompatable size'.format(key))
-                print(' * self  = {!r}'.format(self_value.size()))
-                print(' * other = {!r}'.format(other_value.size()))
+                if verbose > 0:
+                    print('Skipping {} due to incompatable size'.format(key))
+                    print(' * self  = {!r}'.format(self_value.size()))
+                    print(' * other = {!r}'.format(other_value.size()))
                 seen_keys['skipped'].add(key)
 
     if ignore_unset is True:
@@ -208,20 +213,25 @@ def load_partial_state(model, model_state_dict, initializer=None,
         self_unset_keys = list(ub.oset(self_unset_keys) - set(ignore_unset))
 
     if self_unset_keys or other_unused_keys:
-        print('Seen Keys: {}'.format(ub.repr2(seen_keys, nl=2)))
-
-        print('Self Unset Keys: {}'.format(ub.repr2(self_unset_keys, nl=1)))
-
-        print('Other Unused keys: {}'.format(ub.repr2(other_unused_keys, nl=1)))
+        if verbose > 0:
+            if seen_keys:
+                print('Pretrained weights are a partial fit')
+            else:
+                print('Pretrained weights do not fit!')
+        if verbose > 1:
+            print('Seen Keys: {}'.format(ub.repr2(seen_keys, nl=2)))
+            print('Self Unset Keys: {}'.format(ub.repr2(self_unset_keys, nl=1)))
+            print('Other Unused keys: {}'.format(ub.repr2(other_unused_keys, nl=1)))
         if initializer:
-            print('Initializing unused keys using {}'.format(initializer))
+            if verbose > 0:
+                print('Initializing unused keys using {}'.format(initializer))
             for key in self_unset_keys:
                 if key.endswith('.bias'):
                     self_state[key].fill_(0)
                 else:
                     initializer(self_state[key])
     else:
-        if verbose > 1:
+        if verbose > 0:
             print('Pretrained weights are a perfect fit')
     model.load_state_dict(self_state)
 

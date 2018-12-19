@@ -1,5 +1,6 @@
 Version 0.1.3
 ==============
+* Add verbose kwarg to `Pretrained.forward`
 * Add `IgnoreLayerContext`
 * `nh.util.DisableBatchNorm` renamed to  `nh.util.BatchNormContext`
 * Add `nh.ReceptiveFieldFor`

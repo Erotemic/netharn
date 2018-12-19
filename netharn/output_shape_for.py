@@ -224,12 +224,14 @@ class OutputShapeFor(object):
         #     print('{}.output_shape = {}'.format(str(self._func.__name__), output_shape))
         return output_shape
 
-    def _check_consistency(self, input_shape):
+    def _check_consistency(self, input_shape, **kwargs):
         """
-        Test function to check that expected shape is equal to computed shape
+        Test function to check that expected shape is equal to computed shape.
+        The kwargs are passed to both output_shape_for and forward, so ensure
+        that both functions accept the same arguments.
         """
         # Run the output shape computation
-        expected_output_shape = self(input_shape)
+        expected_output_shape = self(input_shape, **kwargs)
         # if isinstance(expected_output_shape, list):
         #     expected_output_shape = SHAPE_CLS(expected_output_shape)
 
@@ -237,7 +239,7 @@ class OutputShapeFor(object):
         inputs = torch.randn(input_shape)
         with torch.no_grad():
             self.module.eval()
-            outputs = self.module(inputs)
+            outputs = self.module(inputs, **kwargs)
 
         if isinstance(outputs, dict):
             assert isinstance(expected_output_shape, dict), (

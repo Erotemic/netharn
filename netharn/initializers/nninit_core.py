@@ -64,7 +64,7 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
             fpath = join(self.fpath, candidates[0])
         return fpath
 
-    def forward(self, model):
+    def forward(self, model, verbose=2):
         from netharn import XPU
         xpu = XPU.from_data(model)
         # model_state_dict = xpu.load(self.fpath)
@@ -100,7 +100,8 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
         # Remove any DataParallel / DataSerial
         raw_model = xpu.raw(model)
         nninit_base.load_partial_state(raw_model, model_state_dict,
-                                       initializer=self.initializer)
+                                       initializer=self.initializer,
+                                       verbose=verbose)
 
     def history(self):
         """
