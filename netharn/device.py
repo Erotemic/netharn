@@ -237,6 +237,11 @@ class XPU(ub.NiceRepr):
     from_data = of
 
     @classmethod
+    def coerce(cls, item, **kwargs):
+        """ I think I like this name better than cast, not sure """
+        cls.cast(item, **kwargs)
+
+    @classmethod
     def cast(xpu, item, **kwargs):
         """
         Converts objects of many different types into an XPU.
@@ -446,9 +451,9 @@ class XPU(ub.NiceRepr):
         Example:
             >>> data = torch.FloatTensor([0])
             >>> if torch.cuda.is_available():
-            >>>     xpu = XPU.cast('gpu')
+            >>>     xpu = XPU.coerce('gpu')
             >>>     assert isinstance(xpu.move(data), torch.cuda.FloatTensor)
-            >>> xpu = XPU.cast('cpu')
+            >>> xpu = XPU.coerce('cpu')
             >>> assert isinstance(xpu.move(data), torch.FloatTensor)
         """
         if xpu.is_gpu():
