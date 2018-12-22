@@ -904,6 +904,9 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
     # Average the impact over all batches and all channels
     average_impact = impact.mean(dim=0).mean(dim=0)
 
+    if isinstance(average_impact, torch.Tensor):
+        average_impact = average_impact.data.cpu().numpy()
+
     idx_nonzeros = np.where(average_impact != 0)
     rf_bounds = [(idx.min(), idx.max()) for idx in idx_nonzeros]
     rf_shape = [(mx - mn + 1) for mn, mx in rf_bounds]
@@ -914,6 +917,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
     rf_impact = average_impact[rf_slice]
     rf_impact /= rf_impact.max()
 
+    rf_impact = torch.FloatTensor(rf_impact)
     if sigma > 0:
         # Smooth things out
         _blur = nh.layers.GaussianBlurNd(dim=1, num_features=1, sigma=sigma)
