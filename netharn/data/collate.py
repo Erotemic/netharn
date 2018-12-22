@@ -34,6 +34,19 @@ def _collate_else(batch, collate_func):
         if elem.shape == ():  # scalars
             py_type = float if elem.dtype.name.startswith('float') else int
             return torch_data.dataloader.numpy_type_map[elem.dtype.name](list(map(py_type, batch)))
+    elif isinstance(batch[0], slice):
+        # batch = default_collate([{
+        #     'start': [0 if sl.start is None else sl.start],
+        #     'stop': [sl.stop],
+        #     'step': [1 if sl.step is None else sl.step]
+        # } for sl in batch])
+        batch = default_collate([{
+            'start': sl.start,
+            'stop': sl.stop,
+            'step': 1 if sl.step is None else sl.step
+        } for sl in batch])
+        return batch
+        # batch = torch.FloatTensor([(sl.start, sl.stop) for sl in batch])
     elif isinstance(batch[0], torch_data.dataloader.int_classes):
         return torch.LongTensor(batch)
     elif isinstance(batch[0], float):
