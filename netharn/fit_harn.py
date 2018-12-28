@@ -1362,9 +1362,15 @@ class ChecksMixin:
         weight_sum = sum(s.float() for s in sums.values())
         if 'torch' in str(type(weight_sum)):  # torch 0.3 / 0.4 / 1.0 compat
             weight_sum = weight_sum.cpu().numpy()
-
+        try:
+            weight_sum = weight_sum.cpu().numpy()
+        except AttributeError:
+            pass
         if not np.isfinite(weight_sum):
-            flags = [not np.isfinite(s) for s in sums.values()]
+            try:
+                flags = [not np.isfinite(s.cpu().numpy()) for s in sums.values()]
+            except AttributeError:
+                flags = [not np.isfinite(s) for s in sums.values()]
             bad_layers = ub.odict(zip(
                 ub.compress(sums.keys(), flags),
                 ub.compress(sums.values(), flags)
