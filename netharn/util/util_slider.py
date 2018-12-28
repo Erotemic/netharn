@@ -138,7 +138,7 @@ class SlidingWindow(ub.NiceRepr):
         self.n_total = np.prod(self.basis_shape)
 
     def __nice__(self):
-        return '{}, stride={}'.format(self.basis_shape, self.stride)
+        return 'bshape={}, shape={}, window={}, stride={}'.format(tuple(self.basis_shape), tuple(self.input_shape), self.window, tuple(self.stride))
 
     def _compute_stride(self, overlap, stride, shape, window):
         """

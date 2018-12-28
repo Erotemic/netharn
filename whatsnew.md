@@ -1,5 +1,7 @@
 Version 0.1.3
 ==============
+* Folded folder functionality into hyperparams.
+* Add (hacked-in) better `imgaug` hyperparameter logging. 
 * Add verbose kwarg to `Pretrained.forward`
 * Add `IgnoreLayerContext`
 * `nh.util.DisableBatchNorm` renamed to  `nh.util.BatchNormContext`

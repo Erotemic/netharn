@@ -7,7 +7,6 @@ from netharn import data
 from netharn import device
 from netharn import export
 from netharn import fit_harn
-from netharn import folders
 from netharn import hyperparams
 from netharn import initializers
 from netharn import layers
@@ -24,7 +23,6 @@ from netharn import util
 
 from netharn.device import (XPU,)
 from netharn.fit_harn import (FitHarn,)
-from netharn.folders import (Folders,)
 from netharn.hyperparams import (HyperParams,)
 from netharn.monitor import (Monitor,)
 from netharn.output_shape_for import OutputShapeFor
@@ -32,8 +30,8 @@ from netharn.hidden_shapes_for import HiddenShapesFor
 from netharn.receptive_field_for import ReceptiveFieldFor
 
 __all__ = ['criterions', 'data', 'device', 'exceptions', 'export', 'fit_harn',
-           'folders', 'hyperparams', 'initializers', 'layers', 'metrics',
+           'hyperparams', 'initializers', 'layers', 'metrics',
            'models', 'monitor', 'optimizers', 'output_shape_for', 'pred_harn',
            'schedulers', 'util', 'FitHarn', 'XPU', 'Monitor', 'HyperParams',
-           'OutputShapeFor', 'Folders', 'hidden_shapes_for', 'HiddenShapesFor',
+           'OutputShapeFor', 'hidden_shapes_for', 'HiddenShapesFor',
            'receptive_field_for', 'ReceptiveFieldFor']

@@ -140,7 +140,6 @@ import torch
 import numpy as np
 import ubelt as ub
 
-from netharn import folders
 from netharn import hyperparams
 from netharn.exceptions import StopTraining, CannotResume, TrainingDiverged
 
@@ -315,8 +314,7 @@ class InitializeMixin:
             harn.warn('harn.train_dpath is None, cannot setup_paths')
         else:
             # TODO: we may fold the functionality of Folders into Hyperparams
-            paths = folders.Folders(hyper=harn.hyper)
-            train_info = paths.train_info(harn.train_dpath)
+            train_info = harn.hyper.train_info(harn.train_dpath)
             ub.ensuredir(train_info['train_dpath'])
             if train_info['nice_dpath']:
                 # Link the hashed run dir to the human friendly nice dir

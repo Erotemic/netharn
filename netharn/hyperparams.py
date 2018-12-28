@@ -46,6 +46,11 @@ Example:
 
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
+import platform
+import warnings
+from os.path import join
+from os.path import normpath
+from os.path import sys
 import numpy as np
 import ubelt as ub
 import torch
@@ -53,9 +58,17 @@ import six
 from netharn import util
 from netharn import initializers
 from netharn import device
+from collections import OrderedDict
 # from netharn import criterions
 from torch.optim.optimizer import required
 import torch.utils.data as torch_data
+
+
+try:
+    import imgaug
+    Augmenter = imgaug.augmenters.meta.Augmenter
+except ImportError:
+    imgaug = None
 
 
 def _hash_data(data):
@@ -313,8 +326,7 @@ class HyperParams(object):
         >>> )
         >>> # xdoctest: +IGNORE_WANT
         >>> print(hyper.hyper_id())
-        NoOp,SGD,dampening=0,lr=0.001,momentum=0.9,nesterov=True,weight_decay=0.0005,ReduceLROnPlateau,cooldown=0,eps=1e-08,factor=0.1,min_lr=0,mode=min,patience=10,threshold=0.0001,threshold_mode=rel,verbose=False,CrossEntropyLoss,ignore_index=-100,reduce=True,size_average=True,weight=[0.0,2.0,1.0],DataLoader,batch_size=1,Dynamics,batch_step=1,grad_norm_max=None
-
+        NoOp,SGD,dampening=0,lr=0.001,momentum=0.9,nesterov=True,weight_decay=0.0005,ReduceLROnPlateau,cooldown=0,eps=1e-08,factor=0.1,min_lr=0,mode=min,patience=10,threshold=0.0001,threshold_mode=rel,verbose=False,CrossEntropyLoss,ignore_index=-100,reduce=None,reduction=mean,size_average=None,weight=[0.0,2.0,1.0],DataLoader,batch_size=1,Dynamics,batch_step=1,grad_norm_max=None
     """
 
     def __init__(hyper,
@@ -459,7 +471,7 @@ class HyperParams(object):
             >>> )
             >>> print(ub.repr2(hyper.get_initkw()))
         """
-        initkw = ub.odict()
+        initkw = OrderedDict()
         def _append_part(key, cls, params):
             """
             append an id-string derived from the class and params.
@@ -468,7 +480,7 @@ class HyperParams(object):
             if cls is None:
                 initkw[key] = None
             else:
-                d = ub.odict()
+                d = OrderedDict()
                 for k, v in sorted(params.items()):
                     # if k in total:
                     #     raise KeyError(k)
@@ -513,89 +525,37 @@ class HyperParams(object):
 
         Example:
             >>> from netharn.hyperparams import *
-            >>> import imgaug as ia
-            >>> import imgaug.augmenters as iaa
             >>> import imgaug
             >>> augment = imgaug.augmenters.Affine()
             >>> hyper = HyperParams(augment=augment)
             >>> info = hyper.augment_json()
             >>> assert info['__class__'] == 'Affine'
-            >>> hyper = HyperParams(augment=ub.odict())
+            >>> hyper = HyperParams(augment=OrderedDict())
             >>> assert hyper.augment_json() == {}
-            >>> #####
-            >>> augmentors = [
-            >>>     iaa.Fliplr(p=.5),
-            >>>     iaa.Flipud(p=.5),
-            >>>     iaa.Affine(
-            >>>         scale={"x": (1.0, 1.01), "y": (1.0, 1.01)},
-            >>>         translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
-            >>>         rotate=(-15, 15),
-            >>>         shear=(-7, 7),
-            >>>         order=[0, 1, 3],
-            >>>         cval=(0, 255),
-            >>>         mode=ia.ALL,  # use any of scikit-image's warping modes (see 2nd image from the top for examples)
-            >>>         # Note: currently requires imgaug master version
-            >>>         backend='cv2',
-            >>>     ),
-            >>>     iaa.AddToHueAndSaturation((-20, 20)),  # change hue and saturation
-            >>>     iaa.ContrastNormalization((0.5, 2.0), per_channel=0.5),  # improve or worsen the contrast
-            >>> ]
-            >>> augment = iaa.Sequential(augmentors)
-            >>> hyper = HyperParams(augment=augment)
-            >>> info = hyper.augment_json()
         """
         if hyper.augment is None:
             return None
+        elif imgaug is not None and isinstance(hyper.augment, imgaug.augmenters.Augmenter):
+            from netharn.data.transforms.augmenter_base import ParamatarizedAugmenter
+            augment_json = ParamatarizedAugmenter._json_id(hyper.augment)
         elif isinstance(hyper.augment, six.string_types):
             return hyper.augment
-        # if isinstance(hyper.augment, (dict, list)):  # cant check for list because Seq inherits from it
-        elif isinstance(hyper.augment, ub.odict):
-            # already specified in json format
+        # Some classes in imgaug (e.g. Sequence) inherit from list,
+        # so we have to check for Augmenter before we check for list type
+        # if isinstance(hyper.augment, (dict, list)):
+        elif isinstance(hyper.augment, OrderedDict):
+            # dicts are specified in json format
             try:
+                # hashable data should be loosely json-compatible
                 _hash_data(hyper.augment)
             except TypeError:
-                raise TypeError('NOT IN ORDERED JSON FORMAT hyper.augment={}'.format(hyper.augment))
+                raise TypeError(
+                    'NOT IN ORDERED JSON FORMAT hyper.augment={}'.format(
+                        hyper.augment))
             augment_json = hyper.augment
         else:
-            try:
-                import imgaug
-
-                def imgaug_json_id(aug):
-                    # TODO: submit a PR to imgaug that registers parameters
-                    # with classes
-                    if isinstance(aug, tuple):
-                        return [imgaug_json_id(item) for item in aug]
-                    elif isinstance(aug, imgaug.parameters.StochasticParameter):
-                        return str(aug)
-                    else:
-                        try:
-                            info = ub.odict()
-                            info['__class__'] = aug.__class__.__name__
-                            params = aug.get_parameters()
-                            if params:
-                                info['params'] = [imgaug_json_id(p) for p in params]
-                            if isinstance(aug, list):
-                                children = aug[:]
-                                children = [imgaug_json_id(c) for c in children]
-                                info['children'] = children
-                            return info
-                        except Exception:
-                            # imgaug is weird and buggy
-                            return str(aug)
-            except ImportError:
-                augment_json = str(hyper.augment)
-            else:
-                if isinstance(hyper.augment, imgaug.augmenters.meta.Augmenter):
-                    augment_json = imgaug_json_id(hyper.augment)
-                else:
-                    raise TypeError('Specify augment in json format')
-                try:
-                    _hash_data(augment_json)
-                except TypeError:
-                    print('FAILED TO PRODUCE JSON FORMAT for hyper.augment={}'.format(hyper.augment))
-                    raise
+            raise TypeError('Specify augment in json format')
         return augment_json
-        # print(ub.repr2(augment))
 
     def input_id(hyper, short=False, hashed=False):
         pass
@@ -653,6 +613,162 @@ class HyperParams(object):
         """
         parts = hyper.get_initkw()
         return hyper._parts_id(parts, short, hashed)
+
+    def train_info(hyper, train_dpath=None):
+        """
+        Create json metadata that details enough information such that it would
+        be possible for a human to reproduce the experiment.
+
+        Example:
+            >>> import netharn as nh
+            >>> datasets = {
+            >>>     'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
+            >>>     'vali': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+            >>> }
+            >>> hyper = nh.hyperparams.HyperParams(**{
+            >>>     # --- Data First
+            >>>     'datasets'    : datasets,
+            >>>     'nice'        : 'demo',
+            >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/demo'),
+            >>>     'loaders'     : {'batch_size': 64},
+            >>>     'xpu'         : nh.XPU.cast('auto'),
+            >>>     # --- Algorithm Second
+            >>>     'model'       : (nh.models.ToyNet2d, {}),
+            >>>     'optimizer'   : (nh.optimizers.SGD, {
+            >>>         'lr': 0.001
+            >>>     }),
+            >>>     'criterion'   : (nh.criterions.CrossEntropyLoss, {}),
+            >>>     #'criterion'   : (nh.criterions.FocalLoss, {}),
+            >>>     'initializer' : (nh.initializers.KaimingNormal, {
+            >>>         'param': 0,
+            >>>     }),
+            >>>     'scheduler'   : (nh.schedulers.ListedLR, {
+            >>>         'step_points': {0: .001, 2: .01, 5: .015, 6: .005, 9: .001},
+            >>>         'interpolate': True,
+            >>>     }),
+            >>>     'monitor'     : (nh.Monitor, {
+            >>>         'max_epoch': 10
+            >>>     }),
+            >>> })
+            >>> info = hyper.train_info()
+            >>> print(ub.repr2(info))
+        """
+        given_explicit_train_dpath = train_dpath is not None
+        # TODO: needs MASSIVE cleanup and organization
+
+        # TODO: if pretrained is another netharn model, then we should read that
+        # train_info if it exists and append it to a running list of train_info
+
+        if hyper.model_cls is None:
+            # import utool
+            # utool.embed()
+            raise ValueError('model_cls is None')
+        # arch = hyper.model_cls.__name__
+
+        train_dset = hyper.datasets.get('train', None)
+        if train_dset is not None and hasattr(train_dset, 'input_id'):
+            input_id = train_dset.input_id
+            if callable(input_id):
+                input_id = input_id()
+        else:
+            warnings.warn(
+                'FitHarn cannot track the training dataset state because '
+                'harn.datasets["train"] is missing the "input_id" attribute.'
+            )
+            input_id = 'none'
+
+        def _hash_data(data):
+            return ub.hash_data(data, hasher='sha512', base='abc', types=True)
+
+        train_hyper_id_long = hyper.hyper_id()
+        short = True
+        hashed = True
+        train_hyper_id_brief = hyper.hyper_id(short=short, hashed=hashed)
+        train_hyper_hashid = _hash_data(train_hyper_id_long)[:8]
+
+        # TODO: hash this to some degree
+        other_id = hyper.other_id()
+
+        augment_json = hyper.augment_json()
+
+        aug_brief = 'AU' + _hash_data(augment_json)[0:6]
+        # extra_hash = _hash_data([hyper.centering])[0:6]
+
+        train_id = '{}_{}_{}_{}'.format(
+            _hash_data(input_id)[:6], train_hyper_id_brief,
+            aug_brief, other_id)
+
+        # Gather all information about this run into a single hash
+        train_hashid = _hash_data(train_id)[0:8]
+
+        nice = hyper.nice
+
+        nice_dpath = None
+        if not given_explicit_train_dpath:
+            # setup a cannonical and a linked symlink dir
+            train_dpath = normpath(
+                    join(hyper.workdir, 'fit', 'runs', nice, train_hashid))
+            # also setup a "nice" custom name, which may conflict, but oh well
+            if nice:
+                try:
+                    nice_dpath = normpath(
+                            join(hyper.workdir, 'fit', 'nice', nice))
+                except Exception:
+                    print('hyper.workdir = {!r}'.format(hyper.workdir))
+                    print('hyper.nice = {!r}'.format(hyper.nice))
+                    raise
+
+        # make temporary initializer so we can infer the history
+        temp_initializer = hyper.make_initializer()
+        init_history = temp_initializer.history()
+
+        train_info =  ub.odict([
+            ('train_hashid', train_hashid),
+
+            ('train_id', train_id),
+
+            ('workdir', hyper.workdir),
+
+            ('aug_brief', aug_brief),
+
+            ('input_id', input_id),
+
+            ('other_id', other_id),
+
+            ('hyper', hyper.get_initkw()),
+
+            ('train_hyper_id_long', train_hyper_id_long),
+            ('train_hyper_id_brief', train_hyper_id_brief),
+            ('train_hyper_hashid', train_hyper_hashid),
+            ('init_history', init_history),
+            ('init_history_hashid', _hash_data(util.make_idstr(init_history))),
+
+            ('nice', hyper.nice),
+
+            ('old_train_dpath', normpath(
+                join(hyper.workdir, 'fit', 'runs', train_hashid))),
+
+            ('train_dpath', train_dpath),
+            # ('link_dpath', link_dpath),
+            ('nice_dpath', nice_dpath),
+
+            ('given_explicit_train_dpath', given_explicit_train_dpath),
+
+            # TODO, add in n_classes if applicable
+            # TODO, add in centering if applicable
+            # ('centering', hyper.centering),
+
+            ('other', hyper.other),
+
+            # HACKED IN
+            ('augment', hyper.augment_json()),
+
+            ('extra', hyper.extra),
+
+            ('argv', sys.argv),
+            ('hostname', platform.node()),
+        ])
+        return train_info
 
 if __name__ == '__main__':
     r"""
