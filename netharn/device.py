@@ -4,6 +4,7 @@ Abstracted processing device
 Creates a common API for dynamically running on CPU, GPU, or many GPUs
 """
 from __future__ import absolute_import, division, print_function
+import psutil
 import ubelt as ub
 import warnings
 import torch
@@ -294,6 +295,44 @@ class XPU(ub.NiceRepr):
         else:
             raise ValueError('cannot cast to XPU. item={}'.format(item))
 
+    def memory(self):
+        """
+        Example:
+            >>> from netharn.device import *
+            >>> print(ub.repr2(XPU.cast(None).memory()))
+            {
+                'available': ...,
+                'total': ...,
+                'used': ...,
+            }
+            >>> # xdoctest: +REQUIRES(--cuda)
+            >>> print(ub.repr2(XPU.cast(0).memory()))
+            {
+                'available': ...,
+                'total': ...,
+                'used': ...,
+            }
+
+        """
+        gpus = gpu_info()
+        info = {
+            'available': 0,
+            'total': 0,
+            'used': 0,
+        }
+        if self._device_ids is None:
+            tup = psutil.virtual_memory()
+            MB = 1 / 2 ** 20
+            info['total'] += tup.total * MB
+            info['used'] += tup.used * MB
+            info['available'] += tup.available * MB
+        else:
+            for id in self._device_ids:
+                info['total'] += gpus[id]['mem_total']
+                info['used'] += gpus[id]['mem_used']
+                info['available'] += gpus[id]['mem_avail']
+        return info
+
     @classmethod
     def from_auto(XPU, min_memory=NETHARN_MIN_MB):
         """
@@ -390,6 +429,9 @@ class XPU(ub.NiceRepr):
     def number_of_devices(xpu):
         """ The number of underlying devices abstracted by this XPU """
         return 1 if not xpu._device_ids else len(xpu._device_ids)
+
+    def is_cpu(xpu):
+        return xpu._main_device_id is None
 
     def is_gpu(xpu):
         """ True if running in single or parallel gpu mode """
@@ -630,10 +672,15 @@ def gpu_info():
     Warnings:
         if nvidia-smi is not installed
 
+    CommandLine:
+        xdoctest -m netharn.device gpu_info --cuda
+
     Example:
-        >>> if torch.cuda.is_available():
-        >>>     gpus = gpu_info()
-        >>>     assert len(gpus) == torch.cuda.device_count()
+        >>> # xdoctest: +REQUIRES(--cuda)
+        >>> from netharn.device import *
+        >>> gpus = gpu_info()
+        >>> print('gpus = {}'.format(ub.repr2(gpus)))
+        >>> assert len(gpus) == torch.cuda.device_count()
     """
     try:
         result = ub.cmd('nvidia-smi')
