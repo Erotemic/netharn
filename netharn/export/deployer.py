@@ -506,6 +506,13 @@ class DeployedModel(ub.NiceRepr):
         model_cls, model_kw = self.model_definition()
         model = model_cls(**model_kw)
 
+        if True:
+            # Always load models onto the CPU first
+            # import netharn as nh
+            model = model.to('cpu')
+            # devices = {k: item.device for k, item in model.state_dict().items()}
+            # nh.XPU.from_data(model)
+
         # TODO: load directly from instead of using initializer self.info['snap_fpath']?
         # Actually we can't because we lose the zopen stuff. Its probably ok
         # To depend on netharn a little bit.

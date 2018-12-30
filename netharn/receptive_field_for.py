@@ -908,9 +908,9 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         average_impact = average_impact.data.cpu().numpy()
 
     idx_nonzeros = np.where(average_impact != 0)
-    rf_bounds = [(idx.min(), idx.max()) for idx in idx_nonzeros]
+    rf_bounds = [(0, 0) if len(idx) == 0 else (idx.min(), idx.max()) for idx in idx_nonzeros]
     rf_shape = [(mx - mn + 1) for mn, mx in rf_bounds]
-    rf_slice = [slice(mn, mx + 1) for mn, mx in rf_bounds]
+    rf_slice = tuple([slice(mn, mx + 1) for mn, mx in rf_bounds])
 
     # Crop out the average impact zone for visualization
     # Normalize to have a maximum value of 1.0

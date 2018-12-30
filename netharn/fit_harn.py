@@ -322,6 +322,12 @@ class InitializeMixin:
                 ub.symlink(train_info['train_dpath'], train_info['nice_dpath'],
                            overwrite=True, verbose=3)
 
+            # Make a very simple MRU link
+            if True:
+                mru_dpath = join(harn.hyper.workdir, '_mru')
+                ub.symlink(train_info['train_dpath'], mru_dpath,
+                           overwrite=True, verbose=3)
+
             harn.train_info = train_info
             harn.nice_dpath = train_info['nice_dpath']
             harn.train_dpath = train_info['train_dpath']

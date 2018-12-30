@@ -91,8 +91,8 @@ class ParamatarizedAugmenter(imgaug.augmenters.Augmenter):
             >>> ]
             >>> augment = iaa.Sequential(augmentors)
             >>> info = _PA._json_id(augment)
-            >>> print(ub.repr2(info, nl=8, precision=2))
-            >>> _PA._json_id(iaa.AddToHueAndSaturation())
+            >>> import ubelt as ub
+            >>> print(ub.repr2(info, nl=2, precision=2))
         """
         _PA = ParamatarizedAugmenter
         if isinstance(aug, tuple):

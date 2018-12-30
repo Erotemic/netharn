@@ -194,19 +194,19 @@ class XPU(ub.NiceRepr):
             raise TypeError(type(item))
 
     @classmethod
-    def of(XPU, item, **kwargs):
+    def from_data(XPU, item, **kwargs):
         """
         Creates an XPU to represent the processing device(s) a Module, Tensor,
         or Variable currently exists on.
 
         Example:
-            >>> xpu = XPU.of(torch.randn(3))
+            >>> xpu = XPU.from_data(torch.randn(3))
             >>> assert not xpu.is_gpu()
             >>> if torch.cuda.is_available():
-            >>>     xpu = XPU.of(torch.randn(3).to('cuda'))
+            >>>     xpu = XPU.from_data(torch.randn(3).to('cuda'))
             >>>     assert xpu.is_gpu()
             >>>     for i in range(torch.cuda.device_count()):
-            >>>         xpu = XPU.of(torch.randn(3).to(i))
+            >>>         xpu = XPU.from_data(torch.randn(3).to(i))
             >>>         assert xpu.is_gpu()
             >>>         assert xpu._main_device_id == i
         """
@@ -234,12 +234,16 @@ class XPU(ub.NiceRepr):
         else:
             raise TypeError(type(item))
 
-    from_data = of
+    of = from_data
 
     @classmethod
     def coerce(cls, item, **kwargs):
-        """ I think I like this name better than cast, not sure """
-        cls.cast(item, **kwargs)
+        """
+        Converts objects of many different types into an XPU.
+
+        I think I like this name better than cast, not sure
+        """
+        return cls.cast(item, **kwargs)
 
     @classmethod
     def cast(xpu, item, **kwargs):
@@ -254,9 +258,9 @@ class XPU(ub.NiceRepr):
         elif isinstance(item, XPU):
             return item
         elif isinstance(item, _TENSOR_TYPES):
-            return XPU.of(item)
+            return XPU.from_data(item)
         elif isinstance(item, torch.nn.Module):
-            return XPU.of(item)
+            return XPU.from_data(item)
         elif isinstance(item, int):
             return XPU(item)
         elif isinstance(item, (list, tuple)):
