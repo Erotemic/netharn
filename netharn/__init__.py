@@ -10,7 +10,7 @@ from netharn.fit_harn import (FitHarn,)
 from netharn.hyperparams import (HyperParams,)
 from netharn.monitor import (Monitor,)
 from netharn.initializers import (Initializer,)
-from netharn.output_shape_for import OutputShapeFor
+from netharn.output_shape_for import OutputShapeFor, OutputShape, HiddenShape
 from netharn.receptive_field_for import ReceptiveFieldFor
 
 __extra_all__ = [
@@ -19,7 +19,10 @@ __extra_all__ = [
     'HyperParams',
     'Monitor',
     'Initializer',
+
     'OutputShapeFor',
+    'OutputShape',
+    'HiddenShape',
     'ReceptiveFieldFor',
 ]
 

@@ -136,6 +136,24 @@ class HiddenShape(OrderedDict, ub.NiceRepr):
             value = value.hidden
         return OrderedDict.__setitem__(self, key, value)
 
+    def shallow(self, n=1):
+        """
+        Grabs only the shallowest n layers of hidden shapes
+        """
+        if n == 0:
+            last = self
+            while isinstance(last, HiddenShape):
+                last = list(last.values())[-1]
+            return last
+        else:
+            output = self.__class__()
+            for key, value in self.items():
+                if isinstance(value, HiddenShape):
+                    output[key] = value.shallow(n - 1)
+                else:
+                    output[key] = value
+            return output
+
 
 class OutputShape(object):
     """
