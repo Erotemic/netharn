@@ -32,9 +32,9 @@ class MountedModel(torch.nn.Module):
     Abstraction of DataParallel and DataSerial
     """
 
-    def receptive_field_for(self, prev=None):
+    def receptive_field_for(self, input_field=None):
         import netharn as nh
-        return nh.ReceptiveFieldFor(self)(prev)
+        return nh.ReceptiveFieldFor(self)(input_field)
 
 
 class DataParallel(torch.nn.DataParallel, MountedModel):

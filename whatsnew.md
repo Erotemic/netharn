@@ -1,4 +1,4 @@
-Version 0.1.3
+Version 0.1.4
 ==============
 * Deprecate `HiddenShapesFor`
 * Move `HiddenShapesFor` functionality to `OutputShapeFor`
@@ -6,6 +6,9 @@ Version 0.1.3
 * Rename internal variables of `nh.Monitor`
 * Improve doc-strings for `nh.Monitor`
 * Move folder functionality into `hyperparams`.
+
+Version 0.1.3
+==============
 * Add (hacked-in) better `imgaug` hyperparameter logging. 
 * Add verbose kwarg to `Pretrained.forward`
 * Add `IgnoreLayerContext`

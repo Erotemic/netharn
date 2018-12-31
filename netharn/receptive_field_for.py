@@ -60,7 +60,7 @@ class ReceptiveField(OrderedDict):
         return self.data[key]
 
 
-class HiddenField(OrderedDict, ub.NiceRepr):
+class HiddenFields(OrderedDict, ub.NiceRepr):
     """
     Augments normal hidden fields dicts with a convinience setitem
     """
@@ -82,20 +82,21 @@ class HiddenField(OrderedDict, ub.NiceRepr):
 
     def shallow(self, n=1):
         """
-        Grabs only the shallowest n layers of hidden shapes
+        Grabs only the shallowest n layers of hidden fields
         """
         if n == 0:
             last = self
-            while isinstance(last, HiddenField):
+            # while isinstance(last, HiddenFields):
+            while hasattr(last, 'shallow'):
                 last = list(last.values())[-1]
             return last
         else:
-            output = self.__class__()
+            output = OrderedDict()
             for key, value in self.items():
-                if isinstance(value, HiddenField):
-                    output[key] = value.shallow(n - 1)
-                else:
-                    output[key] = value
+                # if isinstance(value, HiddenFields):
+                if hasattr(value, 'shallow'):
+                    value = value.shallow(n - 1)
+                output[key] = value
             return output
 
 
@@ -119,7 +120,7 @@ class _TorchMixin(object):
             # Use the coordinate system where the top left corner is 0, 0 ( This is unlike [1], which uses 0.5)
             'crop': ensure_array_nd(0.0, n),
         })
-        return input_field, input_field
+        return input_field
 
     @staticmethod
     def _kernelized(module, input_field=None, ndim=None):
@@ -145,28 +146,28 @@ class _TorchMixin(object):
 
         Example:
             >>> module = nn.Conv2d(1, 1, kernel_size=5, stride=2, padding=2, dilation=3)
-            >>> field = ReceptiveFieldFor._kernelized(module)[0]
+            >>> field = ReceptiveFieldFor._kernelized(module)
             >>> print(ub.repr2(field, nl=0, with_dtype=False))
             {'crop': np.array([4., 4.]), 'shape': np.array([13., 13.]), 'stride': np.array([2., 2.])}
 
             >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=2)
-            >>> field = ReceptiveFieldFor._kernelized(module)[0]
+            >>> field = ReceptiveFieldFor._kernelized(module)
             >>> print(ub.repr2(field, nl=0, with_dtype=False))
             {'crop': np.array([0., 0.]), 'shape': np.array([5., 5.]), 'stride': np.array([2., 2.])}
 
             >>> module = nn.MaxPool2d(kernel_size=3, stride=2, padding=2, dilation=1)
-            >>> field = ReceptiveFieldFor._kernelized(module)[0]
+            >>> field = ReceptiveFieldFor._kernelized(module)
             >>> print(ub.repr2(field, nl=0, with_dtype=False))
             {'crop': np.array([-1., -1.]), 'shape': np.array([3., 3.]), 'stride': np.array([2., 2.])}
 
             >>> module = nn.AvgPool2d(kernel_size=3, stride=2, padding=2)
-            >>> field = ReceptiveFieldFor._kernelized(module)[0]
+            >>> field = ReceptiveFieldFor._kernelized(module)
             >>> print(ub.repr2(field, nl=0, with_dtype=False))
             {'crop': np.array([-1., -1.]), 'shape': np.array([3., 3.]), 'stride': np.array([2., 2.])}
         """
         # impl = ReceptiveFieldFor.impl
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[0]
+            input_field = ReceptiveFieldFor.input()
 
         # Hack to get the number of space-time dimensions
         if ndim is None:
@@ -259,14 +260,14 @@ class _TorchMixin(object):
             # padding the the edge of the previous layer is cropped).
             'crop': input_field['crop'] + crop * input_field['stride'],
         })
-        return field, field
+        return field
 
     @staticmethod
     def _unchanged(module, input_field=None):
         """ Formula for layers that do not change the receptive field """
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[0]
-        return input_field, input_field
+            input_field = ReceptiveFieldFor.input()
+        return input_field
 
     @staticmethod
     @compute_type(nn.Linear)
@@ -285,7 +286,7 @@ class _TorchMixin(object):
             >>> from netharn.receptive_field_for import *
             >>> from netharn.output_shape_for import *
             >>> module = nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, padding=2)
-            >>> ReceptiveFieldFor(module)()[0]
+            >>> ReceptiveFieldFor(module)()
 
             >>> # This network should effectively invert itself
             >>> module = nn.Sequential(ub.odict([
@@ -297,8 +298,8 @@ class _TorchMixin(object):
             >>>     ('c2T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2)),
             >>>     ('c1T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2)),
             >>> ]))
-            >>> print(ub.repr2(ReceptiveFieldFor(module)()[0]))
-            >>> ReceptiveFieldFor(module)()[0]
+            >>> print(ub.repr2(ReceptiveFieldFor(module)()))
+            >>> ReceptiveFieldFor(module)()
             >>> OutputShapeFor(module)._check_consistency([1, 1, 32, 32])
 
             >>> module = nn.Sequential(ub.odict([
@@ -310,7 +311,7 @@ class _TorchMixin(object):
             >>>     ('c2T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, dilation=2)),
             >>>     ('c1T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, dilation=2)),
             >>> ]))
-            >>> print(ub.repr2(ReceptiveFieldFor(module)()[0]))
+            >>> print(ub.repr2(ReceptiveFieldFor(module)()))
 
             >>> # This network is pathological
             >>> module = nn.Sequential(ub.odict([
@@ -322,8 +323,8 @@ class _TorchMixin(object):
             >>>     ('c2T', nn.ConvTranspose2d(1, 1, kernel_size=5, stride=7, padding=1)),
             >>>     ('c1T', nn.ConvTranspose2d(1, 1, kernel_size=3, stride=8, dilation=2)),
             >>> ]))
-            >>> print(ub.repr2(ReceptiveFieldFor(module)()[0]))
-            >>> ReceptiveFieldFor(module)()[0]
+            >>> print(ub.repr2(ReceptiveFieldFor(module)()))
+            >>> ReceptiveFieldFor(module)()
             >>> OutputShapeFor(module)([1, 1, 900, 900])
             >>> OutputShapeFor(module)([1, 1, 900, 900]).hidden
             >>> OutputShapeFor(module)._check_consistency([1, 1, 900, 900])
@@ -336,10 +337,10 @@ class _TorchMixin(object):
             >>>     nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2),
             >>>     nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2),
             >>> )
-            >>> ReceptiveFieldFor(module)()[0]
+            >>> ReceptiveFieldFor(module)()
 
             >>> module = nn.Conv2d(1, 1, kernel_size=3, stride=2, padding=1)
-            >>> ReceptiveFieldFor(module)()[0]
+            >>> ReceptiveFieldFor(module)()
 
             >>> OutputShapeFor(nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, padding=0, output_padding=(1, 1)))._check_consistency([1, 1, 1, 1])
 
@@ -356,7 +357,7 @@ class _TorchMixin(object):
         """
         # impl = ReceptiveFieldFor.impl
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[0]
+            input_field = ReceptiveFieldFor.input()
 
         # Hack to get the number of space-time dimensions
         ndim = None
@@ -475,7 +476,7 @@ class _TorchMixin(object):
             'crop': input_field['crop'] + crop * effective_input_stride,
         })
 
-        return field, field
+        return field
         # raise NotImplementedError('todo')
 
     @compute_type(nn.modules.conv._ConvTransposeMixin)
@@ -529,7 +530,7 @@ class _TorchMixin(object):
             >>>     nn.Conv2d(3, 5, kernel_size=3),
             >>>     nn.Conv2d(5, 7, kernel_size=3),
             >>> )
-            >>> rfield, rfields = ReceptiveFieldFor(self)()
+            >>> rfield = ReceptiveFieldFor(self)()
             >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1, with_dtype=False)))
             rfield = {
                 'crop': np.array([3., 3.]),
@@ -538,15 +539,16 @@ class _TorchMixin(object):
             }
         """
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[0]
+            input_field = ReceptiveFieldFor.input()
         rfield = input_field
-        rfields = ub.odict()
+        hidden = HiddenFields()
         for key, child in module._modules.items():
             if hasattr(child, 'receptive_field_for'):
-                rfield, rfields[key] = child.receptive_field_for(rfield)
+                rfield = hidden[key] = child.receptive_field_for(rfield)
             else:
-                rfield, rfields[key] = ReceptiveFieldFor(child)(rfield)
-        return rfield, rfields
+                rfield = hidden[key] = ReceptiveFieldFor(child)(rfield)
+        rfield.hidden = hidden
+        return rfield
 
     @staticmethod
     @compute_type(torch.nn.DataParallel)
@@ -567,126 +569,152 @@ class _TorchvisionMixin(object):
             >>> # xdoctest: +REQUIRES(--network)
             >>> import torchvision  # NOQA
             >>> module = torchvision.models.resnet18().layer1[0]
-            >>> fields, field = ReceptiveFieldFor(module)()
-            >>> print(ub.repr2(fields, nl=2, with_dtype=False))
+            >>> field = ReceptiveFieldFor(module)()
+            >>> print(ub.repr2(field.hidden, nl=1, with_dtype=False))
+            {
+                'conv1': {'crop': np.array([0., 0.]), 'shape': np.array([3., 3.]), 'stride': np.array([1., 1.])},
+                'bn1': {'crop': np.array([0., 0.]), 'shape': np.array([3., 3.]), 'stride': np.array([1., 1.])},
+                'relu1': {'crop': np.array([0., 0.]), 'shape': np.array([3., 3.]), 'stride': np.array([1., 1.])},
+                'conv2': {'crop': np.array([0., 0.]), 'shape': np.array([5., 5.]), 'stride': np.array([1., 1.])},
+                'bn2': {'crop': np.array([0., 0.]), 'shape': np.array([5., 5.]), 'stride': np.array([1., 1.])},
+                'relu2': {'crop': np.array([0., 0.]), 'shape': np.array([5., 5.]), 'stride': np.array([1., 1.])},
+            }
         """
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[0]
-        rfields = ub.odict()
+            input_field = ReceptiveFieldFor.input()
+        hidden = HiddenFields()
 
-        residual_field = input_field
         rfield = input_field
 
-        rfield, rfields['conv1'] = ReceptiveFieldFor(module.conv1)(rfield)
-        rfield, rfields['bn1'] = ReceptiveFieldFor(module.bn1)(rfield)
-        rfield, rfields['relu1'] = ReceptiveFieldFor(module.relu)(rfield)
+        rfield = hidden['conv1'] = ReceptiveFieldFor(module.conv1)(rfield)
+        rfield = hidden['bn1'] = ReceptiveFieldFor(module.bn1)(rfield)
+        rfield = hidden['relu1'] = ReceptiveFieldFor(module.relu)(rfield)
 
-        rfield, rfields['conv2'] = ReceptiveFieldFor(module.conv2)(rfield)
-        rfield, rfields['bn2'] = ReceptiveFieldFor(module.bn2)(rfield)
-        rfield, rfields['relu2'] = ReceptiveFieldFor(module.relu)(rfield)
+        rfield = hidden['conv2'] = ReceptiveFieldFor(module.conv2)(rfield)
+        rfield = hidden['bn2'] = ReceptiveFieldFor(module.bn2)(rfield)
+        rfield = hidden['relu2'] = ReceptiveFieldFor(module.relu)(rfield)
 
         if module.downsample is not None:
-            residual_field, rfields['downsample'] = ReceptiveFieldFor(module.downsample)(input_field)
+            hidden['downsample'] = ReceptiveFieldFor(module.downsample)(input_field)
 
-        rfield, _ = ReceptiveFieldFor(module.relu)(rfield)
-        return rfield, rfields
+        rfield = ReceptiveFieldFor(module.relu)(rfield)
+        rfield.hidden = hidden
+        return rfield
 
     @staticmethod
     @compute_type(torchvision.models.resnet.Bottleneck)
     def resent_bottleneck(module, input_field=None):
         """
+        CommandLine:
+            xdoctest -m netharn.receptive_field_for _TorchvisionMixin.resent_bottleneck --network
+
         Example:
             >>> # xdoctest: +REQUIRES(--network)
             >>> import torchvision  # NOQA
             >>> module = torchvision.models.resnet50().layer1[0]
-            >>> fields, field = ReceptiveFieldFor(module)()
-            >>> print(ub.repr2(fields[-1], nl=1, with_dtype=False))
+            >>> field = ReceptiveFieldFor(module)()
+            >>> print(ub.repr2(field.hidden.shallow(1), nl=1, with_dtype=False))
+            {
+                'conv1': {'crop': ...([0., 0.]), 'shape': ...([1., 1.]), 'stride': ...([1., 1.])},
+                'bn1': {'crop': ...([0., 0.]), 'shape': ...([1., 1.]), 'stride': ...([1., 1.])},
+                'relu1': {'crop': ...([0., 0.]), 'shape': ...([1., 1.]), 'stride': ...([1., 1.])},
+                'conv2': {'crop': ...([0., 0.]), 'shape': ...([3., 3.]), 'stride': ...([1., 1.])},
+                'bn2': {'crop': ...([0., 0.]), 'shape': ...([3., 3.]), 'stride': ...([1., 1.])},
+                'relu2': {'crop': ...([0., 0.]), 'shape': ...([3., 3.]), 'stride': ...([1., 1.])},
+                'conv3': {'crop': ...([0., 0.]), 'shape': ...([3., 3.]), 'stride': ...([1., 1.])},
+                'bn3': {'crop': ...([0., 0.]), 'shape': ...([3., 3.]), 'stride': ...([1., 1.])},
+                'downsample': {'crop': ...([0., 0.]), 'shape': ...([1., 1.]), 'stride': ...([1., 1.])},
+            }
         """
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[0]
-        residual_field = input_field
+            input_field = ReceptiveFieldFor.input()
         rfield = input_field
-        rfields = ub.odict()
+        hidden = HiddenFields()
 
-        rfield, rfields['conv1'] = ReceptiveFieldFor(module.conv1)(rfield)
-        rfield, rfields['bn1'] = ReceptiveFieldFor(module.bn1)(rfield)
-        rfield, rfields['relu1'] = ReceptiveFieldFor(module.relu)(rfield)
+        rfield = hidden['conv1'] = ReceptiveFieldFor(module.conv1)(rfield)
+        rfield = hidden['bn1'] = ReceptiveFieldFor(module.bn1)(rfield)
+        rfield = hidden['relu1'] = ReceptiveFieldFor(module.relu)(rfield)
 
-        rfield, rfields['conv2'] = ReceptiveFieldFor(module.conv2)(rfield)
-        rfield, rfields['bn2'] = ReceptiveFieldFor(module.bn2)(rfield)
-        rfield, rfields['relu2'] = ReceptiveFieldFor(module.relu)(rfield)
+        rfield = hidden['conv2'] = ReceptiveFieldFor(module.conv2)(rfield)
+        rfield = hidden['bn2'] = ReceptiveFieldFor(module.bn2)(rfield)
+        rfield = hidden['relu2'] = ReceptiveFieldFor(module.relu)(rfield)
 
-        rfield, rfields['conv3'] = ReceptiveFieldFor(module.conv3)(rfield)
-        rfield, rfields['bn3'] = ReceptiveFieldFor(module.bn3)(rfield)
+        rfield = hidden['conv3'] = ReceptiveFieldFor(module.conv3)(rfield)
+        rfield = hidden['bn3'] = ReceptiveFieldFor(module.bn3)(rfield)
 
         if module.downsample is not None:
-            residual_field, rfields['downsample'] = ReceptiveFieldFor(module.downsample)(input_field)
+            hidden['downsample'] = ReceptiveFieldFor(module.downsample)(input_field)
 
-        rfield, _ = ReceptiveFieldFor(module.relu)(rfield)
-        return rfield, rfields
+        rfield = ReceptiveFieldFor(module.relu)(rfield)
+        rfield.hidden = hidden
+        return rfield
 
     @staticmethod
     @compute_type(torchvision.models.resnet.ResNet)
     def resnet_model(module, input_field=None, input_shape=None):
         """
+        CommandLine:
+            xdoctest -m netharn.receptive_field_for _TorchvisionMixin.resnet_model --network
+
         Example:
             >>> # xdoctest: +REQUIRES(--network)
             >>> from netharn.receptive_field_for import *
             >>> module = torchvision.models.resnet50()
             >>> input_shape = (1, 3, 224, 224)
-            >>> fields, field = ReceptiveFieldFor(module)(input_shape=input_shape)
-            >>> print(ub.repr2(field, nl=1, with_dtype=False))
+            >>> field = ReceptiveFieldFor(module)(input_shape=input_shape)
+            >>> print(ub.repr2(field.hidden.shallow(1), nl=1, with_dtype=False))
+            {
+                'conv1': {'crop': ...([0., 0.]), 'shape': ...([7., 7.]), 'stride': ...([2., 2.])},
+                'bn1': {'crop': ...([0., 0.]), 'shape': ...([7., 7.]), 'stride': ...([2., 2.])},
+                'relu1': {'crop': ...([0., 0.]), 'shape': ...([7., 7.]), 'stride': ...([2., 2.])},
+                'maxpool': {'crop': ...([0., 0.]), 'shape': ...([11., 11.]), 'stride': ...([4., 4.])},
+                'layer1': {'crop': ...([0., 0.]), 'shape': ...([35., 35.]), 'stride': ...([4., 4.])},
+                'layer2': {'crop': ...([0., 0.]), 'shape': ...([91., 91.]), 'stride': ...([8., 8.])},
+                'layer3': {'crop': ...([0., 0.]), 'shape': ...([267., 267.]), 'stride': ...([16., 16.])},
+                'layer4': {'crop': ...([0., 0.]), 'shape': ...([427., 427.]), 'stride': ...([32., 32.])},
+                'avgpool': {'crop': ...([96., 96.]), 'shape': ...([619., 619.]), 'stride': ...([32., 32.])},
+                'flatten': {'crop': ...([96., 96.]), 'shape': ...([811., 811.]), 'stride': ...([32., 32.])},
+                'fc': {'crop': ...([96., 96.]), 'shape': ...([811., 811.]), 'stride': ...([32., 32.])},
+            }
 
-        Ignore:
-            >>> input_shape = (1, 3, 448, 448)
-
-            OutputShapeFor(module)(input_shape)
         """
         if input_field is None:
-            input_field = ReceptiveFieldFor.input()[0]
+            input_field = ReceptiveFieldFor.input()
         rfield = input_field
-        rfields = ub.odict()
-        rfield, rfields['conv1'] = ReceptiveFieldFor(module.conv1)(rfield)
-        rfield, rfields['bn1'] = ReceptiveFieldFor(module.bn1)(rfield)
-        rfield, rfields['relu1'] = ReceptiveFieldFor(module.relu)(rfield)
-        rfield, rfields['maxpool'] = ReceptiveFieldFor(module.maxpool)(rfield)
+        hidden = HiddenFields()
+        rfield = hidden['conv1'] = ReceptiveFieldFor(module.conv1)(rfield)
+        rfield = hidden['bn1'] = ReceptiveFieldFor(module.bn1)(rfield)
+        rfield = hidden['relu1'] = ReceptiveFieldFor(module.relu)(rfield)
+        rfield = hidden['maxpool'] = ReceptiveFieldFor(module.maxpool)(rfield)
 
-        rfield, rfields['layer1'] = ReceptiveFieldFor(module.layer1)(rfield)
-        rfield, rfields['layer2'] = ReceptiveFieldFor(module.layer2)(rfield)
-        rfield, rfields['layer3'] = ReceptiveFieldFor(module.layer3)(rfield)
-        rfield, rfields['layer4'] = ReceptiveFieldFor(module.layer4)(rfield)
+        rfield = hidden['layer1'] = ReceptiveFieldFor(module.layer1)(rfield)
+        rfield = hidden['layer2'] = ReceptiveFieldFor(module.layer2)(rfield)
+        rfield = hidden['layer3'] = ReceptiveFieldFor(module.layer3)(rfield)
+        rfield = hidden['layer4'] = ReceptiveFieldFor(module.layer4)(rfield)
 
-        rfield, rfields['avgpool'] = ReceptiveFieldFor(module.avgpool)(rfield)
+        rfield = hidden['avgpool'] = ReceptiveFieldFor(module.avgpool)(rfield)
 
         if input_shape is None:
             raise ValueError('input shape is required')
 
-        shape = input_shape
-        shape = OutputShapeFor(module.conv1)(shape)
-        shape = OutputShapeFor(module.bn1)(shape)
-        shape = OutputShapeFor(module.relu)(shape)
-        shape = OutputShapeFor(module.maxpool)(shape)
-        shape = OutputShapeFor(module.layer1)(shape)
-        shape = OutputShapeFor(module.layer2)(shape)
-        shape = OutputShapeFor(module.layer3)(shape)
-        shape = OutputShapeFor(module.layer4)(shape)
-        shape = OutputShapeFor(module.avgpool)(shape)
-
-        spatial_shape = np.array(shape[2:])
+        output_shape = OutputShapeFor(module)(input_shape)
+        avgpool_shape = output_shape.hidden.shallow(1)['layer4']
+        spatial_shape = np.array(avgpool_shape[2:])
 
         # Keep everything the same except increase the RF shape
         # based on how many output pixels there are.
-        rfield_flatten = rfield.copy()
+        rfield_flatten = ReceptiveField(dict(**rfield))
         # not sure if this is 100% correct
         rfield_flatten['shape'] = rfield['shape'] + (spatial_shape - 1) * rfield['stride']
-        rfields['flatten'] = rfield = rfield_flatten
+        hidden['flatten'] = rfield = rfield_flatten
 
         # The reshape operation will blend the receptive fields of the inputs
         # but it will depend on the output shape of the layer.
         # rfield = (rfield[0], prod(rfield[1:]))
 
-        rfield, rfields['fc'] = ReceptiveFieldFor(module.fc)(rfield)
-        return rfield, rfield
+        rfield = hidden['fc'] = ReceptiveFieldFor(module.fc)(rfield)
+        rfield.hidden = hidden
+        return rfield
 
 
 class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
@@ -712,14 +740,15 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
 
     Example:
         >>> # Case where we have a registered func
+        >>> from netharn.receptive_field_for import *
         >>> self = nn.Sequential(
         >>>     nn.Conv2d(2, 3, kernel_size=3),
         >>>     nn.Conv2d(3, 5, kernel_size=3),
         >>> )
-        >>> rfield, rfields = ReceptiveFieldFor(self)()
-        >>> print('rfields = {}'.format(ub.repr2(rfields, nl=3, with_dtype=False)))
+        >>> rfield = ReceptiveFieldFor(self)()
+        >>> print('rfield.hidden = {}'.format(ub.repr2(rfield.hidden, nl=3, with_dtype=False)))
         >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1, with_dtype=False)))
-        rfields = {
+        rfield.hidden = {
             '0': {
                 'crop': np.array([1., 1.]),
                 'shape': np.array([3., 3.]),
@@ -739,9 +768,8 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
 
     Example:
         >>> # Case where we haven't registered a func
-        >>> # In this case rfields is not populated (but rfield is)
         >>> self = nn.Conv2d(2, 3, kernel_size=3)
-        >>> rfield, rfields = ReceptiveFieldFor(self)()
+        >>> rfield = ReceptiveFieldFor(self)()
         >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1, with_dtype=False)))
         rfield = {
             'crop': np.array([1., 1.]),
@@ -753,7 +781,7 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         >>> # xdoctest: +REQUIRES(--network)
         >>> import torchvision  # NOQA
         >>> module = torchvision.models.alexnet().features
-        >>> field, fields = ReceptiveFieldFor(module)()
+        >>> field = ReceptiveFieldFor(module)()
         >>> print(ub.repr2(field, nl=1, with_dtype=False))
         {
             'crop': np.array([31., 31.]),
@@ -788,14 +816,14 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
             is_bound  = hasattr(self._func, '__func__') and getattr(self._func, '__func__', None) is not None
             is_bound |= hasattr(self._func, 'im_func') and getattr(self._func, 'im_func', None) is not None
             if is_bound:
-                rfield, rfields = self._func(*args, **kwargs)
+                rfield = self._func(*args, **kwargs)
             else:
                 # nn.Module with state
-                rfield, rfields = self._func(self.module, *args, **kwargs)
+                rfield = self._func(self.module, *args, **kwargs)
         else:
             # a simple pytorch func
-            rfield, rfields = self._func(*args, **kwargs)
-        return rfield, rfields
+            rfield = self._func(*args, **kwargs)
+        return rfield
 
 
 def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
@@ -848,7 +876,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         >>> module = nn.Sequential(*[nn.Conv2d(1, 1, 3) for i in range(10)])
         >>> inputs = torch.rand(1, 1, 200, 200)
         >>> emperical_field = effective_receptive_feild(module, inputs)
-        >>> theoretic_field = ReceptiveFieldFor(module)()[0]
+        >>> theoretic_field = ReceptiveFieldFor(module)()
         >>> # The emperical results should never be bigger than the theoretical
         >>> assert np.all(emperical_field['shape'] <= theoretic_field['shape'])
 
@@ -856,7 +884,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         >>> module = torchvision.models.alexnet().features
         >>> inputs = torch.rand(1, 3, 224, 224)
         >>> emperical_field = effective_receptive_feild(module, inputs)
-        >>> theoretic_field = ReceptiveFieldFor(module)()[0]
+        >>> theoretic_field = ReceptiveFieldFor(module)()
         >>> # The emperical results should never be bigger than the theoretical
         >>> assert np.all(emperical_field['shape'] <= theoretic_field['shape'])
 
@@ -866,7 +894,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         >>> module = xpu.move(torchvision.models.vgg11_bn().features)
         >>> inputs = xpu.move(torch.rand(1, 3, 224, 224))
         >>> emperical_field = effective_receptive_feild(module, inputs)
-        >>> theoretic_field = ReceptiveFieldFor(module)()[0]
+        >>> theoretic_field = ReceptiveFieldFor(module)()
         >>> # The emperical results should never be bigger than the theoretical
         >>> assert np.all(emperical_field['shape'] <= theoretic_field['shape'])
 
@@ -1000,7 +1028,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
 if __name__ == '__main__':
     """
     CommandLine:
-        xdoctest -m netharn.receptive_field_for all
+        xdoctest -m netharn.receptive_field_for all --network
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
