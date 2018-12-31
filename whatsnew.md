@@ -1,5 +1,6 @@
 Version 0.1.4
 ==============
+* Add `devices` to `nh.layers.Module`
 * Deprecate `HiddenShapesFor`
 * Move `HiddenShapesFor` functionality to `OutputShapeFor`
 * Clean CIFAR example.
