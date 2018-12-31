@@ -996,7 +996,15 @@ class CoreMixin:
     """
     def run(harn):
         """
-        main training loop
+        Runs the main training loop
+
+        This starts the main loop which will run until a the monitor's
+        terminator criterion is satisfied. If the initialize step loaded a
+        checkpointed that already met the termination criterion, then this will
+        simply return.
+
+        Returns:
+            PathLike: deploy_fpath: the path to the standalone deployed model
         """
         if not harn._initialized:
             harn.initialize()
@@ -1085,10 +1093,11 @@ class CoreMixin:
             harn.info('view tensorboard results for this run via:\n'
                       '    tensorboard --logdir ' + ub.compressuser(train_base))
 
-        harn._deploy()
+        deploy_fpath = harn._deploy()
 
         harn.on_complete()
         harn.info('exiting fit harness.')
+        return deploy_fpath
 
     def _deploy(harn):
         """
@@ -1556,11 +1565,14 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             * on_epoch(harn)
 
     Args:
-        hyper (netharn.HyperParams): Parameters that determine the system.
-            This serializable class encodes enough information to
-            deterministically reproduce an experiment.
+        hyper (netharn.HyperParams | dict):
+            Parameters that determine the system.  This serializable class
+            encodes enough information to deterministically reproduce an
+            experiment.
 
-            Because it is serializable it also has a dict representation.
+            Because it is serializable it also has a dict representation. If
+            hyper is a dict then that dict is used as keyword arguments to
+            construct an instance of `netharn.HyperParams`.
 
         train_dpath (str or None): if specified, all progress information is
             stored in this path and the path computed via hyper is ignored.
@@ -1568,11 +1580,33 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             `hyper` to create a directory based on the hyperparamters.
 
     Attributes:
-        model (torch.nn.Module) : an instance of your model (po
-        optimizer (torch.nn.Module) :
-        scheduler (torch.nn.Module) :
-        criterion (torch.nn.Module) :
-        monitor (nh.Monitor) : monitors performance of the validation set
+        hyper (netharn.Hyperparams):
+            The rectified `hyper` argument that was passed to the FitHarn
+            constructor.  Note that hyper is the only (important) argument to
+            FitHarn and all other attributes will be derived from `hyper`.
+            SeeAlso: `netharn.hyperparameters`.
+
+        model (torch.nn.Module) :
+            An instance of your model architecture.
+            SeeAlso: `netharn.models` and `netharn.layers` for models and
+            layers that may not be in torchvision.
+
+        initializer (netharn.Initializer):
+            pass
+
+        optimizer (torch.optim.optimizer.Optimizer) :
+            Optimization algorithm like SGD or ADAM. SeeAlso: `netharn.optimizers`
+
+        scheduler (torch.optim.lr_scheduler._LRScheduler) :
+            Learning rate scheduler. SeeAlso: `netharn.schedulers` for a schedulers
+            that are not currently implemented in torch.
+
+        criterion (torch.nn.modules.loss._Loss) :
+            Objective function / loss criterion. SeeAlso: `netharn.criterions`
+
+        monitor (netharn.Monitor) :
+            monitors performance of the validation set. SeeAlso `netharn.monitor`.
+
 
     Note:
         hyper is optional. If you choose not to specify it then you must
@@ -1598,6 +1632,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
 
         # The following attributes will be initialized in harn._setup_modules()
         harn.model = None
+        harn.initializer = None
         harn.optimizer = None
         harn.scheduler = None
         harn.criterion = None

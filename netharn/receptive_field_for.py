@@ -235,7 +235,6 @@ class _TorchMixin(object):
         Example:
             >>> from netharn.receptive_field_for import *
             >>> from netharn.output_shape_for import *
-            >>> from netharn.hidden_shapes_for import *
             >>> module = nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, padding=2)
             >>> ReceptiveFieldFor(module)()[0]
 
@@ -277,7 +276,7 @@ class _TorchMixin(object):
             >>> print(ub.repr2(ReceptiveFieldFor(module)()[0]))
             >>> ReceptiveFieldFor(module)()[0]
             >>> OutputShapeFor(module)([1, 1, 900, 900])
-            >>> HiddenShapesFor(module)([1, 1, 900, 900])
+            >>> OutputShapeFor(module)([1, 1, 900, 900]).hidden
             >>> OutputShapeFor(module)._check_consistency([1, 1, 900, 900])
 
             >>> module = nn.Sequential(

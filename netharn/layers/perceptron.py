@@ -14,20 +14,25 @@ class MultiLayerPerceptronNd(common.Sequential):
         xdoctest -m netharn.layers.perceptron MultiLayerPerceptronNd
 
     Example:
+        >>> from netharn.layers.perceptron import *
+        >>> import ubelt as ub
         >>> self = MultiLayerPerceptronNd(1, 128, [256, 64], out_channels=2)
         >>> print(self)
         MultiLayerPerceptronNd...
-        >>> import ubelt as ub
-        >>> shapes, shape = self.hidden_shapes_for([1, 128])
-        >>> print(ub.repr2(shapes, nl=1))
-        {
-            'hidden0': (1, 256),
-            'dropout0': (1, 256),
-            'hidden1': (1, 64),
-            'dropout1': (1, 64),
-            'output': (1, 2),
+        >>> shape = self.output_shape_for([1, 128, 7])
+        >>> print('shape = {!r}'.format(shape))
+        >>> print('shape.hidden = {}'.format(ub.repr2(shape.hidden, nl=1)))
+        shape = (1, 2, 7)
+        shape.hidden = {
+            'hidden0': {'conv': (1, 256, 7), 'norm': (1, 256, 7), 'noli': (1, 256, 7)},
+            'dropout0': (1, 256, 7),
+            'hidden1': {'conv': (1, 64, 7), 'norm': (1, 64, 7), 'noli': (1, 64, 7)},
+            'dropout1': (1, 64, 7),
+            'output': (1, 2, 7),
         }
-
+        >>> import netharn as nh
+        >>> nh.OutputShapeFor(self)._check_consistency([1, 128, 7])
+        (1, 2, 7)
     """
     def __init__(self, dim, in_channels, hidden_channels, out_channels,
                  bias=True, dropout=0, noli='relu', norm='batch'):
@@ -43,3 +48,5 @@ class MultiLayerPerceptronNd(common.Sequential):
             curr_in = curr_out
         layer = conv_cls(curr_in, out_channels, kernel_size=1, bias=bias)
         self.add_module('output', layer)
+        self.in_channels = in_channels
+        self.out_channels = out_channels

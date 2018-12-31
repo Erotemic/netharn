@@ -1,7 +1,6 @@
 import torch
 from netharn import util
-from netharn.output_shape_for import OutputShapeFor  # NOQA
-from netharn.output_shape_for import SHAPE_CLS
+from netharn import output_shape_for
 
 
 class Reshape(torch.nn.Module, util.ModuleMixin):
@@ -18,13 +17,14 @@ class Reshape(torch.nn.Module, util.ModuleMixin):
 
 
     Example:
-        >>> OutputShapeFor(Reshape(-1, 3))._check_consistency((20, 6, 20))
+        >>> import netharn as nh
+        >>> nh.OutputShapeFor(Reshape(-1, 3))._check_consistency((20, 6, 20))
         (800, 3)
-        >>> OutputShapeFor(Reshape(100, -1, 5))._check_consistency((10, 10, 15))
+        >>> nh.OutputShapeFor(Reshape(100, -1, 5))._check_consistency((10, 10, 15))
         (100, 3, 5)
         >>> Reshape(7, -1, 3).output_shape_for((None, 1))  # weird case
         (7, None, 3)
-        >>> OutputShapeFor(Reshape(None, -1, 4))._check_consistency((10, 32, 32, 16))
+        >>> nh.OutputShapeFor(Reshape(None, -1, 4))._check_consistency((10, 32, 32, 16))
         (10, 4096, 4)
         >>> Reshape(None, -1, 4).output_shape_for((None, 32, 32, 16))
         (None, 4096, 4)
@@ -52,6 +52,7 @@ class Reshape(torch.nn.Module, util.ModuleMixin):
     def forward(self, input):
         """
         Example:
+            >>> import netharn as nh
             >>> self = Reshape(None, -1, 4)
             >>> input_shape = (10, 32, 32, 16)
             >>> input = torch.rand(input_shape)
@@ -59,7 +60,7 @@ class Reshape(torch.nn.Module, util.ModuleMixin):
             >>> print(tuple(output.shape))
             (10, 4096, 4)
             >>> print(tuple(self.output_shape_for(input_shape)))
-            >>> OutputShapeFor(self)._check_consistency(input_shape)
+            >>> nh.OutputShapeFor(self)._check_consistency(input_shape)
         """
         if not self._none_dims:
             output_shape = self.shape
@@ -134,7 +135,7 @@ class Reshape(torch.nn.Module, util.ModuleMixin):
         elif can_check_fit:
             assert unused == 1
 
-        return SHAPE_CLS(output_shape)
+        return output_shape_for.OutputShape.coerce(output_shape)
 
 
 class Permute(torch.nn.Module, util.ModuleMixin):
@@ -146,4 +147,6 @@ class Permute(torch.nn.Module, util.ModuleMixin):
         return x.permute(*self.dims)
 
     def output_shape_for(self, input_shape):
-        return tuple([input_shape[i] for i in self.dims])
+        output_shape = tuple([input_shape[i] for i in self.dims])
+        output_shape_for.OutputShape.coerce(output_shape)
+        return output_shape

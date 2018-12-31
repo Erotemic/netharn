@@ -5,8 +5,9 @@ import ubelt as ub
 from netharn.util.util_torch import trainable_layers
 
 
-class _BaseInitializer(object):
+class Initializer(object):
     """
+    Base class for all netharn initializers
     """
     def __call__(self, model, *args, **kwargs):
         self.forward(model, *args, **kwargs)
@@ -37,7 +38,10 @@ class _BaseInitializer(object):
         return initkw
 
 
-class NoOp(_BaseInitializer):
+_BaseInitializer = Initializer
+
+
+class NoOp(Initializer):
     """
     Example:
         >>> from netharn.initializers import *

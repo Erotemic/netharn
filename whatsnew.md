@@ -1,6 +1,11 @@
 Version 0.1.3
 ==============
-* Folded folder functionality into hyperparams.
+* Deprecate `HiddenShapesFor`
+* Move `HiddenShapesFor` functionality to `OutputShapeFor`
+* Clean CIFAR example.
+* Rename internal variables of `nh.Monitor`
+* Improve doc-strings for `nh.Monitor`
+* Move folder functionality into `hyperparams`.
 * Add (hacked-in) better `imgaug` hyperparameter logging. 
 * Add verbose kwarg to `Pretrained.forward`
 * Add `IgnoreLayerContext`
@@ -11,127 +16,131 @@ Version 0.1.3
 
 Version 0.1.2
 ==============
-* Fixed Python2.7 bugs. 
+* Fix Python 2.7 bugs. 
 * `nh.CocoAPI.show_image` now correctly clears the axis before drawing
-* Added `_demo_epoch` function to `FitHarn` which runs a single epoch for testing purposes.
-* Added new layers: `GaussianBlurNd`, `L2Norm`, `Permute`, `Conv1d_pad`, `Conv2d_pad`
+* Add `_demo_epoch` function to `FitHarn` which runs a single epoch for testing purposes.
+* Add new layers: `GaussianBlurNd`, `L2Norm`, `Permute`, `Conv1d_pad`, `Conv2d_pad`
 * Focal loss no longer produces warnings with newer versions of torch.
 * The `nh.util.group_items` utility will now default to the `ubelt` implementation for object and string arrays.
-* Improved efficiency of `DataFrameArray.groupby`
+* Improve efficiency of `DataFrameArray.groupby`
 * `nh.XPU` now supports `__eq__`
 * `one_hot_embedding` now supports the `dim` keyword argument.
-* Added `nh.XPU.raw` to access the raw underlying model.
+* Add `nh.XPU.raw` to access the raw underlying model.
 * `nh.Pretrained` can now discover weights inside deployment files.
-* Added `util_filesys` which has the function `get_file_info`.
-* Fixed bug in `FitHarn._check_divergence`
-* Added dependency on `astunparse` to fix bug where exporter could not handle complex assignments
-* `nh.Pretrained` initializer now only requires the path to the deploy zipfile. It can figure out which files in the deployment are the weights.
+* Add `util_filesys` which has the function `get_file_info`.
+* Fix bug in `FitHarn._check_divergence`
+* Add dependency on `astunparse` to fix bug where exporter could not handle complex assignments
+* `nh.Pretrained` initializer now only requires the path to the deploy zip-file. It can figure out which files in the deployment are the weights.
 * `nh.CocoAPI` can now look up images by filename
 * `nh.CocoAPI` can now delete categories by category name
 
 
 Version 0.1.1
 ==============
-* Deprecated and removed irrelevant parts of `CocoAPI`
-* Removing annotations and categories now dynamically updates indexes `CocoAPI`
-* Added remove categories to `CocoAPI`
-* Added experimental `_build_hashid` to `CocoAPI`
+* Deprecate and removed irrelevant parts of `CocoAPI`
+* Remote annotations and categories now dynamically updates indexes `CocoAPI`
+* Add remove categories to `CocoAPI`
+* Add experimental `_build_hashid` to `CocoAPI`
 * Fixed take in `ObjectList1D` in `CocoAPI`
-* Added compress to `ObjectList1D` in `CocoAPI`
-* Adding `hidden_state_for`
-* Fixed bug where `OutputShapeFor(_MaxPoolNd)` did not respect `ceil_mode`.
-* Fixed bug where CPU implementation of NMS was different
-* Added `__json__` method to `nh.XPU`
-* Fixed bug where snapshots are corrupted with an `EOFError`
-* Fixed bug where temporary directories were not cleaned up
+* Add compress to `ObjectList1D` in `CocoAPI`
+* Add `hidden_shape_for`
+* Fix bug where `OutputShapeFor(_MaxPoolNd)` did not respect `ceil_mode`.
+* Fix bug where CPU implementation of non-max-suppression was different
+* Add `__json__` method to `nh.XPU`
+* Fix bug where snapshots are corrupted with an `EOFError`
+* Fix bug where temporary directories were not cleaned up
 * `harn._export` is now its own function
 
 
 Version 0.1.0
 ==============
-* Integrated the publicly released Pytorch exporter and deployer.
-* Fixed bug where train info was not written if you specified a custom train dpath.
+* Integrate the publicly released Pytorch exporter and deployer.
+* Fix bug where train info was not written if you specified a custom train dpath.
 
 
 Version 0.0.27
 ==============
-* Added DataFrameLight to util, which provides a subset of pandas DataFrame functionality, but much much faster.
+* Add `DataFrameLight` to `nh.util`, which provides a subset of `pandas.DataFrame` functionality, but much much faster.
 
 
 Version 0.0.26
 ==============
-* Tentative Python2.7 support
+* Tentative Python 2.7 support
 
 
 Version 0.0.25
 ==============
-* Fixed issue with per-instance FitHarn class loggers
+* Fix issue with per-instance FitHarn class loggers
 
 
 Version 0.0.24
 ==============
-* Fixed tests and raised better errors if tensorflow does not exist
+* Fix tests and raised better errors if `tensorflow` does not exist
 
 
 Version 0.0.23
 ==============
-* Fixed bug where seed_global did not set call `torch.cuda.manual_seed_all`
+* Fix bug where `seed_global` did not set call `torch.cuda.manual_seed_all`
 
 
 Version 0.0.22
 ==============
-* Better support for torch.device with nh.XPU
+* Better support for torch.device with `nh.XPU`
 * Minor reorganization of FitHarn, added more callbacks
 
 
 
 Version 0.0.21
 ==============
-* Fixed issue with unseeded random states. Now defaults to the global np.random state.
-* Fixed bug in `load_arr`
+* Fix issue with unseeded random states. Now defaults to the global `np.random` state.
+* Fix bug in `load_arr`
 
 
 Version 0.0.20
 ==============
-* FitHarn now uses StreamLogger instead of print
+* FitHarn now uses `StreamLogger` instead of print
 
 
 Version 0.0.19
 ==============
-* Fixed torch 0.4.1 deprication warnings in focal loss
+* Fix torch 0.4.1 deprecation warnings in focal loss
 
 
 Version 0.0.17
 ==============
-* Fixed tests
-* Added before_epochs callback
+* Fix tests
+* Add `before_epochs` callback
 
 
 
 Version 0.0.16
 ==============
-* Added `nh.util.global_seed`
-* Fixed MNIST example
+* Add `nh.util.global_seed`
+* Fix MNIST example
 * Small improvements to outputs
 * Better test images
 * Better YOLO example
-* Various minor bugfixes
+* Various minor bug fixes
 * Other stuff I forgot to log, I'm doing this mostly in my spare time!
 
 
 Version 0.0.15
 ==============
-* Added SlidingWindow as simplified alternative to SlidingSlices
+* Add `SlidingWindow` as simplified alternative to `SlidingSlices`
 
 
 Version 0.0.14
 ==============
-* Added zip-awareness to pretrained loader 
-* Expanded coco-api functionality
+* Add zip-awareness to pre-trained loader 
+* Expand COCO-API functionality
 * Better detection metrics with alternative implementations
-* Fixed YOLO scheduler
+* Fix YOLO scheduler
 
 
 Version 0.0.13
 ==============
-* Fixed issue with autompl. Now correctly detects if display is available. 
+* Fix issue with `autompl`. Now correctly detects if display is available. 
+
+Version 0.0.12
+==============
+* Early and undocumented commits

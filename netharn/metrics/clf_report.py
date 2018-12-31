@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
+import warnings
+import scipy as sp
 import numpy as np
 import pandas as pd
 import sklearn.metrics
@@ -184,7 +186,6 @@ def classification_report(y_true, y_pred, target_names=None,
             y_true, y_pred, sample_weight=sample_weight)
         mcc_raw = np.sign(bm) * np.sqrt(np.abs(bm * mk))
 
-        import scipy as sp
         def gmean(x, w=None):
             if w is None:
                 return sp.stats.gmean(x)
@@ -345,7 +346,6 @@ def ovr_classification_report(mc_y_true, mc_probs, target_names=None,
         2 0.8000 0.8693 0.2623 0.2652 0.1602        5  0.2778
 
     """
-    import warnings
 
     if metrics is None:
         metrics = ['auc', 'ap', 'mcc', 'brier', 'kappa']
@@ -359,9 +359,10 @@ def ovr_classification_report(mc_y_true, mc_probs, target_names=None,
 
     class_metrics = ub.odict()
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="Mean of empty slice")
-        warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
-        warnings.filterwarnings("ignore", message="invalid value encountered in double_scalars")
+        warnings.filterwarnings('ignore', message='Mean of empty slice')
+        warnings.filterwarnings('ignore', message='invalid value encountered in true_divide')
+        warnings.filterwarnings('ignore', message='invalid value encountered in double_scalars')
+        warnings.filterwarnings('ignore', message='divide by zero')
 
         for k in range(n_classes):
             k_metrics = ub.odict()
