@@ -6,6 +6,7 @@ import torch.nn as nn
 import torchvision
 import ubelt as ub
 import numpy as np
+from collections import OrderedDict
 from netharn.output_shape_for import OutputShapeFor
 try:
     from netharn.device import MountedModel
@@ -46,8 +47,56 @@ def compute_type(*types):
 #     def __getitem__(self, key):
 #         return self.data[key]
 
+# ReceptiveField = dict
 
-ReceptiveField = dict
+class ReceptiveField(OrderedDict):
+    """ container for holding a receptive feild """
+    def __init__(self, data, hidden=None):
+        OrderedDict.__init__(self, sorted(data.items()))
+        self.data = data
+        self.hidden = hidden
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+
+class HiddenField(OrderedDict, ub.NiceRepr):
+    """
+    Augments normal hidden fields dicts with a convinience setitem
+    """
+    def __nice__(self):
+        return ub.repr2(self, nl=0)
+
+    def __str__(self):
+        return ub.NiceRepr.__str__(self)
+
+    def __repr__(self):
+        return ub.NiceRepr.__repr__(self)
+
+    def __setitem__(self, key, value):
+        if getattr(value, 'hidden', None) is not None:
+            # When setting a value to an OutputShape object, if that object has
+            # a hidden shape, then use that instead.
+            value = value.hidden
+        return OrderedDict.__setitem__(self, key, value)
+
+    def shallow(self, n=1):
+        """
+        Grabs only the shallowest n layers of hidden shapes
+        """
+        if n == 0:
+            last = self
+            while isinstance(last, HiddenField):
+                last = list(last.values())[-1]
+            return last
+        else:
+            output = self.__class__()
+            for key, value in self.items():
+                if isinstance(value, HiddenField):
+                    output[key] = value.shallow(n - 1)
+                else:
+                    output[key] = value
+            return output
 
 
 class _TorchMixin(object):
@@ -62,7 +111,7 @@ class _TorchMixin(object):
         """
         if input_field is not None:
             raise ValueError('nothing can precede the input')
-        input_field = ReceptiveField(**{
+        input_field = ReceptiveField({
             # The input receptive field stride / scale factor is 1.
             'stride': ensure_array_nd(1.0, n),
             # The input receptive field shape is 1 pixel.
@@ -194,7 +243,7 @@ class _TorchMixin(object):
         # perfectly valid.
         crop = ((support / 2) - p)
 
-        field = ReceptiveField(**{
+        field = ReceptiveField({
             # The new stride only depends on the layer stride and the previous
             # stride.
             'stride': input_field['stride'] * s,
@@ -409,7 +458,7 @@ class _TorchMixin(object):
 
         # print('effective_support = {!r}'.format(effective_support))
 
-        field = ReceptiveField(**{
+        field = ReceptiveField({
             # The new stride only depends on the layer stride and the previous
             # stride.
             'stride': effective_input_stride * s,
@@ -796,8 +845,8 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
     Example:
         >>> from netharn.receptive_field_for import *
         >>> import torchvision  # NOQA
-        >>> module = nn.Sequential(*[nn.Conv2d(1, 1, 3) for i in range(20)])
-        >>> inputs = torch.rand(32, 1, 200, 200)
+        >>> module = nn.Sequential(*[nn.Conv2d(1, 1, 3) for i in range(10)])
+        >>> inputs = torch.rand(1, 1, 200, 200)
         >>> emperical_field = effective_receptive_feild(module, inputs)
         >>> theoretic_field = ReceptiveFieldFor(module)()[0]
         >>> # The emperical results should never be bigger than the theoretical
@@ -951,7 +1000,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
 if __name__ == '__main__':
     """
     CommandLine:
-        xdoctest -m netharn.receptive_field_for
+        xdoctest -m netharn.receptive_field_for all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

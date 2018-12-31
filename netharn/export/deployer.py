@@ -347,6 +347,8 @@ class DeployedModel(ub.NiceRepr):
         >>> initializer(model)
         ...
         >>> print('model.__module__ = {!r}'.format(model.__module__))
+        model.__module__ = 'deploy_ToyNet2d_mhuhweia_000_.../ToyNet2d_2a3f49'
+
         model.__module__ = 'deploy_ToyNet2d_rljhgepw_000_.../ToyNet2d_2a3f49'
     """
     def __init__(self, path):

@@ -1,10 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-TODO:
-    - [ ] Fold HiddenShapesFor into this file by creating an OutputShape
-          object that behaves like a normal dict / tuple based shape, but also
-          has a special `.hidden` attribute that contains the hidden structure.
-"""
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ubelt as ub
 import math
@@ -235,10 +229,6 @@ class OutputShapeFor(object):
         forward on the custom module's torch members use `OutputShapeFor`. See
         netharn.layers for more examples of custom layers that implement this
         protocol. A simple example is shown below.
-
-    SeeAlso:
-        HiddenShapesFor : Like this class, but also tries to report
-            intermediate activation feature map shapes.
 
     Example:
         >>> # Example showing how to implement the OutputShapeFor protocol
