@@ -10,6 +10,7 @@ import warnings
 import torch
 import six
 import os
+from netharn import util
 
 
 __all__ = ['XPU']
@@ -27,14 +28,14 @@ else:
     _TENSOR_TYPES = (torch.Tensor, torch.autograd.Variable)
 
 
-class MountedModel(torch.nn.Module):
+class MountedModel(torch.nn.Module, util.util_torch.ModuleMixin):
     """
     Abstraction of DataParallel and DataSerial
     """
 
     def receptive_field_for(self, input_field=None):
         import netharn as nh
-        return nh.ReceptiveFieldFor(self)(input_field)
+        return nh.ReceptiveFieldFor(self.module)(input_field)
 
 
 class DataParallel(torch.nn.DataParallel, MountedModel):

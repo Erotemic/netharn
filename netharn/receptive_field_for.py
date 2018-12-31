@@ -926,8 +926,6 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         >>> nh.util.imshow(emperical_field['impact'], doclf=True)
     """
     import netharn as nh
-    import xdev
-    xdev.embed()
 
     # zero gradients
     for p in module.parameters():
