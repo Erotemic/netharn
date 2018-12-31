@@ -52,9 +52,22 @@ def compute_type(*types):
 class ReceptiveField(OrderedDict):
     """ container for holding a receptive feild """
     def __init__(self, data, hidden=None):
-        OrderedDict.__init__(self, sorted(data.items()))
+        OrderedDict.__init__(self, sorted(OrderedDict(data).items()))
         self.data = data
         self.hidden = hidden
+
+
+    @classmethod
+    def coerce(cls, data, hidden=None):
+        # TODO: make this work like OutputShape
+        if isinstance(data, cls):
+            if hidden is None:
+                self = data
+            else:
+                self = data.__class__(data, hidden)
+        else:
+            self = cls(data, hidden)
+        return self
 
     def __getitem__(self, key):
         return self.data[key]
@@ -112,7 +125,7 @@ class _TorchMixin(object):
         """
         if input_field is not None:
             raise ValueError('nothing can precede the input')
-        input_field = ReceptiveField({
+        input_field = ReceptiveField.coerce({
             # The input receptive field stride / scale factor is 1.
             'stride': ensure_array_nd(1.0, n),
             # The input receptive field shape is 1 pixel.
@@ -244,7 +257,7 @@ class _TorchMixin(object):
         # perfectly valid.
         crop = ((support / 2) - p)
 
-        field = ReceptiveField({
+        field = ReceptiveField.coerce({
             # The new stride only depends on the layer stride and the previous
             # stride.
             'stride': input_field['stride'] * s,
@@ -459,7 +472,7 @@ class _TorchMixin(object):
 
         # print('effective_support = {!r}'.format(effective_support))
 
-        field = ReceptiveField({
+        field = ReceptiveField.coerce({
             # The new stride only depends on the layer stride and the previous
             # stride.
             'stride': effective_input_stride * s,
@@ -703,7 +716,7 @@ class _TorchvisionMixin(object):
 
         # Keep everything the same except increase the RF shape
         # based on how many output pixels there are.
-        rfield_flatten = ReceptiveField(dict(**rfield))
+        rfield_flatten = ReceptiveField.coerce(dict(**rfield))
         # not sure if this is 100% correct
         rfield_flatten['shape'] = rfield['shape'] + (spatial_shape - 1) * rfield['stride']
         hidden['flatten'] = rfield = rfield_flatten
@@ -823,6 +836,8 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
         else:
             # a simple pytorch func
             rfield = self._func(*args, **kwargs)
+
+        rfield = ReceptiveField.coerce(rfield)
         return rfield
 
 
@@ -972,6 +987,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
     grad_loss_wrt_y[center_slice] = 1
 
     # Backpropogate as if the grad of the loss wrt to y[center] was 1.
+    # Note: this can take a long time on the CPU (sometimes?)
     output_y.backward(gradient=grad_loss_wrt_y)
 
     # The input gradient is now a measure of how much it can impact the output.
