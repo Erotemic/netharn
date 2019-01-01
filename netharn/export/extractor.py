@@ -142,6 +142,10 @@ def source_closure(model_class, expand_modules=[]):
     if expand_modules:
         # Expand references to internal modules
         closed_visitor = ImportVisitor.parse_source(current_sourcecode)
+
+        for mod in expand_modules:
+            pass
+
         for node in closed_visitor.import_info.parent_modnames:
             print('node = {!r}'.format(node))
             pass
@@ -229,9 +233,16 @@ class ImportInfo(ub.NiceRepr):
         self.varnames = []
         self.parent_modnames = []
         self.varname_to_line = {}
+        self.root_modnames = []
 
         self._import_nodes = []
         self._import_from_nodes = []
+
+    def finalize(self):
+        for name in self.parent_modnames:
+            root = name.split('.')[0]
+            self.root_modnames.append(root)
+        self.root_modnames = ub.unique(self.root_modnames)
 
     def __nice__(self):
         return ub.repr2(self.varname_to_line, nl=1)
@@ -341,11 +352,15 @@ class ImportVisitor(ast.NodeVisitor):
         visitor.assignments = {}
         visitor.top_level = True
 
+    def finalize(visitor):
+        visitor.import_info.finalize()
+
     @classmethod
     def parse_source(ImportVisitor, module_source, fpath=None):
         pt = ast.parse(module_source)
         visitor = ImportVisitor(fpath=fpath)
         visitor.visit(pt)
+        visitor.finalize()
         return visitor
 
     @classmethod
@@ -354,10 +369,8 @@ class ImportVisitor(ast.NodeVisitor):
         module_source = ub.ensure_unicode(module_source)
         pt = ast.parse(module_source)
         visitor = ImportVisitor(module.__file__, module.__name__, module)
-        try:
-            visitor.visit(pt)
-        except Exception:
-            pass
+        visitor.visit(pt)
+        visitor.finalize()
         return visitor
 
     def closure(visitor, name):
