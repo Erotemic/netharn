@@ -44,125 +44,6 @@ __all__ = ['export_model_code']
 __pt_export_version__ = '0.5.0'
 
 
-def remove_comments_and_docstrings(source):
-    r"""
-    Args:
-        source (str): uft8 text of source code
-
-    Returns:
-        str: out: the source with comments and docstrings removed.
-
-    References:
-        https://stackoverflow.com/questions/1769332/remove-comments-docstrings
-
-    Example:
-        >>> source = ub.codeblock(
-            '''
-            def foo():
-                'The spaces before this docstring are tokenize.INDENT'
-                test = [
-                    'The spaces before this string do not get a token'
-                ]
-            ''')
-        >>> out = remove_comments_and_docstrings(source)
-        >>> want = ub.codeblock(
-            '''
-            def foo():
-
-                test = [
-                    'The spaces before this string do not get a token'
-                ]''').splitlines()
-        >>> got = [o.rstrip() for o in out.splitlines()]
-        >>> assert got == want
-
-    """
-    source = ub.ensure_unicode(source)
-    io_obj = io.StringIO(source)
-    out = ''
-    prev_toktype = tokenize.INDENT
-    last_lineno = -1
-    last_col = 0
-    for tok in tokenize.generate_tokens(io_obj.readline):
-        token_type = tok[0]
-        token_string = tok[1]
-        start_line, start_col = tok[2]
-        end_line, end_col = tok[3]
-        # ltext = tok[4]
-        # The following two conditionals preserve indentation.
-        # This is necessary because we're not using tokenize.untokenize()
-        # (because it spits out code with copious amounts of oddly-placed
-        # whitespace).
-        if start_line > last_lineno:
-            last_col = 0
-        if start_col > last_col:
-            out += (' ' * (start_col - last_col))
-        # Remove comments:
-        if token_type == tokenize.COMMENT:
-            pass
-        # This series of conditionals removes docstrings:
-        elif token_type == tokenize.STRING:
-            if prev_toktype != tokenize.INDENT:
-                # This is likely a docstring; double-check we're not inside an
-                # operator:
-                if prev_toktype != tokenize.NEWLINE:
-                    # Note regarding NEWLINE vs NL: The tokenize module
-                    # differentiates between newlines that start a new statement
-                    # and newlines inside of operators such as parens, brackes,
-                    # and curly braces.  Newlines inside of operators are
-                    # NEWLINE and newlines that start new code are NL.
-                    # Catch whole-module docstrings:
-                    if start_col > 0:
-                        # Unlabelled indentation means we're inside an operator
-                        out += token_string
-                    # Note regarding the INDENT token: The tokenize module does
-                    # not label indentation inside of an operator (parens,
-                    # brackets, and curly braces) as actual indentation.
-        else:
-            out += token_string
-        prev_toktype = token_type
-        last_col = end_col
-        last_lineno = end_line
-    return out
-
-
-def hash_code(sourcecode):
-    r"""
-    Hashes source code text, but tries to normalize things like whitespace and
-    comments, so very minor changes wont change the hash.
-
-    Args:
-        source (str): uft8 text of source code
-
-    Returns:
-        str: hashid: 128 character (512 byte) hash of the normalized input
-
-    Example:
-        >>> print(hash_code('x = 1')[0:8])
-        93d321be
-        >>> print(hash_code('x=1 # comments and spaces dont matter')[0:8])
-        93d321be
-        >>> print(hash_code('\nx=1')[0:8])
-        93d321be
-        >>> print(hash_code('x=2')[0:8])
-        6949c223
-    """
-    # Strip docstrings before making a parse tree
-    sourcecode = ub.ensure_unicode(sourcecode)
-    stripped = remove_comments_and_docstrings(sourcecode)
-
-    # Also remove pytorch_export version info (not sure if correct?)
-    stripped = re.sub('__pt_export_version__ = .*', '', stripped)
-
-    parse_tree = ast.parse(stripped)
-    # hashing the parse tree will normalize for a lot possible small changes
-    ast_dump = ast.dump(parse_tree)
-
-    hasher = hashlib.sha512()
-    hasher.update(ast_dump.encode('utf8'))
-    hashid = hasher.hexdigest()
-    return hashid
-
-
 def export_model_code(dpath, model, initkw=None):
     """
     Exports the class used to define a pytorch model as a new python module.
@@ -288,6 +169,125 @@ def export_model_code(dpath, model, initkw=None):
     with open(static_modpath, 'w') as file:
         file.write(sourcecode)
     return static_modpath
+
+
+def remove_comments_and_docstrings(source):
+    r"""
+    Args:
+        source (str): uft8 text of source code
+
+    Returns:
+        str: out: the source with comments and docstrings removed.
+
+    References:
+        https://stackoverflow.com/questions/1769332/remove-comments-docstrings
+
+    Example:
+        >>> source = ub.codeblock(
+            '''
+            def foo():
+                'The spaces before this docstring are tokenize.INDENT'
+                test = [
+                    'The spaces before this string do not get a token'
+                ]
+            ''')
+        >>> out = remove_comments_and_docstrings(source)
+        >>> want = ub.codeblock(
+            '''
+            def foo():
+
+                test = [
+                    'The spaces before this string do not get a token'
+                ]''').splitlines()
+        >>> got = [o.rstrip() for o in out.splitlines()]
+        >>> assert got == want
+
+    """
+    source = ub.ensure_unicode(source)
+    io_obj = io.StringIO(source)
+    out = ''
+    prev_toktype = tokenize.INDENT
+    last_lineno = -1
+    last_col = 0
+    for tok in tokenize.generate_tokens(io_obj.readline):
+        token_type = tok[0]
+        token_string = tok[1]
+        start_line, start_col = tok[2]
+        end_line, end_col = tok[3]
+        # ltext = tok[4]
+        # The following two conditionals preserve indentation.
+        # This is necessary because we're not using tokenize.untokenize()
+        # (because it spits out code with copious amounts of oddly-placed
+        # whitespace).
+        if start_line > last_lineno:
+            last_col = 0
+        if start_col > last_col:
+            out += (' ' * (start_col - last_col))
+        # Remove comments:
+        if token_type == tokenize.COMMENT:
+            pass
+        # This series of conditionals removes docstrings:
+        elif token_type == tokenize.STRING:
+            if prev_toktype != tokenize.INDENT:
+                # This is likely a docstring; double-check we're not inside an
+                # operator:
+                if prev_toktype != tokenize.NEWLINE:
+                    # Note regarding NEWLINE vs NL: The tokenize module
+                    # differentiates between newlines that start a new statement
+                    # and newlines inside of operators such as parens, brackes,
+                    # and curly braces.  Newlines inside of operators are
+                    # NEWLINE and newlines that start new code are NL.
+                    # Catch whole-module docstrings:
+                    if start_col > 0:
+                        # Unlabelled indentation means we're inside an operator
+                        out += token_string
+                    # Note regarding the INDENT token: The tokenize module does
+                    # not label indentation inside of an operator (parens,
+                    # brackets, and curly braces) as actual indentation.
+        else:
+            out += token_string
+        prev_toktype = token_type
+        last_col = end_col
+        last_lineno = end_line
+    return out
+
+
+def hash_code(sourcecode):
+    r"""
+    Hashes source code text, but tries to normalize things like whitespace and
+    comments, so very minor changes wont change the hash.
+
+    Args:
+        source (str): uft8 text of source code
+
+    Returns:
+        str: hashid: 128 character (512 byte) hash of the normalized input
+
+    Example:
+        >>> print(hash_code('x = 1')[0:8])
+        93d321be
+        >>> print(hash_code('x=1 # comments and spaces dont matter')[0:8])
+        93d321be
+        >>> print(hash_code('\nx=1')[0:8])
+        93d321be
+        >>> print(hash_code('x=2')[0:8])
+        6949c223
+    """
+    # Strip docstrings before making a parse tree
+    sourcecode = ub.ensure_unicode(sourcecode)
+    stripped = remove_comments_and_docstrings(sourcecode)
+
+    # Also remove pytorch_export version info (not sure if correct?)
+    stripped = re.sub('__pt_export_version__ = .*', '', stripped)
+
+    parse_tree = ast.parse(stripped)
+    # hashing the parse tree will normalize for a lot possible small changes
+    ast_dump = ast.dump(parse_tree)
+
+    hasher = hashlib.sha512()
+    hasher.update(ast_dump.encode('utf8'))
+    hashid = hasher.hexdigest()
+    return hashid
 
 
 if __name__ == '__main__':

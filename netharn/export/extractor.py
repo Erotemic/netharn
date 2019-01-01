@@ -63,13 +63,13 @@ def source_closure(model_class, expand_modules=[]):
         >>> assert not undefined_names(text)
         >>> got['inception3'] = ub.hash_data(text)
 
-        >>> # The hashes will depend on torchvision itself
+        >>> # Thvisitor.import_infoe hashes will depend on torchvision itself
         >>> if torchvision.__version__ == '0.2.1':
         >>>     want = {
-        >>>         'alexnet': '8342d8ef40c7898ab84',
-        >>>         'densenet': '5910a826299f0041c2',
-        >>>         'resnet50': 'ef97a82f508034f652',
-        >>>         'inception3': 'f175749797aa9159',
+        >>>         'alexnet': '8342d8ef40c7898ab84191',
+        >>>         'densenet': 'b32246b3437a2321d5ffb',
+        >>>         'resnet50': '4182eeffbee94b003d556',
+        >>>         'inception3': '8888d9e4b97593c84cd',
         >>>     }
         >>>     failed = []
         >>>     for k in want:
@@ -84,7 +84,7 @@ def source_closure(model_class, expand_modules=[]):
     Doctest:
         >>> # Test a heavier duty class
         >>> import netharn as nh
-        >>> model_class = nh.layers.Conv1d_pad
+        >>> model_class = nh.layers.ConvNormNd
         >>> expand_modules = ['netharn']
         >>> text = source_closure(model_class, expand_modules)
         >>> print(text)
@@ -142,13 +142,34 @@ def source_closure(model_class, expand_modules=[]):
     if expand_modules:
         # Expand references to internal modules
         closed_visitor = ImportVisitor.parse_source(current_sourcecode)
+        self = closed_visitor.import_info
+        for root in expand_modules:
+            needs_expansion = self.root_to_varnames.get(root, [])
+            for varname in needs_expansion:
+                info = self.varname_to_info[varname]
+                modpath = ub.modname_to_modpath(info['modname'])
 
-        for mod in expand_modules:
-            pass
+                if info['type'] == 'attribute':
+                    # We can directly replace this import statement by
+                    # copy-pasting the relevant code from the other module
+                    # (ASSUMING THERE ARE NO NAME CONFLICTS)
 
-        for node in closed_visitor.import_info.parent_modnames:
-            print('node = {!r}'.format(node))
-            pass
+                    # TODO: Now we just need to get the closure with respect to
+                    # these newly added variables.
+                    new = ImportVisitor.parse_source(open(modpath, 'r').read(), modpath)
+                    a = new.closure(varname)
+                    print('TODO: NEED TO CLOSE attribute varname = {!r}'.format(varname))
+                    # print('a = {!r}'.format(a))
+
+                elif info['type'] == 'module':
+                    # TODO: We need to determine what actually is used from
+                    print('TODO: NEED TO CLOSE module varname = {!r}'.format(varname))
+                    # this module and fix some of the names.
+                    pass
+
+        # for root in closed_visitor.import_info.root_modnames:
+        #     if root in expand_modules:
+        #         print('TOEXPAND root = {!r}'.format(root))
 
     closed_sourcecode = current_sourcecode
     return closed_sourcecode
@@ -231,40 +252,61 @@ class ImportInfo(ub.NiceRepr):
         self.fpath = fpath
 
         self.varnames = []
-        self.parent_modnames = []
+
+        self.varname_to_expansion = {}
         self.varname_to_line = {}
-        self.root_modnames = []
+        self.root_to_varnames = ub.ddict(list)
 
         self._import_nodes = []
         self._import_from_nodes = []
 
     def finalize(self):
-        for name in self.parent_modnames:
-            root = name.split('.')[0]
-            self.root_modnames.append(root)
-        self.root_modnames = ub.unique(self.root_modnames)
+        self.root_to_varnames = ub.ddict(list)
+        self.varname_to_info = {}
+
+        for varname, expansion in self.varname_to_expansion.items():
+
+            info = {
+                'varname': varname,
+                'expansion': expansion,
+                'line': self.varname_to_line[varname],
+            }
+            longest_modname = None
+            parts = expansion.split('.')
+            for i in range(1, len(parts) + 1):
+                root = '.'.join(parts[:i])
+                if ub.modname_to_modpath(root):
+                    longest_modname = root
+                self.varname_to_info
+                self.root_to_varnames[root].append(varname)
+
+            info['modname'] = longest_modname
+            if info['expansion'] == info['modname']:
+                info['type'] = 'module'
+            else:
+                info['type'] = 'attribute'
+            self.varname_to_info[varname] = info
+
+        if 0:
+            print(ub.repr2(self.varname_to_info))
 
     def __nice__(self):
         return ub.repr2(self.varname_to_line, nl=1)
 
     def register_import_node(self, node):
         self._import_nodes.append(node)
-        self._parse_alias_list(node.names)
 
         for alias in node.names:
-            key = alias.asname or alias.name
+            varname = alias.asname or alias.name
             if alias.asname:
                 line = 'import {} as {}'.format(alias.name, alias.asname)
             else:
                 line = 'import {}'.format(alias.name)
-            self.varname_to_line[key] = line
-
-        for alias in node.names:
-            self.parent_modnames.append(alias.name)
+            self.varname_to_line[varname] = line
+            self.varname_to_expansion[varname] = alias.name
 
     def register_from_import_node(self, node):
         self._import_from_nodes.append(node)
-        self._parse_alias_list(node.names)
 
         if node.level:
             # Handle relative imports
@@ -289,25 +331,15 @@ class ImportInfo(ub.NiceRepr):
             abs_modname = prefix + node.module
         else:
             abs_modname = prefix
-        self.parent_modnames.append(abs_modname)
 
         for alias in node.names:
-            key = alias.asname or alias.name
+            varname = alias.asname or alias.name
             if alias.asname:
                 line = 'from {} import {} as {}'.format(abs_modname, alias.name, alias.asname)
             else:
                 line = 'from {} import {}'.format(abs_modname, alias.name)
-            self.varname_to_line[key] = line
-            # parent_modnames.append(node.level * '.' + node.module + '.' + alias.name)
-            # parent_modnames.append(prefix + node.module + '.' + alias.name)
-
-    def _parse_alias_list(self, aliases):
-        for alias in aliases:
-            if alias.asname is not None:
-                self.varnames.append(alias.asname)
-            else:
-                if '.' not in alias.name:
-                    self.varnames.append(alias.name)
+            self.varname_to_line[varname] = line
+            self.varname_to_expansion[varname] = abs_modname + '.' + alias.name
 
 
 class ImportVisitor(ast.NodeVisitor):
@@ -329,8 +361,12 @@ class ImportVisitor(ast.NodeVisitor):
         ...     import e.f as g
         ...     from . import h
         ...     from .i import j
+        ...     from . import k, l, m
+        ...     from n import o, p, q
         ...     ''')
         >>> visitor = ImportVisitor.parse_source(sourcecode, fpath=fpath)
+        >>> print(ub.repr2(visitor.import_info.varname_to_info))
+        ...
         >>> print(visitor.import_info)
         <ImportInfo({
             'a': 'import a',
@@ -339,6 +375,12 @@ class ImportVisitor(ast.NodeVisitor):
             'g': 'import e.f as g',
             'h': 'from netharn.export import h',
             'j': 'from netharn.export.i import j',
+            'k': 'from netharn.export import k',
+            'l': 'from netharn.export import l',
+            'm': 'from netharn.export import m',
+            'o': 'from n import o',
+            'p': 'from n import p',
+            'q': 'from n import q',
         })>
     """
 
@@ -350,6 +392,8 @@ class ImportVisitor(ast.NodeVisitor):
 
         visitor.import_info = ImportInfo(fpath=fpath)
         visitor.assignments = {}
+
+        visitor.calldefs = {}
         visitor.top_level = True
 
     def finalize(visitor):
@@ -398,8 +442,13 @@ class ImportVisitor(ast.NodeVisitor):
                 return type_, '{} = {}'.format(name, ub.repr2(value))
             else:
                 raise NotImplementedError(type_)
+        elif name in visitor.calldefs:
+            sourcecode = astunparse.unparse(visitor.calldefs[name])
+            return 'code', sourcecode
         else:
             # Fallback to dynamic analysis
+            # NOTE: now that we are tracking calldefs and using astunparse,
+            # this code should not need to be called.
             if visitor.module is None:
                 raise AssertionError('Need module to dynamic analysis')
             obj = getattr(visitor.module, name)
@@ -432,12 +481,14 @@ class ImportVisitor(ast.NodeVisitor):
                 visitor.assignments[key] = value
 
     def visit_FunctionDef(visitor, node):
+        visitor.calldefs[node.name] = node
         # Ignore any non-top-level imports
         if not visitor.top_level:
             visitor.generic_visit(node)
             # ast.NodeVisitor.generic_visit(visitor, node)
 
     def visit_ClassDef(visitor, node):
+        visitor.calldefs[node.name] = node
         # Ignore any non-top-level imports
         if not visitor.top_level:
             visitor.generic_visit(node)
