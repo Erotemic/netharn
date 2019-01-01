@@ -321,6 +321,14 @@ class ImportVisitor(ast.NodeVisitor):
         ...     ''')
         >>> visitor = ImportVisitor.parse_source(sourcecode, fpath=fpath)
         >>> print(visitor.import_info)
+        <ImportInfo({
+            'a': 'import a',
+            'b': 'import b',
+            'c.d': 'import c.d',
+            'g': 'import e.f as g',
+            'h': 'from netharn.export import h',
+            'j': 'from netharn.export.i import j',
+        })>
     """
 
     def __init__(visitor, fpath=None, module_name=None, module=None):
