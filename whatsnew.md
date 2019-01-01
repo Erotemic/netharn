@@ -1,5 +1,7 @@
 Version 0.1.4
 ==============
+* Fix issue with relative imports in netharn exporter
+* Refactored the exporter closure-extractor into its own file.
 * Add `devices` to `nh.layers.Module`
 * Deprecate `HiddenShapesFor`
 * Move `HiddenShapesFor` functionality to `OutputShapeFor`

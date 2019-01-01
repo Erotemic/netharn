@@ -5,7 +5,8 @@ import torch
 import torch.nn.functional as F
 import scipy
 import scipy.ndimage
-from netharn.layers import common
+# from netharn.layers import common
+from . import common
 
 
 class Conv1d_pad(torch.nn.Conv1d, common.ModuleMixin):

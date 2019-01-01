@@ -1,7 +1,9 @@
 """
 Extracts relevant parts of the source code
 """
+from os.path import basename
 from collections import OrderedDict
+import warnings
 import ast
 import astunparse
 import inspect
@@ -10,19 +12,25 @@ import types
 import ubelt as ub
 from os.path import abspath
 from os.path import sys
+# TODO Fix issue with from . import statements
 
 # __all__ = [
 #     'source_closure',
 # ]
 
 
-def source_closure(model_class):
+def source_closure(model_class, expand_modules=[]):
     """
     Hacky way to pull just the minimum amount of code needed to define a
     model_class. Uses a combination of dynamic and static introspection.
 
     Args:
-        model_class (type): class used to define the model_class
+        model_class (type):
+            class used to define the model_class
+
+        expand_modules (List[str]):
+            EXPERIMENTAL. List of modules that should be expanded into raw
+            source code.
 
     Returns:
         str: closed_sourcecode: text defining a new python module.
@@ -76,8 +84,9 @@ def source_closure(model_class):
     Doctest:
         >>> # Test a heavier duty class
         >>> import netharn as nh
-        >>> model_class = nh.layers.GaussianBlurNd
-        >>> text = source_closure(model_class)
+        >>> model_class = nh.layers.Conv1d_pad
+        >>> expand_modules = ['netharn']
+        >>> text = source_closure(model_class, expand_modules)
         >>> print(text)
     """
     module_name = model_class.__module__
@@ -94,13 +103,13 @@ def source_closure(model_class):
     # Parse the parent module to find only the relevant global varaibles and
     # include those in the extracted source code.
     visitor = ImportVisitor.parse_module(module)
+    visitor.import_info
 
     while True:
-        import_lines = sorted(import_lines)
-        current_sourcecode = ('\n'.join(import_lines) + '\n\n\n' +
-                              '\n\n'.join(lines[::-1]))
-
         # Determine if there are any variables needed from the parent scope
+        current_header = '\n'.join(sorted(import_lines))
+        current_body = '\n\n'.join(lines[::-1])
+        current_sourcecode = (current_header + '\n\n\n' + current_body)
         names = sorted(undefined_names(current_sourcecode))
 
         if not names:
@@ -110,23 +119,32 @@ def source_closure(model_class):
         # Make sure we process names in the same order for hashability
         names = sorted(set(names))
         for name in names:
-            obj = getattr(module, name)
             try:
-                type_, text = visitor.closure(obj, name)
+                type_, text = visitor.closure(name)
             except NotImplementedError:
-                # TODO Fix issue with from . import statements
-                print('Error in import_lines: {!r}'.format(import_lines))
-                print('Error in lines: {}'.format('\n\n'.join(lines)))
-                print('Error with obj = {!r}'.format(obj))
-                print('Error with name = {!r}'.format(name))
+                current_header = '\n'.join(sorted(import_lines))
+                current_body = '\n\n'.join(lines[::-1])
+                print('--- <ERROR> ---')
+                print('Error computing source code closure')
+                print(' * failed to close name = {!r}'.format(name))
+                print('<<< CURRENT_HEADER >>>\n{}\n<<<>>>'.format(ub.highlight_code(current_header)))
+                print('<<< CURRENT_BODY >>>\n{}\n<<<>>>'.format(ub.highlight_code(current_body)))
+                print('--- </ERROR> ---')
                 raise
             if type_ == 'import':
                 import_lines.append(text)
             else:
                 lines.append(text)
             if text is None:
-                raise NotImplementedError(str(obj) + ' ' + str(name))
+                raise NotImplementedError(str(name))
                 break
+
+    if expand_modules:
+        # Expand references to internal modules
+        closed_visitor = ImportVisitor.parse_source(current_sourcecode)
+        for node in closed_visitor.import_info.parent_modnames:
+            print('node = {!r}'.format(node))
+            pass
 
     closed_sourcecode = current_sourcecode
     return closed_sourcecode
@@ -201,34 +219,149 @@ def undefined_names(sourcecode):
     return names
 
 
+class ImportInfo(ub.NiceRepr):
+    """
+    Hold information about module-level imports for ImportVisitor
+    """
+    def __init__(self, fpath=None):
+        self.fpath = fpath
+
+        self.varnames = []
+        self.parent_modnames = []
+        self.varname_to_line = {}
+
+        self._import_nodes = []
+        self._import_from_nodes = []
+
+    def __nice__(self):
+        return ub.repr2(self.varname_to_line, nl=1)
+
+    def register_import_node(self, node):
+        self._import_nodes.append(node)
+        self._parse_alias_list(node.names)
+
+        for alias in node.names:
+            key = alias.asname or alias.name
+            if alias.asname:
+                line = 'import {} as {}'.format(alias.name, alias.asname)
+            else:
+                line = 'import {}'.format(alias.name)
+            self.varname_to_line[key] = line
+
+        for alias in node.names:
+            self.parent_modnames.append(alias.name)
+
+    def register_from_import_node(self, node):
+        self._import_from_nodes.append(node)
+        self._parse_alias_list(node.names)
+
+        if node.level:
+            # Handle relative imports
+            if self.fpath is not None:
+                try:
+                    rel_modpath = ub.split_modpath(abspath(self.fpath))[1]
+                except ValueError:
+                    warnings.warn('fpath={} does not exist'.format(self.fpath))
+                    rel_modpath = basename(abspath(self.fpath))
+                modparts = rel_modpath.replace('\\', '/').split('/')
+                parts = modparts[:-node.level]
+                prefix = '.'.join(parts)
+                if node.module:
+                    prefix = prefix + '.'
+            else:
+                warnings.warn('Unable to rectify absolute import')
+                prefix = '.' * node.level
+        else:
+            prefix = ''
+
+        if node.module is not None:
+            abs_modname = prefix + node.module
+        else:
+            abs_modname = prefix
+        self.parent_modnames.append(abs_modname)
+
+        for alias in node.names:
+            key = alias.asname or alias.name
+            if alias.asname:
+                line = 'from {} import {} as {}'.format(abs_modname, alias.name, alias.asname)
+            else:
+                line = 'from {} import {}'.format(abs_modname, alias.name)
+            self.varname_to_line[key] = line
+            # parent_modnames.append(node.level * '.' + node.module + '.' + alias.name)
+            # parent_modnames.append(prefix + node.module + '.' + alias.name)
+
+    def _parse_alias_list(self, aliases):
+        for alias in aliases:
+            if alias.asname is not None:
+                self.varnames.append(alias.asname)
+            else:
+                if '.' not in alias.name:
+                    self.varnames.append(alias.name)
+
+
 class ImportVisitor(ast.NodeVisitor):
     """
     Used to search for dependencies in the original module
+
+    References:
+        https://greentreesnakes.readthedocs.io/en/latest/nodes.html
+
+    Example:
+        >>> from netharn.export.extractor import *
+        >>> from netharn.export import extractor
+        >>> fpath = extractor.__file__
+        >>> sourcecode = ub.codeblock(
+        ...     '''
+        ...     import a
+        ...     import b
+        ...     import c.d
+        ...     import e.f as g
+        ...     from . import h
+        ...     from .i import j
+        ...     ''')
+        >>> visitor = ImportVisitor.parse_source(sourcecode, fpath=fpath)
+        >>> print(visitor.import_info)
     """
 
-    def __init__(visitor, fpath, module_name=None):
+    def __init__(visitor, fpath=None, module_name=None, module=None):
         super(ImportVisitor, visitor).__init__()
-        visitor.import_names = []
-        visitor.modules = []
-        visitor.top_level = True
         visitor.fpath = fpath
         visitor.module_name = module_name
+        visitor.module = module
 
-        visitor.import_nodes = []
-        visitor.import_from_nodes = []
-        visitor.import_lines = {}
+        visitor.import_info = ImportInfo(fpath=fpath)
         visitor.assignments = {}
+        visitor.top_level = True
 
-    def closure(visitor, obj, name):
+    @classmethod
+    def parse_source(ImportVisitor, module_source, fpath=None):
+        pt = ast.parse(module_source)
+        visitor = ImportVisitor(fpath=fpath)
+        visitor.visit(pt)
+        return visitor
+
+    @classmethod
+    def parse_module(ImportVisitor, module):
+        module_source = inspect.getsource(module)
+        module_source = ub.ensure_unicode(module_source)
+        pt = ast.parse(module_source)
+        visitor = ImportVisitor(module.__file__, module.__name__, module)
+        try:
+            visitor.visit(pt)
+        except Exception:
+            pass
+        return visitor
+
+    def closure(visitor, name):
         """
         Given a live-object and its assigned name in a file find the lines of
         code that define it.
         """
         # if name == 'fcn_coder':
         #     return 'import', 'from ovharn.models import fcn_coder'
-        if name in visitor.import_lines:
+        if name in visitor.import_info.varname_to_line:
             # Check and see if the name was imported from elsewhere
-            return 'import', visitor.import_lines[name]
+            return 'import', visitor.import_info.varname_to_line[name]
         elif name in visitor.assignments:
             # TODO: better handling of assignments
             type_, value = visitor.assignments[name]
@@ -244,90 +377,28 @@ class ImportVisitor(ast.NodeVisitor):
                 return type_, '{} = {}'.format(name, ub.repr2(value))
             else:
                 raise NotImplementedError(type_)
-        elif isinstance(obj, types.FunctionType):
-            if obj.__module__ == visitor.module_name:
-                sourcecode = inspect.getsource(obj)
-                return 'code', sourcecode
-        elif isinstance(obj, type):
-            if obj.__module__ == visitor.module_name:
-                sourcecode = inspect.getsource(obj)
-                return 'code', sourcecode
-        raise NotImplementedError(str(obj) + ' ' + str(name))
-
-    @classmethod
-    def parse_module(ImportVisitor, module):
-        module_source = inspect.getsource(module)
-        module_source = ub.ensure_unicode(module_source)
-        pt = ast.parse(module_source)
-        visitor = ImportVisitor(module.__file__, module.__name__)
-        try:
-            visitor.visit(pt)
-        except Exception:
-            pass
-        return visitor
-
-    def _parse_alias_list(visitor, aliases):
-        for alias in aliases:
-            if alias.asname is not None:
-                visitor.import_names.append(alias.asname)
-            else:
-                if '.' not in alias.name:
-                    visitor.import_names.append(alias.name)
+        else:
+            # Fallback to dynamic analysis
+            if visitor.module is None:
+                raise AssertionError('Need module to dynamic analysis')
+            obj = getattr(visitor.module, name)
+            if isinstance(obj, types.FunctionType):
+                if obj.__module__ == visitor.module_name:
+                    sourcecode = inspect.getsource(obj)
+                    return 'code', sourcecode
+            elif isinstance(obj, type):
+                if obj.__module__ == visitor.module_name:
+                    sourcecode = inspect.getsource(obj)
+                    return 'code', sourcecode
+            raise NotImplementedError(str(obj) + ' ' + str(name))
 
     def visit_Import(visitor, node):
-        visitor.import_nodes.append(node)
-        visitor._parse_alias_list(node.names)
+        visitor.import_info.register_import_node(node)
         visitor.generic_visit(node)
-
-        for alias in node.names:
-            key = alias.asname or alias.name
-            if alias.asname:
-                line = 'import {} as {}'.format(alias.name, alias.asname)
-            else:
-                line = 'import {}'.format(alias.name)
-            visitor.import_lines[key] = line
-
-        for alias in node.names:
-            visitor.modules.append(alias.name)
 
     def visit_ImportFrom(visitor, node):
-        visitor.import_from_nodes.append(node)
-        visitor._parse_alias_list(node.names)
+        visitor.import_info.register_from_import_node(node)
         visitor.generic_visit(node)
-
-        if node.level:
-            if visitor.fpath is not None:
-                modparts = ub.split_modpath(abspath(visitor.fpath))[1].replace('\\', '/').split('/')
-                parts = modparts[:-node.level]
-                prefix = '.'.join(parts) + '.'
-            else:
-                prefix = '.' * node.level
-        else:
-            prefix = ''
-
-        abs_modname = prefix + node.module
-        visitor.modules.append(abs_modname)
-
-        for alias in node.names:
-            key = alias.asname or alias.name
-            if alias.asname:
-                line = 'from {} import {} as {}'.format(abs_modname, alias.name, alias.asname)
-            else:
-                line = 'from {} import {}'.format(abs_modname, alias.name)
-            visitor.import_lines[key] = line
-            # modules.append(node.level * '.' + node.module + '.' + alias.name)
-            # modules.append(prefix + node.module + '.' + alias.name)
-
-    def visit_FunctionDef(visitor, node):
-        # Ignore modules imported in functions
-        if not visitor.top_level:
-            visitor.generic_visit(node)
-            # ast.NodeVisitor.generic_visit(visitor, node)
-
-    def visit_ClassDef(visitor, node):
-        if not visitor.top_level:
-            visitor.generic_visit(node)
-            # ast.NodeVisitor.generic_visit(visitor, node)
 
     def visit_Assign(visitor, node):
         for target in node.targets:
@@ -338,3 +409,15 @@ class ImportVisitor(ast.NodeVisitor):
                 except TypeError:
                     value = ('node', node)
                 visitor.assignments[key] = value
+
+    def visit_FunctionDef(visitor, node):
+        # Ignore any non-top-level imports
+        if not visitor.top_level:
+            visitor.generic_visit(node)
+            # ast.NodeVisitor.generic_visit(visitor, node)
+
+    def visit_ClassDef(visitor, node):
+        # Ignore any non-top-level imports
+        if not visitor.top_level:
+            visitor.generic_visit(node)
+            # ast.NodeVisitor.generic_visit(visitor, node)
