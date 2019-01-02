@@ -81,42 +81,11 @@ class CIFAR_FitHarn(nh.FitHarn):
                     of calling `.backwards` on the loss and updating the
                     gradient via the optimizer.
         """
-        inputs, labels = batch
-        output = harn.model(*inputs)
-        label = labels[0]
-        loss = harn.criterion(output, label)
-        outputs = [output]
+        inputs, labels = ub.take(batch, ['input', 'label'])
+        inputs.shape
+        outputs = harn.model(inputs)
+        loss = harn.criterion(outputs, labels)
         return outputs, loss
-
-    def _draw_batch(harn, bx, inputs, pred_labels, true_labels, pred_scores, true_scores):
-        import kwil
-        input_shape = inputs.shape
-        dims = [256] * (len(input_shape) - 2)
-        min_, max_ = inputs.min(), inputs.max()
-        inputs = (inputs - min_) / (max_ - min_)
-        inputs = torch.nn.functional.interpolate(inputs, size=dims)
-        inputs = (inputs * 255).byte()
-        inputs = inputs.data.cpu().numpy()
-
-        todraw = []
-        for im, pcx, tcx, pred_score, true_score in zip(inputs, pred_labels, true_labels, pred_scores, true_scores):
-            pred_label = 'cx={} @ {:.3f}'.format(pcx, pred_score)
-            if pcx == tcx:
-                true_label = 'tx={}'.format(tcx)
-            else:
-                true_label = 'tx={} @ {:.3f}'.format(tcx, true_score)
-            # im_ = kwil.convert_colorspace(im[0], 'gray', 'rgb')
-            im_ = np.ascontiguousarray(im.transpose(1, 2, 0))
-            color = kwil.Color('dodgerblue') if pcx == tcx else kwil.Color('orangered')
-            h, w = im_.shape[0:2][::-1]
-            im_ = kwil.draw_text_on_image(im_, pred_label, org=(5, 32), fontScale=1.0, thickness=2, color=color.as255())
-            im_ = kwil.draw_text_on_image(im_, true_label, org=(5, h - 4), fontScale=1.0, thickness=1, color=kwil.Color('lawngreen').as255())
-            todraw.append(im_)
-
-        dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
-        fpath = join(dpath, 'epoch_{}_batch_{}.jpg'.format(harn.epoch, bx))
-        stacked = kwil.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=16)
-        kwil.imwrite(fpath, stacked)
 
     def on_batch(harn, batch, outputs, loss):
         """
@@ -129,31 +98,81 @@ class CIFAR_FitHarn(nh.FitHarn):
         Notes:
             It is best to keep this function small as it is run very often
         """
-        inputs, labels = batch
-        label = labels[0]
-        output = outputs[0]
-
-        y_pred = output.data.max(dim=1)[1].cpu().numpy()
-        y_true = label.data.cpu().numpy()
-        probs = output.data.cpu().numpy()
+        y_pred = outputs.data.max(dim=1)[1].cpu().numpy()
+        y_true = batch['label'].data.cpu().numpy()
+        probs = outputs.data.cpu().numpy()
 
         bx = harn.bxs[harn.current_tag]
         if bx < 3:
-            true = label
-            class_probs = torch.nn.functional.softmax(output, dim=1)
-            scores, pred = class_probs.max(dim=1)
-            hot = nh.criterions.focal.one_hot_embedding(true, class_probs.shape[1])
-            true_probs = (hot * class_probs).sum(dim=1)
-            pred_scores = scores.data.cpu().numpy()
-            true_scores = true_probs.data.cpu().numpy()
-            pred_labels = y_pred
-            true_labels = label.cpu().numpy()
-            harn._draw_batch(bx, inputs[0], pred_labels, true_labels,
-                             pred_scores, true_scores)
+            decoded = harn._decode(outputs, batch['label'])
+            harn._draw_batch(bx, batch, decoded)
 
         harn._accum_confusion_vectors['y_true'].append(y_true)
         harn._accum_confusion_vectors['y_pred'].append(y_pred)
         harn._accum_confusion_vectors['probs'].append(probs)
+
+    def _demo_draw_batch(harn):
+        batch = harn._demo_batch(0, tag='test')
+        outputs, loss = harn.run_batch(batch)
+        bx = harn.bxs[harn.current_tag]
+        decoded = harn._decode(outputs, batch['label'])
+        harn._draw_batch(bx, batch, decoded)
+
+    def _decode(harn, outputs, true_cxs=None):
+        class_probs = torch.nn.functional.softmax(outputs, dim=1)
+        pred_scores, pred_cxs = class_probs.data.max(dim=1)
+
+        decoded = {
+            'class_probs': class_probs,
+            'pred_cxs': pred_cxs,
+            'pred_scores': pred_scores,
+        }
+        if true_cxs is not None:
+            hot = nh.criterions.focal.one_hot_embedding(true_cxs, class_probs.shape[1])
+            true_probs = (hot * class_probs).sum(dim=1)
+            decoded['true_scores'] = true_probs
+        return decoded
+
+    def _draw_batch(harn, bx, batch, decoded):
+        import kwil
+        inputs = batch['input']
+        input_shape = inputs.shape
+        dims = [320] * (len(input_shape) - 2)
+        min_, max_ = inputs.min(), inputs.max()
+        inputs = (inputs - min_) / (max_ - min_)
+        inputs = torch.nn.functional.interpolate(inputs, size=dims)
+        inputs = (inputs * 255).byte()
+        inputs = inputs.data.cpu().numpy()
+
+        dset = harn.datasets[harn.current_tag]
+        catgraph = dset.categories
+
+        pred_cxs = decoded['pred_cxs'].data.cpu().numpy()
+        pred_scores = decoded['pred_scores'].data.cpu().numpy()
+
+        true_cxs = batch['label'].data.cpu().numpy()
+        true_scores = decoded['true_scores'].data.cpu().numpy()
+
+        todraw = []
+        for im, pcx, tcx, pred_score, true_score in zip(inputs, pred_cxs, true_cxs, pred_scores, true_scores):
+            pred_label = 'cx={}:{}@{:.3f}'.format(pcx, catgraph[pcx], pred_score)
+            if pcx == tcx:
+                true_label = 'tx={}:{}'.format(tcx, catgraph[tcx])
+            else:
+                true_label = 'tx={}:{}@{:.3f}'.format(tcx, catgraph[tcx], true_score)
+            # im_ = kwil.convert_colorspace(im[0], 'gray', 'rgb')
+            im_ = im.transpose(1, 2, 0)
+            im_ = np.ascontiguousarray(im_)
+            color = kwil.Color('dodgerblue') if pcx == tcx else kwil.Color('orangered')
+            h, w = im_.shape[0:2][::-1]
+            im_ = kwil.draw_text_on_image(im_, pred_label, org=(5, 32), fontScale=0.8, thickness=1, color=color.as255())
+            im_ = kwil.draw_text_on_image(im_, true_label, org=(5, h - 4), fontScale=0.8, thickness=1, color=kwil.Color('lawngreen').as255())
+            todraw.append(im_)
+
+        dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
+        fpath = join(dpath, 'batch_{}_epoch_{}.jpg'.format(bx, harn.epoch))
+        stacked = kwil.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
+        kwil.imwrite(fpath, stacked)
 
     def on_epoch(harn):
         """
@@ -172,7 +191,7 @@ class CIFAR_FitHarn(nh.FitHarn):
         dset = harn.datasets[harn.current_tag]
         target_names = dset.categories
 
-        probs = np.hstack(harn._accum_confusion_vectors['probs'])
+        probs = np.vstack(harn._accum_confusion_vectors['probs'])
         y_true = np.hstack(harn._accum_confusion_vectors['y_true'])
         y_pred = np.hstack(harn._accum_confusion_vectors['y_pred'])
 
@@ -235,7 +254,10 @@ def train():
         'lr': float(ub.argval('--lr', default=0.1)),
         'batch_size': int(ub.argval('--batch_size', default=64)),
         'workers': int(ub.argval('--workers', default=2)),
-        'arch': ub.argval('--arch', default='resnet50'),
+
+        # 'arch': ub.argval('--arch', default='resnet50'),
+        'arch': ub.argval('--arch', default='wrn22'),
+
         'dataset': ub.argval('--dataset', default='cifar10'),
         'workdir': ub.expandpath(ub.argval('--workdir', default='~/work/cifar')),
         'seed': int(ub.argval('--seed', default=137852547)),
@@ -315,8 +337,14 @@ def train():
     }
     # For some reason the torchvision objects do not make the category names
     # easilly available. We set them here for ease of use.
-    datasets['train'].categories = categories
-    datasets['test'].categories = categories
+    reduction = int(ub.argval('--reduction', default=1))
+    for key, dset in datasets.items():
+        dset.categories = categories
+        if reduction > 1:
+            indices = np.arange(len(dset))[::reduction]
+            dset = torch.utils.data.Subset(dset, indices)
+        dset.categories = categories
+        datasets[key] = dset
 
     loaders = {
         key: torch.utils.data.DataLoader(dset, shuffle=key == 'train',
@@ -362,11 +390,74 @@ def train():
             'num_classes': len(categories),
         })),
     }
+
+    try:
+        import fastai
+        import fastai.vision
+        import fastai.vision.models
+        available_architectures['wrn22'] = (
+            fastai.vision.models.WideResNet, dict(
+                num_groups=3, N=3, num_classes=10, k=6, drop_p=0.
+            )
+        )
+    except ImportError:
+        pass
+
     model_ = available_architectures[config['arch']]
 
     # Note there are lots of different initializers including a special
     # pretrained initializer.
     initializer_ = (nh.initializers.KaimingNormal, {'param': 0, 'mode': 'fan_in'})
+
+    if True:
+        # TODO: Fast AI params
+        config['lr'] = 3e-3
+
+        pct = np.linspace(0, 1.0, 35)
+        cos_up = (np.cos(np.pi * (1 - pct)) + 1) / 2
+        cos_down = cos_up[::-1]
+
+        pt1 = config['lr'] / 25.0
+        pt2 = config['lr']
+        pt3 = config['lr'] / (1000 * 25.0)
+
+        phase1 = (pt2 - pt1) * cos_up + pt1
+        phase2 = (pt2 - pt3) * cos_down + pt3
+        points = dict(enumerate(ub.flatten([phase1, phase2])))
+
+        scheduler_ = (nh.schedulers.ListedLR, {
+            'points': points,
+            'interpolate': False
+        })
+        optimizer_ = (torch.optim.SGD, {
+            'lr': config['lr'],
+            'weight_decay': 5e-4,
+            'momentum': 0.8,
+            'nesterov': True,
+        })
+
+        # TODO: https://github.com/fastai/fastai/blob/c7df6a5948bdaa474f095bf8a36d75dbc1ee8e6a/fastai/callbacks/one_cycle.py
+        # cyc_len=35
+        # max_lr = 3e-3
+        # moms = (0.95,0.85)
+        # div_factor = 25
+        # pct_start=0.3,
+        # wd=0.4
+    else:
+        scheduler_ = (nh.schedulers.ListedLR, {
+            'points': {
+                0: config['lr'],
+                150: config['lr'] * 0.1,
+                250: config['lr'] * 0.01,
+            },
+            'interpolate': False
+        })
+        optimizer_ = (torch.optim.SGD, {
+            'lr': config['lr'],
+            'weight_decay': 5e-4,
+            'momentum': 0.9,
+            'nesterov': True,
+        })
 
     # Notice that arguments to hyperparameters are typically specified as a
     # tuple of (type, Dict), where the dictionary are the keyword arguments
@@ -384,20 +475,8 @@ def train():
         xpu=xpu,
         # The 6 major hyper components are best specified as a Tuple[type, dict]
         model=model_,
-        optimizer=(torch.optim.SGD, {
-            'lr': config['lr'],
-            'weight_decay': 5e-4,
-            'momentum': 0.9,
-            'nesterov': True,
-        }),
-        scheduler=(nh.schedulers.ListedLR, {
-            'points': {
-                0: config['lr'],
-                150: config['lr'] * 0.1,
-                250: config['lr'] * 0.01,
-            },
-            'interpolate': False
-        }),
+        optimizer=optimizer_,
+        scheduler=scheduler_,
         monitor=(nh.Monitor, {
             'minimize': ['loss'],
             'patience': 350,

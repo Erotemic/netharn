@@ -459,11 +459,14 @@ class InitializeMixin:
     def _export(harn):
         """ Export the model topology to the train_dpath """
         # TODO: might be good to check for multiple model exports at this time
-        model_cls = harn.hyper.model_cls
-        model_params = harn.hyper.model_params
-        static_modpath = export.export_model_code(harn.train_dpath, model_cls,
-                                                  initkw=model_params)
-        harn.info('Exported model topology to {}'.format(static_modpath))
+        try:
+            model_cls = harn.hyper.model_cls
+            model_params = harn.hyper.model_params
+            static_modpath = export.export_model_code(harn.train_dpath, model_cls,
+                                                      initkw=model_params)
+            harn.info('Exported model topology to {}'.format(static_modpath))
+        except Exception as ex:
+            harn.warn('Failed to export model topology')
 
     def reset_weights(harn):
         """
@@ -1105,8 +1108,13 @@ class CoreMixin:
         model topology into a single-file model deployment that is "mostly"
         independent of the code used to train the model.
         """
-        deploy_fpath = export.DeployedModel(harn.train_dpath).package()
-        harn.info('wrote single-file deployment to: {!r}'.format(deploy_fpath))
+        try:
+            deploy_fpath = export.DeployedModel(harn.train_dpath).package()
+            harn.info('wrote single-file deployment to: {!r}'.format(deploy_fpath))
+        except Exception:
+            deploy_fpath = None
+            harn.warn('Failed to deploy')
+
         return deploy_fpath
 
     @profiler.profile
@@ -1421,20 +1429,21 @@ class CoreCallbacks:
         Overload Encouraged, but not always necessary
         """
         try:
-            batch_inputs, batch_labels = raw_batch
+            if isinstance(raw_batch, (tuple, list)):
+                batch_inputs, batch_labels = raw_batch
+                raw_batch = {
+                    'input': batch_inputs,
+                    'label': batch_labels,
+                }
+            if isinstance(raw_batch, dict):
+                batch = raw_batch.copy()
+                batch['input'] = harn.xpu.move(batch['input'])
+                batch['label'] = harn.xpu.move(batch['label'])
+            else:
+                print('raw_batch = {}'.format(type(raw_batch)))
+                raise TypeError(
+                    'could not prepare raw batch {}'.format(type(raw_batch)))
 
-            # the dataset should return a inputs/target 2-tuple of lists.
-            # in most cases each list will be length 1, unless there are
-            # multiple input branches or multiple output branches.
-            if not isinstance(batch_inputs, (list, tuple)):
-                batch_inputs = [batch_inputs]
-            if not isinstance(batch_labels, (list, tuple)):
-                batch_labels = [batch_labels]
-
-            inputs = [harn.xpu.variable(d) for d in batch_inputs]
-            labels = [harn._tovar(d) for d in batch_labels]
-
-            batch = (inputs, labels)
         except Exception:
             harn.warn('Error occurred in default prepare_batch. '
                       'Perhaps you should overload it?')
@@ -1452,9 +1461,15 @@ class CoreCallbacks:
         """
         # Simple forward prop and loss computation
         try:
-            inputs, labels = batch
-            outputs = harn.model(*inputs)
-            loss = harn.criterion(outputs, *labels)
+            if isinstance(batch, dict):
+                outputs = harn.model(batch['input'])
+                loss = harn.criterion(outputs, batch['label'])
+            elif isinstance(batch, tuple):
+                inputs, labels = batch
+                outputs = harn.model(*inputs)
+                loss = harn.criterion(outputs, *labels)
+            else:
+                raise TypeError('Could not run batch')
         except Exception:
             harn.warn('Error occurred in default run_batch. '
                       'Perhaps you should overload it?')
