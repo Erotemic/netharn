@@ -251,7 +251,8 @@ def train():
 
     xpu = nh.XPU.cast('argv')
     config = {
-        'lr': float(ub.argval('--lr', default=0.1)),
+        # 'lr': float(ub.argval('--lr', default=0.1)),
+        'lr': float(ub.argval('--lr', default=0.003)),
         'batch_size': int(ub.argval('--batch_size', default=64)),
         'workers': int(ub.argval('--workers', default=2)),
 
@@ -411,8 +412,7 @@ def train():
 
     if True:
         # TODO: Fast AI params
-        config['lr'] = 3e-3
-
+        # config['lr'] = 3e-3
         pct = np.linspace(0, 1.0, 35)
         cos_up = (np.cos(np.pi * (1 - pct)) + 1) / 2
         cos_down = cos_up[::-1]
@@ -496,6 +496,7 @@ def train():
 
     # Creating an instance of a Fitharn object is typically fast.
     harn = CIFAR_FitHarn(hyper=hyper)
+    harn.config['prog_backend'] = 'progiter'
 
     # Initializing a FitHarn object can take a little time, but not too much.
     # This is where instances of the model, optimizer, scheduler, monitor, and
