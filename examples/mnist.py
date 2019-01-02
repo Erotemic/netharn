@@ -128,25 +128,24 @@ class MnistHarn(nh.FitHarn):
 
         dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
         fpath = join(dpath, 'epoch_{}_batch_{}.jpg'.format(harn.epoch, bx))
-        stacked = kwil.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=16)
+        stacked = kwil.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
         kwil.imwrite(fpath, stacked)
 
     def on_batch(harn, batch, outputs, loss):
         """ Compute relevent metrics to monitor """
         class_probs = torch.nn.functional.softmax(outputs, dim=1)
         scores, pred = class_probs.max(dim=1)
+
         pred_labels = pred.cpu().numpy()
-
-        true = batch['labels']
-        hot = nh.criterions.focal.one_hot_embedding(true, class_probs.shape[1])
-        true_probs = (hot * class_probs).sum(dim=1)
-
         true_labels = batch['labels'].cpu().numpy()
-        pred_scores = scores.data.cpu().numpy()
-        true_scores = true_probs.data.cpu().numpy()
 
         bx = harn.bxs[harn.current_tag]
         if bx == 0:
+            true = batch['labels']
+            hot = nh.criterions.focal.one_hot_embedding(true, class_probs.shape[1])
+            true_probs = (hot * class_probs).sum(dim=1)
+            pred_scores = scores.data.cpu().numpy()
+            true_scores = true_probs.data.cpu().numpy()
             harn._draw_batch(bx, batch, pred_labels, true_labels, pred_scores,
                              true_scores)
 
@@ -190,7 +189,6 @@ def train_mnist():
 
     # split the learning dataset into training and validation
     # take a subset of data
-    # factor = .15
     factor = .15
     n_vali = int(len(learn_dset) * factor)
     learn_idx = np.arange(len(learn_dset))
@@ -198,7 +196,7 @@ def train_mnist():
     rng = np.random.RandomState(0)
     rng.shuffle(learn_idx)
 
-    reduction = 1
+    reduction = int(ub.argval('--reduction', default=1))
     valid_idx = torch.LongTensor(learn_idx[:n_vali][::reduction])
     train_idx = torch.LongTensor(learn_idx[n_vali:][::reduction])
 

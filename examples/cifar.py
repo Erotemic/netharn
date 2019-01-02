@@ -33,6 +33,7 @@ checking divergence, reporting progress, handling differences between train,
 validation, and test sets. In short, netharn handles the necessary parts and
 let the developer focus on the important parts.
 """
+from os.path import join
 import numpy as np
 import ubelt as ub
 import torch
@@ -87,6 +88,36 @@ class CIFAR_FitHarn(nh.FitHarn):
         outputs = [output]
         return outputs, loss
 
+    def _draw_batch(harn, bx, inputs, pred_labels, true_labels, pred_scores, true_scores):
+        import kwil
+        input_shape = inputs.shape
+        dims = [256] * (len(input_shape) - 2)
+        min_, max_ = inputs.min(), inputs.max()
+        inputs = (inputs - min_) / (max_ - min_)
+        inputs = torch.nn.functional.interpolate(inputs, size=dims)
+        inputs = (inputs * 255).byte()
+        inputs = inputs.data.cpu().numpy()
+
+        todraw = []
+        for im, pcx, tcx, pred_score, true_score in zip(inputs, pred_labels, true_labels, pred_scores, true_scores):
+            pred_label = 'cx={} @ {:.3f}'.format(pcx, pred_score)
+            if pcx == tcx:
+                true_label = 'tx={}'.format(tcx)
+            else:
+                true_label = 'tx={} @ {:.3f}'.format(tcx, true_score)
+            # im_ = kwil.convert_colorspace(im[0], 'gray', 'rgb')
+            im_ = np.ascontiguousarray(im.transpose(1, 2, 0))
+            color = kwil.Color('dodgerblue') if pcx == tcx else kwil.Color('orangered')
+            h, w = im_.shape[0:2][::-1]
+            im_ = kwil.draw_text_on_image(im_, pred_label, org=(5, 32), fontScale=1.0, thickness=2, color=color.as255())
+            im_ = kwil.draw_text_on_image(im_, true_label, org=(5, h - 4), fontScale=1.0, thickness=1, color=kwil.Color('lawngreen').as255())
+            todraw.append(im_)
+
+        dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
+        fpath = join(dpath, 'epoch_{}_batch_{}.jpg'.format(harn.epoch, bx))
+        stacked = kwil.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=16)
+        kwil.imwrite(fpath, stacked)
+
     def on_batch(harn, batch, outputs, loss):
         """
         Custom code executed at the end of each batch.
@@ -105,6 +136,20 @@ class CIFAR_FitHarn(nh.FitHarn):
         y_pred = output.data.max(dim=1)[1].cpu().numpy()
         y_true = label.data.cpu().numpy()
         probs = output.data.cpu().numpy()
+
+        bx = harn.bxs[harn.current_tag]
+        if bx < 3:
+            true = label
+            class_probs = torch.nn.functional.softmax(output, dim=1)
+            scores, pred = class_probs.max(dim=1)
+            hot = nh.criterions.focal.one_hot_embedding(true, class_probs.shape[1])
+            true_probs = (hot * class_probs).sum(dim=1)
+            pred_scores = scores.data.cpu().numpy()
+            true_scores = true_probs.data.cpu().numpy()
+            pred_labels = y_pred
+            true_labels = label.cpu().numpy()
+            harn._draw_batch(bx, inputs[0], pred_labels, true_labels,
+                             pred_scores, true_scores)
 
         harn._accum_confusion_vectors['y_true'].append(y_true)
         harn._accum_confusion_vectors['y_pred'].append(y_pred)
@@ -192,7 +237,7 @@ def train():
         'workers': int(ub.argval('--workers', default=2)),
         'arch': ub.argval('--arch', default='resnet50'),
         'dataset': ub.argval('--dataset', default='cifar10'),
-        'workdir': ub.argval('--workdir', default=ub.get_app_cache_dir('netharn')),
+        'workdir': ub.expandpath(ub.argval('--workdir', default='~/work/cifar')),
         'seed': int(ub.argval('--seed', default=137852547)),
         'deterministic': False,
     }
@@ -363,7 +408,7 @@ def train():
         # The rests of the keyword arguments are simply dictionaries used to
         # track other information.
         # Specify what augmentations you are performing for experiment tracking
-        augment=datasets['train'].augmenter,
+        # augment=transform_train,
         other={
             # Specify anything else that is special about your hyperparams here
             # Especially if you make a custom_batch_runner
@@ -392,8 +437,9 @@ def train():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python examples/cifar.py --gpu=0 --arch=densenet121
         python examples/cifar.py --gpu=0 --arch=resnet50
+
+        python examples/cifar.py --gpu=0 --arch=densenet121
         # Train on two GPUs with a larger batch size
         python examples/cifar.py --arch=dpn92 --batch_size=256 --gpu=0,1
     """
