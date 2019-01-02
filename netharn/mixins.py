@@ -44,5 +44,7 @@ def _dump_monitor_tensorboard(harn):
         ax = nh.util.multi_plot(d['xdata'], d['ydata'], ylabel=key,
                                 xlabel='epoch', title=key, fnum=1, doclf=True,
                                 **kw)
+
+        # png is slightly smaller than jpg for this kind of plot
         fpath = join(out_dpath, key + '.png')
         ax.figure.savefig(fpath)

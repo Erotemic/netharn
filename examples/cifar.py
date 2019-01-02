@@ -157,6 +157,11 @@ class CIFAR_FitHarn(nh.FitHarn):
         }
         return metrics_dict
 
+    def after_epochs(harn):
+        # Note: netharn.mixins is unstable functionality
+        from netharn.mixins import _dump_monitor_tensorboard
+        _dump_monitor_tensorboard(harn)
+
 
 def train():
     """
