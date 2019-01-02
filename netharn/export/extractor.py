@@ -115,8 +115,34 @@ def source_closure(model_class, expand_names=[]):
 class Closer(object):
     """
     Maintains the current state of the source code extract_definition
+
+    There are 3 major steps:
+    (a) extract the code to that defines a function or class from a module,
+    (b) go back to the module and extract extra code required to define any
+        names that were undefined in the extracted code, and
+    (c) replace import statements to specified "expand" modules with the actual code
+        used to define the variables accessed via the imports.
+
+    This results in a standalone file that has absolutely no dependency on the
+    original module or the specified "expand" modules (the expand module is
+    usually the module that is doing the training for a network. This means
+    that you can deploy a model independant of the training framework).
+
+    Note:
+        This is not designed to work for cases where the code depends on logic
+        executed in a global scope (e.g. dynamically registering properties) .
+        I think its actually impossible to statically account for this case in
+        general.
     """
     def __init__(closer):
+        # TODO:
+        # - [ ] Maintain a parse tree instead of raw lines
+        # - [ ] Keep a mapping from "definition names" to the top-level nodes
+        # in the parse tree that define them.
+        # - [ ] For each extracted node in the parse tree keep track of
+        #     - [ ] where it came from
+        #     - [ ] what modifications were made to it
+        # - [ ] Handle expanding imports nested within functions
         closer.body_lines = []
         closer.header_lines = []
 
