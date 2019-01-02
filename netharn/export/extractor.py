@@ -1,6 +1,8 @@
 """
 Extracts relevant parts of the source code
 """
+from os.path import isdir
+from os.path import join
 from os.path import basename
 from collections import OrderedDict
 import warnings
@@ -18,8 +20,10 @@ from os.path import sys
 #     'source_closure',
 # ]
 
+DEBUG = 0
 
-def source_closure(model_class, expand_modules=[]):
+
+def source_closure(model_class, expand_names=[]):
     """
     Hacky way to pull just the minimum amount of code needed to define a
     model_class. Uses a combination of dynamic and static introspection.
@@ -28,7 +32,7 @@ def source_closure(model_class, expand_modules=[]):
         model_class (type):
             class used to define the model_class
 
-        expand_modules (List[str]):
+        expand_names (List[str]):
             EXPERIMENTAL. List of modules that should be expanded into raw
             source code.
 
@@ -83,96 +87,274 @@ def source_closure(model_class, expand_modules=[]):
 
     Doctest:
         >>> # Test a heavier duty class
+        >>> from netharn.export.extractor import *
         >>> import netharn as nh
+        >>> model_class = nh.device.MountedModel
         >>> model_class = nh.layers.ConvNormNd
-        >>> expand_modules = ['netharn']
-        >>> text = source_closure(model_class, expand_modules)
+        >>> model_class = nh.layers.Sequential
+        >>> from netharn.models.yolo2.light_yolo import Yolo
+        >>> model_class = Yolo
+        >>> expand_names = ['netharn', 'ubelt']
+        >>> expand_names = ['netharn']
+        >>> from ovharn.models import multiscale_mcd_arch
+        >>> model_class = multiscale_mcd_arch.Multiscale_MCD_Resnet50
+        >>> expand_names = ['ovharn']
+        >>> text = source_closure(model_class, expand_names)
+        >>> from netharn.export.exporter import remove_comments_and_docstrings
+        >>> text = remove_comments_and_docstrings(text)
         >>> print(text)
     """
-    module_name = model_class.__module__
-    module = sys.modules[module_name]
-
-    # Extract the source code of the class only
-    class_sourcecode = inspect.getsource(model_class)
-    class_sourcecode = ub.ensure_unicode(class_sourcecode)
-
-    # Initialize a list to accumulate code until everything is closed
-    import_lines = []
-    lines = [class_sourcecode]
-
-    # Parse the parent module to find only the relevant global varaibles and
-    # include those in the extracted source code.
-    visitor = ImportVisitor.parse_module(module)
-    visitor.import_info
-
-    while True:
-        # Determine if there are any variables needed from the parent scope
-        current_header = '\n'.join(sorted(import_lines))
-        current_body = '\n\n'.join(lines[::-1])
-        current_sourcecode = (current_header + '\n\n\n' + current_body)
-        names = sorted(undefined_names(current_sourcecode))
-
-        if not names:
-            # Exit the loop once all variables are defined
-            break
-
-        # Make sure we process names in the same order for hashability
-        names = sorted(set(names))
-        for name in names:
-            try:
-                type_, text = visitor.closure(name)
-            except NotImplementedError:
-                current_header = '\n'.join(sorted(import_lines))
-                current_body = '\n\n'.join(lines[::-1])
-                print('--- <ERROR> ---')
-                print('Error computing source code closure')
-                print(' * failed to close name = {!r}'.format(name))
-                print('<<< CURRENT_HEADER >>>\n{}\n<<<>>>'.format(ub.highlight_code(current_header)))
-                print('<<< CURRENT_BODY >>>\n{}\n<<<>>>'.format(ub.highlight_code(current_body)))
-                print('--- </ERROR> ---')
-                raise
-            if type_ == 'import':
-                import_lines.append(text)
-            else:
-                lines.append(text)
-            if text is None:
-                raise NotImplementedError(str(name))
-                break
-
-    if expand_modules:
-        # Expand references to internal modules
-        closed_visitor = ImportVisitor.parse_source(current_sourcecode)
-        self = closed_visitor.import_info
-        for root in expand_modules:
-            needs_expansion = self.root_to_varnames.get(root, [])
-            for varname in needs_expansion:
-                info = self.varname_to_info[varname]
-                modpath = ub.modname_to_modpath(info['modname'])
-
-                if info['type'] == 'attribute':
-                    # We can directly replace this import statement by
-                    # copy-pasting the relevant code from the other module
-                    # (ASSUMING THERE ARE NO NAME CONFLICTS)
-
-                    # TODO: Now we just need to get the closure with respect to
-                    # these newly added variables.
-                    new = ImportVisitor.parse_source(open(modpath, 'r').read(), modpath)
-                    a = new.closure(varname)
-                    print('TODO: NEED TO CLOSE attribute varname = {!r}'.format(varname))
-                    # print('a = {!r}'.format(a))
-
-                elif info['type'] == 'module':
-                    # TODO: We need to determine what actually is used from
-                    print('TODO: NEED TO CLOSE module varname = {!r}'.format(varname))
-                    # this module and fix some of the names.
-                    pass
-
-        # for root in closed_visitor.import_info.root_modnames:
-        #     if root in expand_modules:
-        #         print('TOEXPAND root = {!r}'.format(root))
-
-    closed_sourcecode = current_sourcecode
+    closer = Closer()
+    closer.add_dynamic(model_class)
+    if expand_names:
+        closer.expand(expand_names)
+    closed_sourcecode = closer.current_sourcecode()
     return closed_sourcecode
+
+
+class Closer(object):
+    """
+    Maintains the current state of the source code extract_definition
+    """
+    def __init__(closer):
+        closer.body_lines = []
+        closer.header_lines = []
+
+    def current_sourcecode(closer):
+        current_header = '\n'.join(sorted(closer.header_lines))
+        current_body = '\n\n'.join(closer.body_lines[::-1])
+        current_sourcecode = (current_header + '\n\n\n' + current_body)
+        return current_sourcecode
+
+    def add_dynamic(closer, obj):
+        """
+        Add the source to define a live python object
+        """
+        modname = obj.__module__
+        module = sys.modules[modname]
+
+        # Extract the source code of the class only
+        class_sourcecode = inspect.getsource(obj)
+        class_sourcecode = ub.ensure_unicode(class_sourcecode)
+        closer.body_lines.append(class_sourcecode)
+        visitor = ImportVisitor.parse(module=module)
+        closer.close(visitor)
+
+    def add_static(closer, name, modpath):
+        visitor = ImportVisitor.parse(modpath=modpath)
+        closer._extract_and_populate(visitor, name)
+        closer.close(visitor)
+
+    def _extract_and_populate(closer, visitor, name):
+        try:
+            type_, text = visitor.extract_definition(name)
+        except NotImplementedError:
+            current_sourcecode = closer.current_sourcecode()
+            print('--- <ERROR> ---')
+            print('Error computing source code extract_definition')
+            print(' * failed to close name = {!r}'.format(name))
+            print('<<< CURRENT_SOURCE >>>\n{}\n<<<>>>'.format(ub.highlight_code(current_sourcecode)))
+            print('--- </ERROR> ---')
+            raise
+        if text is None:
+            if DEBUG:
+                warnings.warn(str(name))
+                return
+            else:
+                raise NotImplementedError(str(name))
+        if type_ == 'import':
+            closer.header_lines.append(text)
+        else:
+            closer.body_lines.append(text)
+
+    def close(closer, visitor):
+        """
+        Populate all undefined names using the context from a module
+        """
+        # Parse the parent module to find only the relevant global varaibles and
+        # include those in the extracted source code.
+        current_sourcecode = closer.current_sourcecode()
+
+        # Loop until all undefined names are defined
+        names = True
+        while names:
+            # Determine if there are any variables needed from the parent scope
+            current_sourcecode = closer.current_sourcecode()
+            # Make sure we process names in the same order for hashability
+            prev_names = names
+            names = sorted(undefined_names(current_sourcecode))
+            if names == prev_names:
+                if DEBUG:
+                    warnings.warn('We were unable do do anything about undefined names')
+                    return
+                else:
+                    raise AssertionError('unable to define names')
+            for name in names:
+                closer._extract_and_populate(visitor, name)
+
+    def replace_varname(closer, find, repl):
+        repl_header = [line if line != find else '# ' + line
+                       for line in repl.header_lines]
+
+        for i, line in enumerate(closer.header_lines):
+            if line == find:
+                closer.header_lines[i] = '# ' + line
+
+        closer.header_lines.extend(repl_header)
+        closer.body_lines.extend(repl.body_lines)
+        closer.header_lines = list(ub.unique(closer.header_lines))
+
+    def expand_module_attributes(closer, varname):
+        current_sourcecode = closer.current_sourcecode()
+        closed_visitor = ImportVisitor.parse(source=current_sourcecode)
+        info = closed_visitor.import_info.varname_to_info[varname]
+        find = info['line']
+        varmodpath = ub.modname_to_modpath(info['modname'])
+        expansion = info['expansion']
+
+        def _exhaust(name, modname, modpath):
+            current_sourcecode = closer.current_sourcecode()
+            closed_visitor = ImportVisitor.parse(source=current_sourcecode)
+            print('REWRITE ACCESSOR name = {!r}'.format(name))
+            rewriter = RewriteModuleAccess(name)
+            rewriter.visit(closed_visitor.pt)
+            new_body = astunparse.unparse(closed_visitor.pt)
+            closer.body_lines = [new_body]
+
+            for subname in rewriter.accessed_attrs:
+                submodname = modname + '.' + subname
+                submodpath = ub.modname_to_modpath(submodname)
+                if submodpath is not None:
+                    # if the accessor is to another module, exhaust until
+                    # we reach a non-module
+                    print('EXAUSTING: {}, {}, {}'.format(subname, submodname, submodpath))
+                    _exhaust(subname, submodname, submodpath)
+                else:
+                    # Otherwise we can directly add the referenced attribute
+                    print('FINALIZE: {}'.format(subname, modpath))
+                    closer.add_static(subname, modpath)
+
+        _exhaust(varname, expansion, varmodpath)
+        new_closer = Closer()
+        repl = new_closer
+        closer.replace_varname(find, repl)
+
+    def expand(closer, expand_names):
+        """
+        Experimental feature
+        """
+        print("!!! EXPANDING")
+        # Expand references to internal modules
+        flag = True
+        while flag:
+            flag = False
+            current_sourcecode = closer.current_sourcecode()
+            closed_visitor = ImportVisitor.parse(source=current_sourcecode)
+            self = closed_visitor.import_info  # NOQA
+            for root in expand_names:
+                needs_expansion = closed_visitor.import_info.root_to_varnames.get(root, [])
+                for varname in needs_expansion:
+                    flag = True
+                    info = closed_visitor.import_info.varname_to_info[varname]
+                    modpath = ub.modname_to_modpath(info['modname'])
+
+                    if info['type'] == 'attribute':
+                        # We can directly replace this import statement by
+                        # copy-pasting the relevant code from the other module
+                        # (ASSUMING THERE ARE NO NAME CONFLICTS)
+
+                        # TODO: Now we just need to get the extract_definition with respect to
+                        # these newly added variables.
+                        find = closed_visitor.import_info.varname_to_info[varname]['line']
+                        print('TODO: NEED TO CLOSE attribute varname = {!r}'.format(varname))
+                        print(' * modpath = {!r}'.format(modpath))
+                        print(' * find = {!r}'.format(find))
+                        new_closer = Closer()
+                        name = varname
+                        new_closer.add_static(name, modpath)
+                        new_closer.expand(expand_names)
+
+                        # Replace the import with the definition
+                        repl = new_closer
+                        closer.replace_varname(find, repl)
+                        print('CLOSED attribute varname = {}'.format(varname))
+                        # a = new.extract_definition(varname)
+                        # print('a = {!r}'.format(a))
+
+                    elif info['type'] == 'module':
+                        print('TODO: NEED TO CLOSE module varname = {!r}'.format(varname))
+                        closer.expand_module_attributes(varname)
+                        print('CLOSED module varname = {}'.format(varname))
+                        current_sourcecode = closer.current_sourcecode()
+                        closed_visitor = ImportVisitor.parse(source=current_sourcecode)
+
+                        # # TODO: We need to determine what actually is used from
+                        # find = closed_visitor.import_info.varname_to_info[varname]['line']
+
+                        # # FIXME: Rewrite only the appropriate section
+                        # rewriter = RewriteModuleAccess(varname)
+                        # rewriter.visit(closed_visitor.pt)
+                        # new_body = astunparse.unparse(closed_visitor.pt)
+                        # closer.body_lines = [new_body]
+
+                        # expansion = info['expansion']
+                        # print(' * modpath = {!r}'.format(modpath))
+                        # print(' * expansion = {!r}'.format(expansion))
+                        # print(' * rewriter.accessed_attrs = {!r}'.format(rewriter.accessed_attrs))
+                        # print(' * find = {!r}'.format(find))
+                        # new_closer = Closer()
+                        # accessed_submodules = []
+
+                        # for name in rewriter.accessed_attrs:
+                        #     x = expansion + '.' + name
+                        #     if ub.modname_to_modpath(x):
+                        #         accessed_submodules.append((x, name))
+                        #     else:
+                        #         closer.add_static(name, modpath)
+
+                        # for submod, name in accessed_submodules:
+                        #     # should probably have a recursive component
+                        #     print('submod = {!r}'.format(submod))
+                        #     print('name = {!r}'.format(name))
+                        #     rewriter = RewriteModuleAccess(name)
+                        #     rewriter.visit(closed_visitor.pt)
+                        #     new_body = astunparse.unparse(closed_visitor.pt)
+                        #     closer.body_lines = [new_body]
+
+                        #     new_submod = []
+                        #     print('rewriter.accessed_attrs = {!r}'.format(rewriter.accessed_attrs))
+                        #     submodpath = ub.modname_to_modpath(submod)
+                        #     print('submodpath = {!r}'.format(submodpath))
+
+                        #     for name in rewriter.accessed_attrs:
+                        #         x = submod + '.' + name
+                        #         if ub.modname_to_modpath(x):
+                        #             new_submod.append((x, name))
+                        #         else:
+                        #             print('SS name = {!r}'.format(name))
+                        #             print('submodpath = {!r}'.format(submodpath))
+                        #             closer.add_static(name, submodpath)
+
+                        # new_closer.expand(expand_names)
+
+                        # FIXME: Rewrite only the appropriate section
+                        # current_sourcecode = closer.current_sourcecode()
+                        # closed_visitor = ImportVisitor.parse(source=current_sourcecode)
+                        # rewriter = RewriteModuleAccess(varname)
+                        # rewriter.visit(closed_visitor.pt)
+                        # new_body = astunparse.unparse(closed_visitor.pt)
+                        # closer.body_lines = [new_body]
+
+                        # new_closer = Closer()
+                        # repl = new_closer
+                        # new_closer.expand(expand_names)
+                        # closer.replace_varname(find, repl)
+
+                        # TODO:
+                        #     - [ ] Determine which attributes of "varname" are accessed
+
+                        # this module and fix some of the names.
+                        pass
 
 
 def _parse_static_node_value(node):
@@ -248,8 +430,8 @@ class ImportInfo(ub.NiceRepr):
     """
     Hold information about module-level imports for ImportVisitor
     """
-    def __init__(self, fpath=None):
-        self.fpath = fpath
+    def __init__(self, modpath=None):
+        self.modpath = modpath
 
         self.varnames = []
 
@@ -310,12 +492,12 @@ class ImportInfo(ub.NiceRepr):
 
         if node.level:
             # Handle relative imports
-            if self.fpath is not None:
+            if self.modpath is not None:
                 try:
-                    rel_modpath = ub.split_modpath(abspath(self.fpath))[1]
+                    rel_modpath = ub.split_modpath(abspath(self.modpath))[1]
                 except ValueError:
-                    warnings.warn('fpath={} does not exist'.format(self.fpath))
-                    rel_modpath = basename(abspath(self.fpath))
+                    warnings.warn('modpath={} does not exist'.format(self.modpath))
+                    rel_modpath = basename(abspath(self.modpath))
                 modparts = rel_modpath.replace('\\', '/').split('/')
                 parts = modparts[:-node.level]
                 prefix = '.'.join(parts)
@@ -342,6 +524,69 @@ class ImportInfo(ub.NiceRepr):
             self.varname_to_expansion[varname] = abs_modname + '.' + alias.name
 
 
+class RewriteModuleAccess(ast.NodeTransformer):
+    """
+    Example:
+        >>> from netharn.export.extractor import *
+        >>> source = ub.codeblock(
+        ...     '''
+        ...     foo.bar = 3
+        ...     foo.baz.bar = 3
+        ...     biz.foo.baz.bar = 3
+        ...     ''')
+        >>> pt = ast.parse(source)
+        >>> visitor = RewriteModuleAccess('foo')
+        >>> orig = astunparse.unparse(pt)
+        >>> print(orig)
+        >>> visitor.visit(pt)
+        >>> modified = astunparse.unparse(pt)
+        >>> print(modified)
+        >>> visitor.accessed_attrs
+
+    """
+    def __init__(self, modname):
+        self.modname = modname
+        self.level = 0
+        self.accessed_attrs = []
+
+    def visit_Import(self, node):
+        if self.level == 0:
+            return None
+        return node
+
+    def visit_Expr(self, node):
+        if isinstance(node.value, ast.Str):
+            return None
+        return node
+
+    def visit_ImportFrom(self, node):
+        if self.level == 0:
+            return None
+        return node
+
+    def visit_FunctionDef(self, node):
+        self.level += 1
+        self.generic_visit(node)
+        self.level -= 1
+        return node
+
+    def visit_ClassDef(self, node):
+        self.level += 1
+        self.generic_visit(node)
+        self.level -= 1
+        return node
+
+    def visit_Attribute(self, node):
+        self.generic_visit(node)
+        if isinstance(node.value, ast.Name):
+            if node.value.id == self.modname:
+                self.accessed_attrs.append(node.attr)
+                new_node = ast.Name(node.attr, node.ctx)
+                old_node = node
+                return ast.copy_location(new_node, old_node)
+        return node
+
+
 class ImportVisitor(ast.NodeVisitor):
     """
     Used to search for dependencies in the original module
@@ -352,7 +597,7 @@ class ImportVisitor(ast.NodeVisitor):
     Example:
         >>> from netharn.export.extractor import *
         >>> from netharn.export import extractor
-        >>> fpath = extractor.__file__
+        >>> modpath = extractor.__file__
         >>> sourcecode = ub.codeblock(
         ...     '''
         ...     import a
@@ -364,7 +609,7 @@ class ImportVisitor(ast.NodeVisitor):
         ...     from . import k, l, m
         ...     from n import o, p, q
         ...     ''')
-        >>> visitor = ImportVisitor.parse_source(sourcecode, fpath=fpath)
+        >>> visitor = ImportVisitor.parse_source(sourcecode, modpath=modpath)
         >>> print(ub.repr2(visitor.import_info.varname_to_info))
         ...
         >>> print(visitor.import_info)
@@ -384,13 +629,14 @@ class ImportVisitor(ast.NodeVisitor):
         })>
     """
 
-    def __init__(visitor, fpath=None, module_name=None, module=None):
+    def __init__(visitor, modpath=None, modname=None, module=None):
         super(ImportVisitor, visitor).__init__()
-        visitor.fpath = fpath
-        visitor.module_name = module_name
+        visitor.pt = None
+        visitor.modpath = modpath
+        visitor.modname = modname
         visitor.module = module
 
-        visitor.import_info = ImportInfo(fpath=fpath)
+        visitor.import_info = ImportInfo(modpath=modpath)
         visitor.assignments = {}
 
         visitor.calldefs = {}
@@ -400,27 +646,39 @@ class ImportVisitor(ast.NodeVisitor):
         visitor.import_info.finalize()
 
     @classmethod
-    def parse_source(ImportVisitor, module_source, fpath=None):
-        pt = ast.parse(module_source)
-        visitor = ImportVisitor(fpath=fpath)
+    def parse(ImportVisitor, source=None, modpath=None, modname=None,
+              module=None):
+        if module is not None:
+            source = inspect.getsource(module)
+            modname = module.__name__
+            modpath = module.__file__
+
+        if modpath is not None:
+            if isdir(modpath):
+                modpath = join(modpath, '__init__.py')
+            if modname is None:
+                modname = ub.modpath_to_modname(modpath)
+
+        if modpath is not None:
+            if source is None:
+                source = open(modpath, 'r').read()
+
+        if source is None:
+            raise ValueError('unable to derive source code')
+
+        source = ub.ensure_unicode(source)
+        pt = ast.parse(source)
+        visitor = ImportVisitor(modpath, modname, module)
+        visitor.pt = pt
         visitor.visit(pt)
         visitor.finalize()
         return visitor
 
-    @classmethod
-    def parse_module(ImportVisitor, module):
-        module_source = inspect.getsource(module)
-        module_source = ub.ensure_unicode(module_source)
-        pt = ast.parse(module_source)
-        visitor = ImportVisitor(module.__file__, module.__name__, module)
-        visitor.visit(pt)
-        visitor.finalize()
-        return visitor
-
-    def closure(visitor, name):
+    def extract_definition(visitor, name):
         """
-        Given a live-object and its assigned name in a file find the lines of
-        code that define it.
+        Given the name of a variable / class / function / moodule, extract the
+        relevant lines of source code that define that structure from the
+        visited module.
         """
         # if name == 'fcn_coder':
         #     return 'import', 'from ovharn.models import fcn_coder'
@@ -450,14 +708,21 @@ class ImportVisitor(ast.NodeVisitor):
             # NOTE: now that we are tracking calldefs and using astunparse,
             # this code should not need to be called.
             if visitor.module is None:
-                raise AssertionError('Need module to dynamic analysis')
+                print('visitor = {!r}'.format(visitor))
+                print('visitor.modpath = {!r}'.format(visitor.modpath))
+                print('visitor.import_info = {!r}'.format(visitor.import_info))
+                if DEBUG:
+                    warnings.warn('Need module to dynamic analysis: {}'.format(name))
+                    return None, None
+                else:
+                    raise AssertionError('Need module to dynamic analysis: {}'.format(name))
             obj = getattr(visitor.module, name)
             if isinstance(obj, types.FunctionType):
-                if obj.__module__ == visitor.module_name:
+                if obj.__module__ == visitor.modname:
                     sourcecode = inspect.getsource(obj)
                     return 'code', sourcecode
             elif isinstance(obj, type):
-                if obj.__module__ == visitor.module_name:
+                if obj.__module__ == visitor.modname:
                     sourcecode = inspect.getsource(obj)
                     return 'code', sourcecode
             raise NotImplementedError(str(obj) + ' ' + str(name))
