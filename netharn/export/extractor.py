@@ -133,6 +133,17 @@ class Closer(object):
         executed in a global scope (e.g. dynamically registering properties) .
         I think its actually impossible to statically account for this case in
         general.
+
+    Ignore:
+        >>> from netharn.export.extractor import *
+        >>> import netharn as nh
+        >>> import fastai.vision
+        >>> obj = fastai.vision.models.WideResNet
+        >>> expand_names = []
+        >>> closer = Closer()
+        >>> closer.add_dynamic(obj)
+        >>> print(ub.repr2(closer.body_defs, si=1))
+        >>> print(closer.current_sourcecode())
     """
     def __init__(closer):
         # TODO:
@@ -143,13 +154,26 @@ class Closer(object):
         #     - [ ] where it came from
         #     - [ ] what modifications were made to it
         # - [ ] Handle expanding imports nested within functions
-        closer.body_lines = []
-        closer.header_lines = []
+        closer.header_defs = ub.odict()
+        closer.body_defs = ub.odict()
+        closer.visitors = {}
+
+    def _add_definition(closer, d):
+        if 'import' in d.type:
+            if d.absname in closer.header_defs:
+                del closer.header_defs[d.absname]
+            closer.header_defs[d.absname] = d
+        else:
+            if d.absname in closer.body_defs:
+                del closer.body_defs[d.absname]
+            closer.body_defs[d.absname] = d
 
     def current_sourcecode(closer):
-        current_header = '\n'.join(sorted(closer.header_lines))
-        current_body = '\n\n'.join(closer.body_lines[::-1])
-        current_sourcecode = (current_header + '\n\n\n' + current_body)
+        header_lines = [d.code for d in closer.header_defs.values()]
+        body_lines = [d.code for d in closer.body_defs.values()][::-1]
+        current_sourcecode = '\n'.join(header_lines)
+        current_sourcecode += '\n'
+        current_sourcecode += ''.join(body_lines)
         return current_sourcecode
 
     def add_dynamic(closer, obj):
@@ -159,39 +183,29 @@ class Closer(object):
         modname = obj.__module__
         module = sys.modules[modname]
 
-        # Extract the source code of the class only
-        class_sourcecode = inspect.getsource(obj)
-        class_sourcecode = ub.ensure_unicode(class_sourcecode)
-        closer.body_lines.append(class_sourcecode)
-        visitor = ImportVisitor.parse(module=module)
+        name = obj.__name__
+
+        modpath = module.__file__
+        if modpath not in closer.visitors:
+            visitor = ImportVisitor.parse(module=module, modpath=modpath)
+            closer.visitors[modpath] = visitor
+        visitor = closer.visitors[modpath]
+
+        d = visitor.definitions[name]
+        closer._add_definition(d)
+
         closer.close(visitor)
 
     def add_static(closer, name, modpath):
-        visitor = ImportVisitor.parse(modpath=modpath)
-        closer._extract_and_populate(visitor, name)
-        closer.close(visitor)
+        if modpath not in closer.visitors:
+            visitor = ImportVisitor.parse(modpath=modpath)
+            closer.visitors[modpath] = visitor
+        visitor = closer.visitors[modpath]
 
-    def _extract_and_populate(closer, visitor, name):
-        try:
-            type_, text = visitor.extract_definition(name)
-        except NotImplementedError:
-            current_sourcecode = closer.current_sourcecode()
-            print('--- <ERROR> ---')
-            print('Error computing source code extract_definition')
-            print(' * failed to close name = {!r}'.format(name))
-            print('<<< CURRENT_SOURCE >>>\n{}\n<<<>>>'.format(ub.highlight_code(current_sourcecode)))
-            print('--- </ERROR> ---')
-            raise
-        if text is None:
-            if DEBUG:
-                warnings.warn(str(name))
-                return
-            else:
-                raise NotImplementedError(str(name))
-        if type_ == 'import':
-            closer.header_lines.append(text)
-        else:
-            closer.body_lines.append(text)
+        d = visitor.definitions[name]
+        closer._add_definition(d)
+
+        closer.close(visitor)
 
     def close(closer, visitor):
         """
@@ -210,13 +224,25 @@ class Closer(object):
             prev_names = names
             names = sorted(undefined_names(current_sourcecode))
             if names == prev_names:
+                print('visitor.definitions = {}'.format(ub.repr2(visitor.definitions, si=1)))
                 if DEBUG:
                     warnings.warn('We were unable do do anything about undefined names')
                     return
                 else:
-                    raise AssertionError('unable to define names')
+                    raise AssertionError('unable to define names: {}'.format(names))
             for name in names:
-                closer._extract_and_populate(visitor, name)
+                # visitor.
+                try:
+                    d = visitor.definitions[name]
+                    closer._add_definition(d)
+                    # type_, text = visitor.extract_definition(name)
+                except NotImplementedError:
+                    current_sourcecode = closer.current_sourcecode()
+                    print('--- <ERROR> ---')
+                    print('Error computing source code extract_definition')
+                    print(' * failed to close name = {!r}'.format(name))
+                    print('<<< CURRENT_SOURCE >>>\n{}\n<<<>>>'.format(ub.highlight_code(current_sourcecode)))
+                    print('--- </ERROR> ---')
 
     def replace_varname(closer, find, repl):
         repl_header = [line if line != find else '# ' + line
@@ -452,6 +478,35 @@ def undefined_names(sourcecode):
     return names
 
 
+class Definition(ub.NiceRepr):
+    def __init__(self, name, node, type=None, code=None, absname=None,
+                 modpath=None, modname=None):
+        self.name = name
+        self.node = node
+        self.type = type
+        self._code = code
+        self.absname = absname
+        self.modpath = modpath
+        # if self.modpath is not None:
+        #     self.modname = ub.modpath_to_modname(self.modpath)
+
+    @property
+    def code(self):
+        if self._code is None:
+            self._code = astunparse.unparse(self.node)
+        return self._code
+
+    def __nice__(self):
+        parts = []
+        parts.append('name={}'.format(self.name))
+        parts.append('type={}'.format(self.type))
+        # if self.modname is not None:
+        #     parts.append('modname={}'.format(self.modname))
+        if self.absname is not None:
+            parts.append('absname={}'.format(self.absname))
+        return ', '.join(parts)
+
+
 class ImportInfo(ub.NiceRepr):
     """
     Hold information about module-level imports for ImportVisitor
@@ -512,8 +567,17 @@ class ImportInfo(ub.NiceRepr):
                 line = 'import {}'.format(alias.name)
             self.varname_to_line[varname] = line
             self.varname_to_expansion[varname] = alias.name
+            absname = alias.name
+            yield Definition(varname, node, code=line, absname=absname,
+                             type='import', modpath=self.modpath)
 
     def register_from_import_node(self, node):
+        """
+        Ignore:
+            from netharn.export.extractor import *
+            visitor = ImportVisitor.parse(module=module)
+            print('visitor.definitions = {}'.format(ub.repr2(visitor.definitions, sv=1)))
+        """
         self._import_from_nodes.append(node)
 
         if node.level:
@@ -546,8 +610,16 @@ class ImportInfo(ub.NiceRepr):
                 line = 'from {} import {} as {}'.format(abs_modname, alias.name, alias.asname)
             else:
                 line = 'from {} import {}'.format(abs_modname, alias.name)
+            absname = abs_modname + '.' + alias.name
             self.varname_to_line[varname] = line
-            self.varname_to_expansion[varname] = abs_modname + '.' + alias.name
+            self.varname_to_expansion[varname] = absname
+            if varname == '*':
+                # HACK
+                abs_modpath = ub.modname_to_modpath(abs_modname)
+                for d in ImportVisitor.parse(modpath=abs_modpath).definitions.values():
+                    yield d
+            else:
+                yield Definition(varname, node, code=line, absname=absname, type='import_from', modpath=self.modpath)
 
 
 class RewriteModuleAccess(ast.NodeTransformer):
@@ -613,7 +685,7 @@ class RewriteModuleAccess(ast.NodeTransformer):
         return node
 
 
-class ImportVisitor(ast.NodeVisitor):
+class ImportVisitor(ast.NodeVisitor, ub.NiceRepr):
     """
     Used to search for dependencies in the original module
 
@@ -665,8 +737,16 @@ class ImportVisitor(ast.NodeVisitor):
         visitor.import_info = ImportInfo(modpath=modpath)
         visitor.assignments = {}
 
+        visitor.definitions = {}
+
         visitor.calldefs = {}
         visitor.top_level = True
+
+    def __nice__(self):
+        if self.modname is not None:
+            return self.modname
+        else:
+            return "<sourcecode>"
 
     def finalize(visitor):
         visitor.import_info.finalize()
@@ -730,6 +810,8 @@ class ImportVisitor(ast.NodeVisitor):
             sourcecode = astunparse.unparse(visitor.calldefs[name])
             return 'code', sourcecode
         else:
+            import warnings
+            warnings.warn('Falling back to dynamic analysis')
             # Fallback to dynamic analysis
             # NOTE: now that we are tracking calldefs and using astunparse,
             # this code should not need to be called.
@@ -754,11 +836,13 @@ class ImportVisitor(ast.NodeVisitor):
             raise NotImplementedError(str(obj) + ' ' + str(name))
 
     def visit_Import(visitor, node):
-        visitor.import_info.register_import_node(node)
+        for d in visitor.import_info.register_import_node(node):
+            visitor.definitions[d.name] = d
         visitor.generic_visit(node)
 
     def visit_ImportFrom(visitor, node):
-        visitor.import_info.register_from_import_node(node)
+        for d in visitor.import_info.register_from_import_node(node):
+            visitor.definitions[d.name] = d
         visitor.generic_visit(node)
 
     def visit_Assign(visitor, node):
@@ -766,12 +850,24 @@ class ImportVisitor(ast.NodeVisitor):
             key = getattr(target, 'id', None)
             if key is not None:
                 try:
-                    value = ('static', _parse_static_node_value(node.value))
+                    code = _parse_static_node_value(node.value)
+                    value = ('static', code)
                 except TypeError:
+                    code = None
                     value = ('node', node)
                 visitor.assignments[key] = value
 
+                visitor.definitions[key] = Definition(
+                    key, node, code=code, type='assign',
+                    modpath=visitor.modpath,
+                    absname=visitor.modname + '.' + key
+                )
+
     def visit_FunctionDef(visitor, node):
+        visitor.definitions[node.name] = Definition(
+            node.name, node, type='func', modpath=visitor.modpath,
+            absname=visitor.modname + '.' + node.name
+        )
         visitor.calldefs[node.name] = node
         # Ignore any non-top-level imports
         if not visitor.top_level:
@@ -779,6 +875,10 @@ class ImportVisitor(ast.NodeVisitor):
             # ast.NodeVisitor.generic_visit(visitor, node)
 
     def visit_ClassDef(visitor, node):
+        visitor.definitions[node.name] = Definition(
+            node.name, node, type='class', modpath=visitor.modpath,
+            absname=visitor.modname + '.' + node.name
+        )
         visitor.calldefs[node.name] = node
         # Ignore any non-top-level imports
         if not visitor.top_level:
