@@ -5,8 +5,8 @@ Extracts relevant parts of the source code
 # - [x] Maintain a parse tree instead of raw lines
 # - [x] Keep a mapping from "definition names" to the top-level nodes
 # in the parse tree that define them.
-# - [ ] For each extracted node in the parse tree keep track of
-#     - [ ] where it came from
+# - [X] For each extracted node in the parse tree keep track of
+#     - [X] where it came from
 #     - [ ] what modifications were made to it
 # - [ ] Handle expanding imports nested within functions
 """
