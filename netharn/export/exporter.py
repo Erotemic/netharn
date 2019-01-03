@@ -36,7 +36,7 @@ import tokenize
 import ubelt as ub
 import warnings
 from os.path import join
-from . import extractor
+from . import closer
 
 __all__ = ['export_model_code']
 
@@ -145,7 +145,7 @@ def export_model_code(dpath, model, initkw=None):
 
         # TODO: assert that the name "make" is not used in the model body
 
-    body = extractor.source_closure(model_class)
+    body = closer.source_closure(model_class)
 
     body_footer = body + footer + '\n'
     # dont need to hash the header, because comments are removed anyway
