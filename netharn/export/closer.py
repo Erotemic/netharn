@@ -99,6 +99,7 @@ def source_closure(model_class, expand_names=[]):
         >>> model_class = nh.layers.ConvNormNd
         >>> expand_names = ['netharn']
         >>> text = source_closure(model_class, expand_names)
+        >>> print(text)
 
     Ignore:
         >>> # Test a heavier duty class

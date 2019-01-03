@@ -194,7 +194,7 @@ class ExtraMixins:
             for tag, loader in harn.loaders.items()
         }
         loader = harn.loaders[tag]
-        epoch_metrics = harn._run_epoch(loader, tag='vali', learn=learn)
+        epoch_metrics = harn._run_epoch(loader, tag=tag, learn=learn)
         return epoch_metrics
 
     def _demo_batch(harn, index=0, tag='train', raw=False):

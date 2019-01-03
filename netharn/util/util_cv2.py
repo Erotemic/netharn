@@ -65,15 +65,18 @@ def draw_text_on_image(img, text, org, **kwargs):
 
     Example:
         >>> import netharn as nh
-        >>> img = nh.util.grab_test_image(space='bgr')
+        >>> img = nh.util.grab_test_image(space='rgb')
         >>> img2 = nh.util.draw_text_on_image(img, 'FOOBAR', org=(0, 100))
         >>> # xdoc: +REQUIRES(--show)
         >>> nh.util.autompl()
         >>> nh.util.imshow(img2, fontScale=10)
         >>> nh.util.show_if_requested()
     """
+    import netharn as nh
     if 'color' not in kwargs:
         kwargs['color'] = (255, 0, 0)
+
+    kwargs['color'] = nh.util.Color(kwargs['color']).as255('rgb')
 
     if 'thickness' not in kwargs:
         kwargs['thickness'] = 2

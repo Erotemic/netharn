@@ -1,11 +1,13 @@
 Version 0.1.4
 ==============
+* Ported modifications from KWIL to `imwrite`, `stack_imges`, etc...
 * Fix issue with relative imports in netharn exporter
 * Refactored the exporter closure-extractor into its own file.
 * Add `devices` to `nh.layers.Module`
 * Deprecate `HiddenShapesFor`
 * Move `HiddenShapesFor` functionality to `OutputShapeFor`
-* Clean CIFAR example.
+* Improve CIFAR example.
+* Improve MNIST example.
 * Rename internal variables of `nh.Monitor`
 * Improve doc-strings for `nh.Monitor`
 * Move folder functionality into `hyperparams`.

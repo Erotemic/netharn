@@ -19,7 +19,8 @@ def _dump_monitor_tensorboard(harn):
 
     harn.debug('Plotting tensorboard data')
 
-    tb_data = nh.util.read_tensorboard_scalars(harn.train_dpath)
+    tb_data = nh.util.read_tensorboard_scalars(harn.train_dpath, cache=0,
+                                               verbose=0)
 
     plot_keys = [key for key in tb_data if
                  ('train_epoch' in key or
@@ -27,6 +28,7 @@ def _dump_monitor_tensorboard(harn):
                   'test_epoch' in key or
                   'epoch_lr' in key)]
     y01_measures = ['_acc', '_ap', '_mAP', '_auc', '_mcc', '_brier']
+    y0_measures = ['error', 'loss']
 
     out_dpath = ub.ensuredir((harn.train_dpath, 'monitor', 'tensorboard'))
     tb_data_fpath = join(out_dpath, 'tb_data.pkl')
@@ -37,10 +39,12 @@ def _dump_monitor_tensorboard(harn):
     keys = set(tb_data.keys()).intersection(set(plot_keys))
     for key in keys:
         d = tb_data[key]
+        kw = {}
         if any(m.lower() in key.lower() for m in y01_measures):
-            kw = {'ylim': (0, 1)}
-        else:
-            kw = {}
+            kw['ymin'] = 0.0
+            kw['ymax'] = 1.0
+        elif any(m.lower() in key.lower() for m in y0_measures):
+            kw['ymin'] = 0.0
         ax = nh.util.multi_plot(d['xdata'], d['ydata'], ylabel=key,
                                 xlabel='epoch', title=key, fnum=1, doclf=True,
                                 **kw)
