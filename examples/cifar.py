@@ -38,6 +38,7 @@ CommandLine:
     python examples/cifar.py --gpu=0 --arch=resnet50
     python examples/cifar.py --gpu=0 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
     python examples/cifar.py --gpu=1,2 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
+    python examples/cifar.py --gpu=1,2 --arch=resnet50 --lr=0.003 --schedule=onecycle --optim=adamw
 
 """
 from os.path import join
@@ -304,6 +305,7 @@ def setup_harn():
     DPN92       |    95.16%  |         95.410% |  94.92%  |
 
     CommandLine:
+        python examples/cifar.py --gpu=0 --arch=resnet50 --optim=sgd --schedule=step250 --lr=0.1 --vd
         python examples/cifar.py --gpu=0 --arch=wrn_22 --optim=sgd --schedule=step250 --lr=0.1 --vd
     """
     import random
