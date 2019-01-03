@@ -112,8 +112,10 @@ def source_closure(model_class, expand_names=[]):
         >>> expand_names = ['ovharn']
         >>> text = source_closure(model_class, expand_names)
         >>> from netharn.export.exporter import remove_comments_and_docstrings
-        >>> text = remove_comments_and_docstrings(text)
+        >>> #text = remove_comments_and_docstrings(text)
         >>> print(text)
+
+        >>> expand_names = ['ovharn']
     """
     closer = Closer()
     closer.add_dynamic(model_class)
@@ -277,21 +279,19 @@ class Closer(ub.NiceRepr):
                     print('--- </ERROR> ---')
                     raise
 
-    def replace_varname(closer, find, repl):
-        repl_header = [line if line != find else '# ' + line
-                       for line in repl.header_lines]
-
-        for i, line in enumerate(closer.header_lines):
-            if line == find:
-                closer.header_lines[i] = '# ' + line
-
-        closer.header_lines.extend(repl_header)
-        closer.body_lines.extend(repl.body_lines)
-        closer.header_lines = list(ub.unique(closer.header_lines))
-
     def expand(closer, expand_names):
         """
-        Experimental feature
+        Experimental feature. Remove all references to specific modules by
+        directly copying in the referenced source code.
+
+        Args:
+            expand_name (List[str]): list of module names. For each module
+                we expand any reference to that module in the closed source
+                code by directly copying the referenced code into that file.
+                This doesn't work in all cases, but it usually does.
+                Reasons why this wouldn't work include trying to expand
+                import from C-extension modules and expanding modules with
+                complicated global-level logic.
 
         Ignore:
             >>> # Test a heavier duty class
