@@ -37,6 +37,7 @@ let the developer focus on the important parts.
 CommandLine:
     python examples/cifar.py --gpu=0 --arch=resnet50
     python examples/cifar.py --gpu=0 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
+    python examples/cifar.py --gpu=1,2 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
 
 """
 from os.path import join
@@ -471,7 +472,7 @@ def setup_harn():
         })),
     }
 
-    try:
+    if config['arch'].startswith('wrn'):
         import fastai
         import fastai.vision
         available_architectures['wrn_22'] = (
@@ -479,8 +480,6 @@ def setup_harn():
                 num_groups=3, N=3, num_classes=10, k=6, drop_p=0.
             )
         )
-    except ImportError:
-        pass
 
     model_ = available_architectures[config['arch']]
 
