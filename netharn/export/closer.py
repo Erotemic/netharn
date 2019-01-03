@@ -92,6 +92,14 @@ def source_closure(model_class, expand_names=[]):
         >>> else:
         >>>     warnings.warn('Unsupported version of torchvision')
 
+    Example:
+        >>> # Test a heavier duty class
+        >>> from netharn.export.closer import *
+        >>> import netharn as nh
+        >>> model_class = nh.layers.ConvNormNd
+        >>> expand_names = ['netharn']
+        >>> text = source_closure(model_class, expand_names)
+
     Ignore:
         >>> # Test a heavier duty class
         >>> from netharn.export.closer import *
@@ -237,8 +245,9 @@ class Closer(ub.NiceRepr):
             # Make sure we process names in the same order for hashability
             prev_names = names
             names = sorted(undefined_names(current_sourcecode))
-            print('closer = {!r}'.format(closer))
-            print('names = {!r}'.format(names))
+            # if DEBUG:
+            #     # print('closer = {!r}'.format(closer))
+            #     # print('names = {!r}'.format(names))
             if names == prev_names:
                 print('visitor.definitions = {}'.format(ub.repr2(visitor.definitions, si=1)))
                 if DEBUG:
@@ -310,7 +319,8 @@ class Closer(ub.NiceRepr):
             >>> text = closer.current_sourcecode()
             >>> print(text)
         """
-        print("!!! EXPANDING")
+        if DEBUG:
+            print("!!! EXPANDING")
         # Expand references to internal modules
         flag = True
         while flag:
@@ -334,12 +344,14 @@ class Closer(ub.NiceRepr):
                     flag = True
                     # if d.absname == d.native_modname:
                     if ub.modname_to_modpath(d.absname):
-                        print('TODO: NEED TO CLOSE module = {}'.format(d))
+                        if DEBUG:
+                            print('TODO: NEED TO CLOSE module = {}'.format(d))
                         # definition is a module, need to expand its attributes
                         closer.expand_module_attributes(d)
                         d._expanded = True
                     else:
-                        print('TODO: NEED TO CLOSE attribute varname = {}'.format(d))
+                        if DEBUG:
+                            print('TODO: NEED TO CLOSE attribute varname = {}'.format(d))
                         # definition is a non-module, directly copy in its code
                         # We can directly replace this import statement by
                         # copy-pasting the relevant code from the other module
@@ -378,7 +390,8 @@ class Closer(ub.NiceRepr):
 
                         # print('sub_visitor = {!r}'.format(sub_visitor))
                         # closer.close(sub_visitor)
-                        print('CLOSED attribute d = {}'.format(d))
+                        if DEBUG:
+                            print('CLOSED attribute d = {}'.format(d))
 
     def expand_module_attributes(closer, d):
         # current_sourcecode = closer.current_sourcecode()
@@ -391,7 +404,8 @@ class Closer(ub.NiceRepr):
 
         # print('d = {!r}'.format(d))
         def _exhaust(name, modname, modpath):
-            print('REWRITE ACCESSOR name={!r}, modname={}, modpath={}'.format(name, modname, modpath))
+            if DEBUG:
+                print('REWRITE ACCESSOR name={!r}, modname={}, modpath={}'.format(name, modname, modpath))
 
             # Modify the current node definitions and recompute code
             # TODO: make more robust
@@ -407,11 +421,13 @@ class Closer(ub.NiceRepr):
                 if submodpath is not None:
                     # if the accessor is to another module, exhaust until
                     # we reach a non-module
-                    print('EXAUSTING: {}, {}, {}'.format(subname, submodname, submodpath))
+                    if DEBUG:
+                        print('EXAUSTING: {}, {}, {}'.format(subname, submodname, submodpath))
                     _exhaust(subname, submodname, submodpath)
                 else:
                     # Otherwise we can directly add the referenced attribute
-                    print('FINALIZE: {} from {}'.format(subname, modpath))
+                    if DEBUG:
+                        print('FINALIZE: {} from {}'.format(subname, modpath))
                     closer.add_static(subname, modpath)
         _exhaust(varname, expansion, varmodpath)
         d._code = '# ' + d.code
@@ -701,9 +717,10 @@ class ImportVisitor(ast.NodeVisitor, ub.NiceRepr):
                     #code = astunparse.unparse(node).strip('\n')
                     code = None
 
-                if key in visitor.definitions:
-                    # OVERLOADED
-                    print('key = {!r}'.format(key))
+                if DEBUG:
+                    if key in visitor.definitions:
+                        # OVERLOADED
+                        print('OVERLOADED key = {!r}'.format(key))
 
                 visitor.definitions[key] = Definition(
                     key, node, code=code, type='Assign',
