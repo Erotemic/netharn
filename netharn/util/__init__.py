@@ -3,6 +3,10 @@ mkinit netharn.util
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+__extra_all__ = [
+    'profiler',
+]
+
 # <AUTOGEN_INIT>
 from netharn.util import imutil
 from netharn.util import mplutil
@@ -153,3 +157,12 @@ __all__ = ['BatchNormContext', 'Boxes', 'CV2_INTERPOLATION_TYPES',
 from netharn.util import util_misc as misc
 misc.make_idstr = make_idstr
 #####
+
+
+class _DummyProf(object):
+    pass
+
+
+profiler = _DummyProf()
+profiler.profile = lambda x: x
+profiler.IS_PROFILING = False

@@ -332,7 +332,7 @@ class GetBoundingBoxes(object):
         if nms_mode == 0:
             # if torch.cuda.is_available:
             #     boxes = boxes.to(0)
-            from netharn.util.nms.torch_nms import torch_nms
+            from netharn.util._nms_backend.torch_nms import torch_nms
             cls_tensor = cxywh_score_cls[:, 5]
             keep = torch_nms(tlbr_tensor, scores, classes=cls_tensor,
                              thresh=self.nms_thresh, bias=0)

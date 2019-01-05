@@ -71,12 +71,19 @@ def clean():
     modname = 'netharn'
     repodir = dirname(__file__)
     rel_paths = [
+        'htmlcov',
+        '_skbuild',
+        '_build_wheel',
+        'netharn.egg-info',
+        'dist',
+        'build',
+
+        'profile*'
         'netharn/util/_nms_backend/cpu_nms.c',
         'netharn/util/_nms_backend/cpu_nms.c',
         'netharn/util/_nms_backend/cpu_nms.cpp',
         'netharn/util/_boxes_backend/cython_boxes.c',
         'netharn/util/_boxes_backend//cython_boxes.html',
-        'htmlcov',
         'netharn/util/_nms_backend/*_nms.*so',
         'netharn/util/_boxes_backend/cython_boxes*.*so'
     ]
