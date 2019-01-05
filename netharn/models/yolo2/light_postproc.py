@@ -5,7 +5,6 @@
 #
 import torch
 # from torch.autograd import Variable
-from netharn.util import profiler
 from netharn import util
 import numpy as np
 import ubelt as ub
@@ -34,7 +33,6 @@ class GetBoundingBoxes(object):
         self.conf_thresh = conf_thresh
         self.nms_thresh = nms_thresh
 
-    @profiler.profile
     def __call__(self, network_output, nms_mode=4):
         """ Compute bounding boxes after thresholding and nms
 
@@ -49,10 +47,6 @@ class GetBoundingBoxes(object):
             >>> boxes = self(output)
             >>> assert len(boxes) == 8
             >>> assert all(b.shape[1] == 6 for b in boxes)
-
-        CommandLine:
-            python -m netharn.models.yolo2.light_postproc GetBoundingBoxes.__call__:1 --profile
-            python -m netharn.models.yolo2.light_postproc GetBoundingBoxes.__call__:2 --profile
 
         Script:
             >>> import torch
@@ -124,7 +118,6 @@ class GetBoundingBoxes(object):
         postout = boxes
         return postout
 
-    @profiler.profile
     def _clip_boxes(self, box):
         """
         CommandLine:
@@ -186,7 +179,6 @@ class GetBoundingBoxes(object):
         obj = cls(num_classes, anchors, conf_thresh, nms_thresh)
         return obj(network_output)
 
-    @profiler.profile
     def _get_boxes(self, output):
         """
         Returns array of detections for every image in batch
@@ -275,7 +267,6 @@ class GetBoundingBoxes(object):
 
         return boxes
 
-    @profiler.profile
     def _nms(self, cxywh_score_cls, nms_mode=4):
         """ Non maximum suppression.
         Source: https://www.pyimagesearch.com/2015/02/16/faster-non-maximum-suppression-python/
@@ -287,9 +278,6 @@ class GetBoundingBoxes(object):
 
         Return:
           (tensor): Pruned boxes
-
-        CommandLine:
-            python -m netharn.models.yolo2.light_postproc GetBoundingBoxes._nms --profile
 
         Examples:
             >>> import torch

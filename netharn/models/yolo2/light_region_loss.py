@@ -12,9 +12,8 @@ Speedups
 import torch
 import torch.nn as nn
 import numpy as np  # NOQA
-from torch.autograd import Variable
+# from torch.autograd import Variable
 from netharn import util
-from netharn.util import profiler
 
 __all__ = ['RegionLoss']
 
@@ -157,12 +156,11 @@ class RegionLoss(BaseLossWithCudaState):
         self.small_boxes = small_boxes
         self.mse_factor = mse_factor
 
-    @profiler.profile
     def forward(self, output, target, seen=0, gt_weights=None):
         """ Compute Region loss.
 
         Args:
-            output (torch.autograd.Variable): Output from the network
+            output (torch.Tensor): Output from the network
                 should have shape [B, A, 5 + C, H, W]
 
             target (torch.Tensor): the shape should be [B, T, 5], where B is
@@ -246,7 +244,8 @@ class RegionLoss(BaseLossWithCudaState):
             # Swaps the dimensions to be [B, A, H, W, C]
             # (Allowed because 3rd dimension is guarneteed to be 1 here)
             cls_probs_mask = cls_mask.reshape(nB, nA, nH, nW, 1).repeat(1, 1, 1, 1, nC)
-            cls_probs_mask = Variable(cls_probs_mask, requires_grad=False)
+            cls_probs_mask.requires_grad = False
+            # cls_probs_mask = Variable(cls_probs_mask, requires_grad=False)
             masked_cls_probs = cls_probs[cls_probs_mask].view(-1, nC)
 
         # Compute losses
@@ -278,7 +277,6 @@ class RegionLoss(BaseLossWithCudaState):
 
         return loss_tot
 
-    @profiler.profile
     def build_targets(self, pred_cxywh, target, nH, nW, seen=0, gt_weights=None):
         """
         Compare prediction boxes and targets, convert targets to network output tensors
