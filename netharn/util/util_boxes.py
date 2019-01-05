@@ -6,9 +6,11 @@ import ubelt as ub
 from distutils.version import LooseVersion
 
 try:
-    from netharn.util.cython_boxes import bbox_ious_c as _bbox_ious_c
+    # from netharn.util.cython_boxes import bbox_ious_c as _bbox_ious_c
+    from netharn.util._boxes_backend.cython_boxes import bbox_ious_c as _bbox_ious_c
 except ImportError:
     _bbox_ious_c = None
+
 
 TORCH_HAS_EMPTY_SHAPE = LooseVersion(torch.__version__) >= LooseVersion('1.0.0')
 

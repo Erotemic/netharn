@@ -5,10 +5,12 @@
 # Written by Sergey Karayev
 # --------------------------------------------------------
 """
-CPATH=$CPATH:$(python -c "import numpy as np; print(np.get_include())") cythonize -a -i ~/code/netharn/netharn/util/cython_boxes.pyx
+CPATH=$CPATH:$(python -c "import numpy as np; print(np.get_include())") cythonize -a -i ~/code/netharn/netharn/util/_boxes_backend/cython_boxes.pyx
 
 Modified by Jon Crall to reduce python overhead
 """
+from __future__ import absolute_import
+
 
 cimport cython
 from cython.parallel import prange
