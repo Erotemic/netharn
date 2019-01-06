@@ -11,6 +11,7 @@ conda install pytorch torchvision -c pytorch
 TestMe:
     xdoctest ~/code/netharn/netharn/examples/ggr_matching.py all
 """
+from os.path import join
 import os
 import ubelt as ub
 import numpy as np
@@ -68,14 +69,24 @@ class MatchingHarness(nh.FitHarn):
         img1 = batch['img1']
         img2 = batch['img2']
         label = batch['label']
-        output = harn.model(img1, img2)
-        loss = harn.criterion(output, label).sum()
-        return output, loss
+        outputs = harn.model(img1, img2)
+        loss = harn.criterion(outputs, label).sum()
+        return outputs, loss
 
-    def on_batch(harn, batch, output, loss):
+    def on_batch(harn, batch, outputs, loss):
         """ custom callback """
+
+        bx = harn.bxs[harn.current_tag]
+        if bx < 3:
+            # decoded = harn._decode(output, batch['label'])
+            decoded = outputs.data.cpu().numpy()
+            stacked = harn._draw_batch(batch, decoded)
+            dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
+            fpath = join(dpath, 'batch_{}_epoch_{}.jpg'.format(bx, harn.epoch))
+            nh.util.imwrite(fpath, stacked)
+
         label = batch['label']
-        l2_dist_tensor = torch.squeeze(output.data.cpu())
+        l2_dist_tensor = torch.squeeze(outputs.data.cpu())
         label_tensor = torch.squeeze(label.data.cpu())
 
         # Distance
@@ -146,6 +157,48 @@ class MatchingHarness(nh.FitHarn):
         # Clear scores for next epoch
         harn.confusion_vectors.clear()
         return epoch_metrics
+
+    def _draw_batch(harn, batch, decoded, limit=32):
+        """
+        CommandLine:
+            xdoctest -m ~/code/netharn/examples/cifar.py CIFAR_FitHarn._draw_batch --show --arch=wrn_22
+
+        Example:
+            >>> from ggr_matching import *
+            >>> harn = setup_harness(xpu='cpu').initialize()
+            >>> batch = harn._demo_batch(0, tag='vali')
+            >>> outputs, loss = harn.run_batch(batch)
+            >>> decoded = outputs.data.cpu().numpy()
+            >>> stacked = harn._draw_batch(batch, decoded, limit=42)
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import netharn as nh
+            >>> nh.util.autompl()
+            >>> nh.util.imshow(stacked, colorspace='rgb', doclf=True)
+            >>> nh.util.show_if_requested()
+        """
+        imgs1 = batch['img1'].data.cpu().numpy()
+        imgs2 = batch['img2'].data.cpu().numpy()
+        labels = batch['label'].data.cpu().numpy()
+
+        tostack = []
+        fontkw = {
+            'fontScale': 1.0,
+            'thickness': 2
+        }
+        n = min(limit, len(imgs1))
+        for i in range(n):
+            im1 = imgs1[i].transpose(1, 2, 0)
+            im2 = imgs2[i].transpose(1, 2, 0)
+            img = nh.util.stack_images([im1, im2], overlap=-2, axis=1)
+            dist = decoded[i]
+            label = labels[i]
+            text = 'dist={:.2f}, label={}'.format(dist, label)
+            img = (img * 255).astype(np.uint8)
+            img = nh.util.draw_text_on_image(img, text, org=(0, img.shape[0]),
+                                             color='blue', **fontkw)
+            tostack.append(img)
+        stacked = nh.util.stack_images_grid(tostack, overlap=-10, bg_value=(10, 40, 30), axis=1, chunksize=3)
+        return stacked
 
 
 class MatchingNetworkLP(torch.nn.Module):
@@ -439,7 +492,11 @@ class RandomBalancedIBEISSample(torch.utils.data.Dataset):
                 img1, img2 = img2, img1
         img1 = torch.FloatTensor(img1.transpose(2, 0, 1))
         img2 = torch.FloatTensor(img2.transpose(2, 0, 1))
-        return img1, img2, label
+        return {
+            'img1': img1,
+            'img2': img2,
+            'label': label,
+        }
 
 
 class MatchingCocoDataset(torch.utils.data.Dataset):
@@ -889,9 +946,14 @@ def fit(dbname='PZ_MTEST', nice='untitled', dim=416, batch_size=6, bstep=1,
     """
     # There has to be a good way to use argparse and specify params only once.
     # Pass all args down to setup_harness
+    print('RUNNING FIT')
     import inspect
     kw = ub.dict_subset(locals(), inspect.getargspec(fit).args)
+    print('SETUP HARNESS')
     harn = setup_harness(**kw)
+    print('INIT')
+    harn.initialize()
+    print('RUN')
     harn.run()
 
 
@@ -931,6 +993,6 @@ if __name__ == '__main__':
     """
     CommandLine:
         python ~/code/netharn/examples/ggr_matching.py --help
-        python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0
+        python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0 --dbname=ggr2
     """
     main()

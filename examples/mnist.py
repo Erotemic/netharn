@@ -100,8 +100,7 @@ class MnistHarn(nh.FitHarn):
         loss = harn.criterion(outputs, labels)
         return outputs, loss
 
-    def _draw_batch(harn, bx, batch, pred_labels, true_labels, pred_scores, true_scores):
-        import kwil
+    def _draw_batch(harn, batch, pred_labels, true_labels, pred_scores, true_scores):
         input_shape = batch['inputs'].shape
         dims = [256] * (len(input_shape) - 2)
         inputs = batch['inputs']
@@ -119,17 +118,15 @@ class MnistHarn(nh.FitHarn):
                 true_label = 'tx={}'.format(tcx)
             else:
                 true_label = 'tx={} @ {:.3f}'.format(tcx, true_score)
-            im_ = kwil.convert_colorspace(im[0], 'gray', 'rgb')
-            color = kwil.Color('dodgerblue') if pcx == tcx else kwil.Color('orangered')
+            im_ = nh.util.convert_colorspace(im[0], 'gray', 'rgb')
+            color = nh.util.Color('dodgerblue') if pcx == tcx else nh.util.Color('orangered')
             h, w = im_.shape[0:2][::-1]
-            im_ = kwil.draw_text_on_image(im_, pred_label, org=(5, 32), fontScale=1.0, thickness=2, color=color.as255())
-            im_ = kwil.draw_text_on_image(im_, true_label, org=(5, h - 4), fontScale=1.0, thickness=1, color=kwil.Color('lawngreen').as255())
+            im_ = nh.util.draw_text_on_image(im_, pred_label, org=(5, 32), fontScale=1.0, thickness=2, color=color.as255())
+            im_ = nh.util.draw_text_on_image(im_, true_label, org=(5, h - 4), fontScale=1.0, thickness=1, color=nh.util.Color('lawngreen').as255())
             todraw.append(im_)
 
-        dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
-        fpath = join(dpath, 'epoch_{}_batch_{}.jpg'.format(harn.epoch, bx))
-        stacked = kwil.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
-        kwil.imwrite(fpath, stacked)
+        stacked = nh.util.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
+        return stacked
 
     def on_batch(harn, batch, outputs, loss):
         """ Compute relevent metrics to monitor """
@@ -146,8 +143,11 @@ class MnistHarn(nh.FitHarn):
             true_probs = (hot * class_probs).sum(dim=1)
             pred_scores = scores.data.cpu().numpy()
             true_scores = true_probs.data.cpu().numpy()
-            harn._draw_batch(bx, batch, pred_labels, true_labels, pred_scores,
-                             true_scores)
+            stacked = harn._draw_batch(batch, pred_labels, true_labels,
+                                       pred_scores, true_scores)
+            dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
+            fpath = join(dpath, 'epoch_{}_batch_{}.jpg'.format(harn.epoch, bx))
+            nh.util.imwrite(fpath, stacked)
 
         acc = (true_labels == pred_labels).mean()
 
