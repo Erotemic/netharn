@@ -76,7 +76,7 @@ def export_model_code(dpath, model, initkw=None):
         >>> print('static_modpath = {!r}'.format(static_modpath))
         ...
         >>> print(basename(static_modpath))
-        DenseNet_c662ba.py
+        DenseNet_58cff7.py
         >>> # now the module can be loaded
         >>> module = ub.import_module_from_path(static_modpath)
         >>> loaded = module.make()
