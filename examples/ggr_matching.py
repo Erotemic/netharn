@@ -545,7 +545,7 @@ class MatchingCocoDataset(torch.utils.data.Dataset):
 
         self.coco_dset = coco_dset
         print('Find Samples')
-        self.samples = sample_pccs(pccs, max_num=10000)
+        self.samples = sample_pccs(pccs, max_num=1e5)
         self.samples = nh.util.shuffle(self.samples, rng=0)
         print('Finished sampling')
         self.dim = dim
@@ -567,6 +567,7 @@ class MatchingCocoDataset(torch.utils.data.Dataset):
         return len(self.samples)
 
     def __getitem__(self, index):
+        import graphid
         aid1, aid2, label = self.samples[index]
         tx1 = self.aid_to_tx[aid1]
         tx2 = self.aid_to_tx[aid2]
@@ -582,9 +583,9 @@ class MatchingCocoDataset(torch.utils.data.Dataset):
         chip1 = torch.FloatTensor(chip1.transpose(2, 0, 1).astype(np.float32) / 255)
         chip2 = torch.FloatTensor(chip2.transpose(2, 0, 1).astype(np.float32) / 255)
 
-        if label == 'POSTV':
+        if label == graphid.core.POSTV:
             label = 1
-        elif label == 'NEGTV':
+        elif label == graphid.core.NEGTV:
             label = 0
         else:
             raise KeyError(label)
@@ -606,8 +607,8 @@ def sample_pccs(pccs, max_num=1000):
     """
     import utool as ut
     # Simpler very randomized sample strategy
-    max_pos = max_num // 2
-    max_neg = max_num - max_pos
+    max_pos = int(max_num) // 2
+    max_neg = int(max_num) - max_pos
 
     def e_(e):
         u, v = e
@@ -658,9 +659,11 @@ def sample_pccs(pccs, max_num=1000):
     pos_pairs = [edge for i, edge in zip(range(max_pos), generate_positives(pccs))]
     neg_pairs = [edge for i, edge in zip(range(max_neg), generate_negatives(pccs))]
 
+    import graphid
+
     labeled_pairs = [
-        ('POSTV', pos_pairs),
-        ('NEGTV', neg_pairs),
+        (graphid.core.POSTV, pos_pairs),
+        (graphid.core.NEGTV, neg_pairs),
     ]
 
     samples = [(aid1, aid2, label)
@@ -802,7 +805,7 @@ def setup_harness(**kwargs):
 
         print('Creating torch Datasets')
         datasets = {
-            'train': MatchingCocoDataset(train_sampler, train_dset, workdir, dim=dim),
+            'train': MatchingCocoDataset(train_sampler, train_dset, workdir, dim=dim, augment=True),
             'vali': MatchingCocoDataset(vali_sampler, vali_dset, workdir, dim=dim),
         }
     else:
@@ -871,7 +874,7 @@ def setup_harness(**kwargs):
             'max_epoch': 40,
         }),
 
-        'augment': datasets['train'].augmenter,
+        # 'augment': datasets['train'].augmenter,
 
         'dynamics': {
             # Controls how many batches to process before taking a step in the
@@ -961,6 +964,6 @@ if __name__ == '__main__':
     """
     CommandLine:
         python ~/code/netharn/examples/ggr_matching.py --help
-        python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0 --dbname=ggr2 --batch_size=8
+        python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0 --dbname=ggr2 --batch_size=8 --nice=ggr2-test
     """
     main()
