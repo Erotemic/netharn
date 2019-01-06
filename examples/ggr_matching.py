@@ -321,19 +321,25 @@ class MatchingCocoDataset(torch.utils.data.Dataset):
 
         self.coco_dset = coco_dset
         print('Find Samples')
-        self.samples = sample_labeled_pairs(pccs, max_num=1e5)
+        self.samples = sample_labeled_pairs(pccs, max_num=1e5, pos_neg_ratio=1.0)
+
         self.samples = nh.util.shuffle(self.samples, rng=0)
         print('Finished sampling')
         self.dim = dim
 
+        self.rng = nh.util.ensure_rng(0)
         if augment:
             import imgaug.augmenters as iaa
             # NOTE: we are only using `self.augmenter` to make a hyper hashid
             # in __getitem__ we invoke transform explicitly for fine control
-            self.hue = nh.data.transforms.HSVShift(hue=0.1, sat=1.5, val=1.5)
+            # self.hue = nh.data.transforms.HSVShift(hue=0.1, sat=1.5, val=1.5)
             self.crop = iaa.Crop(percent=(0, .2))
             self.flip = iaa.Fliplr(p=.5)
-            self.augmenter = iaa.Sequential([self.hue, self.crop, self.flip])
+            self.augmenter = iaa.Sequential([
+                # self.hue,
+                self.crop,
+                self.flip
+            ])
         else:
             self.augmenter = None
         self.letterbox = nh.data.transforms.Resize(target_size=(dim, dim),
@@ -353,6 +359,15 @@ class MatchingCocoDataset(torch.utils.data.Dataset):
 
         chip1 = sample1['im']
         chip2 = sample2['im']
+
+        if self.augmenter:
+            # Ensure the same augmentor is used for bboxes and iamges
+            # flip_det1 = self.flip.to_deterministic()
+            # flip_det2 = self.flip.to_deterministic()
+            if self.rng.rand() > .5:
+                chip1 = np.fliplr(chip1)
+                chip2 = np.fliplr(chip2)
+            chip1, chip2 = self.crop.augment_images([chip1, chip2])
 
         chip1, chip2 = self.letterbox.augment_images([chip1, chip2])
 
@@ -374,7 +389,7 @@ class MatchingCocoDataset(torch.utils.data.Dataset):
         return item
 
 
-def sample_labeled_pairs(pccs, max_num=1000):
+def sample_labeled_pairs(pccs, max_num=1000, pos_neg_ratio=None):
     """
     Note: does not take into account incomparable
 
@@ -382,6 +397,7 @@ def sample_labeled_pairs(pccs, max_num=1000):
     >>> list(sample_labeled_pairs(pccs))
     """
     import utool as ut
+    import graphid
     # Simpler very randomized sample strategy
     max_pos = int(max_num) // 2
     max_neg = int(max_num) - max_pos
@@ -433,9 +449,11 @@ def sample_labeled_pairs(pccs, max_num=1000):
             unfinished.difference_update(finished)
 
     pos_pairs = [edge for i, edge in zip(range(max_pos), generate_positives(pccs))]
-    neg_pairs = [edge for i, edge in zip(range(max_neg), generate_negatives(pccs))]
 
-    import graphid
+    if pos_neg_ratio is not None:
+        max_neg = min(int(pos_neg_ratio * len(pos_pairs)), max_neg)
+
+    neg_pairs = [edge for i, edge in zip(range(max_neg), generate_negatives(pccs))]
 
     labeled_pairs = [
         (graphid.core.POSTV, pos_pairs),
