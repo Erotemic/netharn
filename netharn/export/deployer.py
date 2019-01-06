@@ -97,7 +97,7 @@ Example:
     >>> # This model is now loaded with the corret weights.
     >>> # You can use it as normal.
     >>> model.eval()
-    >>> images = harn._demo_batch(0)[0][0][0:1]
+    >>> images = harn._demo_batch(0)['input'][0:1]
     >>> outputs = model(images)
     >>> print('outputs = {!r}'.format(outputs))
     >>> # Not that the loaded model is independent of harn.model

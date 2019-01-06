@@ -172,7 +172,7 @@ class _NMS_Impls():
         self._impls = None
         self._automode = None
 
-    def _init(self):
+    def _init(self, verbose=0):
         _impls = {}
         _impls['py'] = py_nms.py_nms
         _impls['torch'] = torch_nms.torch_nms
@@ -181,6 +181,8 @@ class _NMS_Impls():
             from ._nms_backend import cpu_nms
             _impls['cpu'] = cpu_nms.cpu_nms
             _automode = 'cpu'
+            if verbose:
+                print('Was able to import cpu_nms sucessfully')
         except Exception as ex:
             warnings.warn('cpu_nms is not available: {}'.format(str(ex)))
         try:
@@ -188,6 +190,8 @@ class _NMS_Impls():
                 from ._nms_backend import gpu_nms
                 _impls['gpu'] = gpu_nms.gpu_nms
                 _automode = 'gpu'
+                if verbose:
+                    print('Was able to import gpu_nms sucessfully')
         except Exception as ex:
             warnings.warn('gpu_nms is not available: {}'.format(str(ex)))
         self._automode = _automode
@@ -233,7 +237,7 @@ def non_max_supression(tlbr, scores, thresh, bias=0.0, classes=None,
         https://github.com/bharatsingh430/soft-nms/blob/master/lib/nms/cpu_nms.pyx <- TODO
 
     Example:
-        >>> dets = np.array([
+        >>> tlbr = np.array([
         >>>     [0, 0, 100, 100],
         >>>     [100, 100, 10, 10],
         >>>     [10, 10, 100, 100],
@@ -241,21 +245,25 @@ def non_max_supression(tlbr, scores, thresh, bias=0.0, classes=None,
         >>> ], dtype=np.float32)
         >>> scores = np.array([.1, .5, .9, .1])
         >>> thresh = .5
-        >>> keep = non_max_supression(dets, scores, thresh, impl='py')
+        >>> keep = non_max_supression(tlbr, scores, thresh, impl='py')
         >>> print('keep = {!r}'.format(keep))
         keep = [2, 1, 3]
         >>> thresh = 0.0
         >>> if 'py' in available_nms_impls():
-        >>>     keep = non_max_supression(dets, scores, thresh, impl='py')
+        >>>     keep = non_max_supression(tlbr, scores, thresh, impl='py')
+        >>>     print('keep = {!r}'.format(keep))
         >>>     assert list(keep) == [2, 1]
         >>> if 'cpu' in available_nms_impls():
-        >>>     keep = non_max_supression(dets, scores, thresh, impl='cpu')
+        >>>     keep = non_max_supression(tlbr, scores, thresh, impl='cpu')
+        >>>     print('keep = {!r}'.format(keep))
         >>>     assert list(keep) == [2, 1]
         >>> if 'gpu' in available_nms_impls():
-        >>>     keep = non_max_supression(dets, scores, thresh, impl='gpu')
+        >>>     keep = non_max_supression(tlbr, scores, thresh, impl='gpu')
+        >>>     print('keep = {!r}'.format(keep))
         >>>     assert list(keep) == [2, 1]
         >>> if 'torch' in available_nms_impls():
-        >>>     keep = non_max_supression(dets, scores, thresh, impl='torch')
+        >>>     keep = non_max_supression(tlbr, scores, thresh, impl='torch')
+        >>>     print('keep = {!r}'.format(keep))
         >>>     assert set(keep.tolist()) == {2, 1}
 
     Example:
@@ -343,6 +351,12 @@ def non_max_supression(tlbr, scores, thresh, bias=0.0, classes=None,
 
 
 if __name__ == '__main__':
+    """
+    CommandLine:
+        # Test to see that extensions are loaded properly
+        python -c "import netharn.util.util_nms; netharn.util.util_nms._impls._init(verbose=1)"
+
+        xdoctest -m netharn.util.util_nms
+    """
     import xdoctest
     xdoctest.doctest_module(__file__)
-
