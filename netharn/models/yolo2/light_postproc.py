@@ -371,7 +371,7 @@ class GetBoundingBoxes(object):
             keep = sorted(keep)
         elif nms_mode == 4:
             # Dont group, but use torch
-            from netharn.util.nms.torch_nms import torch_nms
+            from netharn.util._nms_backend.torch_nms import torch_nms
             keep = torch_nms(tlbr_tensor, scores,
                              thresh=self.nms_thresh, bias=0)
             return cxywh_score_cls[keep]

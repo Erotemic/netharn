@@ -151,7 +151,8 @@ def clean_repo(repodir, modname, rel_paths=[]):
         if exists(d) and d not in toremove:
             toremove.append(d)
 
-    abs_paths = [join(repodir, p) for pat in rel_paths for p in glob.glob(pat)]
+    abs_paths = [join(repodir, p) for pat in rel_paths
+                 for p in glob.glob(pat, recursive=True)]
     for abs_path in abs_paths:
         enqueue(abs_path)
 

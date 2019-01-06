@@ -77,7 +77,7 @@ def clean():
         'netharn.egg-info',
         'dist',
         'build',
-
+        '**/*.pyc',
         'profile*'
         'netharn/util/_nms_backend/cpu_nms.c',
         'netharn/util/_nms_backend/cpu_nms.c',
