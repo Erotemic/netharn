@@ -6,6 +6,7 @@ import torch
 import ubelt as ub
 import numpy as np  # NOQA
 import collections
+from torch._six import string_classes, int_classes
 
 
 class CollateException(Exception):
@@ -47,11 +48,11 @@ def _collate_else(batch, collate_func):
         } for sl in batch])
         return batch
         # batch = torch.FloatTensor([(sl.start, sl.stop) for sl in batch])
-    elif isinstance(batch[0], torch_data.dataloader.int_classes):
+    elif isinstance(batch[0], int_classes):
         return torch.LongTensor(batch)
     elif isinstance(batch[0], float):
         return torch.DoubleTensor(batch)
-    elif isinstance(batch[0], torch_data.dataloader.string_classes):
+    elif isinstance(batch[0], string_classes):
         return batch
     elif isinstance(batch[0], collections.Mapping):
         # Hack the mapping collation implementation to print error info
