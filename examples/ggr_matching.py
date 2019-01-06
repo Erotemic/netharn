@@ -77,7 +77,7 @@ class MatchingHarness(nh.FitHarn):
         """ custom callback """
 
         bx = harn.bxs[harn.current_tag]
-        if bx < 3:
+        if bx < 8:
             # decoded = harn._decode(output, batch['label'])
             decoded = outputs.data.cpu().numpy()
             stacked = harn._draw_batch(batch, decoded)
@@ -500,12 +500,11 @@ class RandomBalancedIBEISSample(torch.utils.data.Dataset):
 
 
 class MatchingCocoDataset(torch.utils.data.Dataset):
-    def __init__(self, sampler, coco_dset, workdir=None, augment=False):
+    def __init__(self, sampler, coco_dset, workdir=None, augment=False, dim=416):
+        print('make MatchingCocoDataset')
 
         self.sampler = sampler
-        self.aid_to_tx = {aid: tx for tx, aid in enumerate(sampler.regions.targets['aid'])}
-
-        cacher = ub.Cacher('pccs', cfgstr=coco_dset.tag)
+        cacher = ub.Cacher('pccs', cfgstr=coco_dset.tag, verbose=True)
         pccs = cacher.tryload()
         if pccs is None:
             import graphid
@@ -541,9 +540,15 @@ class MatchingCocoDataset(torch.utils.data.Dataset):
                     assert aid in coco_dset.anns
             cacher.save(pccs)
 
+        print('target index')
+        self.aid_to_tx = {aid: tx for tx, aid in enumerate(sampler.regions.targets['aid'])}
+
         self.coco_dset = coco_dset
-        self.samples = sample_pccs(pccs)
-        dim = 416
+        print('Find Samples')
+        self.samples = sample_pccs(pccs, max_num=10000)
+        self.samples = nh.util.shuffle(self.samples, rng=0)
+        print('Finished sampling')
+        self.dim = dim
 
         if augment:
             import imgaug.augmenters as iaa
@@ -779,25 +784,26 @@ def setup_harness(**kwargs):
     ub.ensuredir(workdir)
 
     if dbname == 'ggr2':
+        print('Creating torch CocoDataset')
         train_dset = ndsampler.CocoDataset(
             data='/media/joncrall/raid/data/ggr2-coco/annotations/instances_train2018.json',
             img_root='/media/joncrall/raid/data/ggr2-coco/images/train2018',
         )
+        train_dset.hashid = 'ggr2-coco-train2018'
         vali_dset = ndsampler.CocoDataset(
             data='/media/joncrall/raid/data/ggr2-coco/annotations/instances_val2018.json',
             img_root='/media/joncrall/raid/data/ggr2-coco/images/val2018',
         )
+        vali_dset.hashid = 'ggr2-coco-val2018'
 
-        # sampler = ndsampler.CocoSampler(train_dset, workdir=workdir)
-        # coco_dset = train_dset
-        # self = MatchingCocoDataset(train_dset)
-
+        print('Creating samplers')
         train_sampler = ndsampler.CocoSampler(train_dset, workdir=workdir)
         vali_sampler = ndsampler.CocoSampler(vali_dset, workdir=workdir)
 
+        print('Creating torch Datasets')
         datasets = {
-            'train': MatchingCocoDataset(train_sampler, train_dset, workdir),
-            'vali': MatchingCocoDataset(vali_sampler, vali_dset, workdir),
+            'train': MatchingCocoDataset(train_sampler, train_dset, workdir, dim=dim),
+            'vali': MatchingCocoDataset(vali_sampler, vali_dset, workdir, dim=dim),
         }
     else:
         datasets = randomized_ibeis_dset(dbname, dim=dim)
@@ -887,45 +893,6 @@ def setup_harness(**kwargs):
     return harn
 
 
-def _auto_argparse(func):
-    """
-    Transform a function with a Google Style Docstring into an
-    `argparse.ArgumentParser`.  Custom utility. Not sure where it goes yet.
-    """
-    from xdoctest.docstr import docscrape_google as scrape
-    import argparse
-    import inspect
-
-    # Parse default values from the function dynamically
-    spec = inspect.getargspec(func)
-    kwdefaults = dict(zip(spec.args[-len(spec.defaults):], spec.defaults))
-
-    # Parse help and description information from a google-style docstring
-    docstr = func.__doc__
-    description = scrape.split_google_docblocks(docstr)[0][1][0].strip()
-    google_args = {argdict['name']: argdict
-                   for argdict in scrape.parse_google_args(docstr)}
-
-    # Create the argument parser and register each argument
-    parser = argparse.ArgumentParser(
-        description=description,
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    for arg in spec.args:
-        argkw = {}
-        if arg in kwdefaults:
-            argkw['default'] = kwdefaults[arg]
-        if arg in google_args:
-            garg = google_args[arg]
-            argkw['help'] = garg['desc']
-            try:
-                argkw['type'] = eval(garg['type'], {})
-            except Exception:
-                pass
-        parser.add_argument('--' + arg, **argkw)
-    return parser
-
-
 def fit(dbname='PZ_MTEST', nice='untitled', dim=416, batch_size=6, bstep=1,
         lr=0.001, decay=0.0005, workers=0, xpu='argv'):
     """
@@ -983,7 +950,8 @@ def main():
         RotanTurtles
         humpbacks_fb
     """
-    parser = _auto_argparse(fit)
+    import xinspect
+    parser = xinspect.auto_argparse(fit)
     args, unknown = parser.parse_known_args()
     ns = args.__dict__.copy()
     fit(**ns)
@@ -993,6 +961,6 @@ if __name__ == '__main__':
     """
     CommandLine:
         python ~/code/netharn/examples/ggr_matching.py --help
-        python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0 --dbname=ggr2
+        python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0 --dbname=ggr2 --batch_size=8
     """
     main()
