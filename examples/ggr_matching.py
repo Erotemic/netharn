@@ -18,6 +18,7 @@ import netharn as nh
 import torch
 import torchvision
 import itertools as it
+import ndsampler
 
 # __all__ = [
 #     'RandomBalancedIBEISSample',
@@ -442,7 +443,10 @@ class RandomBalancedIBEISSample(torch.utils.data.Dataset):
 
 
 class MatchingCocoDataset(torch.utils.data.Dataset):
-    def __init__(self, coco_dset, augment=False):
+    def __init__(self, sampler, coco_dset, workdir=None, augment=False):
+
+        self.sampler = sampler
+        self.aid_to_tx = {aid: tx for tx, aid in enumerate(sampler.regions.targets['aid'])}
 
         cacher = ub.Cacher('pccs', cfgstr=coco_dset.tag)
         pccs = cacher.tryload()
@@ -502,27 +506,14 @@ class MatchingCocoDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         aid1, aid2, label = self.samples[index]
+        tx1 = self.aid_to_tx[aid1]
+        tx2 = self.aid_to_tx[aid2]
 
-        annot1 = self.coco_dset.anns[aid1]
-        annot2 = self.coco_dset.anns[aid2]
+        sample1 = self.sampler.load_positive(index=tx1)
+        sample2 = self.sampler.load_positive(index=tx2)
 
-        gid1 = annot1['image_id']
-        gid2 = annot2['image_id']
-
-        gpath1 = os.path.join(self.coco_dset.img_root, self.coco_dset.imgs[gid1]['file_name'])
-        gpath2 = os.path.join(self.coco_dset.img_root, self.coco_dset.imgs[gid2]['file_name'])
-
-        # TODO: use ndsampler
-
-        img1 = nh.util.imread(gpath1)
-        img2 = nh.util.imread(gpath2)
-
-        def _sl(bbox):
-            x, y, w, h = bbox
-            return (slice(y, y + h), slice(x, x + w))
-
-        chip1 = img1[_sl(annot1['bbox'])]
-        chip2 = img2[_sl(annot2['bbox'])]
+        chip1 = sample1['im']
+        chip2 = sample2['im']
 
         chip1, chip2 = self.letterbox.augment_images([chip1, chip2])
 
@@ -546,6 +537,8 @@ class MatchingCocoDataset(torch.utils.data.Dataset):
 
 def sample_pccs(pccs, max_num=1000):
     """
+    Note: does not take into account incomparable
+
     >>> pccs = list(map(frozenset, [{1, 2, 3}, {4, 5}, {6}]))
     >>> list(sample_pccs(pccs))
     """
@@ -577,7 +570,6 @@ def sample_pccs(pccs, max_num=1000):
         generators = {}
 
         while unfinished:
-            print('A unfinished = {!r}'.format(unfinished))
             finished = set()
             if unfinished is True:
                 combos = ut.random_combinations(pccs, 2)
@@ -723,31 +715,35 @@ def setup_harness(**kwargs):
     dim = int(kwargs.get('dim', 416))
     xpu = kwargs.get('xpu', 'argv')
     workdir = kwargs.get('workdir', None)
-    dbname = kwargs.get('dbname', 'PZ_MTEST')
-
-    if False:
-        datasets = randomized_ibeis_dset(dbname, dim=dim)
-    else:
-        train_dset = nh.data.CocoDataset(
-            data='/media/joncrall/raid/data/ggr2-coco/annotations/instances_train2018.json',
-            img_root='/media/joncrall/raid/data/ggr2-coco/images/train2018',
-        )
-        vali_dset = nh.data.CocoDataset(
-            data='/media/joncrall/raid/data/ggr2-coco/annotations/instances_val2018.json',
-            img_root='/media/joncrall/raid/data/ggr2-coco/images/val2018',
-        )
-
-        # coco_dset = train_dset
-        # self = MatchingCocoDataset(train_dset)
-
-        datasets = {
-            'train': MatchingCocoDataset(train_dset),
-            'vali': MatchingCocoDataset(vali_dset),
-        }
+    dbname = kwargs.get('dbname', 'ggr2')
 
     if workdir is None:
         workdir = ub.truepath(os.path.join('~/work/siam-ibeis2', dbname))
     ub.ensuredir(workdir)
+
+    if dbname == 'ggr2':
+        train_dset = ndsampler.CocoDataset(
+            data='/media/joncrall/raid/data/ggr2-coco/annotations/instances_train2018.json',
+            img_root='/media/joncrall/raid/data/ggr2-coco/images/train2018',
+        )
+        vali_dset = ndsampler.CocoDataset(
+            data='/media/joncrall/raid/data/ggr2-coco/annotations/instances_val2018.json',
+            img_root='/media/joncrall/raid/data/ggr2-coco/images/val2018',
+        )
+
+        # sampler = ndsampler.CocoSampler(train_dset, workdir=workdir)
+        # coco_dset = train_dset
+        # self = MatchingCocoDataset(train_dset)
+
+        train_sampler = ndsampler.CocoSampler(train_dset, workdir=workdir)
+        vali_sampler = ndsampler.CocoSampler(vali_dset, workdir=workdir)
+
+        datasets = {
+            'train': MatchingCocoDataset(train_sampler, train_dset, workdir),
+            'vali': MatchingCocoDataset(vali_sampler, vali_dset, workdir),
+        }
+    else:
+        datasets = randomized_ibeis_dset(dbname, dim=dim)
 
     for k, v in datasets.items():
         print('* len({}) = {}'.format(k, len(v)))
