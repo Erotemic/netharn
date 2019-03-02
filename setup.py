@@ -92,6 +92,11 @@ def clean():
 
 # Scikit-build extension module logic
 if COMPILE_MODE == 'skbuild':
+
+    # print(sys.argv)
+
+    print('sys.argv = {!r}'.format(sys.argv))
+
     compile_setup_kw = dict(
         cmake_languages=('C', 'CXX', 'CUDA'),
         cmake_source_dir='.',

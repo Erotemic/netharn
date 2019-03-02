@@ -22,7 +22,7 @@ endif()
 
 
 option(BUILD_GPU_NMS "Cython GPU-based NMS" True)
-if (BUILD_GPU_NMS)
+if (USE_CUDA AND BUILD_GPU_NMS)
   set(cython_source "gpu_nms.pyx")
   set(module_name "gpu_nms")
 

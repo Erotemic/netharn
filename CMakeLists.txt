@@ -89,17 +89,17 @@ set(PYTHON_SETUP_STATUS "
 ")
 
 
-option(BUILD_CUDA_LIB "Build with CUDA" "True")
-if (BUILD_CUDA_LIB)
+option(USE_CUDA "Build with CUDA" "True")
+if (USE_CUDA)
     find_package(CUDA)
     if (CUDA_FOUND)
         message(STATUS "CUDA found (include: ${CUDA_INCLUDE_DIRS}, lib: ${CUDA_LIBRARIES})")
         include_directories(${CUDA_INCLUDE_DIRS})
     else(CUDA_FOUND)
         message(STATUS "CUDA not found, CUDA library will not be built")
-        set(BUILD_CUDA_LIB OFF)
+        set(USE_CUDA OFF)
     endif(CUDA_FOUND)
-endif(BUILD_CUDA_LIB)
+endif(USE_CUDA)
 
 
 option(NETHARN_VERBOSE "Print extra info" False)

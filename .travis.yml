@@ -20,7 +20,9 @@ before_install:
   - pip install --progress-bar off -r requirements.txt 
 install:
   #- travis_retry python setup.py build develop
-  - travis_retry pip install -e .
+  - travis_retry python setup.py clean
+  - travis_retry python setup.py develop -- -DUSE_CUDA:BOOL=FALSE
+  #- travis_retry pip install -e .
 script: 
   #- travis_wait ./run_tests.py
   #- travis_wait python run_tests.py
