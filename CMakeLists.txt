@@ -6,7 +6,14 @@
 # https://github.com/amueller/word_cloud/pull/42ci
 
 cmake_minimum_required(VERSION 3.11.0)
-project(netharn LANGUAGES C CXX CUDA)
+
+option(USE_CUDA "Build with CUDA" "True")
+
+if (USE_CUDA)
+  project(netharn LANGUAGES C CXX CUDA)
+else()
+  project(netharn LANGUAGES C CXX)
+endif()
 
 
 # Setup basic python stuff and ensure we have skbuild
@@ -89,7 +96,6 @@ set(PYTHON_SETUP_STATUS "
 ")
 
 
-option(USE_CUDA "Build with CUDA" "True")
 if (USE_CUDA)
     find_package(CUDA)
     if (CUDA_FOUND)

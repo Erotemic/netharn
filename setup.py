@@ -98,11 +98,15 @@ if COMPILE_MODE == 'skbuild':
     print('sys.argv = {!r}'.format(sys.argv))
 
     compile_setup_kw = dict(
-        cmake_languages=('C', 'CXX', 'CUDA'),
         cmake_source_dir='.',
         # cmake_args=['-DSOME_FEATURE:BOOL=OFF'],
         # cmake_source_dir='netharn',
     )
+    if '-DUSE_CUDA:BOOL=FALSE' in sys.argv:
+        # EXTREME HACK: not sure if this is even necessary
+        compile_setup_kw['cmake_languages'] = ('C', 'CXX')
+    else:
+        compile_setup_kw['cmake_languages'] = ('C', 'CXX', 'CUDA')
 else:
     compile_setup_kw = {}
 

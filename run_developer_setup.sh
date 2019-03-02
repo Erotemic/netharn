@@ -6,7 +6,9 @@ pip install -r requirements.txt
 #pip install -e .
 
 python setup.py clean
+#python setup.py develop -- -DUSE_CUDA:BOOL=FALSE
 python setup.py develop
+
 #GCC_VERSION=6
 #CC=gcc-$GCC_VERSION CXX=g++-$GCC_VERSION CUDAHOSTCXX=g++-$GCC_VERSION python setup.py develop
 
