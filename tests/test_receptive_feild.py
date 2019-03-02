@@ -24,7 +24,7 @@ def test_convT_rf():
 
         # Construct a series of forward convolutions and the tranpose
         # convolutions that should "invert" them. Assert that the strides and
-        # crop of the RF are the same on every layer. Furthremote the RF size
+        # crop of the RF are the same on every layer. Furthremote the RF shape
         # should strictly increase.
 
         layers = ub.odict()
@@ -39,18 +39,25 @@ def test_convT_rf():
             layers[key] = convT
 
         module = nn.Sequential(layers)
-        fields, field = nh.ReceptiveFieldFor(module)()
+        field = nh.ReceptiveFieldFor(module)()
 
-        input_rf = nh.ReceptiveFieldFor.input()[1]
-        symmetric = [('input', input_rf)] + list(fields.items())
+        input_rf = nh.ReceptiveFieldFor.input()
+        symmetric = [('input', input_rf)] + list(field.hidden.items())
 
         for a, b, in ub.iter_window(symmetric, 2):
             k1, v1 = a
             k2, v2 = b
-            assert np.all(v1['size'] <= v2['size']), 'v1={} v2={}'.format(v1, v2)
+            assert np.all(v1['shape'] <= v2['shape']), 'v1={} v2={}'.format(v1, v2)
 
         for a, b in zip(symmetric, symmetric[::-1]):
             k1, v1 = a
             k2, v2 = b
             assert np.all(v1['stride'] == v2['stride']), 'v1={} v2={}'.format(v1, v2)
             assert np.all(v1['crop'] == v2['crop']), 'v1={} v2={}'.format(v1, v2)
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python ~/code/netharn/tests/test_receptive_feild.py
+    """
+    test_convT_rf()

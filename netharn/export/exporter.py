@@ -66,6 +66,9 @@ def export_model_code(dpath, model, initkw=None):
             While you could put the output path in your PYTHONPATH, it is best
             to use `ub.import_module_from_path` to "load" the model instead.
 
+    CommandLine:
+        xdoctest -m netharn.export.exporter export_model_code
+
     Example:
         >>> from torchvision.models import densenet
         >>> from os.path import basename
@@ -76,7 +79,7 @@ def export_model_code(dpath, model, initkw=None):
         >>> print('static_modpath = {!r}'.format(static_modpath))
         ...
         >>> print(basename(static_modpath))
-        DenseNet_58cff7.py
+        DenseNet_256629.py
         >>> # now the module can be loaded
         >>> module = ub.import_module_from_path(static_modpath)
         >>> loaded = module.make()
