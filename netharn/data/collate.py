@@ -6,6 +6,7 @@ import torch
 import ubelt as ub
 import numpy as np  # NOQA
 import collections
+from torch._six import string_classes, int_classes
 
 
 class CollateException(Exception):
@@ -34,14 +35,38 @@ def _collate_else(batch, collate_func):
         if elem.shape == ():  # scalars
             py_type = float if elem.dtype.name.startswith('float') else int
             return torch_data.dataloader.numpy_type_map[elem.dtype.name](list(map(py_type, batch)))
-    elif isinstance(batch[0], torch_data.dataloader.int_classes):
+    elif isinstance(batch[0], slice):
+        # batch = default_collate([{
+        #     'start': [0 if sl.start is None else sl.start],
+        #     'stop': [sl.stop],
+        #     'step': [1 if sl.step is None else sl.step]
+        # } for sl in batch])
+        batch = default_collate([{
+            'start': sl.start,
+            'stop': sl.stop,
+            'step': 1 if sl.step is None else sl.step
+        } for sl in batch])
+        return batch
+        # batch = torch.FloatTensor([(sl.start, sl.stop) for sl in batch])
+    elif isinstance(batch[0], int_classes):
         return torch.LongTensor(batch)
     elif isinstance(batch[0], float):
         return torch.DoubleTensor(batch)
-    elif isinstance(batch[0], torch_data.dataloader.string_classes):
+    elif isinstance(batch[0], string_classes):
         return batch
     elif isinstance(batch[0], collections.Mapping):
-        return {key: collate_func([d[key] for d in batch]) for key in batch[0]}
+        # Hack the mapping collation implementation to print error info
+        if __debug__:
+            collated = {}
+            try:
+                for key in batch[0]:
+                    collated[key] = collate_func([d[key] for d in batch])
+            except Exception:
+                print('\n!!Error collating key = {!r}\n'.format(key))
+                raise
+            return collated
+        else:
+            return {key: default_collate([d[key] for d in batch]) for key in batch[0]}
     elif isinstance(batch[0], collections.Sequence):
         transposed = zip(*batch)
         return [collate_func(samples) for samples in transposed]

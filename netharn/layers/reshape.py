@@ -1,11 +1,14 @@
 import torch
-from netharn.output_shape_for import OutputShapeFor  # NOQA
-from netharn.output_shape_for import SHAPE_CLS
+from netharn import util
+from netharn import output_shape_for
 
 
-class Reshape(torch.nn.Module):
+class Reshape(torch.nn.Module, util.ModuleMixin):
     """
     Wrapper class around `torch.view` that implements `output_shape_for`
+
+    TODO:
+        [ ] - Can we implement receptive_feild_for for this layer?
 
     Args:
         *shape: same ars that would be passed to view.
@@ -14,13 +17,14 @@ class Reshape(torch.nn.Module):
 
 
     Example:
-        >>> OutputShapeFor(Reshape(-1, 3))._check_consistency((20, 6, 20))
+        >>> import netharn as nh
+        >>> nh.OutputShapeFor(Reshape(-1, 3))._check_consistency((20, 6, 20))
         (800, 3)
-        >>> OutputShapeFor(Reshape(100, -1, 5))._check_consistency((10, 10, 15))
+        >>> nh.OutputShapeFor(Reshape(100, -1, 5))._check_consistency((10, 10, 15))
         (100, 3, 5)
         >>> Reshape(7, -1, 3).output_shape_for((None, 1))  # weird case
         (7, None, 3)
-        >>> OutputShapeFor(Reshape(None, -1, 4))._check_consistency((10, 32, 32, 16))
+        >>> nh.OutputShapeFor(Reshape(None, -1, 4))._check_consistency((10, 32, 32, 16))
         (10, 4096, 4)
         >>> Reshape(None, -1, 4).output_shape_for((None, 32, 32, 16))
         (None, 4096, 4)
@@ -48,6 +52,7 @@ class Reshape(torch.nn.Module):
     def forward(self, input):
         """
         Example:
+            >>> import netharn as nh
             >>> self = Reshape(None, -1, 4)
             >>> input_shape = (10, 32, 32, 16)
             >>> input = torch.rand(input_shape)
@@ -55,7 +60,7 @@ class Reshape(torch.nn.Module):
             >>> print(tuple(output.shape))
             (10, 4096, 4)
             >>> print(tuple(self.output_shape_for(input_shape)))
-            >>> OutputShapeFor(self)._check_consistency(input_shape)
+            >>> nh.OutputShapeFor(self)._check_consistency(input_shape)
         """
         if not self._none_dims:
             output_shape = self.shape
@@ -130,4 +135,18 @@ class Reshape(torch.nn.Module):
         elif can_check_fit:
             assert unused == 1
 
-        return SHAPE_CLS(output_shape)
+        return output_shape_for.OutputShape.coerce(output_shape)
+
+
+class Permute(torch.nn.Module, util.ModuleMixin):
+    def __init__(self, *dims):
+        super().__init__()
+        self.dims = dims
+
+    def forward(self, x):
+        return x.permute(*self.dims)
+
+    def output_shape_for(self, input_shape):
+        output_shape = tuple([input_shape[i] for i in self.dims])
+        output_shape_for.OutputShape.coerce(output_shape)
+        return output_shape

@@ -6,9 +6,11 @@ import ubelt as ub
 from distutils.version import LooseVersion
 
 try:
-    from netharn.util.cython_boxes import bbox_ious_c as _bbox_ious_c
+    # from netharn.util.cython_boxes import bbox_ious_c as _bbox_ious_c
+    from netharn.util._boxes_backend.cython_boxes import bbox_ious_c as _bbox_ious_c
 except ImportError:
     _bbox_ious_c = None
+
 
 TORCH_HAS_EMPTY_SHAPE = LooseVersion(torch.__version__) >= LooseVersion('1.0.0')
 
@@ -677,8 +679,8 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             tlbr[:, 3] = br_y
         else:
             anchors = np.asarray(anchors)
-            assert np.all(anchors <= 1.0)
-            assert np.all(anchors > 0.0)
+            assert np.all(anchors <= 1.0), 'anchors must be normalized'
+            assert np.all(anchors > 0.0), 'anchors must be normalized'
             anchor_xs = rng.randint(0, len(anchors), size=num)
             base_whs = anchors[anchor_xs]
             rand_whs = np.clip(
@@ -727,7 +729,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>> self.compress([False])
             <Boxes(tlbr, array([], shape=(0, 4), dtype=int64))>
         """
-        if len(self.data.shape) != 2:
+        if len(self.data.shape) != 2 and _numel(self.data) > 0:
             raise ValueError('data must be 2d got {}d'.format(len(self.data.shape)))
         self2 = self if inplace else self.copy()
         self2.data = self2.data.compress(flags, axis=axis)
@@ -744,7 +746,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>> self.take([])
             <Boxes(tlbr, array([], shape=(0, 4), dtype=int64))>
         """
-        if len(self) and len(self.data.shape) != 2:
+        if len(self.data.shape) != 2 and _numel(self.data) > 0:
             raise ValueError('data must be 2d got {}d'.format(len(self.data.shape)))
         self2 = self if inplace else self.copy()
         self2.data = self2.data.take(idxs, axis=axis)

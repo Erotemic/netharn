@@ -16,11 +16,14 @@ before_install:
   - pip install --progress-bar off pytest pytest-cov codecov
   - pip install --progress-bar off ubelt progiter -U
   - pip install --progress-bar off imgaug
+  - pip install --progress-bar off scikit-build ninja cmake cffi Cython wheel ubelt  # contents of pyproject.toml
   #- pip install --progress-bar off -e git+https://github.com/aleju/imgaug.git@master#egg=imgaug
   - pip install --progress-bar off -r requirements.txt 
 install:
   #- travis_retry python setup.py build develop
-  - travis_retry pip install -e .
+  - travis_retry python setup.py clean
+  - travis_retry python setup.py develop -- -DUSE_CUDA:BOOL=FALSE
+  #- travis_retry pip install -e .
 script: 
   #- travis_wait ./run_tests.py
   #- travis_wait python run_tests.py

@@ -3,14 +3,16 @@ import torch  # NOQA
 import torch.nn.functional as F
 import torch.nn.modules
 import numpy as np
-from torch import autograd
 from packaging import version
 
 
-_HAS_REDUCTION = version.parse(torch.__version__) >= version.parse('0.4.1')
+if version.parse(torch.__version__) < version.parse('1.0.0'):
+    ELEMENTWISE_MEAN = 'elementwise_mean'
+else:
+    ELEMENTWISE_MEAN = 'mean'
 
 
-def one_hot_embedding(labels, num_classes):
+def one_hot_embedding(labels, num_classes, dim=1):
     """
     Embedding labels to one-hot form.
 
@@ -48,35 +50,44 @@ def one_hot_embedding(labels, num_classes):
         >>> if torch.cuda.is_available():
         >>>     t3 = one_hot_embedding(labels.to(0), num_classes)
         >>>     assert np.all(t3.cpu().numpy() == t.numpy())
+
+    Example:
+        >>> nC = num_classes = 3
+        >>> labels = (torch.rand(10, 11, 12) * nC).long()
+        >>> assert one_hot_embedding(labels, nC, dim=0).shape == (3, 10, 11, 12)
+        >>> assert one_hot_embedding(labels, nC, dim=1).shape == (10, 3, 11, 12)
+        >>> assert one_hot_embedding(labels, nC, dim=2).shape == (10, 11, 3, 12)
+        >>> assert one_hot_embedding(labels, nC, dim=3).shape == (10, 11, 12, 3)
+        >>> labels = (torch.rand(10, 11) * nC).long()
+        >>> assert one_hot_embedding(labels, nC, dim=0).shape == (3, 10, 11)
+        >>> assert one_hot_embedding(labels, nC, dim=1).shape == (10, 3, 11)
+        >>> labels = (torch.rand(10) * nC).long()
+        >>> assert one_hot_embedding(labels, nC, dim=0).shape == (3, 10)
+        >>> assert one_hot_embedding(labels, nC, dim=1).shape == (10, 3)
     """
     # if True:
     if torch.is_tensor(labels):
-        y = torch.eye(int(num_classes), device=labels.device)
-        y_onehot = y[labels]
+        in_dims = labels.ndimension()
+        if dim == 1 and in_dims == 1:
+            # normal case where everything is already flat
+            y = torch.eye(int(num_classes), device=labels.device)
+            y_onehot = y[labels]
+        else:
+            # non-flat case (note that this would handle the normal case, but
+            # why do extra work?)
+            y = torch.eye(int(num_classes), device=labels.device)
+            flat_y_onehot = y[labels.view(-1)]
+            y_onehot = flat_y_onehot.view(*list(labels.shape) + [num_classes])
+            if dim != in_dims:
+                dim_order = list(range(in_dims))
+                dim_order.insert(dim, in_dims)
+                y_onehot = y_onehot.permute(*dim_order)
     else:
+        if dim != 1 or labels.ndim == 2:
+            raise NotImplementedError('not implemented for this case')
         y = np.eye(int(num_classes))
         y_onehot = y[labels]
     return y_onehot
-    # else:
-    #     # y = torch.eye(num_classes)  # [D,D]
-    #     # if labels.is_cuda:
-    #     #     y = y.cuda(labels.get_device())
-    #     # y_onehot = y[labels]        # [N,D]
-    #     # if cpu:
-    #     y = torch.eye(int(num_classes))  # [D,D]
-    #     y_onehot = y[labels.cpu()]  # [N,D]
-    #     if labels.is_cuda:
-    #         device = labels.get_device()
-    #         y_onehot = y_onehot.cuda(device)
-    #     # else:
-    #     #     if labels.is_cuda:
-    #     #         y_onehot = torch.cuda.FloatTensor(labels.shape[0], num_classes,
-    #     #                                           device=labels.get_device()).zero_()
-    #     #         y_onehot.scatter_(1, labels[:, None], 1)
-    #     #     else:
-    #     #         y_onehot = torch.FloatTensor(labels.shape[0], num_classes).zero_()
-    #     #         y_onehot.scatter_(1, labels[:, None], 1)
-    #     return y_onehot
 
 
 def _backwards_compat_reduction_kw(size_average, reduce, reduction):
@@ -84,7 +95,7 @@ def _backwards_compat_reduction_kw(size_average, reduce, reduction):
         if reduction == 'none':
             size_average = False
             reduce = False
-        elif reduction == 'elementwise_mean':
+        elif reduction == ELEMENTWISE_MEAN:
             size_average = True
             reduce = True
         elif reduction == 'sum':
@@ -103,13 +114,75 @@ def _backwards_compat_reduction_kw(size_average, reduce, reduction):
             elif size_average and not reduce:
                 reduction = 'none'
             elif size_average and reduce:
-                reduction = 'elementwise_mean'
+                reduction = ELEMENTWISE_MEAN
             elif not size_average and reduce:
                 reduction = 'sum'
             else:
                 raise ValueError(
                     'Impossible combination of size_average and reduce')
     return size_average, reduce, reduction
+
+
+def nll_focal_loss(logits, targets, focus, dim, weight=None, ignore_index=None):
+    """
+    Focal loss given preprocessed logits (log probs) instead of raw outputs
+
+    Args:
+        logits (FloatTensor): log-probabilities for each class
+        targets (LongTensor): correct class indices for each example
+        focus (float): focus factor
+        dim (int): class dimension
+        weight (FloatTensor): per-class weights
+
+    Example:
+        >>> from netharn.criterions.focal import *
+        >>> C = 3
+        >>> dim = 1
+        >>> logits = F.log_softmax(torch.rand(10, C, 11, 12), dim=dim)
+        >>> targets = (torch.rand(10, 11, 12) * C).long()
+        >>> loss1 = F.nll_loss(logits, targets, reduction='none')
+        >>> loss2 = nll_focal_loss(logits, targets, focus=0, dim=dim)
+        >>> assert torch.allclose(loss1, loss2)
+        >>> logits3 = logits.permute(0, 2, 3, 1)
+        >>> loss3 = nll_focal_loss(logits3, targets, focus=0, dim=3)
+        >>> assert torch.allclose(loss1, loss3)
+
+        >>> # with perclass weights
+        >>> logits = F.log_softmax(torch.rand(8, C, 2, 2), dim=dim)
+        >>> targets = (torch.rand(8, 2, 2) * C).long()
+        >>> weight = torch.FloatTensor([.1, 1.0, 10.0])
+        >>> focus = 2.0
+        >>> dim = 1
+        >>> ignore_index = 0
+        >>> output = nll_focal_loss(logits, targets, focus, dim, weight, ignore_index)
+    """
+    # Determine which entry in logits corresponds to the target
+    num_classes = logits.shape[dim]
+    t = one_hot_embedding(targets.data, num_classes, dim=dim)
+
+    # We only need the log(p) component corresponding to the target class
+    target_logits = (logits * t).sum(dim=dim)  # sameas logits[t > 0]
+
+    # Modulate the weight of examples based on hardness
+    target_p = torch.exp(target_logits)
+    w = (1 - target_p).pow(focus)
+
+    # Factor in per-class `weight` to the a per-input weight
+    if weight is not None:
+        class_weight = weight[targets]
+        w *= class_weight
+
+    if ignore_index is not None:
+        # remove any loss associated with ignore_label
+        ignore_mask = (targets != ignore_index).float()
+        w *= ignore_mask
+
+    # Normal cross-entropy computation (but with augmented weights per example)
+    # Recall the nll_loss of an aexample is simply its -log probability or the
+    # real class, all other classes are not needed (due to softmax magic)
+    output = w * -target_logits
+
+    return output
 
 
 class FocalLoss(torch.nn.modules.loss._WeightedLoss):
@@ -169,9 +242,9 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
         >>> self = FocalLoss(reduction='none')
         >>> # input is of size N x C
         >>> N, C = 8, 5
-        >>> data = autograd.Variable(torch.randn(N, C), requires_grad=True)
+        >>> data = torch.randn(N, C, requires_grad=True)
         >>> # each element in target has to have 0 <= value < C
-        >>> target = autograd.Variable((torch.rand(N) * C).long())
+        >>> target = (torch.rand(N) * C).long()
         >>> input = torch.nn.LogSoftmax(dim=1)(data)
         >>> #self.focal_loss_alt(input, target)
         >>> self.focal_loss(input, target)
@@ -191,29 +264,16 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             [.3, .3, .3, .1],
         ]) * 10
         target = torch.LongTensor([1, 1, 1, 1, 1, 0, 2, 3, 3, 3])
-        target = autograd.Variable(target)
-        input = autograd.Variable(input)
 
         weight = torch.FloatTensor([1, 1, 1, 10])
         self = FocalLoss(reduce=False, weight=weight)
     """
 
     def __init__(self, focus=2, weight=None, size_average=None, reduce=None,
-                 reduction='elementwise_mean', ignore_index=-100):
-
+                 reduction=ELEMENTWISE_MEAN, ignore_index=-100):
         size_average, reduce, reduction = _backwards_compat_reduction_kw(
             size_average, reduce, reduction)
-        if _HAS_REDUCTION:
-            super(FocalLoss, self).__init__(weight=weight,
-                                            # reduce=reduce,
-                                            # size_average=size_average,
-                                            reduction=reduction)
-        else:
-            super(FocalLoss, self).__init__(weight=weight, reduce=reduce,
-                                            size_average=size_average)
-            self.size_average = size_average  # fix for travis?
-            self.reduce = reduce
-
+        super(FocalLoss, self).__init__(weight=weight, reduction=reduction)
         self.focus = focus
         self.ignore_index = ignore_index
 
@@ -237,14 +297,14 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             >>> import numpy as np
             >>> N, C = 8, 5
             >>> # each element in target has to have 0 <= value < C
-            >>> target = autograd.Variable((torch.rand(N) * C).long())
-            >>> input = autograd.Variable(torch.randn(N, C), requires_grad=True)
+            >>> target = (torch.rand(N) * C).long()
+            >>> input = torch.randn(N, C, requires_grad=True)
             >>> # Check to be sure that when gamma=0, FL becomes CE
             >>> loss0 = FocalLoss(reduction='none', focus=0).focal_loss(input, target)
-            >>> #loss1 = F.cross_entropy(input, target, reduction='none')
-            >>> loss1 = F.cross_entropy(input, target, size_average=False, reduce=False)
-            >>> #loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, reduction='none')
-            >>> loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, size_average=False, reduce=False)
+            >>> loss1 = F.cross_entropy(input, target, reduction='none')
+            >>> #loss1 = F.cross_entropy(input, target, size_average=False, reduce=False)
+            >>> loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, reduction='none')
+            >>> #loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, size_average=False, reduce=False)
             >>> assert np.all(np.abs((loss1 - loss0).data.numpy()) < 1e-6)
             >>> assert np.all(np.abs((loss2 - loss0).data.numpy()) < 1e-6)
             >>> lossF = FocalLoss(reduction='none', focus=2, ignore_index=0).focal_loss(input, target)
@@ -255,7 +315,8 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             alpha = 1
         else:
             # Create a per-input weight
-            alpha = autograd.Variable(self.weight)[target]
+            alpha = self.weight[target]
+            # alpha = autograd.Variable(self.weight)[target]
 
         # Compute log(p) for NLL-loss.
         nll = F.log_softmax(input, dim=1)  # [N,C]
@@ -269,7 +330,7 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
 
         # Determine which entry in nll corresponds to the target
         t = one_hot_embedding(target.data, num_classes)  # [N,C]
-        t = autograd.Variable(t)
+        # t = autograd.Variable(t)
 
         # We only need the log(p) component corresponding to the target class
         target_nll = (nll * t).sum(dim=1)  # [N,]  # sameas nll[t > 0]
@@ -293,24 +354,17 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             (tensor) loss
         """
         output = self.focal_loss(input, target)
-        if _HAS_REDUCTION:
-            if self.reduction == 'elementwise_mean':
-                output = output.sum()
-                output = output / input.shape[0]
-            elif self.reduction == 'sum':
-                output = output.sum()
-        else:
-            if self.reduce:
-                output = output.sum()
-                if self.size_average:
-                    output = output / input.shape[0]
+        if self.reduction == ELEMENTWISE_MEAN:
+            output = output.mean()
+        elif self.reduction == 'sum':
+            output = output.sum()
         return output
 
 
 if __name__ == '__main__':
-    r"""
+    """
     CommandLine:
-        python -m netharn.loss
+        xdoctest -m netharn.criterions.focal all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

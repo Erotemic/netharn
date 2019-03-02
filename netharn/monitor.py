@@ -24,6 +24,19 @@ def demodata_monitor():
 
 class Monitor(object):
     """
+    Monitors an instance of FitHarn as it trains. Makes sure that measurements
+    of quality (e.g. loss, accuracy, AUC, mAP, etc...) on the validation
+    dataset continues to go do (or at least isn't increasing), and stops
+    training early if certain conditions are met.
+
+    Attributes:
+        minimize (List[str]): measures where a lower is better
+        maximize (List[str]): measures where a higher is better
+        smoothing (float): smoothness factor for the moving averages
+        max_epoch (int, default=1000): number of epochs to stop after
+        patience (int, default=None): if specified, the number of epochs
+            to wait before quiting if the quality metrics are not improving.
+
     Example:
         >>> # simulate loss going down and then overfitting
         >>> from netharn.monitor import *
@@ -40,109 +53,141 @@ class Monitor(object):
 
     def __init__(monitor, minimize=['loss'], maximize=[], smoothing=.6,
                  patience=None, max_epoch=1000):
-        monitor.ewma = util.ExpMovingAve(alpha=1 - smoothing)
-        monitor.raw_metrics = []
-        monitor.smooth_metrics = []
-        monitor.epochs = []
-        monitor.is_good = []
-        # monitor.other_data = []
+
+        # Internal attributes
+        monitor._ewma = util.ExpMovingAve(alpha=1 - smoothing)
+        monitor._raw_metrics = []
+        monitor._smooth_metrics = []
+        monitor._epochs = []
+        monitor._is_good = []
+
+        # Bookkeeping
+        monitor._best_raw_metrics = None
+        monitor._best_smooth_metrics = None
+        monitor._best_epoch = None
+        monitor._n_bad_epochs = 0
 
         # Keep track of which metrics we want to maximize / minimize
         monitor.minimize = minimize
         monitor.maximize = maximize
-        # print('monitor.minimize = {!r}'.format(monitor.minimize))
-        # print('monitor.maximize = {!r}'.format(monitor.maximize))
-
-        monitor.best_raw_metrics = None
-        monitor.best_smooth_metrics = None
-        monitor.best_epoch = None
 
         # early stopping
-
         monitor.patience = patience
-        monitor.n_bad_epochs = 0
-
         monitor.max_epoch = max_epoch
 
     def show(monitor):
+        """
+        Draws the monitored metrics using matplotlib
+        """
         import matplotlib.pyplot as plt
         from netharn.util import mplutil
         import pandas as pd
-        # mplutil.qtensure()
-        smooth_ydatas = pd.DataFrame.from_dict(monitor.smooth_metrics).to_dict('list')
-        raw_ydatas = pd.DataFrame.from_dict(monitor.raw_metrics).to_dict('list')
+        # mplutil.autompl()
+        smooth_ydatas = pd.DataFrame.from_dict(monitor._smooth_metrics).to_dict('list')
+        raw_ydatas = pd.DataFrame.from_dict(monitor._raw_metrics).to_dict('list')
         keys = monitor.minimize + monitor.maximize
         pnum_ = mplutil.PlotNums(nSubplots=len(keys))
         for i, key in enumerate(keys):
             mplutil.multi_plot(
-                monitor.epochs, {'raw ' + key: raw_ydatas[key],
-                                 'smooth ' + key: smooth_ydatas[key]},
+                monitor._epochs, {'raw ' + key: raw_ydatas[key],
+                                  'smooth ' + key: smooth_ydatas[key]},
                 xlabel='epoch', ylabel=key, pnum=pnum_[i], fnum=1,
                 # markers={'raw ' + key: '-', 'smooth ' + key: '--'},
                 # colors={'raw ' + key: 'b', 'smooth ' + key: 'b'},
             )
 
             # star all the good epochs
-            flags = np.array(monitor.is_good)
+            flags = np.array(monitor._is_good)
             if np.any(flags):
-                plt.plot(list(ub.compress(monitor.epochs, flags)),
+                plt.plot(list(ub.compress(monitor._epochs, flags)),
                          list(ub.compress(smooth_ydatas[key], flags)), 'b*')
 
     def __getstate__(monitor):
         state = monitor.__dict__.copy()
-        ewma = state.pop('ewma')
-        state['ewma_state'] = ewma.__dict__
+        _ewma = state.pop('_ewma')
+        state['ewma_state'] = _ewma.__dict__
         return state
 
     def __setstate__(monitor, state):
         ewma_state = state.pop('ewma_state', None)
         if ewma_state is not None:
-            monitor.ewma = util.ExpMovingAve()
-            monitor.ewma.__dict__.update(ewma_state)
+            monitor._ewma = util.ExpMovingAve()
+            monitor._ewma.__dict__.update(ewma_state)
         monitor.__dict__.update(**state)
 
     def state_dict(monitor):
+        """
+        pytorch-like API. Alias for __getstate__
+        """
         return monitor.__getstate__()
 
     def load_state_dict(monitor, state):
+        """
+        pytorch-like API. Alias for __setstate__
+
+        Args:
+            state (Dict):
+        """
         return monitor.__setstate__(state)
 
-    def update(monitor, epoch, raw_metrics):
-        monitor.epochs.append(epoch)
-        monitor.raw_metrics.append(raw_metrics)
-        monitor.ewma.update(raw_metrics)
+    def update(monitor, epoch, _raw_metrics):
+        """
+        Informs the monitor about quality measurements for a particular epoch.
+
+        Args:
+            epoch (int):
+                Current epoch number
+
+            _raw_metrics (Dict[str, float]):
+                Scalar values for each quality metric that was measured on this
+                epoch.
+
+        Returns:
+            bool: improved:
+                True if the model has quality of the validation metrics have
+                improved.
+
+        """
+        monitor._epochs.append(epoch)
+        monitor._raw_metrics.append(_raw_metrics)
+        monitor._ewma.update(_raw_metrics)
         # monitor.other_data.append(other)
 
-        smooth_metrics = monitor.ewma.average()
-        monitor.smooth_metrics.append(smooth_metrics.copy())
+        _smooth_metrics = monitor._ewma.average()
+        monitor._smooth_metrics.append(_smooth_metrics.copy())
 
-        improved_keys = monitor._improved(smooth_metrics, monitor.best_smooth_metrics)
+        improved_keys = monitor._improved(_smooth_metrics, monitor._best_smooth_metrics)
         if improved_keys:
-            if monitor.best_smooth_metrics is None:
-                monitor.best_smooth_metrics = smooth_metrics.copy()
-                monitor.best_raw_metrics = raw_metrics.copy()
+            if monitor._best_smooth_metrics is None:
+                monitor._best_smooth_metrics = _smooth_metrics.copy()
+                monitor._best_raw_metrics = _raw_metrics.copy()
             else:
                 for key in improved_keys:
-                    monitor.best_smooth_metrics[key] = smooth_metrics[key]
-                    monitor.best_raw_metrics[key] = raw_metrics[key]
-            monitor.best_epoch = epoch
-            monitor.n_bad_epochs = 0
+                    monitor._best_smooth_metrics[key] = _smooth_metrics[key]
+                    monitor._best_raw_metrics[key] = _raw_metrics[key]
+            monitor._best_epoch = epoch
+            monitor._n_bad_epochs = 0
         else:
-            monitor.n_bad_epochs += 1
+            monitor._n_bad_epochs += 1
 
         improved = len(improved_keys) > 0
-        monitor.is_good.append(improved)
+        monitor._is_good.append(improved)
         return improved
 
     def _improved(monitor, metrics, best_metrics):
         """
         If any of the metrics we care about is improving then we are happy
 
+        Returns:
+            List[str]: list of the quality metrics that have improved
+
         Example:
             >>> from netharn.monitor import *
             >>> monitor = Monitor(['loss'], ['acc'])
             >>> metrics = {'loss': 5, 'acc': .99}
             >>> best_metrics = {'loss': 4, 'acc': .98}
+            >>> monitor._improved(metrics, best_metrics)
+            ['acc']
         """
         keys = monitor.maximize + monitor.minimize
 
@@ -172,35 +217,86 @@ class Monitor(object):
         return improved_keys
 
     def is_done(monitor):
+        """
+        Returns True if the termination criterion is satisfied
+
+        Returns:
+            bool: if training should be stopped
+
+        Example:
+            >>> from netharn.monitor import *
+            >>> Monitor().is_done()
+            False
+            >>> Monitor(patience=0).is_done()
+            True
+        """
         if monitor.patience is None:
             return False
-        return monitor.n_bad_epochs >= monitor.patience
+        return monitor._n_bad_epochs >= monitor.patience
 
-    def message(monitor):
-        if not monitor.epochs:
-            return ub.color_text('vloss is unevaluated', 'blue')
+    def message(monitor, ansi=True):
+        """
+        A status message with optional ANSI coloration
 
-        prev_loss = monitor.smooth_metrics[-1]['loss']
-        best_loss = monitor.best_smooth_metrics['loss']
+        Args:
+            ansi (bool, default=True): if False disables ANSI coloration
 
-        message = 'vloss: {:.4f} (n_bad={:02d}, best={:.4f})'.format(
-            prev_loss, monitor.n_bad_epochs, best_loss,
-        )
-        if monitor.patience is None:
-            patience = monitor.max_epoch
+        Returns:
+            str: message for logging
+
+        Example:
+            >>> from netharn.monitor import *
+            >>> monitor = Monitor()
+            >>> print(monitor.message(ansi=False))
+            vloss is unevaluated
+            >>> monitor.update(0, {'loss': 1.0})
+            >>> print(monitor.message(ansi=False))
+            vloss: 1.0000 (n_bad=00, best=1.0000)
+            >>> monitor.update(0, {'loss': 2.0})
+            >>> print(monitor.message(ansi=False))
+            vloss: 1.4000 (n_bad=01, best=1.0000)
+            >>> monitor.update(0, {'loss': 0.1})
+            >>> print(monitor.message(ansi=False))
+            vloss: 0.8800 (n_bad=00, best=0.8800)
+        """
+        if not monitor._epochs:
+            message = 'vloss is unevaluated'
+            if ansi:
+                message = ub.color_text(message, 'blue')
         else:
-            patience = monitor.patience
-        if monitor.n_bad_epochs <= int(patience * .25):
-            message = ub.color_text(message, 'green')
-        elif monitor.n_bad_epochs >= int(patience * .75):
-            message = ub.color_text(message, 'red')
-        else:
-            message = ub.color_text(message, 'yellow')
+            prev_loss = monitor._smooth_metrics[-1]['loss']
+            best_loss = monitor._best_smooth_metrics['loss']
+
+            message = 'vloss: {:.4f} (n_bad={:02d}, best={:.4f})'.format(
+                prev_loss, monitor._n_bad_epochs, best_loss,
+            )
+            if monitor.patience is None:
+                patience = monitor.max_epoch
+            else:
+                patience = monitor.patience
+            if ansi:
+                if monitor._n_bad_epochs <= int(patience * .25):
+                    message = ub.color_text(message, 'green')
+                elif monitor._n_bad_epochs >= int(patience * .75):
+                    message = ub.color_text(message, 'red')
+                else:
+                    message = ub.color_text(message, 'yellow')
         return message
 
     def best_epochs(monitor, num=None, smooth=True):
         """
         Returns the best `num` epochs for every metric.
+
+        Args:
+            num (int, default=None):
+                Number of top epochs to return. If not specified then all are
+                returned.
+
+            smooth (bool, default=True):
+                Uses smoothed metrics if True otherwise uses the raw metrics.
+
+        Returns:
+            Dict[str, ndarray]: epoch numbers for all of the best epochs
 
         Example:
             >>> monitor = demodata_monitor()
@@ -213,20 +309,22 @@ class Monitor(object):
         """
         metric_ranks = {}
         for key in it.chain(monitor.minimize, monitor.maximize):
-            metric_ranks[key] = monitor._rank(key, smooth=True)[:num]
+            metric_ranks[key] = monitor._rank(key, smooth=smooth)[:num]
         return metric_ranks
 
     def _rank(monitor, key, smooth=True):
         """
+        Ranks the best epochs from best to worst for each metric
+
         Example:
             >>> monitor = demodata_monitor()
             >>> ranked_epochs = monitor._rank('loss', smooth=False)
             >>> ranked_epochs = monitor._rank('miou', smooth=True)
         """
         if smooth:
-            metrics = monitor.smooth_metrics
+            metrics = monitor._smooth_metrics
         else:
-            metrics = monitor.raw_metrics
+            metrics = monitor._raw_metrics
 
         values = [m[key] for m in metrics]
         sortx = np.argsort(values)
@@ -236,17 +334,17 @@ class Monitor(object):
             sortx = np.argsort(values)
         else:
             raise KeyError(type)
-        ranked_epochs = np.array(monitor.epochs)[sortx]
+        ranked_epochs = np.array(monitor._epochs)[sortx]
         return ranked_epochs
 
-    def rank_epochs(monitor):
+    def _BROKEN_rank_epochs(monitor):
         """
         FIXME:
             broken - implement better rank aggregation with custom weights
 
         Example:
             >>> monitor = demodata_monitor()
-            >>> monitor.rank_epochs()
+            >>> monitor._BROKEN_rank_epochs()
         """
         rankings = {}
         for key, value in monitor.best_epochs(smooth=False).items():
@@ -266,3 +364,11 @@ class Monitor(object):
 
         agg_ranking = ub.argsort(epoch_to_weight)[::-1]
         return agg_ranking
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        xdoctest -m netharn.monitor all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

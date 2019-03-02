@@ -133,18 +133,19 @@ import sys
 import six
 import warnings
 import functools
+import traceback
 from os.path import join
 
 import torch
 import numpy as np
 import ubelt as ub
 
-from netharn import folders
 from netharn import hyperparams
 from netharn.exceptions import StopTraining, CannotResume, TrainingDiverged
 
 from netharn import util
 from netharn.util import profiler
+
 from netharn import export
 from xdoctest.utils import strip_ansi
 
@@ -183,6 +184,20 @@ def _disjoint_dict_update(a, b):
 
 @register_mixin
 class ExtraMixins:
+
+    def _demo_epoch(harn, tag='vali', learn=False):
+        """
+        Runs an epoch (usually for testing / demo purposes).
+        """
+        harn.current_tag = None
+        harn._run_metrics = {
+            tag: util.WindowedMovingAve(window=len(loader))
+            for tag, loader in harn.loaders.items()
+        }
+        loader = harn.loaders[tag]
+        epoch_metrics = harn._run_epoch(loader, tag=tag, learn=learn)
+        return epoch_metrics
+
     def _demo_batch(harn, index=0, tag='train', raw=False):
         """
         Returns a single batch for testing / demo purposes.
@@ -228,7 +243,7 @@ class ExtraMixins:
 @register_mixin
 class InitializeMixin:
 
-    def initialize(harn, reset=False):
+    def initialize(harn, reset=False, overwrite=True):
         """
         Uses the hyper parameters to initialize the necessary resources and
         restart from previously
@@ -237,22 +252,32 @@ class InitializeMixin:
             print('RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR')
             if harn.train_info is None:
                 # Need to determine which path needs deletion.
-                harn._setup_paths()
+                harn._setup_paths_and_train_info()
             for path in glob.glob(join(harn.train_dpath, '*')):
                 ub.delete(path)
         elif reset:
             print('RESET HARNESS BY RESTARTING FROM EPOCH 0')
 
         if harn.train_info is None:
-            harn._setup_paths()
+            harn._setup_paths_and_train_info()
         else:
             ub.ensuredir(harn.train_dpath)
 
         # Dump training info to disk
-        # TODO: if train_info already exists, and it is not the same as this
+        # - [X] if train_info already exists, and it is not the same as this
         # train info, keep a backup of the old ones.
-        train_info_fpath = join(harn.train_dpath, 'train_info.json')
-        util.write_json(train_info_fpath, harn.train_info)
+        if harn.train_dpath and overwrite:
+            train_info_fpath = join(harn.train_dpath, 'train_info.json')
+            if os.path.exists(train_info_fpath):
+                if overwrite:
+                    old_train_info = util.read_json(train_info_fpath)
+                    if old_train_info != harn.train_info:
+                        backup_dpath = ub.ensuredir((harn.train_dpath, '_backup'))
+                        backup_fpath = join(backup_dpath, 'train_info.json.' + ub.timestamp() + '.backup')
+                        shutil.move(train_info_fpath, backup_fpath)
+                    util.write_json(train_info_fpath, harn.train_info)
+            else:
+                util.write_json(train_info_fpath, harn.train_info)
 
         harn._setup_loggers()
 
@@ -283,13 +308,27 @@ class InitializeMixin:
 
         harn._initialized = True
         harn.after_initialize()
+        return harn
 
-    def _setup_paths(harn):
+    def _setup_paths_and_train_info(harn):
         if harn.hyper is None:
             harn.warn('harn.train_dpath is None, cannot setup_paths')
         else:
-            paths = folders.Folders(hyper=harn.hyper)
-            train_info = paths.setup_dpath(train_dpath=harn.train_dpath)
+            # TODO: we may fold the functionality of Folders into Hyperparams
+            train_info = harn.hyper.train_info(harn.train_dpath)
+            ub.ensuredir(train_info['train_dpath'])
+            if train_info['nice_dpath']:
+                # Link the hashed run dir to the human friendly nice dir
+                ub.ensuredir(os.path.dirname(train_info['nice_dpath']))
+                ub.symlink(train_info['train_dpath'], train_info['nice_dpath'],
+                           overwrite=True, verbose=3)
+
+            # Make a very simple MRU link
+            if True:
+                mru_dpath = join(harn.hyper.workdir, '_mru')
+                ub.symlink(train_info['train_dpath'], mru_dpath,
+                           overwrite=True, verbose=3)
+
             harn.train_info = train_info
             harn.nice_dpath = train_info['nice_dpath']
             harn.train_dpath = train_info['train_dpath']
@@ -346,7 +385,10 @@ class InitializeMixin:
             harn._tlog = tensorboard_logger.Logger(harn.train_dpath,
                                                      flush_secs=2)
         else:
-            harn.warning('Tensorboard is not available')
+            # TODO:
+            # - [ ] setup an alternative database to record epoch measures for
+            # plotting if tensorboard is not available.
+            harn.warn('Tensorboard is not available')
 
     def _setup_modules(harn):
         """
@@ -418,10 +460,14 @@ class InitializeMixin:
     def _export(harn):
         """ Export the model topology to the train_dpath """
         # TODO: might be good to check for multiple model exports at this time
-        model_cls = harn.hyper.model_cls
-        model_params = harn.hyper.model_params
-        export.export_model_code(harn.train_dpath, model_cls,
-                                 initkw=model_params)
+        try:
+            model_cls = harn.hyper.model_cls
+            model_params = harn.hyper.model_params
+            static_modpath = export.export_model_code(harn.train_dpath, model_cls,
+                                                      initkw=model_params)
+            harn.info('Exported model topology to {}'.format(static_modpath))
+        except Exception as ex:
+            harn.warn('Failed to export model topology')
 
     def reset_weights(harn):
         """
@@ -954,7 +1000,15 @@ class CoreMixin:
     """
     def run(harn):
         """
-        main training loop
+        Runs the main training loop
+
+        This starts the main loop which will run until a the monitor's
+        terminator criterion is satisfied. If the initialize step loaded a
+        checkpointed that already met the termination criterion, then this will
+        simply return.
+
+        Returns:
+            PathLike: deploy_fpath: the path to the standalone deployed model
         """
         if not harn._initialized:
             harn.initialize()
@@ -966,72 +1020,67 @@ class CoreMixin:
             harn.info('dont forget to start:\n'
                       '    tensorboard --logdir ' + ub.compressuser(train_base))
 
-        if harn._check_termination():
-            return
-
-        action = 'resume' if harn.epoch > 0 else 'begin'
-        if harn.config['prog_backend'] == 'progiter':
-            harn.info(ub.color_text('=== {} training {!r} / {!r} : {} ==='.format(
-                action, harn.epoch, harn.monitor.max_epoch,
-                harn.hyper.nice), 'white'))
-        else:
-            harn.info(ub.color_text('=== {} training : {} ==='.format(
-                action, harn.hyper.nice), 'white'))
-
-        harn.main_prog = harn._make_prog(desc='epoch',
-                                         total=harn.monitor.max_epoch,
-                                         disable=not harn.config['show_prog'],
-                                         leave=True, dynamic_ncols=True,
-                                         position=0, initial=harn.epoch)
-        harn._update_main_prog_desc()
-
-        # Loader dict should be ordered
-        harn.loaders = ub.odict([
-            (key, harn.loaders[key]) for key in ['train', 'vali', 'test']
-            if key in harn.loaders
-        ])
-
-        train_loader = harn.loaders.get('train', None)
-        vali_loader  = harn.loaders.get('vali', None)
-        test_loader  = harn.loaders.get('test', None)
-
-        harn._check_thread_safety()
-
-        if not vali_loader:
-            # if harn.monitor:
-            #     harn.warn('Need a validation set to use nh.Monitor')
-            if harn.scheduler:
-                if harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
-                    raise ValueError(
-                            'need a validataion dataset to use ReduceLROnPlateau')
-
-        # keep track of moving metric averages across epochs
-        harn._run_metrics = {
-            tag: util.WindowedMovingAve(window=len(loader))
-            for tag, loader in harn.loaders.items()
-        }
-
-        # if harn.scheduler:
-        #     # prestep scheduler?
-        #     if getattr(harn.scheduler, 'last_epoch', 0) == -1:
-        #         harn.scheduler.step()
-
         try:
-            if DUMMY:
-                for harn.epoch in it.count(harn.epoch):
-                    harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
-                    if harn.epoch > 5:
-                        break
+            if harn._check_termination():
+                raise StopTraining()
+
+            action = 'resume' if harn.epoch > 0 else 'begin'
+            if harn.config['prog_backend'] == 'progiter':
+                harn.info(ub.color_text('=== {} training {!r} / {!r} : {} ==='.format(
+                    action, harn.epoch, harn.monitor.max_epoch,
+                    harn.hyper.nice), 'white'))
             else:
-                for harn.epoch in it.count(harn.epoch):
-                    harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
+                harn.info(ub.color_text('=== {} training : {} ==='.format(
+                    action, harn.hyper.nice), 'white'))
+
+            harn.main_prog = harn._make_prog(desc='epoch',
+                                             total=harn.monitor.max_epoch,
+                                             disable=not harn.config['show_prog'],
+                                             leave=True, dynamic_ncols=True,
+                                             position=0, initial=harn.epoch)
+            harn._update_main_prog_desc()
+
+            # Loader dict should be ordered
+            harn.loaders = ub.odict([
+                (key, harn.loaders[key]) for key in ['train', 'vali', 'test']
+                if key in harn.loaders
+            ])
+
+            # keep track of moving metric averages across epochs
+            harn._run_metrics = {
+                tag: util.WindowedMovingAve(window=len(loader))
+                for tag, loader in harn.loaders.items()
+            }
+
+            harn._check_thread_safety()
+
+            train_loader = harn.loaders.get('train', None)
+            vali_loader  = harn.loaders.get('vali', None)
+            test_loader  = harn.loaders.get('test', None)
+
+            if not vali_loader:
+                # if harn.monitor:
+                #     harn.warn('Need a validation set to use nh.Monitor')
+                if harn.scheduler:
+                    if harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
+                        raise ValueError(
+                                'need a validataion dataset to use ReduceLROnPlateau')
+
+            # if harn.scheduler:
+            #     # prestep scheduler?
+            #     if getattr(harn.scheduler, 'last_epoch', 0) == -1:
+            #         harn.scheduler.step()
+
+            for harn.epoch in it.count(harn.epoch):
+                harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
+                if DUMMY and harn.epoch > 5:
+                    break
         except StopTraining:
             pass
         except Exception as ex:
             harn.error('\n\n\n')
             harn.error('an {} error occurred in the train loop: {}'.format(
                 type(ex), repr(ex)))
-            import traceback
             tb = traceback.format_exc()
             harn.info(tb)
             harn._close_prog()
@@ -1048,10 +1097,11 @@ class CoreMixin:
             harn.info('view tensorboard results for this run via:\n'
                       '    tensorboard --logdir ' + ub.compressuser(train_base))
 
-        harn._deploy()
+        deploy_fpath = harn._deploy()
 
         harn.on_complete()
         harn.info('exiting fit harness.')
+        return deploy_fpath
 
     def _deploy(harn):
         """
@@ -1059,8 +1109,13 @@ class CoreMixin:
         model topology into a single-file model deployment that is "mostly"
         independent of the code used to train the model.
         """
-        deploy_fpath = export.DeployedModel(harn.train_dpath).package()
-        harn.info('wrote single-file deployment to: {!r}'.format(deploy_fpath))
+        try:
+            deploy_fpath = export.DeployedModel(harn.train_dpath).package()
+            harn.info('wrote single-file deployment to: {!r}'.format(deploy_fpath))
+        except Exception:
+            deploy_fpath = None
+            harn.warn('Failed to deploy')
+
         return deploy_fpath
 
     @profiler.profile
@@ -1068,6 +1123,9 @@ class CoreMixin:
         """
         Runs one epoch of train, validation, and testing
         """
+        if harn._check_termination():
+            raise StopTraining()
+
         harn.debug('=== start epoch {} ==='.format(harn.epoch))
 
         current_lr = max(harn._current_lrs())
@@ -1109,6 +1167,10 @@ class CoreMixin:
 
             if harn.check_interval('cleanup', harn.epoch):
                 harn.cleanup_snapshots()
+
+        if tensorboard_logger:
+            # Perhaps dump tensorboard metrics to png / pickle?
+            pass
 
         harn.after_epochs()
 
@@ -1152,8 +1214,11 @@ class CoreMixin:
         bsize = loader.batch_sampler.batch_size
         msg = harn._batch_msg({'loss': -1}, bsize, learn)
         desc = tag + ' ' + msg
-        position = (list(harn.loaders.keys()).index(tag) +
-                    harn.main_prog.pos + 1)
+        if harn.main_prog is None:
+            position = 1
+        else:
+            position = (list(harn.loaders.keys()).index(tag) +
+                        harn.main_prog.pos + 1)
         prog = harn._make_prog(desc=desc, total=len(loader),
                                disable=not harn.config['show_prog'],
                                position=position,
@@ -1172,7 +1237,7 @@ class CoreMixin:
                     batch_iter = iter(loader)
                 except OSError as ex:
                     if 'Cannot allocate memory' in str(ex):
-                        harn.warning('Cannot allocate memory for the data loader')
+                        harn.warn('Cannot allocate memory for the data loader')
                     if n_trys_remain <= 0:
                         harn.error('Cannot allocate enough memory')
                         raise
@@ -1316,9 +1381,18 @@ class ChecksMixin:
         # num_batches_tracked once 0.5.0 lands
         state = harn.model.module.state_dict()
         sums = ub.map_vals(torch.sum, state)
-        weight_sum = sum(sums.values())
+        weight_sum = sum(s.float() for s in sums.values())
+        if 'torch' in str(type(weight_sum)):  # torch 0.3 / 0.4 / 1.0 compat
+            weight_sum = weight_sum.cpu().numpy()
+        try:
+            weight_sum = weight_sum.cpu().numpy()
+        except AttributeError:
+            pass
         if not np.isfinite(weight_sum):
-            flags = [not np.isfinite(s) for s in sums.values()]
+            try:
+                flags = [not np.isfinite(s.cpu().numpy()) for s in sums.values()]
+            except AttributeError:
+                flags = [not np.isfinite(s) for s in sums.values()]
             bad_layers = ub.odict(zip(
                 ub.compress(sums.keys(), flags),
                 ub.compress(sums.values(), flags)
@@ -1356,20 +1430,21 @@ class CoreCallbacks:
         Overload Encouraged, but not always necessary
         """
         try:
-            batch_inputs, batch_labels = raw_batch
+            if isinstance(raw_batch, (tuple, list)):
+                batch_inputs, batch_labels = raw_batch
+                raw_batch = {
+                    'input': batch_inputs,
+                    'label': batch_labels,
+                }
+            if isinstance(raw_batch, dict):
+                batch = raw_batch.copy()
+                batch['input'] = harn.xpu.move(batch['input'])
+                batch['label'] = harn.xpu.move(batch['label'])
+            else:
+                print('raw_batch = {}'.format(type(raw_batch)))
+                raise TypeError(
+                    'could not prepare raw batch {}'.format(type(raw_batch)))
 
-            # the dataset should return a inputs/target 2-tuple of lists.
-            # in most cases each list will be length 1, unless there are
-            # multiple input branches or multiple output branches.
-            if not isinstance(batch_inputs, (list, tuple)):
-                batch_inputs = [batch_inputs]
-            if not isinstance(batch_labels, (list, tuple)):
-                batch_labels = [batch_labels]
-
-            inputs = [harn.xpu.variable(d) for d in batch_inputs]
-            labels = [harn._tovar(d) for d in batch_labels]
-
-            batch = (inputs, labels)
         except Exception:
             harn.warn('Error occurred in default prepare_batch. '
                       'Perhaps you should overload it?')
@@ -1387,9 +1462,15 @@ class CoreCallbacks:
         """
         # Simple forward prop and loss computation
         try:
-            inputs, labels = batch
-            outputs = harn.model(*inputs)
-            loss = harn.criterion(outputs, *labels)
+            if isinstance(batch, dict):
+                outputs = harn.model(batch['input'])
+                loss = harn.criterion(outputs, batch['label'])
+            elif isinstance(batch, tuple):
+                inputs, labels = batch
+                outputs = harn.model(*inputs)
+                loss = harn.criterion(outputs, *labels)
+            else:
+                raise TypeError('Could not run batch')
         except Exception:
             harn.warn('Error occurred in default run_batch. '
                       'Perhaps you should overload it?')
@@ -1403,8 +1484,8 @@ class CoreCallbacks:
         Overload is generally not necessary for this function.
 
         TODO:
-            perhaps remove dynamics as a netharn core component and simply
-            allow the end-application to take care of that detail.
+            - [ ] perhaps remove dynamics as a netharn core component and
+            simply allow the end-application to take care of that detail.
         """
         loss.backward()
 
@@ -1500,11 +1581,14 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             * on_epoch(harn)
 
     Args:
-        hyper (netharn.HyperParams): Parameters that determine the system.
-            This serializable class encodes enough information to
-            deterministically reproduce an experiment.
+        hyper (netharn.HyperParams | dict):
+            Parameters that determine the system.  This serializable class
+            encodes enough information to deterministically reproduce an
+            experiment.
 
-            Because it is serializable it also has a dict representation.
+            Because it is serializable it also has a dict representation. If
+            hyper is a dict then that dict is used as keyword arguments to
+            construct an instance of `netharn.HyperParams`.
 
         train_dpath (str or None): if specified, all progress information is
             stored in this path and the path computed via hyper is ignored.
@@ -1512,11 +1596,33 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             `hyper` to create a directory based on the hyperparamters.
 
     Attributes:
-        model (torch.nn.Module) : an instance of your model (po
-        optimizer (torch.nn.Module) :
-        scheduler (torch.nn.Module) :
-        criterion (torch.nn.Module) :
-        monitor (nh.Monitor) : monitors performance of the validation set
+        hyper (netharn.Hyperparams):
+            The rectified `hyper` argument that was passed to the FitHarn
+            constructor.  Note that hyper is the only (important) argument to
+            FitHarn and all other attributes will be derived from `hyper`.
+            SeeAlso: `netharn.hyperparameters`.
+
+        model (torch.nn.Module) :
+            An instance of your model architecture.
+            SeeAlso: `netharn.models` and `netharn.layers` for models and
+            layers that may not be in torchvision.
+
+        initializer (netharn.Initializer):
+            pass
+
+        optimizer (torch.optim.optimizer.Optimizer) :
+            Optimization algorithm like SGD or ADAM. SeeAlso: `netharn.optimizers`
+
+        scheduler (torch.optim.lr_scheduler._LRScheduler) :
+            Learning rate scheduler. SeeAlso: `netharn.schedulers` for a schedulers
+            that are not currently implemented in torch.
+
+        criterion (torch.nn.modules.loss._Loss) :
+            Objective function / loss criterion. SeeAlso: `netharn.criterions`
+
+        monitor (netharn.Monitor) :
+            monitors performance of the validation set. SeeAlso `netharn.monitor`.
+
 
     Note:
         hyper is optional. If you choose not to specify it then you must
@@ -1542,6 +1648,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
 
         # The following attributes will be initialized in harn._setup_modules()
         harn.model = None
+        harn.initializer = None
         harn.optimizer = None
         harn.scheduler = None
         harn.criterion = None

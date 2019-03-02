@@ -1,5 +1,5 @@
 """
-mkinit netharn.optimizers')"
+mkinit netharn.optimizers
 """
 # flake8: noqa
 
@@ -11,6 +11,10 @@ if __DYNAMIC__:
     exec(dynamic_init(__name__))
 else:
     # <AUTOGEN_INIT>
-    
+    from netharn.optimizers import adamw
+
+    from netharn.optimizers.adamw import (AdamW,)
+
+    __all__ = ['AdamW', 'adamw']
     # </AUTOGEN_INIT>
     pass

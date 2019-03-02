@@ -2,14 +2,25 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 import torch
+import ubelt as ub
 
 
 class ModuleMixin(object):
     """
-    Adds convenince functions to a torch module
+    Adds convenience functions to a torch module
     """
     def number_of_parameters(self, trainable=True):
         return number_of_parameters(self, trainable)
+
+    def _device_dict(self):
+        return {key: item.device for key, item in self.state_dict().items()}
+
+    def devices(self):
+        """
+        Returns all devices this module state is mounted on
+        """
+        state_devices = self._device_dict()
+        return set(state_devices.values())
 
 
 def number_of_parameters(model, trainable=True):
@@ -52,26 +63,94 @@ class grad_context(object):
             return False
 
 
-class DisableBatchNorm(object):
-    def __init__(self, model, enabled=True):
+class IgnoreLayerContext(object):
+    """
+    Context manager that modifies (monkey-patches) models to temporarily
+    remove the forward pass for particular layers.
+
+    Args:
+        model (torch.nn.Module): model to modify
+
+        category (type): the module class to be ignored
+
+        enabled (bool, default=True): if True this context manager is enabled
+            otherwise it does nothing (i.e. the specified layers will not be
+            ignored).
+
+    Example:
+        >>> input = torch.rand(1, 1, 10, 10)
+        >>> model = torch.nn.BatchNorm2d(1)
+        >>> output1 = model(input)
+        >>> with IgnoreLayerContext(model, torch.nn.BatchNorm2d):
+        ...     output2 = model(input)
+        >>> output3 = model(input)
+        >>> assert torch.all(output3 == output1)
+        >>> assert torch.all(output2 == input)
+    """
+    def __init__(self, model, category=None, enabled=True):
         self.model = model
-        self.enabled = enabled
-        self.previous_state = None
+        self.category = category
+        self.prev_state = None
 
     def __enter__(self):
-        if self.enabled:
-            self.previous_state = {}
-            for name, layer in trainable_layers(self.model, names=True):
-                if isinstance(layer, torch.nn.modules.batchnorm._BatchNorm):
-                    self.previous_state[name] = layer.training
-                    layer.training = False
+        self.prev_state = {}
+        def _forward(self, input, *args, **kwargs):
+            return input
+        for name, layer in trainable_layers(self.model, names=True):
+            needs_filter = False
+            if self.category is not None:
+                needs_filter |= isinstance(layer, self.category)
+
+            if needs_filter:
+                self.prev_state[name] = layer.forward
+                ub.inject_method(layer, _forward, name='forward')
         return self
 
     def __exit__(self, *args):
-        if self.previous_state:
+        if self.prev_state:
             for name, layer in trainable_layers(self.model, names=True):
-                if name in self.previous_state:
-                    layer.training = self.previous_state[name]
+                if name in self.prev_state:
+                    layer.forward = self.prev_state[name]
+
+
+class BatchNormContext(object):
+    """
+    Sets batch norm state of `model` to `enabled` within the context manager.
+
+    Args:
+        model (torch.nn.Module): model to modify
+
+        training (bool, default=False):
+            if True training of batch norm layers is enabled otherwise it is
+            disabled. This is useful for batches of size 1.
+    """
+    def __init__(self, model, training=True, **kw):
+        self.model = model
+        if kw:
+            import warnings
+            warnings.warn('the enabled kwarg is depricated')
+            training = kw.pop('enabled', training)
+            if len(kw):
+                raise ValueError('Unsupported kwargs: {}'.format(list(kw)))
+        self.training = training
+        self.prev_train_state = None
+
+    def __enter__(self):
+        self.prev_train_state = {}
+        for name, layer in trainable_layers(self.model, names=True):
+            if isinstance(layer, torch.nn.modules.batchnorm._BatchNorm):
+                self.prev_train_state[name] = layer.training
+                layer.training = self.training
+        return self
+
+    def __exit__(self, *args):
+        if self.prev_train_state:
+            for name, layer in trainable_layers(self.model, names=True):
+                if name in self.prev_train_state:
+                    layer.training = self.prev_train_state[name]
+
+
+DisableBatchNorm = BatchNormContext
 
 
 def trainable_layers(model, names=False):

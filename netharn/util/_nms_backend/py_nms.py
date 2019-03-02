@@ -1,15 +1,35 @@
-# --------------------------------------------------------
-# Fast R-CNN
-# Copyright (c) 2015 Microsoft
-# Licensed under The MIT License [see LICENSE for details]
-# Written by Ross Girshick
-# --------------------------------------------------------
-
+# -*- coding: utf-8 -*-
+"""
+Fast R-CNN
+Copyright (c) 2015 Microsoft
+Licensed under The MIT License [see LICENSE for details]
+Written by Ross Girshick
+"""
+from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 
 
 def py_nms(np_tlbr, np_scores, thresh, bias=1):
-    """Pure Python NMS baseline."""
+    """
+    Pure Python NMS baseline.
+
+    Example:
+        >>> np_tlbr = np.array([
+        >>>     [0, 0, 100, 100],
+        >>>     [100, 100, 10, 10],
+        >>>     [10, 10, 100, 100],
+        >>>     [50, 50, 100, 100],
+        >>>     [100, 100, 150, 101],
+        >>>     [120, 100, 180, 101],
+        >>>     [150, 100, 200, 101],
+        >>> ], dtype=np.float32)
+        >>> np_scores = np.linspace(0, 1, len(np_tlbr))
+        >>> thresh = 0.1
+        >>> bias = 0.0
+        >>> keep = sorted(py_nms(np_tlbr, np_scores, thresh, bias))
+        >>> print('keep = {!r}'.format(keep))
+        keep = [1, 3, 4, 6]
+    """
     x1 = np_tlbr[:, 0]
     y1 = np_tlbr[:, 1]
     x2 = np_tlbr[:, 2]

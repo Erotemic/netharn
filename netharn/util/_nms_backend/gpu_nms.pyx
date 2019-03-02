@@ -6,10 +6,21 @@
 # --------------------------------------------------------
 """
 NUMPY_INCLUDE=$(python -c "import numpy as np; print(np.get_include())")
-CPATH=$CPATH:$NUMPY_INCLUDE cythonize -a -i ~/code/clab/clab/models/yolo2/utils/nms/gpu_nms.pyx
+CPATH=$CPATH:$NUMPY_INCLUDE cythonize -a -i ~/code/netharn/netharn/util/_nms_backend/gpu_nms.pyx
 
 See Also:
     https://github.com/bharatsingh430/soft-nms/blob/dc97adf100fb2cad66e04f0d09e031fce81948c5/lib/nms/py_cpu_nms.py
+
+python -c "
+import numpy as np
+from netharn.util._nms_backend import gpu_nms
+tlbr = np.array([[0, 0, 100, 100], [100, 100, 10, 10]], dtype=np.float32)
+scores = np.array([.1, .2], dtype=np.float32)
+gpu_nms.gpu_nms(tlbr, scores, thresh=.1)
+"
+
+
+
 """
 # https://github.com/cython/cython/issues/1720 
 from __future__ import absolute_import

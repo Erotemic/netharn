@@ -1,44 +1,315 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
+import ubelt as ub
 import math
 import torch
 import torch.nn as nn
 import torchvision
+from collections import OrderedDict
+from six.moves import builtins
 try:
     from netharn.device import DataSerial
 except ImportError:
     DataSerial = None
 
-REGISTERED_OUTPUT_SHAPE_TYPES = []
+REGISTERED_TYPES = []
 
 
 SHAPE_CLS = tuple  # We exepct shapes to be specified as this class
 
 
-def compute_type(type):
+def compute_type(*types):
     def _wrap(func):
-        if type is not None:
-            REGISTERED_OUTPUT_SHAPE_TYPES.append((type, func))
+        for type in types:
+            if type is not None:
+                REGISTERED_TYPES.append((type, func))
         return func
     return _wrap
 
 
+def output_shape_of(outputs):
+    """
+    Given a network output, try and find the shape. Works in most standard
+    cases, but not all cases.
+
+    Args:
+        outputs (Tensor | Dict | Tuple): some typical torch network output
+
+    Example:
+        >>> output_shape_of(torch.empty(3, 2))
+        (3, 2)
+        >>> output_shape_of({'a': torch.empty(3, 2)})
+        {'a': (3, 2)}
+        >>> output_shape_of(((torch.empty(3, 2),),))
+        [[(3, 2)]]
+    """
+    if torch.is_tensor(outputs):
+        computed_output_shape = SHAPE_CLS(outputs.shape)
+    elif isinstance(outputs, dict):
+        dict_cls = outputs.__class__  # handle odict
+        computed_output_shape = dict_cls([
+            (k, output_shape_of(v)) for k, v in outputs.items()])
+    elif isinstance(outputs, tuple):
+        # Allow outputs to be a tuple of tensors
+        computed_output_shape = [output_shape_of(o) for o in outputs]
+    else:
+        raise TypeError('Cannot find shape of {!r}'.format(type(outputs)))
+    return computed_output_shape
+
+
+def _brute_force_output_shape_for(self, input_shape):
+    """
+    Computes output shape by actually running the network. Works in most
+    standard cases, but not all cases. If the batch size is None, we attempt to
+    be smart about ensuring that that None is propogated in the output.
+
+    Example:
+        >>> module = nn.Conv2d(3, 11, 3, 1, 0)
+        >>> _brute_force_output_shape_for(module, (None, 3, 256, 256))
+        (None, 11, 254, 254)
+    """
+    _input_shape = list(input_shape)
+    unknown_bsize = _input_shape[0] is None
+    if unknown_bsize:
+        bsize = 2
+        _input_shape[0] = bsize
+    device = next(iter(self.state_dict().values())).device
+    dummy_input = torch.rand(*_input_shape).to(device)
+    dummy_output = self(dummy_input)
+    output_shape = output_shape_of(dummy_output)
+    if torch.is_tensor(dummy_output):
+        if unknown_bsize:
+            if output_shape[0] == bsize:
+                output_shape = list(output_shape)
+                output_shape[0] = None
+        output_shape = SHAPE_CLS(output_shape)
+    else:
+        raise NotImplementedError('other output types')
+    return output_shape
+
+
+def _simplify(shape):
+    import sympy
+    if isinstance(shape, (tuple, list)):
+        shape = shape.__class__([_simplify(v) for v in shape])
+    elif isinstance(shape, dict):
+        shape = shape.__class__([(k, _simplify(v)) for k, v in shape.items()])
+    elif isinstance(shape, sympy.Expr):
+        shape = sympy.simplify(shape)
+    return shape
+
+
+class HiddenShapes(OrderedDict, ub.NiceRepr):
+    """
+    Augments normal hidden shape dicts with a convinience setitem
+
+    Doctest:
+        >>> from netharn.output_shape_for import *
+        >>> shape = OutputShape.coerce([None, 3, 32, 32], 'foo')
+        >>> print(HiddenShapes({'e': shape}))
+        <HiddenShapes({'e': 'foo'})>
+        >>> hidden = HiddenShapes({'a': 1})
+        >>> hidden['b'] = 2
+        >>> hidden['c'] = shape
+        >>> print(hidden)
+        <HiddenShapes({'a': 1, 'b': 2, 'c': 'foo'})>
+    """
+    def __nice__(self):
+        return ub.repr2(self, nl=0)
+
+    def __str__(self):
+        return ub.NiceRepr.__str__(self)
+
+    def __repr__(self):
+        return ub.NiceRepr.__repr__(self)
+
+    def __setitem__(self, key, value):
+        if getattr(value, 'hidden', None) is not None:
+            # When setting a value to an OutputShape object, if that object has
+            # a hidden shape, then use that instead.
+            value = value.hidden
+        return OrderedDict.__setitem__(self, key, value)
+
+    def shallow(self, n=1):
+        """
+        Grabs only the shallowest n layers of hidden shapes
+        """
+        if n == 0:
+            last = self
+            while isinstance(last, HiddenShapes):
+                last = list(last.values())[-1]
+            return last
+        else:
+            output = OrderedDict()
+            for key, value in self.items():
+                if isinstance(value, HiddenShapes):
+                    output[key] = value.shallow(n - 1)
+                else:
+                    output[key] = value
+            return output
+
+
+class OutputShape(object):
+    """
+    Mixin class to extend output shapes with extra information
+
+    Doctest:
+        >>> from netharn.output_shape_for import *
+        >>> shape = OutputShape.coerce([None, 3, 32, 32], 'foo')
+        >>> print('shape = {!r}'.format(shape))
+        shape = (None, 3, 32, 32)
+        >>> print('shape.hidden = {!r}'.format(shape.hidden))
+        shape.hidden = 'foo'
+    """
+    def __init__(self, data=None, hidden=None):
+        self.data = data
+        self.hidden = hidden
+
+    @classmethod
+    def template(cls, type):
+        """ Get a specific template for a subclass type """
+        if type is tuple:
+            return OutputShapeTuple
+        elif type is OrderedDict:
+            return OutputShapeDict
+        elif type is dict:
+            return OutputShapeDict
+        else:
+            raise TypeError(type)
+
+    @classmethod
+    def coerce(cls, data=None, hidden=None):
+        """
+        Create an OutputShape instance of the approriate subclass given the
+        type of input data.
+        """
+        if isinstance(data, cls):
+            if hidden is None:
+                self = data
+            else:
+                self = data.__class__(data, hidden)
+        elif isinstance(data, (tuple, list)):
+            self = cls.template(tuple)(data, hidden)
+        elif isinstance(data, dict):
+            self = cls.template(dict)(data, hidden)
+        else:
+            raise TypeError(type(data))
+        return self
+
+
+class OutputShapeTuple(tuple, OutputShape):
+    """ OutputShape templated as a tuple """
+    def __new__(cls, data=None, hidden=None):
+        # tuple subclass is a bit weird
+        if data is None:
+            data = tuple()
+        self = tuple.__new__(OutputShapeTuple, data)
+        OutputShape.__init__(self, data, hidden)
+        return self
+
+
+class OutputShapeDict(OrderedDict, OutputShape):
+    """ OutputShape templated as a dictionary """
+    def __init__(self, data=None, hidden=None):
+        if data is None:
+            data = OrderedDict()
+        OrderedDict.__init__(self, data)
+        OutputShape.__init__(self, data, hidden)
+
+
 class OutputShapeFor(object):
+    """
+    Compute the output shape for standard torch modules as well as
+    any custom modules that follow the OutputShapeFor protocol.
+
+    Notes:
+        The OutputShapeFor protocol is simple. For any custom torch module
+        define the method `output_shape_for(self, input_shape)`, which is
+        typically written to mirror the `forward` function. Instead of calling
+        forward on the custom module's torch members use `OutputShapeFor`. See
+        netharn.layers for more examples of custom layers that implement this
+        protocol. A simple example is shown below.
+
+    Example:
+        >>> # Example showing how to implement the OutputShapeFor protocol
+        >>> class MyCustomNet(nn.Module):
+        >>>     def __init__(self):
+        >>>         super(MyCustomNet, self).__init__()
+        >>>         self.conv1 = nn.Conv2d(1, 5, 3)
+        >>>         self.pool1 = nn.MaxPool2d(2)
+        >>>         self.conv2 = nn.Conv2d(5, 7, 3)
+        >>>     def forward(self, input):
+        >>>         x = input
+        >>>         x = self.conv1(x)
+        >>>         x = self.pool1(x)
+        >>>         x = self.conv2(x)
+        >>>         return x
+        >>>     def output_shape_for(self, input_shape):
+        >>>         x = input_shape
+        >>>         # Note using hidden shapes is optional, but sometimes useful
+        >>>         hidden = HiddenShapes()
+        >>>         # The basic idea is to simply mirror the forward func
+        >>>         # but instead of calling the modules use output shape for
+        >>>         hidden['conv1'] = x = OutputShapeFor(self.conv1)(x)
+        >>>         hidden['pool1'] = x = OutputShapeFor(self.pool1)(x)
+        >>>         hidden['conv2'] = x = OutputShapeFor(self.conv2)(x)
+        >>>         shape = OutputShape.coerce(x, hidden)
+        >>>         return shape
+        >>> net = MyCustomNet()
+        >>> # Now it is very easy and efficient to infer the output shape
+        >>> input_shape = (None, 1, 9, 9)
+        >>> net.output_shape_for(input_shape)
+        (None, 7, 1, 1)
+        >>> # The OutputShapeFor class now recognizes your module as well
+        >>> # so it can be used to constuct more complex modules while
+        >>> # still maintaining the ability fo infer the output shape.
+        >>> OutputShapeFor(net)(input_shape)
+        (None, 7, 1, 1)
+        >>> # Note that if you did return an true OutputShape object with
+        >>> # a populated hidden shape attribute, then you can access it
+        >>> # to inspect how the shape changes in the hidden layer of the net
+        >>> print(OutputShapeFor(net)(input_shape).hidden)
+        <HiddenShapes({'conv1': (None, 5, 7, 7), 'pool1': (None, 5, 3, 3), 'conv2': (None, 7, 1, 1)})>
+
+    Example:
+        >>> # Example showing how this class is used on basic torch Modules
+        >>> module = nn.Conv2d(3, 11, 3, 1, 0)
+        >>> OutputShapeFor(module)((1, 3, 256, 256))
+        (1, 11, 254, 254)
+    """
     math = math  # for hacking in sympy
 
-    def __init__(self, module):
+    def __init__(self, module, force=False):
+        """
+        Args:
+            module (nn.Module) : module with output_shape_for func or
+                with some known registered type (e.g. torch.nn.Conv2d).
+
+            force (bool): if True and no implicit computation is known
+                try to create a dummy input with input_shape and simply
+                run it through the network to see what shape it produces.
+                (Defaults to False).
+        """
+        self._requires_force = False
         self.module = module
+        # First try to lookup the output_shape_for func
         self._func = getattr(module, 'output_shape_for', None)
+
         if self._func is None:
             # Lookup shape func if we can't find it
-            for type, _func in REGISTERED_OUTPUT_SHAPE_TYPES:
+            found = []
+            for type, _func in REGISTERED_TYPES:
                 try:
                     if module is type or isinstance(module, type):
-                        self._func = _func
+                        found.append(_func)
                 except TypeError:
                     pass
-            if not self._func:
-                raise TypeError('Unknown module type {}'.format(module))
+            if len(found) == 1:
+                self._func = found[0]
+            elif len(found) == 0:
+                raise TypeError('Unknown (output_shape) module type {}'.format(module))
+            else:
+                raise AssertionError('Ambiguous (output_shape) module {}. Found {}'.format(module, found))
 
     def __call__(self, *args, **kwargs):
         if isinstance(self.module, nn.Module):
@@ -53,40 +324,39 @@ class OutputShapeFor(object):
         else:
             # a simple pytorch func
             output_shape = self._func(*args, **kwargs)
+
+        # Package the output shape up in the appropriate wrapper class
+        output_shape = OutputShape.coerce(output_shape)
+        # if self.math.__name__ == 'sympy':
+        #     output_shape = _simplify(output_shape)
         # debug = True
         # if debug:
         #     print('{}.output_shape = {}'.format(str(self._func.__name__), output_shape))
         return output_shape
 
-    def _check_consistency(self, input_shape):
+    def _check_consistency(self, input_shape, **kwargs):
         """
-        Test function to check that expected shape is equal to computed shape
+        Test function to check that expected shape is equal to computed shape.
+        The kwargs are passed to both output_shape_for and forward, so ensure
+        that both functions accept the same arguments.
         """
         # Run the output shape computation
-        expected_output_shape = self(input_shape)
-        # if isinstance(expected_output_shape, list):
-        #     expected_output_shape = SHAPE_CLS(expected_output_shape)
+        expected_output_shape = self(input_shape, **kwargs)
 
         # Create dummy inputs and send them through the network
         inputs = torch.randn(input_shape)
         with torch.no_grad():
             self.module.eval()
-            outputs = self.module(inputs)
+            outputs = self.module(inputs, **kwargs)
 
         if isinstance(outputs, dict):
-            assert isinstance(expected_output_shape, dict), (
-                'if outputs is a dict output shape must be a corresponding dict')
-            dict_cls = outputs.__class__  # handle odict
-            computed_output_shape = dict_cls([
-                (k, SHAPE_CLS(v.shape)) for k, v in outputs.items()])
-        elif isinstance(outputs, tuple):
-            # Allow outputs to be a tuple of tensors
-            computed_output_shape = [SHAPE_CLS(o.shape) for o in outputs]
-        else:
-            computed_output_shape = SHAPE_CLS(outputs.shape)
+            if not isinstance(expected_output_shape, dict):
+                raise AssertionError(
+                    'if outputs is a dict, '
+                    'then output_shape must also be a corresponding dict')
+        computed_output_shape = output_shape_of(outputs)
 
         if computed_output_shape != expected_output_shape:
-            import ubelt as ub
             print('expected_output_shape = {}'.format(ub.repr2(expected_output_shape, nl=0)))
             print('computed_output_shape = {}'.format(ub.repr2(computed_output_shape, nl=0)))
             raise AssertionError(
@@ -96,30 +366,6 @@ class OutputShapeFor(object):
                 )
             )
         return expected_output_shape
-
-    @staticmethod
-    @compute_type(nn.UpsamplingBilinear2d)
-    def UpsamplingBilinear2d(module, input_shape):
-        r"""
-        - Input: :math:`(N, C, H_{in}, W_{in})`
-        - Output: :math:`(N, C, H_{out}, W_{out})` where
-            :math:`H_{out} = floor(H_{in} * scale\_factor)`
-            :math:`W_{out} = floor(W_{in}  * scale\_factor)`
-
-        Example:
-            >>> from netharn.output_shape_for import *
-            >>> input_shape = (1, 3, 256, 256)
-            >>> module = nn.UpsamplingBilinear2d(scale_factor=2)
-            >>> output_shape = OutputShapeFor(module)(input_shape)
-            >>> print('output_shape = {!r}'.format(output_shape))
-            output_shape = (1, 3, 512, 512)
-        """
-        math = OutputShapeFor.math
-        (N, C, H_in, W_in) = input_shape
-        H_out = int(math.floor(H_in * module.scale_factor))
-        W_out = int(math.floor(W_in * module.scale_factor))
-        output_shape = SHAPE_CLS([N, C, H_out, W_out])
-        return output_shape
 
     @staticmethod
     @compute_type(nn.Upsample)
@@ -141,6 +387,11 @@ class OutputShapeFor(object):
             >>> output_shape = OutputShapeFor(module)(input_shape)
             >>> print('output_shape = {!r}'.format(output_shape))
             output_shape = (1, 3, 100, 100, 100)
+            >>> input_shape = (1, 3, 256, 256)
+            >>> module = nn.UpsamplingBilinear2d(scale_factor=2)
+            >>> output_shape = OutputShapeFor(module)(input_shape)
+            >>> print('output_shape = {!r}'.format(output_shape))
+            output_shape = (1, 3, 512, 512)
         """
         math = OutputShapeFor.math
         # N, C, *DIMS_in = input_shape
@@ -149,6 +400,7 @@ class OutputShapeFor(object):
 
         if module.size is None:
             scale_factor = ensure_iterablen(module.scale_factor, len(DIMS_in))
+            int = builtins.int if math.__name__ == 'math' else ub.identity
             DIMS_out = [
                 int(math.floor(D_in * scale_factor[i]))
                 for i, D_in in enumerate(DIMS_in)
@@ -157,6 +409,8 @@ class OutputShapeFor(object):
             DIMS_out = ensure_iterablen(module.size, len(DIMS_in))
 
         output_shape = SHAPE_CLS([N, C] + DIMS_out)
+        if math.__name__ == 'sympy':
+            output_shape = _simplify(output_shape)
         return output_shape
 
     @staticmethod
@@ -249,16 +503,24 @@ class OutputShapeFor(object):
         N, C_in = input_shape[0:2]
         DIMS_in = input_shape[2:]
 
+        if len(DIMS_in) != n:
+            raise ValueError('must have {} dims, but got {} '.format(n, len(DIMS_in)))
+
         C_out = module.out_channels
         stride = module.stride
         kernel_size = module.kernel_size
         output_padding = module.output_padding
+        dilation = module.dilation
+
         padding = module.padding
         DIMS_out = [
-            (D_in - 1) * stride[i] - 2 * padding[i] + kernel_size[i] + output_padding[i]
+            # Fix the docs: https://github.com/pytorch/pytorch/issues/14099
+            (D_in - 1) * stride[i] - 2 * padding[i] + (kernel_size[i] - 1) * dilation[i] + output_padding[i] + 1
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C_out] + DIMS_out)
+        if math.__name__ == 'sympy':
+            output_shape = _simplify(output_shape)
         return output_shape
 
     @staticmethod
@@ -283,17 +545,25 @@ class OutputShapeFor(object):
         N, C_in = input_shape[0:2]
         DIMS_in = input_shape[2:]
 
+        if len(DIMS_in) != n:
+            raise ValueError('must have {} dims, but got {} '.format(n, len(DIMS_in)))
+
         C_out = module.out_channels
         padding = module.padding
         stride = module.stride
         dilation = module.dilation
         kernel_size = module.kernel_size
 
+        int = builtins.int if math.__name__ == 'math' else ub.identity
         DIMS_out = [
-            int(math.floor((D_in  + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1))
+            int(math.floor(
+                (D_in + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1
+            ))
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C_out] + DIMS_out)
+        if math.__name__ == 'sympy':
+            output_shape = _simplify(output_shape)
         return output_shape
 
     @staticmethod
@@ -338,11 +608,15 @@ class OutputShapeFor(object):
 
         trunc = math.ceil if module.ceil_mode else math.floor
 
+        int = builtins.int if math.__name__ == 'math' else ub.identity
+
         DIMS_out = [
             int(trunc((D_in  + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1))
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C] + DIMS_out)
+        if math.__name__ == 'sympy':
+            output_shape = _simplify(output_shape)
         return output_shape
 
     @staticmethod
@@ -364,11 +638,15 @@ class OutputShapeFor(object):
         stride = ensure_iterablen(module.stride, n)
         kernel_size = ensure_iterablen(module.kernel_size, n)
 
+        int = builtins.int if math.__name__ == 'math' else ub.identity
+
         DIMS_out = [
             int(math.floor((D_in + 2 * padding[i] - kernel_size[i]) / stride[i] + 1))
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C] + DIMS_out)
+        if math.__name__ == 'sympy':
+            output_shape = _simplify(output_shape)
         return output_shape
 
     @staticmethod
@@ -390,56 +668,83 @@ class OutputShapeFor(object):
         return SHAPE_CLS(output_shape)
 
     @staticmethod
-    @compute_type(nn.GroupNorm)
-    def groupnorm(module, input_shape):
-        return input_shape
+    def identity(input_shape):
+        return SHAPE_CLS(input_shape)
 
     @staticmethod
-    @compute_type(nn.BatchNorm1d)
-    def batchnorm1d(module, input_shape):
-        return input_shape
+    @compute_type(nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d,
+                  nn.InstanceNorm1d, nn.InstanceNorm2d, nn.InstanceNorm3d,
+                  nn.LocalResponseNorm, nn.CrossMapLRN2d, nn.LayerNorm,
+                  nn.GroupNorm)
+    def normalization(module, input_shape):
+        """
+            import redbaron
+            import torch
+            source = open(torch.nn.modules.instancenorm.__file__, 'r').read()
+            baron = redbaron.RedBaron(source)
+            classes = [item.name for item in baron if item.type == 'class']
+            print(', '.join(['nn.{}'.format(c) for c in classes]))
+
+            source = open(torch.nn.modules.normalization.__file__, 'r').read()
+            baron = redbaron.RedBaron(source)
+            classes = [item.name for item in baron if item.type == 'class']
+            print(', '.join(['nn.{}'.format(c) for c in classes]))
+        """
+        return OutputShapeFor.identity(input_shape)
 
     @staticmethod
-    @compute_type(nn.BatchNorm2d)
-    def batchnorm2d(module, input_shape):
-        return input_shape
+    @compute_type(nn.Dropout, nn.Dropout2d, nn.Dropout3d, nn.AlphaDropout,
+                  nn.FeatureAlphaDropout)
+    def dropout(module, input_shape):
+        return OutputShapeFor.identity(input_shape)
 
     @staticmethod
-    @compute_type(nn.BatchNorm3d)
-    def batchnorm3d(module, input_shape):
-        return input_shape
-
-    @staticmethod
-    @compute_type(nn.Dropout)
-    def dropout1d(module, input_shape):
-        return input_shape
-
-    @staticmethod
-    @compute_type(nn.Dropout2d)
-    def dropout2d(module, input_shape):
-        return input_shape
-
-    @staticmethod
-    @compute_type(nn.Dropout3d)
-    def dropout3d(module, input_shape):
-        return input_shape
-
-    @staticmethod
-    @compute_type(nn.ReLU)
-    def relu(module, input_shape):
-        return input_shape
-
-    @staticmethod
-    @compute_type(nn.LeakyReLU)
-    def leaky_relu(module, input_shape):
-        return input_shape
+    @compute_type(nn.Threshold, nn.RReLU, nn.Hardtanh, nn.ReLU6,
+                  nn.Sigmoid, nn.Tanh, nn.ELU, nn.CELU, nn.SELU, nn.GLU,
+                  nn.Hardshrink, nn.LeakyReLU, nn.LogSigmoid, nn.Softplus,
+                  nn.Softshrink, nn.PReLU, nn.Softsign, nn.Tanhshrink,
+                  nn.Softmin, nn.Softmax, nn.Softmax2d, nn.LogSoftmax)
+    def nonlinearity(module, input_shape):
+        r"""
+        Ignore:
+            import redbaron
+            import torch
+            source = open(torch.nn.modules.activation.__file__, 'r').read()
+            baron = redbaron.RedBaron(source)
+            classes = [item.name for item in baron if item.type == 'class']
+            print(', '.join(['nn.{}'.format(c) for c in classes]))
+        """
+        return OutputShapeFor.identity(input_shape)
 
     @staticmethod
     @compute_type(nn.Sequential)
     def sequential(module, input_shape):
+        """
+        CommandLine:
+            xdoctest -m netharn.output_shape_for OutputShapeFor.sequential
+
+        Example:
+            >>> from netharn.output_shape_for import *
+            >>> self = nn.Sequential(
+            >>>     nn.Conv2d(2, 3, kernel_size=3),
+            >>>     nn.Conv2d(3, 5, kernel_size=3),
+            >>>     nn.Conv2d(5, 7, kernel_size=3),
+            >>> )
+            >>> shape = OutputShapeFor(self)([1, 1, 7, 11])
+            >>> print('shape = {}'.format(ub.repr2(shape, nl=0)))
+            >>> print('shape.hidden = {}'.format(ub.repr2(shape.hidden, nl=1)))
+            shape = (1, 7, 1, 5)
+            shape.hidden = {
+                '0': (1, 3, 5, 9),
+                '1': (1, 5, 3, 7),
+                '2': (1, 7, 1, 5),
+            }
+        """
+        hidden = HiddenShapes()
         shape = input_shape
-        for child in module._modules.values():
-            shape = OutputShapeFor(child)(shape)
+        for key, child in module._modules.items():
+            hidden[key] = shape = OutputShapeFor(child)(shape)
+        shape = OutputShape.coerce(shape, hidden=hidden)
         return shape
 
     @staticmethod
@@ -448,23 +753,25 @@ class OutputShapeFor(object):
         residual_shape = input_shape
         shape = input_shape
 
-        shape = OutputShapeFor(module.conv1)(shape)
-        shape = OutputShapeFor(module.bn1)(shape)
-        shape = OutputShapeFor(module.relu)(shape)
+        hidden = HiddenShapes()
+        hidden['conv1'] = shape = OutputShapeFor(module.conv1)(shape)
+        hidden['bn1']   = shape = OutputShapeFor(module.bn1)(shape)
+        hidden['relu1'] = shape = OutputShapeFor(module.relu)(shape)
 
-        shape = OutputShapeFor(module.conv2)(shape)
-        shape = OutputShapeFor(module.bn2)(shape)
-        shape = OutputShapeFor(module.relu)(shape)
+        hidden['conv2'] = shape = OutputShapeFor(module.conv2)(shape)
+        hidden['bn2']   = shape = OutputShapeFor(module.bn2)(shape)
+        hidden['relu2'] = shape = OutputShapeFor(module.relu)(shape)
 
         if module.downsample is not None:
             residual_shape = OutputShapeFor(module.downsample)(residual_shape)
+            hidden['residual'] = residual_shape
 
-        # assert residual_shape[-2:] == shape[-2:], 'cannot add residual {} {}'.format(residual_shape, shape)
-        # out += residual
+        hidden['join'] = shape
+        assert residual_shape[-2:] == shape[-2:], (
+            'cannot add residual {} {}'.format(residual_shape, shape))
         shape = OutputShapeFor(module.relu)(shape)
-        # print('BASIC residual_shape = {!r}'.format(residual_shape[-2:]))
-        # print('BASIC shape          = {!r}'.format(shape[-2:]))
-        # print('---')
+        hidden['relu3'] = shape
+        shape = OutputShape.coerce(shape, hidden=hidden)
         return shape
 
     @staticmethod
@@ -473,72 +780,49 @@ class OutputShapeFor(object):
         residual_shape = input_shape
         shape = input_shape
 
-        shape = OutputShapeFor(module.conv1)(shape)
-        shape = OutputShapeFor(module.bn1)(shape)
-        shape = OutputShapeFor(module.relu)(shape)
+        hidden = HiddenShapes()
+        hidden['conv1'] = shape = OutputShapeFor(module.conv1)(shape)
+        hidden['bn1']   = shape = OutputShapeFor(module.bn1)(shape)
+        hidden['relu1'] = shape = OutputShapeFor(module.relu)(shape)
 
-        shape = OutputShapeFor(module.conv2)(shape)
-        shape = OutputShapeFor(module.bn2)(shape)
-        shape = OutputShapeFor(module.relu)(shape)
+        hidden['conv2'] = shape = OutputShapeFor(module.conv2)(shape)
+        hidden['bn2']   = shape = OutputShapeFor(module.bn2)(shape)
+        hidden['relu2'] = shape = OutputShapeFor(module.relu)(shape)
 
-        shape = OutputShapeFor(module.conv3)(shape)
-        shape = OutputShapeFor(module.bn3)(shape)
+        hidden['conv3'] = shape = OutputShapeFor(module.conv3)(shape)
+        hidden['bn3']   = shape = OutputShapeFor(module.bn3)(shape)
 
         if module.downsample is not None:
             residual_shape = OutputShapeFor(module.downsample)(input_shape)
+            hidden['residual'] = residual_shape
 
-        assert residual_shape[-2:] == shape[-2:], 'cannot add residual {} {}'.format(residual_shape, shape)
-        # out += residual
+        assert residual_shape[-2:] == shape[-2:], (
+            'cannot add residual {} {}'.format(residual_shape, shape))
+        hidden['join'] = shape
+
         shape = OutputShapeFor(module.relu)(shape)
-        # print('bottle downsample     = {!r}'.format(module.downsample))
-        # print('bottle input_shape    = {!r}'.format(input_shape[-2:]))
-        # print('bottle residual_shape = {!r}'.format(residual_shape[-2:]))
-        # print('bottle shape          = {!r}'.format(shape[-2:]))
-        # print('---')
+        hidden['relu3'] = shape
+
+        shape = OutputShape.coerce(shape, hidden=hidden)
         return shape
 
     @staticmethod
     @compute_type(torchvision.models.resnet.ResNet)
     def resnet_model(module, input_shape):
         shape = input_shape
-        shape = OutputShapeFor(module.conv1)(shape)
-        shape = OutputShapeFor(module.bn1)(shape)
-        shape = OutputShapeFor(module.relu)(shape)
-        shape = OutputShapeFor(module.maxpool)(shape)
 
-        shape = OutputShapeFor(module.layer1)(shape)
-        shape = OutputShapeFor(module.layer2)(shape)
-        shape = OutputShapeFor(module.layer3)(shape)
-        shape = OutputShapeFor(module.layer4)(shape)
+        hidden = HiddenShapes()
+        hidden['conv1'] = shape = OutputShapeFor(module.conv1)(shape)
+        hidden['bn1'] = shape = OutputShapeFor(module.bn1)(shape)
+        hidden['relu1'] = shape = OutputShapeFor(module.relu)(shape)
+        hidden['maxpool'] = shape = OutputShapeFor(module.maxpool)(shape)
 
-        shape = OutputShapeFor(module.avgpool)(shape)
-        print('pre-flatten-shape = {!r}'.format(shape))
+        hidden['layer1'] = shape = OutputShapeFor(module.layer1)(shape)
+        hidden['layer2'] = shape = OutputShapeFor(module.layer2)(shape)
+        hidden['layer3'] = shape = OutputShapeFor(module.layer3)(shape)
+        hidden['layer4'] = shape = OutputShapeFor(module.layer4)(shape)
 
-        def prod(args):
-            result = args[0]
-            for arg in args[1:]:
-                result = result * arg
-            return result
-        shape = (shape[0], prod(shape[1:]))
-        # shape = shape.view(shape.size(0), -1)
-
-        shape = OutputShapeFor(module.fc)(shape)
-
-    @staticmethod
-    def resnet_conv_part(module, input_shape):
-        shape = input_shape
-        shape = OutputShapeFor(module.conv1)(shape)
-        shape = OutputShapeFor(module.bn1)(shape)
-        shape = OutputShapeFor(module.relu)(shape)
-        shape = OutputShapeFor(module.maxpool)(shape)
-
-        shape = OutputShapeFor(module.layer1)(shape)
-        shape = OutputShapeFor(module.layer2)(shape)
-        shape = OutputShapeFor(module.layer3)(shape)
-        shape = OutputShapeFor(module.layer4)(shape)
-
-        shape = OutputShapeFor(module.avgpool)(shape)
-        # print('pre-flatten-shape = {!r}'.format(shape))
+        hidden['avgpool'] = shape = OutputShapeFor(module.avgpool)(shape)
 
         def prod(args):
             result = args[0]
@@ -546,7 +830,10 @@ class OutputShapeFor(object):
                 result = result * arg
             return result
         shape = (shape[0], prod(shape[1:]))
-        # shape = shape.view(shape.size(0), -1)
+        hidden['view'] = shape
+
+        hidden['fc'] = shape = OutputShapeFor(module.fc)(shape)
+        shape = OutputShape.coerce(shape, hidden=hidden)
         return shape
 
     @staticmethod

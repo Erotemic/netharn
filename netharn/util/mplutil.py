@@ -232,11 +232,11 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
     ax = kwargs.get('ax', None)
     if ax is None:
         doclf = kwargs.get('doclf', False)
-        fig = figure(fnum=fnum, pnum=pnum, docla=False, doclf=doclf)
+        fig = figure(fnum=fnum, pnum=pnum, docla=False, doclf=doclf)  # NOQA
         ax = plt.gca()
     else:
         plt.sca(ax)
-        fig = ax.figure
+        # fig = ax.figure  # NOQA
 
     # +---------------
     # Draw plot lines
@@ -579,8 +579,7 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
         use_darkbackground = not lightbg
     if use_darkbackground:
         _dark_background(force=use_darkbackground is True)
-    # TODO: return better info
-    return fig
+    return ax
 
 
 def figure(fnum=None, pnum=(1, 1, 1), title=None, figtitle=None, doclf=False,
@@ -928,6 +927,8 @@ def render_figure_to_image(fig, dpi=None, transparent=None, **savekw):
 def savefig2(fig, fpath, **kwargs):
     """
     Does a tight layout and saves the figure with transparency
+
+    DEPRICATE
     """
     import matplotlib as mpl
     if 'transparent' not in kwargs:
@@ -1726,14 +1727,14 @@ def imshow(img,
            fnum=None, pnum=None,
            xlabel=None, title=None, figtitle=None, ax=None,
            norm=None, cmap=None, data_colorbar=False,
-           colorspace='bgr',
+           colorspace='rgb',
            interpolation='nearest', alpha=None,
            **kwargs):
     r"""
     Args:
         img (ndarray): image data. Height, Width, and Channel dimensions
             can either be in standard (H, W, C) format or in (C, H, W) format.
-            If C in [3, 4], we assume data is in the bgr / bgra colorspace by
+            If C in [3, 4], we assume data is in the rgb / rgba colorspace by
             default.
 
         colorspace (str): if the data is 3-4 channels, this indicates the
@@ -1768,8 +1769,9 @@ def imshow(img,
         tuple: (fig, ax)
 
     Ignore:
-        >>> autompl()
-        >>> img = util.grab_test_image('carl')
+        >>> import netharn as nh
+        >>> nh.util.autompl()
+        >>> img = nh.util.grab_test_image('carl')
         >>> (fig, ax) = imshow(img)
         >>> result = ('(fig, ax) = %s' % (str((fig, ax)),))
         >>> print(result)
@@ -1777,20 +1779,27 @@ def imshow(img,
     """
     import matplotlib as mpl
     import matplotlib.pyplot as plt
-    from netharn import util
+    from netharn.util import imutil
 
     if ax is not None:
         fig = ax.figure
         nospecial = True
     else:
         fig = figure(fnum=fnum, pnum=pnum, title=title, figtitle=figtitle, **kwargs)
-        ax = plt.gca()
+        ax = fig.gca()
         nospecial = False
 
     if isinstance(img, six.string_types):
         # Allow for path to image to be specified
         img_fpath = img
-        img = util.imread(img_fpath)
+        img = imutil.imread(img_fpath)
+
+    valid_interpolation_choices = ['nearest', 'bicubic', 'bilinear']
+
+    if interpolation not in valid_interpolation_choices:
+        raise KeyError(
+            'Invalid interpolation choice {}. Can be {}'.format(
+                interpolation, valid_interpolation_choices))
 
     plt_imshow_kwargs = {
         'interpolation': interpolation,
@@ -1823,23 +1832,25 @@ def imshow(img,
             plt_imshow_kwargs['vmax'] = 255
 
     # Handle tensor chw format in most cases
+    try:
+        if 'torch' in img.__module__:
+            img = img.cpu().data.numpy()
+    except Exception:
+        pass
+
     if img.ndim == 3:
         if img.shape[0] == 3 or img.shape[0] == 1:
             if img.shape[2] > 4:
                 # probably in chw format
                 img = img.transpose(1, 2, 0)
-
     try:
         if len(img.shape) == 3 and (img.shape[2] == 3 or img.shape[2] == 4):
             # img is in a color format
             dst_space = 'rgb'
-            if img.shape[2] == 4:
-                colorspace += 'a'
-                dst_space += 'a'
-
-            imgRGB = util.convert_colorspace(img, dst_space=dst_space,
-                                             src_space=colorspace)
-            if imgRGB.dtype.kind == 'f':
+            imgRGB = imutil.convert_colorspace(img, src_space=colorspace,
+                                               dst_space=dst_space,
+                                               implicit=True)
+            if not norm and imgRGB.dtype.kind == 'f':
                 maxval = imgRGB.max()
                 if maxval > 1.01 and maxval < 256:
                     imgRGB = np.array(imgRGB, dtype=np.uint8)
@@ -1856,7 +1867,7 @@ def imshow(img,
             if isinstance(cmap, six.string_types):
                 cmap = plt.get_cmap(cmap)
             # for some reason gray floats aren't working right
-            if imgGRAY.max() <= 1.01 and imgGRAY.min() >= -1E-9:
+            if not norm and imgGRAY.max() <= 1.01 and imgGRAY.min() >= -1E-9:
                 imgGRAY = (imgGRAY * 255).astype(np.uint8)
             cs = ax.imshow(imgGRAY, cmap=cmap, **plt_imshow_kwargs)
         else:

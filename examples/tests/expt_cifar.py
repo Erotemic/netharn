@@ -732,6 +732,7 @@ def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent',
     datasets['train'].augment = True
     return datasets
 
+
 def train():
     """
     Example:
@@ -772,6 +773,7 @@ def train():
     initializer_ = (initializers.LSUV, {})
 
     hyper = hyperparams.HyperParams(
+        workdir=ub.ensuredir('train_cifar_work'),
         model=(netharn.models.densenet.DenseNet, {
             'cifar': True,
             'block_config': (32, 32, 32),  # 100 layer depth
@@ -848,16 +850,14 @@ def train():
                                    max_keys=['global_acc', 'class_acc'],
                                    patience=40)
 
-    # ignore_label = datasets['train'].ignore_label
-    # from netharn import metrics
-
-    workdir = ub.ensuredir('train_cifar_work')
-    harn.setup_dpath(workdir)
-
-
+    harn.initialize()
     harn.run()
 
- """
+if __name__ == '__main__':
+    """
+    CommandLine:
         python examples/cifar.py train --lab
         python examples/cifar.py train --rgb-indie
- """
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
