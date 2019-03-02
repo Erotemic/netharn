@@ -1769,17 +1769,17 @@ def imshow(img,
         tuple: (fig, ax)
 
     Ignore:
-        >>> import kwil
-        >>> kwil.autompl()
-        >>> img = kwil.grab_test_image('carl')
+        >>> import netharn as nh
+        >>> nh.util.autompl()
+        >>> img = nh.util.grab_test_image('carl')
         >>> (fig, ax) = imshow(img)
         >>> result = ('(fig, ax) = %s' % (str((fig, ax)),))
         >>> print(result)
-        >>> kwil.show_if_requested()
+        >>> nh.util.show_if_requested()
     """
     import matplotlib as mpl
     import matplotlib.pyplot as plt
-    from kwil import imutil
+    from netharn.util import imutil
 
     if ax is not None:
         fig = ax.figure

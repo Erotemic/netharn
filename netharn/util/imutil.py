@@ -896,25 +896,25 @@ def stack_images(images, axis=0, resize=None, interpolation=None, overlap=0,
             translations) to map from original image to its new location.
 
     Example:
-        >>> import kwil
-        >>> img1 = kwil.grab_test_image('carl', space='rgb')
-        >>> img2 = kwil.grab_test_image('astro', space='rgb')
+        >>> import netharn as nh
+        >>> img1 = nh.util.grab_test_image('carl', space='rgb')
+        >>> img2 = nh.util.grab_test_image('astro', space='rgb')
         >>> images = [img1, img2]
         >>> imgB, transforms = stack_images(images, axis=0, resize='larger',
         >>>                                 overlap=-10, return_info=True)
         >>> print(imgB.shape)
         >>> # xdoctest: +REQUIRES(--show)
-        >>> kwil.autompl()
-        >>> kwil.imshow(imgB, colorspace='rgb')
+        >>> nh.util.autompl()
+        >>> nh.util.imshow(imgB, colorspace='rgb')
         >>> wh1 = np.multiply(img1.shape[0:2][::-1], transforms[0].scale)
         >>> wh2 = np.multiply(img2.shape[0:2][::-1], transforms[1].scale)
         >>> xoff1, yoff1 = transforms[0].translation
         >>> xoff2, yoff2 = transforms[1].translation
         >>> xywh1 = (xoff1, yoff1, wh1[0], wh1[1])
         >>> xywh2 = (xoff2, yoff2, wh2[0], wh2[1])
-        >>> kwil.draw_boxes(kwil.Boxes([xywh1], 'xywh'), color=(1.0, 0, 0))
-        >>> kwil.draw_boxes(kwil.Boxes([xywh2], 'xywh'), color=(1.0, 0, 0))
-        >>> kwil.show_if_requested()
+        >>> nh.util.draw_boxes(nh.util.Boxes([xywh1], 'xywh'), color=(1.0, 0, 0))
+        >>> nh.util.draw_boxes(nh.util.Boxes([xywh2], 'xywh'), color=(1.0, 0, 0))
+        >>> nh.util.show_if_requested()
         ((662, 512, 3), (0.0, 0.0), (0, 150))
     """
     import skimage

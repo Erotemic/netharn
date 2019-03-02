@@ -165,8 +165,8 @@ class DetectionMetrics(object):
         Ignore:
             >>> dmet = DetectionMetrics.demo(
             >>>     nimgs=100, nboxes=(0, 100), n_fp=(0, 1))
-            >>> import kwil
-            >>> kwil.profile_now(dmet.score_netharn)(bias=0)['mAP']
+            >>> import xdev
+            >>> xdev.profile_now(dmet.score_netharn)(bias=0)['mAP']
 
             import xinspect
             globals().update(xinspect.get_kwargs(dmet.score_netharn))
