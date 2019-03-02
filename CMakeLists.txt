@@ -7,7 +7,9 @@
 
 cmake_minimum_required(VERSION 3.11.0)
 
-option(USE_CUDA "Build with CUDA" "True")
+option(USE_CUDA "Build with CUDA" TRUE)
+
+message(STATUS "USE_CUDA = ${USE_CUDA}")
 
 if (USE_CUDA)
   project(netharn LANGUAGES C CXX CUDA)
