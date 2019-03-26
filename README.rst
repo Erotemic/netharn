@@ -241,3 +241,7 @@ Running this code produes the following output:
     test x64 │ loss:0.159 │: 100%|█████████████████████████████████████████████████████████| 4/4 [00:00<00:00, 482.91it/s, wall=Jul:07 EST]
 
 
+Acknowledgements:
+=================
+
+The authors would like to thank AFRL for their support of this work via `SBIR Contract FA8650-18-C-1075 <https://govtribe.com/award/federal-contract-award/definitive-contract-fa865018c1075>`_. This library is approved for public release via 88ABW.
