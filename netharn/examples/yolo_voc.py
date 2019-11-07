@@ -386,7 +386,7 @@ class YoloHarn(nh.FitHarn):
             >>> harn.visualize_prediction(batch, outputs, postout, idx=0, thresh=0.01)
             >>> mplutil.show_if_requested()
         """
-        if harn.current_tag != 'train':
+        if True or harn.current_tag != 'train':
             # Dont worry about computing mAP on the training set for now
             inputs, labels = batch
             inp_size = np.array(inputs.shape[-2:][::-1])
@@ -440,13 +440,14 @@ class YoloHarn(nh.FitHarn):
         tag = harn.current_tag
 
         if tag in {'test', 'vali'}:
-            # if harn.epoch < 100:
-            #     # Dont bother testing the early iterations
-            #     return
+            if harn.epoch < 20:
+                # Dont bother testing the early iterations
+                return
 
             if (harn.epoch % 10 == 5 or harn.epoch > 300):
                 harn._dump_chosen_indices()
 
+        metrics_dict = ub.odict()
         if harn.batch_confusions:
             y = pd.concat([pd.DataFrame(y) for y in harn.batch_confusions])
 
@@ -470,11 +471,10 @@ class YoloHarn(nh.FitHarn):
 
             harn.batch_confusions.clear()
 
-            metrics_dict = ub.odict()
             metrics_dict['max-AP'] = max_ap
             metrics_dict['mAP'] = mean_ap
             metrics_dict['AP'] = ap
-            return metrics_dict
+        return metrics_dict
 
     # Non-standard problem-specific custom methods
 
@@ -829,8 +829,9 @@ def setup_harness(bsize=16, workers=0):
     # array(4, 157, 232, 310])
     if not ub.argflag('--eav'):
         lr_step_points = {
-            0:   lr * 0.1 / simulated_bsize,  # burnin
-            4:   lr * 1.0 / simulated_bsize,
+            # 0:   lr * 0.1 / simulated_bsize,  # burnin
+            # 4:   lr * 1.0 / simulated_bsize,
+            0:   lr * 1.0 / simulated_bsize,
             155: lr * 0.1 / simulated_bsize,
             233: lr * 0.01 / simulated_bsize,
         }
@@ -838,8 +839,8 @@ def setup_harness(bsize=16, workers=0):
     else:
         lr_step_points = {
             # dividing by batch size was one of those unpublished details
-            0:   lr * 0.1 / simulated_bsize,
-            1:   lr * 1.0 / simulated_bsize,
+            # 0:   lr * 0.1 / simulated_bsize,
+            0:   lr * 1.0 / simulated_bsize,
             97:  lr * 0.1 / simulated_bsize,
             136: lr * 0.01 / simulated_bsize,
         }
@@ -895,9 +896,12 @@ def setup_harness(bsize=16, workers=0):
             'weight_decay': decay * simulated_bsize,
         }),
 
-        'scheduler': (nh.schedulers.ListedLR, {
+        'scheduler': (nh.schedulers.core.YOLOScheduler, {
             'points': lr_step_points,
-            'interpolate': False
+            'interpolate': False,
+            'burn_in': 3.86683584,  # number of epochs to burn_in for. approx 1000 batches?
+            'dset_size': len(datasets['train']),
+            'batch_size': bsize,
         }),
 
         'monitor': (nh.Monitor, {
@@ -959,7 +963,11 @@ if __name__ == '__main__':
         # python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
 
         python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=eav_run2 --lr=0.001 --bstep=4 --workers=8 --eav
-        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=8 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=8
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=4
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=4 --nice=pjr_run2 --lr=0.001 --bstep=8 --workers=4
+
+        python ~/code/netharn/netharn/examples/yolo_voc.py train --gpu=0,1 --batch_size=32 --nice=batchaware --lr=0.001 --bstep=2 --workers=8
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

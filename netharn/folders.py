@@ -68,24 +68,27 @@ class Folders(object):
         else:
             input_id = 'none'
 
+        def _hash_data(data):
+            return ub.hash_data(data, hasher='sha512', base='abc', types=True)
+
         train_hyper_id_long = hyper.hyper_id()
         train_hyper_id_brief = hyper.hyper_id(short=short, hashed=hashed)
-        train_hyper_hashid = ub.hash_data(train_hyper_id_long)[:8]
+        train_hyper_hashid = _hash_data(train_hyper_id_long)[:8]
 
         # TODO: hash this to some degree
         other_id = hyper.other_id()
 
         augment_json = hyper.augment_json()
 
-        aug_brief = 'AU' + ub.hash_data(augment_json)[0:6]
-        # extra_hash = ub.hash_data([hyper.centering])[0:6]
+        aug_brief = 'AU' + _hash_data(augment_json)[0:6]
+        # extra_hash = _hash_data([hyper.centering])[0:6]
 
         train_id = '{}_{}_{}_{}'.format(
-            ub.hash_data(input_id)[:6], train_hyper_id_brief,
+            _hash_data(input_id)[:6], train_hyper_id_brief,
             aug_brief, other_id)
 
         # Gather all information about this run into a single hash
-        train_hashid = ub.hash_data(train_id)[0:8]
+        train_hashid = _hash_data(train_id)[0:8]
 
         # input_dname = 'input_' + input_id
         # verbose_dpath = join(self.hyper.workdir, 'fit', 'link', 'arch', arch, input_dname, train_id)
@@ -126,7 +129,7 @@ class Folders(object):
             ('train_hyper_id_brief', train_hyper_id_brief),
             ('train_hyper_hashid', train_hyper_hashid),
             ('init_history', init_history),
-            ('init_history_hashid', ub.hash_data(util.make_idstr(init_history))),
+            ('init_history_hashid', _hash_data(util.make_idstr(init_history))),
 
             ('nice', hyper.nice),
 

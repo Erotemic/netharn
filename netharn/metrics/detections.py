@@ -184,18 +184,20 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes,
             ovidx = sortx[0]
             ovmax = overlaps[ovidx]
 
-            # Only allowed to select matches over a thresh
-            is_valid = overlaps > ovthresh
-            # Only allowed to select unused annotations
-            is_valid = is_valid * cls_unused
-            reweighted = overlaps * is_valid.astype(np.float)
-            # settings can modify this
-            if PREFER_WEIGHTED_TRUTH:
-                # PREFER_WEIGHTED_TRUTH is bugged, doesn't work.
-                # should be trying to ignore difficult gt boxes
-                reweighted = reweighted * cls_true_weights
+            NOT_HACK = False
+            if NOT_HACK:
+                # Only allowed to select matches over a thresh
+                is_valid = overlaps > ovthresh
+                # Only allowed to select unused annotations
+                is_valid = is_valid * cls_unused
+                reweighted = overlaps * is_valid.astype(np.float)
+                # settings can modify this
+                if PREFER_WEIGHTED_TRUTH:
+                    # PREFER_WEIGHTED_TRUTH is bugged, doesn't work.
+                    # should be trying to ignore difficult gt boxes
+                    reweighted = reweighted * cls_true_weights
 
-            if np.any(reweighted > 0):
+            if NOT_HACK and np.any(reweighted > 0):
                 # Prefer truth with more weight
                 sortx = reweighted.argsort()[::-1]
                 ovidx = sortx[0]

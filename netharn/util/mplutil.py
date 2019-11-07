@@ -31,10 +31,14 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
                 gridlinewidth, gridlinestyle
             Ticks:
                 num_xticks, num_yticks, tickwidth, ticklength, ticksize
+                xticklabels, yticklabels, <-overwrites previous
             Data:
                 xmin, xmax, ymin, ymax, spread_list
                 # can append _list to any of these
                 # these can be dictionaries if ydata was also a dict
+
+                xscale in [linear, log, logit, symlog]
+                yscale in [linear, log, logit, symlog]
 
                 plot_kw_keys = ['label', 'color', 'marker', 'markersize',
                     'markeredgewidth', 'linewidth', 'linestyle']
@@ -466,6 +470,15 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
         ax.set_xticks(xdata)
         ax.set_xticklabels(xticklabels)
 
+    xticks = kwargs.get('xticks', None)
+    if xticks is not None:
+        print('xticks = {!r}'.format(xticks))
+        ax.set_xticks(xticks)
+
+    yticks = kwargs.get('yticks', None)
+    if yticks is not None:
+        ax.set_yticks(yticks)
+
     xtick_rotation = kwargs.get('xtick_rotation', None)
     if xtick_rotation is not None:
         [lbl.set_rotation(xtick_rotation)
@@ -495,8 +508,8 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
 
-    xscale          = kwargs.get('xscale', None)
-    yscale          = kwargs.get('yscale', None)
+    xscale = kwargs.get('xscale', None)
+    yscale = kwargs.get('yscale', None)
     if yscale is not None:
         ax.set_yscale(yscale)
     if xscale is not None:
@@ -2501,7 +2514,7 @@ def draw_border(ax, color, lw=2, offset=None, adjust=True):
     rect = ax.add_patch(rect)
     rect.set_clip_on(False)
     rect.set_fill(False)
-    rect.set_edgecolor(color)
+    rect.set_edgecolor(Color(color).as01('rgb'))
     return rect
 
 

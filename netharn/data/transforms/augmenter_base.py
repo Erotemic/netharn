@@ -31,3 +31,6 @@ class ParamatarizedAugmenter(imgaug.augmenters.Augmenter):
             elif isinstance(value, imgaug.parameters.StochasticParameter):
                 self._registered_params[key] = value
         super().__setattr__(key, value)
+
+    def _augment_heatmaps(self):
+        raise NotImplemented

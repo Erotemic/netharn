@@ -1,3 +1,38 @@
+"""
+The examples/cifar.py is probably the most clear example of what netharn is and
+what it's trying to do / not do.
+
+The basic idea is make an object that inherits from nh.FitHarn. This is our
+harness object. It will contain the hyperparameters as well as the learning
+state. All the training loop boilerplate has already been written in the parent
+class, so all our child class needs to do is: define `prepare_batch` (not
+usually needed) and `run_batch`. Code to measure and record performance should
+be placed in `on_batch` and `on_epoch`.
+
+The `train` function is our main entry point. It reads parameters from the
+command line to override defaults. It then consructs the `HyperParams` object
+and constructs an instance of `CIFAR_FitHarn` and calls `harn.run()`.
+
+This begins the training process. At a high level the harness will load the
+data using torch DataLoaders, and call `run_batch` when it needs to compute the
+model outputs and loss based on the input data. The returned loss is used to
+update the model weights if `harn.tag === 'train'`, for validation, test, and
+calibration (todo) datasets the loss is simply recorded.
+
+After `run_batch` finishes the `on_batch` function is called, where you can
+optionally return a dict of scalars to log as measurements for this batch (note
+loss is always recorded, so we need not return it here, but loss components may
+be useful). A similar thing happens in `on_epoch`, where you should return
+metrics about the entire dataset.
+
+The training harness manages the fit directory structure based on a hash of the
+hyperparameters, the creation of algorithm component instance (e.g. model,
+optimizer), initializing model weights, restarting from the most recent epoch,
+updating the learning rates, various training loop boilerplate details,
+checking divergence, reporting progress, handling differences between train,
+validation, and test sets. In short, netharn handles the necessary parts and
+let the developer focus on the important parts.
+"""
 import numpy as np
 import ubelt as ub
 import torch

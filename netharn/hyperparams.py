@@ -57,6 +57,10 @@ from torch.optim.optimizer import required
 import torch.utils.data as torch_data
 
 
+def _hash_data(data):
+    return ub.hash_data(data, hasher='sha512', base='abc', types=True)
+
+
 def _rectify_class(lookup, arg, kw):
     if arg is None:
         return None, {}
@@ -297,7 +301,10 @@ class HyperParams(object):
         >>>     }),
         >>>     scheduler=('ReduceLROnPlateau', {}),
         >>> )
+        >>> # xdoctest: +IGNORE_WANT
         >>> print(hyper.hyper_id())
+        NoOp,SGD,dampening=0,lr=0.001,momentum=0.9,nesterov=True,weight_decay=0.0005,ReduceLROnPlateau,cooldown=0,eps=1e-08,factor=0.1,min_lr=0,mode=min,patience=10,threshold=0.0001,threshold_mode=rel,verbose=False,CrossEntropyLoss,ignore_index=-100,reduce=True,size_average=True,weight=[0.0,2.0,1.0],DataLoader,batch_size=1,Dynamics,batch_step=1,grad_norm_max=None
+
     """
 
     def __init__(hyper,
@@ -375,7 +382,11 @@ class HyperParams(object):
         """ Instanciate the lr scheduler defined by the hyperparams """
         if hyper.scheduler_cls is None:
             return None
-        scheduler = hyper.scheduler_cls(optimizer, **hyper.scheduler_params)
+
+        kw = hyper.scheduler_params.copy()
+        kw['optimizer'] = optimizer
+        # scheduler = hyper.scheduler_cls(optimizer, **hyper.scheduler_params)
+        scheduler = hyper.scheduler_cls(**kw)
         return scheduler
 
     def make_initializer(hyper):
@@ -527,7 +538,7 @@ class HyperParams(object):
         elif isinstance(hyper.augment, ub.odict):
             # already specified in json format
             try:
-                ub.hash_data(hyper.augment)
+                _hash_data(hyper.augment)
             except TypeError:
                 raise TypeError('NOT IN ORDERED JSON FORMAT hyper.augment={}'.format(hyper.augment))
             augment_json = hyper.augment
@@ -565,7 +576,7 @@ class HyperParams(object):
                 else:
                     raise TypeError('Specify augment in json format')
                 try:
-                    ub.hash_data(augment_json)
+                    _hash_data(augment_json)
                 except TypeError:
                     print('FAILED TO PRODUCE JSON FORMAT for hyper.augment={}'.format(hyper.augment))
                     raise
@@ -598,7 +609,7 @@ class HyperParams(object):
 
             if request_hash:
                 param_str = util.make_idstr(params)
-                param_str = ub.hash_data(param_str)[0:6]
+                param_str = _hash_data(param_str)[0:6]
             elif request_short:
                 param_str = util.make_short_idstr(params)
             else:
