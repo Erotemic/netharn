@@ -1703,6 +1703,7 @@ def autompl(verbose=0):
             if ub.modname_to_modpath('PyQt5'):
                 try:
                     import PyQt5  # NOQA
+                    from PyQt5 import QtCore  # NOQA
                 except ImportError:
                     backend = 'agg'
                 else:
@@ -1710,6 +1711,7 @@ def autompl(verbose=0):
             elif ub.modname_to_modpath('PyQt4'):
                 try:
                     import Qt4Agg  # NOQA
+                    from PyQt4 import QtCore  # NOQA
                 except ImportError:
                     backend = 'agg'
                 else:

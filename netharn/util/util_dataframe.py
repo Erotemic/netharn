@@ -123,7 +123,6 @@ class DataFrameLight(ub.NiceRepr):
                 data = ub.odict(zip(columns, data.T))
 
         self._raw = data
-        self._keys = None
         self._data = None
         self._localizer = LocLight(self)
         self.__normalize__()
@@ -153,7 +152,7 @@ class DataFrameLight(ub.NiceRepr):
             >>> got = DataFrameLight(df_heavy)
             >>> assert got._data == df_light._data
         """
-        return pd.DataFrame(self._data, columns=self._keys)
+        return pd.DataFrame(self._data)
 
     @classmethod
     def _demodata(cls, num=7):
@@ -264,7 +263,10 @@ class DataFrameLight(ub.NiceRepr):
                     self._data[key] = np.hstack([vals1, vals2])
 
     def copy(self):
-        return copy.copy(self)
+        other = copy.copy(self)
+        other._data = other._data.copy()
+        other._localizer = LocLight(other)
+        return other
 
     def union(self, *others):
         if isinstance(self, DataFrameLight):
@@ -290,6 +292,23 @@ class DataFrameLight(ub.NiceRepr):
     @classmethod
     def concat(cls, others):
         return cls.union(*others)
+
+    @classmethod
+    def from_dict(cls, records):
+        record_iter = iter(records)
+        columns = {}
+        try:
+            r = next(record_iter)
+            for key, value in r.items():
+                columns[key] = [value]
+        except StopIteration:
+            pass
+        else:
+            for r in record_iter:
+                for key, value in r.items():
+                    columns[key].append(value)
+        self = cls(columns)
+        return self
 
     def reset_index(self, drop=False):
         """ noop for compatability, the light version doesnt store an index """
@@ -324,13 +343,18 @@ class DataFrameArray(DataFrameLight):
                     if not isinstance(d, (list, np.ndarray)):
                         raise TypeError(type(d))
                     lens.append(len(d))
-                assert ub.allsame(lens)
+                assert ub.allsame(lens), (
+                    'lens are not all same {} for columns {}'.format(
+                        lens,
+                        list(self._data.keys()))
+                )
         elif isinstance(self._raw, DataFrameLight):
             self._data = copy.copy(self._raw._data)
         elif isinstance(self._raw, pd.DataFrame):
             self._data = {k: v.values for k, v in self._raw.to_dict(orient='series').items()}
         else:
             raise TypeError('Unknown _raw type')
+        # self._data = ub.map_vals(np.asarray, self._data)  # does this break anything?
 
     def extend(self, other):
         for key in self._data.keys():
@@ -349,6 +373,30 @@ class DataFrameArray(DataFrameLight):
         for key in self._data.keys():
             subset._data[key] = self._data[key][indices]
         return subset
+
+    # def min(self, axis=None):
+    #     return self._extreme(func=np.minimum, axis=axis)
+
+    # def max(self, axis=None):
+    #     """
+    #     Example:
+    #         >>> from netharn.util.util_dataframe import *
+    #         >>> self = DataFrameArray._demodata(num=7)
+    #         >>> func = np.maximum
+    #     """
+    #     return self._extreme(func=np.maximum, axis=axis)
+
+    # def _extreme(self, func, axis=None):
+    #     import netharn as nh
+    #     if axis is None:
+    #         raise NotImplementedError
+    #     if axis == 0:
+    #         raise NotImplementedError
+    #     elif axis == 1:
+    #         newdata = nh.util.iter_reduce_ufunc(func, (self[key] for key in self.keys()))
+    #         newobj = self.__class__(newdata, self._keys)
+    #     else:
+    #         raise NotImplementedError
 
 if __name__ == '__main__':
     """

@@ -1,3 +1,20 @@
+Version 0.1.1
+==============
+* Deprecated and removed irrelevant parts of CocoAPI
+* Removing annotations and categories now dynamically updates indexes CocoAPI
+* Added remove categories to CocoAPI
+* Added experimental `_build_hashid` to CocoAPI
+* Fixed take in ObjectList1D in CocoAPI
+* Added compress to ObjectList1D in CocoAPI
+* Adding hidden_state_for
+* Fixed bug where `OutputShapeFor(_MaxPoolNd)` did not respect `ceil_mode`.
+* Fixed bug where cpu implementation of NMS was different
+* Added `__json__` method to XPU
+* Fixed bug where snapshots are corrupted with an EOFError
+* Fixed bug where temporary directories were not cleaned up
+* `harn._export` is now its own function
+
+
 Version 0.1.0
 ==============
 * Integrated the publicly released Pytorch exporter and deployer.

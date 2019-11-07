@@ -5,21 +5,23 @@ import numpy as np  # NOQA
 
 
 def draw_boxes_on_image(img, boxes, color='blue', thickness=1,
-                        box_format=None):
+                        box_format=None, colorspace='bgr'):
     """
     Draws boxes on an image.
 
     Args:
         img (ndarray): image to copy and draw on
         boxes (nh.util.Boxes): boxes to draw
+        colorspace (str): string code of the input image colorspace
 
     Example:
         >>> from netharn import util
         >>> img = np.zeros((10, 10, 3), dtype=np.uint8)
-        >>> color = 'blue'
+        >>> color = 'dodgerblue'
         >>> thickness = 1
         >>> boxes = util.Boxes([[1, 1, 8, 8]], 'tlbr')
         >>> img2 = draw_boxes_on_image(img, boxes, color, thickness)
+        >>> assert tuple(img2[1, 1]) == (255, 144, 30)
         >>> # xdoc: +REQUIRES(--show)
         >>> from netharn.util import mplutil
         >>> mplutil.autompl()  # xdoc: +SKIP
@@ -32,7 +34,7 @@ def draw_boxes_on_image(img, boxes, color='blue', thickness=1,
             raise ValueError('specify box_format')
         boxes = util.Boxes(boxes, box_format)
 
-    color = tuple(util.Color(color).as255('bgr'))
+    color = tuple(util.Color(color).as255(colorspace))
     tlbr = boxes.to_tlbr().data
     img2 = img.copy()
     for x1, y1, x2, y2 in tlbr:

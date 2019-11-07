@@ -23,7 +23,12 @@ Pypi:
      # https://packaging.python.org/tutorials/distributing-packages/
 
      # Build wheel or source distribution
-     python setup.py bdist_wheel --py-limited-api=cp36
+     # TODO: linuxmany distribution https://www.python.org/dev/peps/pep-0513/
+
+     # In the meantime, build a pure python version without binary files
+     # not sure exactly how to do this so just hack it.
+     python setup.py bdist_wheel --universal
+     find . -iname *.so -d
 
      # Use twine to upload. This will prompt for username and password
      twine upload --username erotemic --skip-existing dist/*
@@ -243,13 +248,17 @@ def clean():
         ub.delete(dpath, verbose=1)
 
 
-try:
-    gpu_setup.locate_cuda()
-    DO_COMPILE = True
-except EnvironmentError:
-    print('Cant locate cuda. Skipping GPU build')
-    # probably dont need to skip EVERYTHING
+# HACK: don't build anything for universal builds
+if '--universal' in sys.argv:
     DO_COMPILE = False
+else:
+    try:
+        gpu_setup.locate_cuda()
+        DO_COMPILE = True
+    except EnvironmentError:
+        print('Cant locate cuda. Skipping GPU build')
+        # probably dont need to skip EVERYTHING
+        DO_COMPILE = False
 
 
 ext_modules = []
