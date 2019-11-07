@@ -41,6 +41,10 @@ class _Scheduler(object):
         self.__dict__.update(state_dict)
 
     def step(self, epoch=None):
+        """
+        Simply updates the attributes (lr, momentum, etc.) of the optimizer to
+        the current epoch.
+        """
         raise NotImplementedError
 
 

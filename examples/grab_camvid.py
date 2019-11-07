@@ -9,7 +9,7 @@ def _devcheck_sample_full_image():
     import sys, ubelt
     sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
     from grab_camvid import *  # NOQA
-    from grab_camvid import _devcheck_sampler, _define_camvid_class_heirarchy
+    from grab_camvid import _devcheck_sampler, _define_camvid_class_hierarcy
     """
     import kwimage
     import numpy as np
@@ -368,7 +368,7 @@ def convert_camvid_raw_to_coco(camvid_raw_info):
     dset.name_to_cat['background'].setdefault('alias', []).append('Void')
 
     if False:
-        _define_camvid_class_heirarchy(dset)
+        _define_camvid_class_hierarcy(dset)
 
     if 1:
         # TODO: Binarize CCs (and efficiently encode if possible)
@@ -466,7 +466,7 @@ def convert_camvid_raw_to_coco(camvid_raw_info):
     return dset
 
 
-def _define_camvid_class_heirarchy(dset):
+def _define_camvid_class_hierarcy(dset):
     # add extra supercategories
     # NOTE: life-conscious, and life-inanimate are disjoint in this
     # forumlation because we are restricted to a tree structure.  If
@@ -557,7 +557,7 @@ def _define_camvid_class_heirarchy(dset):
         import graphid
         graphid.util.show_nx(graph)
 
-    # Add in some heirarchy information
+    # Add in some hierarcy information
     if 0:
         for x in dset.name_to_cat:
             print("dset.name_to_cat[{!r}]['supercategory'] = 'object'".format(x))

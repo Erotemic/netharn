@@ -252,7 +252,7 @@ class SegmentationHarn(nh.FitHarn):
         class_probs = F.softmax(class_energy, dim=1)
 
         # Heirarchical softmax seems to have a memory leak
-        # class_probs = harn.classes.heirarchical_softmax(class_energy, dim=1)
+        # class_probs = harn.classes.hierarchical_softmax(class_energy, dim=1)
 
         outputs['class_probs'] = class_probs
         outputs['class_idxs'] = class_idxs

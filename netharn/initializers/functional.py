@@ -5,6 +5,13 @@ import ubelt as ub
 
 def trainable_layers(model, names=False):
     """
+    Returns all layers containing trainable parameters
+
+    Notes:
+        It may be better to simply use model.named_parameters() instead in most
+        situation. This is useful when you need the classes that contains the
+        parameters instead of the parameters themselves.
+
     Example:
         >>> import torchvision
         >>> model = torchvision.models.AlexNet()
@@ -51,66 +58,109 @@ def trainable_layers(model, names=False):
 
 def apply_initializer(input, func, funckw):
     """
+    Recursively initializes the input using a torch.nn.init function.
+
+    If the input is a model, then only known layer types are initialized.
+
     Args:
-        input: can be a model, layer, or tensor
+        input (Tensor | Module): can be a model, layer, or tensor
+        func (callable): initialization function
+        funckw (dict):
 
     Example:
         >>> from torch import nn
+        >>> import torch
         >>> class DummyNet(nn.Module):
         >>>     def __init__(self, n_channels=1, n_classes=10):
         >>>         super(DummyNet, self).__init__()
         >>>         self.conv = nn.Conv2d(n_channels, 10, kernel_size=5)
         >>>         self.norm = nn.BatchNorm2d(10)
-        >>> model = DummyNet()
+        >>>         self.param = torch.nn.Parameter(torch.rand(3))
+        >>> self = DummyNet()
+        >>> func = nn.init.kaiming_normal_
+        >>> apply_initializer(self, func, {})
         >>> func = nn.init.constant_
-        >>> apply_initializer(model, func, {'val': 42})
-        >>> assert np.all(model.conv.weight.detach().numpy() == 42)
-        >>> assert np.all(model.conv.bias.detach().numpy() == 0), 'bias is always init to zero'
-        >>> assert np.all(model.norm.bias.detach().numpy() == 0), 'bias is always init to zero'
-        >>> assert np.all(model.norm.weight.detach().numpy() == 1)
-        >>> assert np.all(model.norm.running_mean.detach().numpy() == 0.0)
-        >>> assert np.all(model.norm.running_var.detach().numpy() == 1.0)
+        >>> apply_initializer(self, func, {'val': 42})
+        >>> assert np.all(self.conv.weight.detach().numpy() == 42)
+        >>> assert np.all(self.conv.bias.detach().numpy() == 0), 'bias is always init to zero'
+        >>> assert np.all(self.norm.bias.detach().numpy() == 0), 'bias is always init to zero'
+        >>> assert np.all(self.norm.weight.detach().numpy() == 1)
+        >>> assert np.all(self.norm.running_mean.detach().numpy() == 0.0)
+        >>> assert np.all(self.norm.running_var.detach().numpy() == 1.0)
     """
     if getattr(input, 'bias', None) is not None:
+        # print('zero input bias')
         # zero all biases
         input.bias.data.zero_()
 
     if isinstance(input, (torch.Tensor)):
         # assert False, ('input is tensor? does this make sense?')
+        # print('input is tensor')
         func(input, **funckw)
         # data = input
     elif isinstance(input, (torch.nn.modules.conv._ConvNd)):
+        # print('input is convnd')
         func(input.weight, **funckw)
     # elif isinstance(input, (torch.nn.modules.linear.Linear)):
     #     func(input.weight, **funckw)
     elif isinstance(input, torch.nn.modules.batchnorm._BatchNorm):
+        # Use default batch norm
         input.reset_parameters()
-        # always initialize batch norm weights to 1
-        torch.nn.init.constant_(input.weight, 1.0)
-        torch.nn.init.constant_(input.bias, 0.0)
     # elif isinstance(input, torch.nn.modules.Linear):
     #     input.reset_parameters()
     elif hasattr(input, 'reset_parameters'):
+        # print('unknown input type fallback on reset_params')
         input.reset_parameters()
     else:
         # input is a torch module
         model = input
-        for item in trainable_layers(model):
+        # print('recurse input')
+        layers = list(trainable_layers(model))
+        # print('layers = {!r}'.format(layers))
+        for item in layers:
             apply_initializer(item, func, funckw)
 
 
-def load_partial_state(model, model_state_dict, initializer=None,
-                       ignore_unset=False, verbose=2):
+def load_partial_state(model, model_state_dict, leftover=None,
+                       ignore_unset=False, verbose=2,
+                       mangle=True, initializer=None):
     """
     CommandLine:
         python -m netharn.initializers.nninit_base load_partial_state
+
+    Args:
+        model (torch.nn.Module): module to initialize
+
+        model_state_dict (dict): state dict we wish to transfer
+
+        leftover (callable): fallback method for initializing incompatible
+             areas, if none then those areas are left as-is.
+
+        mangle (bool, default=True): If True, mangles tensors that have the
+            same key, but different shapes forcing them to fit. This might
+            destroy information when forcing a a larger tensor into a smaller
+            tensor, or leave extra uninitialized room when a small tensor is
+            placed in a larger one. Note be careful when mangling a
+            classification layer if class indexes are not aligned.
+
+        verbose (int): verbosity level
+
+    Returns:
+        Dict: info - summary of actions taken
+
+    TODO:
+        - [ ] Allow user to specify how incompatible layers are handled.
 
     Example:
         >>> import netharn as nh
         >>> self1 = nh.models.ToyNet2d(input_channels=1, num_classes=10)
         >>> self2 = nh.models.ToyNet2d(input_channels=3, num_classes=2)
+        >>> self1.hack_param1 = torch.nn.Parameter(torch.rand(1))
+        >>> self2.hack_param1 = torch.nn.Parameter(torch.rand(3))
+        >>> self2.hack_param2 = torch.nn.Parameter(torch.rand(3))
         >>> model_state_dict = self1.state_dict()
         >>> load_partial_state(self2, model_state_dict)
+        >>> load_partial_state(self2, model_state_dict, leftover=torch.nn.init.kaiming_normal_)
 
     Example:
         >>> import netharn as nh
@@ -120,6 +170,11 @@ def load_partial_state(model, model_state_dict, initializer=None,
         >>> load_partial_state(self2, self1.state_dict())
         >>> load_partial_state(self1, self2.state_dict())
     """
+    if initializer is not None:
+        import warnings
+        warnings.warn('initializer is depricated use leftover')
+        leftover = initializer
+
     self_state = model.state_dict()
 
     def _fix_keys(model_state_dict):
@@ -167,14 +222,20 @@ def load_partial_state(model, model_state_dict, initializer=None,
                 other_unused_keys.remove(key)
                 seen_keys['full_add'].add(key)
             elif len(other_value.size()) == len(self_value.size()):
-                if key.endswith('bias'):
+                if not mangle:
+                    if verbose > 0:
+                        print('Skipping {} due to incompatable size and mangle=False'.format(key))
+                        print(' * self  = {!r}'.format(self_value.size()))
+                        print(' * other = {!r}'.format(other_value.size()))
+                    seen_keys['skipped'].add(key)
+                elif key.endswith('bias'):
                     if verbose > 0:
                         print('Skipping {} due to incompatable size'.format(key))
                         print(' * self  = {!r}'.format(self_value.size()))
                         print(' * other = {!r}'.format(other_value.size()))
                     seen_keys['skipped'].add(key)
                 else:
-                    if initializer is None:
+                    if leftover is None:
                         if verbose > 0:
                             print('Skipping {} due to incompatable size and no default initializer'.format(key))
                             print(' * self  = {!r}'.format(self_value.size()))
@@ -186,8 +247,12 @@ def load_partial_state(model, model_state_dict, initializer=None,
                             print(' * self  = {!r}'.format(self_value.size()))
                             print(' * other = {!r}'.format(other_value.size()))
                         # Initialize all weights in case any are unspecified
-                        if initializer is not None:
-                            initializer(self_state[key])
+                        if leftover is None:
+                            try:
+                                leftover(self_state[key])
+                            except Exception:
+                                if verbose > 0:
+                                    print('Unable to init {} with {}'.format(key, leftover))
 
                         # Transfer as much as possible
                         min_size = np.minimum(self_state[key].shape,
@@ -199,7 +264,7 @@ def load_partial_state(model, model_state_dict, initializer=None,
                         #     # Shock weights because we are doing something weird
                         #     # might help the network recover in case this is
                         #     # not a good idea
-                        #     shock(self_state[key], func=initializer)
+                        #     shock(self_state[key], func=leftover)
                         self_unset_keys.remove(key)
                         other_unused_keys.remove(key)
 
@@ -230,16 +295,21 @@ def load_partial_state(model, model_state_dict, initializer=None,
             print('Seen Keys: {}'.format(ub.repr2(seen_keys, nl=2)))
             print('Self Unset Keys: {}'.format(ub.repr2(self_unset_keys, nl=1)))
             print('Other Unused keys: {}'.format(ub.repr2(other_unused_keys, nl=1)))
-        if initializer:
+        if leftover:
             if verbose > 0:
-                print('Initializing unused keys using {}'.format(initializer))
+                print('Initializing unused keys using {}'.format(leftover))
             for key in self_unset_keys:
                 if key.endswith('.num_batches_tracked'):
                     pass  # ignore num_batches_tracked
                 elif key.endswith('.bias'):
                     self_state[key].fill_(0)
                 else:
-                    initializer(self_state[key])
+                    try:
+                        leftover(self_state[key])
+                    except Exception:
+                        if verbose > 0:
+                            print('Unable to init {} with {}'.format(key, leftover))
+
     else:
         if verbose > 0:
             print('Pretrained weights are a perfect fit')

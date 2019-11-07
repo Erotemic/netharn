@@ -385,12 +385,19 @@ class InitializeMixin:
 
                 # Make a very simple MRU (most recently used) link
                 mru_dpath = join(harn.hyper.workdir, '_mru')
-                ub.symlink(train_info['train_dpath'], mru_dpath,
-                           overwrite=True, verbose=1)
+                try:
+                    ub.symlink(train_info['train_dpath'], mru_dpath,
+                               overwrite=True, verbose=1)
+                except OSError as ex:
+                    harn.warn('Unable to symlink: {!r}'.format(ex))
 
                 # Link the hashed run dir to the human friendly nice dir
-                ub.symlink(train_info['train_dpath'], train_info['nice_dpath'],
-                           overwrite=True, verbose=3)
+                try:
+                    ub.symlink(train_info['train_dpath'],
+                               train_info['nice_dpath'], overwrite=True,
+                               verbose=3)
+                except OSError as ex:
+                    harn.warn('Unable to symlink: {!r}'.format(ex))
 
                 # if False:
                 #     # Create an additional ./_nice symlink to ./fit/nice
@@ -538,8 +545,9 @@ class InitializeMixin:
         harn.initializer = harn.hyper.make_initializer()
 
         harn.criterion = harn.hyper.make_criterion()
-        harn.debug('Move {} model to {}'.format(harn.criterion, harn.xpu))
-        harn.criterion = harn.xpu.move(harn.criterion)
+        if harn.criterion is not None:
+            harn.debug('Move {} model to {}'.format(harn.criterion, harn.xpu))
+            harn.criterion = harn.xpu.move(harn.criterion)
 
         harn.debug('Make optimizer')
         # TODO: allow for "discriminative fine-tuning"
@@ -680,7 +688,7 @@ class ProgMixin:
             })
 
     def _update_main_prog_desc(harn):
-        lrs = harn._current_lrs()
+        lrs = set(harn._current_lrs())
         lr_str = ','.join(['{:.4g}'.format(lr) for lr in lrs])
         if six.PY2:
             desc = 'epoch lr:{} | {}'.format(lr_str, harn.monitor.message())
@@ -1055,37 +1063,9 @@ class ScheduleMixin:
         """
         Get the of distinct learning rates (usually only 1) currently in use
         """
-        optim_lrs = {group['lr'] for group in harn.optimizer.param_groups}
-
-        if 0 and __debug__:
-            if harn.scheduler is None:
-                assert harn.optimizer is not None
-                lrs = set(map(lambda group: group['lr'], harn.optimizer.param_groups))
-            elif hasattr(harn.scheduler, '_current_lrs'):
-                lrs = set(harn.scheduler._current_lrs())
-            elif hasattr(harn.scheduler, 'get_lrs'):
-                # Prefered netharn scheduler style
-                lrs = harn.scheduler.get_lrs()
-            elif hasattr(harn.scheduler, 'get_lr'):
-                # Handle torch schedulers
-                lr = harn.scheduler.get_lr()
-                lrs = set(lr) if ub.iterable(lr) else {lr}
-            else:
-                # workaround for ReduceLROnPlateau
-                lrs = {group['lr'] for group in harn.scheduler.optimizer.param_groups}
-
-            optim_lrs = sorted(optim_lrs)
-            lrs = sorted(lrs)
-
-            if not np.isclose(optim_lrs, lrs):
-                harn.error('[ERROR] optim_lrs = {!r}'.format(optim_lrs))
-                harn.error('[ERROR] lrs = {!r}'.format(lrs))
-                harn.error('[ERROR] epoch = {!r}'.format(harn.epoch))
-                warnings.warn(
-                    'optimizer and scheduler are out of sync')
-                # raise AssertionError(
-        else:
-            lrs = optim_lrs
+        # optim_lrs = {group['lr'] for group in harn.optimizer.param_groups}
+        optim_lrs = [group['lr'] for group in harn.optimizer.param_groups]
+        lrs = optim_lrs
         return lrs
 
     def _check_termination(harn):
@@ -1100,6 +1080,34 @@ class ScheduleMixin:
         return False
 
     def _step_scheduler_batch(harn):
+        """
+        Ignore:
+            import netharn as nh
+            harn = nh.FitHarn(nh.HyperParams.demo()).initialize()
+        """
+        # TODO: proper warmup iters
+        if harn.epoch == 0:
+            HACK_WARMUP = bool(harn.dynamics['warmup_iters'])
+            if HACK_WARMUP:
+                from netharn.schedulers.scheduler_redesign import _get_optimizer_values
+                from netharn.schedulers.scheduler_redesign import _set_optimizer_values
+                # Based on mmdet logic, need to generalize better for netharn
+                # So warmup can be used with any scheduler, even a torch one
+                cur_iters = harn.batch_index
+                warmup = 'linear'
+                warmup_iters = harn.dynamics['warmup_iters']
+                warmup_ratio = harn.dynamics['warmup_ratio']   # 1.0 / 3.0
+                if cur_iters < warmup_iters:
+                    for cur_iters in range(0, warmup_iters):
+                        regular_lr = _get_optimizer_values(harn.optimizer, 'initial_lr')
+                        if warmup == 'linear':
+                            k = (1 - (cur_iters + 1) / warmup_iters) * (1 - warmup_ratio)
+                            warmup_lr = [_lr * (1 - k) for _lr in regular_lr]
+                        else:
+                            raise KeyError(warmup)
+                        harn.debug('warmup_lr = {}'.format(warmup_lr))
+                        _set_optimizer_values(harn.optimizer, 'lr', warmup_lr)
+
         # TODO: REFACTOR SO NETHARN HAS A PROPER ITERATION MODE
         if getattr(harn.scheduler, '__batchaware__', False):
             # TODO: can we determine what the batch size is at this point?
@@ -1150,7 +1158,7 @@ class ScheduleMixin:
                     self.cooldown_counter = self.cooldown
                     self.num_bad_epochs = 0
 
-                    # todo: make a pytorch pr where there is a callback on
+                    # TODO: make a pytorch pr where there is a callback on
                     # lr_reduction.
                     # the scheduler has stepped, we should now backtrack the
                     # weights to the previous best state
@@ -1158,7 +1166,7 @@ class ScheduleMixin:
                     if backtrack:
                         harn.backtrack_weights(harn.monitor.best_epoch)
 
-            # # hack to determine if the rlrop scheduler stepped
+            # hack to determine if the rlrop scheduler stepped
             hack_lr_step(harn.scheduler, improved)
         else:
             # Note that for torch schedulers the epoch param indicates
@@ -1382,8 +1390,11 @@ class CoreMixin:
                 # symlink the deployed model to a static filename to make it
                 # easier to put netharn in a pipelined system.
                 static_deploy_fpath = join(harn.train_dpath, 'deploy.zip')
-                ub.symlink(deploy_fpath, static_deploy_fpath,
-                           overwrite=True, verbose=1)
+                try:
+                    ub.symlink(deploy_fpath, static_deploy_fpath,
+                               overwrite=True, verbose=1)
+                except OSError as ex:
+                    harn.warn('Unable to symlink: {!r}'.format(ex))
 
         except Exception as ex:
             deploy_fpath = None
@@ -1895,8 +1906,12 @@ class CoreCallbacks:
             else:
                 raise TypeError('Could not run batch')
         except Exception:
-            harn.warn('Error occurred in default run_batch. '
-                      'Perhaps you should overload it?')
+            if harn.criterion:
+                harn.error('You must overwrite run_batch if '
+                           'criterion is not specified')
+            else:
+                harn.warn('Error occurred in default run_batch. '
+                          'Perhaps you should overload it?')
             raise
         return outputs, loss
 
@@ -1918,11 +1933,12 @@ class CoreCallbacks:
         # approximates a batch size of (bsize * bstep) if step > 1,
         bstep = harn.dynamics['batch_step']
         if (bx + 1) % bstep == 0:
+
             if harn.dynamics['grad_norm_max']:
                 total_norm = torch.nn.utils.clip_grad_norm_(
                     harn.model.parameters(),
                     max_norm=harn.dynamics['grad_norm_max'],
-                    norm_type=float('inf'),
+                    norm_type=harn.dynamics['grad_norm_type'],
                 )
                 if total_norm > harn.dynamics['grad_norm_max'] * 100:
                     harn.warn('grad norm is too high: '
@@ -2078,8 +2094,9 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             that are not currently implemented in torch. Note that the
             newstyle-netharn schedulers can control momentum as well as lr.
 
-        criterion (torch.nn.modules.loss._Loss) :
-            Objective function / loss criterion. SeeAlso: `netharn.criterions`
+        criterion (torch.nn.modules.loss._Loss | None) :
+            Objective function / loss criterion. SeeAlso: `netharn.criterions`.
+            This is not strictly necessary if the loss is defined inline.
 
         monitor (netharn.Monitor) :
             monitors performance of the validation set. SeeAlso `netharn.monitor`.
@@ -2116,9 +2133,15 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
         harn.monitor = None
 
         # Note: these default values are actually stored in hyperparams
+        # TODO: find a better/general way of handling training dynamics
+        # maybe a hook system like mmcv?
         harn.dynamics = {
-            'batch_step': 1,
-            'grad_norm_max': None,
+            'batch_step': 1,        # simulates larger batch sizes
+            'grad_norm_max': None,  # clips gradients to a max value (mmdet likes to use 35 for this)
+            'grad_norm_type': 2,    # p-norm to use if clipping grads.
+
+            'warmup_iters': 0,   # CURRENTLY HACKED AND EXPERIMENTAL
+            'warmup_ratio': 1.0 / 3.0,   # CURRENTLY HACKED AND EXPERIMENTAL
         }
 
         # Output directories

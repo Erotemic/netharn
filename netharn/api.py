@@ -102,7 +102,7 @@ class Initializer(object):
             >>> print(ub.repr2(nh.Initializer.coerce(config)))
             (
                 <class 'netharn.initializers.pretrained.Pretrained'>,
-                {'fpath': '/fit/nice/untitled', 'leftover': None},
+                {'fpath': '/fit/nice/untitled', 'leftover': None, 'mangle': True},
             )
             >>> print(ub.repr2(nh.Initializer.coerce({'init': 'kaiming_normal'})))
             (
@@ -150,6 +150,7 @@ class Initializer(object):
             initializer_ = (nh.initializers.Pretrained, {
                 'fpath': ub.expandpath(config['pretrained_fpath']),
                 'leftover': kw.get('leftover', None),
+                'mangle': kw.get('mangle', True),
             })
         elif config['init'] == 'cls':
             # Indicate that the model will initialize itself
@@ -265,9 +266,10 @@ class Scheduler(object):
             })
             return scheduler_
 
-        if key.startswith('step'):
+        prefix = 'step'.lower()
+        if key.lower().startswith(prefix):
             # Allow step to specify `-` separated step points
-            suffix = key[4:]
+            suffix = key[len(prefix):]
             points = [int(p) for p in suffix.split('-') if p]
             assert sorted(points) == points, 'points must be in order'
             lr_pts = {0: lr}
@@ -281,17 +283,44 @@ class Scheduler(object):
                 'interpolation': 'left'
             })
             return scheduler_
-        elif key.lower() == 'ReduceLROnPlateau'.lower():
-            scheduler_ = (torch.optim.lr_scheduler.ReduceLROnPlateau, {})
+
+        prefix = 'ReduceLROnPlateau'.lower()
+        if key.lower().startswith(prefix):
+            # Allow specification of scheduler params
+            suffix = key[len(prefix):]
+            parts = suffix.split('-')
+            kw = {
+                'patience': 10,
+                'cooldown': 0,
+                'factor': 0.1,
+            }
+            try:
+                for part in parts:
+                    if not part:
+                        continue
+                    if part.startswith('f'):
+                        kw['factor'] = float(part[1:])
+                    if part.startswith('p'):
+                        kw['patience'] = int(part[1:])
+                    elif part.startswith('c'):
+                        kw['cooldown'] = int(part[1:])
+                    else:
+                        raise ValueError('unknown ReduceLROnPlateau part')
+            except Exception:
+                raise ValueError('Unable to parse ReduceLROnPlateau '
+                                 'specs: {}'.format(suffix))
+
+            scheduler_ = (torch.optim.lr_scheduler.ReduceLROnPlateau, kw)
             return scheduler_
-        elif key.lower() == 'Exponential'.lower():
+
+        if key.lower() == 'Exponential'.lower():
             scheduler_ = (nh.schedulers.Exponential, {
                 'gamma': config.get('gamma', 0.1),
                 'stepsize': config.get('stepsize', 100),
             })
             return scheduler_
-        else:
-            raise KeyError(key)
+
+        raise KeyError(key)
 
 
 class Loaders(object):

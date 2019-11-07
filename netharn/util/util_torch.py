@@ -11,6 +11,16 @@ class ModuleMixin(object):
     Adds convenience functions to a torch module
     """
     def number_of_parameters(self, trainable=True):
+        """
+        Tally the number of model paramters.
+
+        Args:
+            trainable (bool, default=True): specify if only trainable
+                params should be counted.
+
+        Returns:
+            int: number of paramaters in this module and all submodules
+        """
         return number_of_parameters(self, trainable)
 
     def _device_dict(self):
@@ -19,9 +29,43 @@ class ModuleMixin(object):
     def devices(self):
         """
         Returns all devices this module state is mounted on
+
+        Returns:
+            Set[torch.device]: set of devices used by this model
+
+        Example:
+            >>> import netharn as nh
+            >>> self = nh.models.toynet.ToyNet2d()
+            >>> self.devices()
+            {device(type='cpu')}
+            >>> # xdoctest: +REQUIRES(--multigpu)
+            >>> self = nh.XPU([0, 1]).mount(self)
+            >>> print(self.devices())
+            {device(type='cuda', index=0), device(type='cuda', index=1)}
+            >>> print('self.main_device = {!r}'.format(self.main_device))
+            self.main_device = device(type='cuda', index=0)
         """
         state_devices = self._device_dict()
-        return set(state_devices.values())
+        devices = set(state_devices.values())
+        if hasattr(self, 'device_ids'):
+            # Handle data parallel
+            for _id in self.device_ids:
+                devices.add(torch.device(_id))
+        return devices
+
+    @property
+    def main_device(self):
+        """
+        The main/src torch device used by this model
+        """
+        if hasattr(self, 'src_device_obj'):
+            return self.src_device_obj
+        else:
+            devices = self.devices()
+            if len(devices) > 1:
+                raise NotImplementedError('no information maintained on which device is primary')
+            else:
+                return list(devices)[0]
 
 
 def number_of_parameters(model, trainable=True):

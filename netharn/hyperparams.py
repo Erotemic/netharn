@@ -382,6 +382,10 @@ def _rectify_dynamics(arg, kw):
         'batch_step': arg.pop('batch_step', 1),
         # Clips gradients
         'grad_norm_max': arg.pop('grad_norm_max', None),
+        'grad_norm_type': arg.pop('grad_norm_type', 2),
+
+        'warmup_iters': arg.pop('warmup_iters', None),  # HACKED AND EXPERIMENTAL
+        'warmup_ratio': arg.pop('warmup_ratio', 1.0 / 3.0),  # HACKED AND EXPERIMENTAL
     }
     if not isinstance(dynamics['batch_step'], int):
         raise ValueError('batch_step must be an integer')
@@ -975,6 +979,52 @@ class HyperParams(object):
             ('hostname', platform.node()),
         ])
         return train_info
+
+    @classmethod
+    def demo(HyperParams):
+        import netharn as nh
+        hyper = HyperParams(**{
+            # ================
+            # Environment Components
+            'workdir'     : ub.ensure_app_cache_dir('netharn/tests/demo'),
+            'nice'        : 'demo',
+            'xpu'         : nh.XPU.coerce('argv'),
+            # workdir is a directory where intermediate results can be saved
+            # nice symlinks <workdir>/fit/nice/<nice> -> ../runs/<hashid>
+            # XPU auto select a gpu if idle and VRAM>6GB else a cpu
+            # ================
+            # Data Components
+            'datasets'    : {  # dict of plain ol torch.data.Dataset instances
+                'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
+                'vali': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+                'test': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+            },
+            'loaders'     : {'batch_size': 64},  # DataLoader instances or kw
+            # ================
+            # Algorithm Components
+            # Note the (cls, kw) tuple formatting
+            'model'       : (nh.models.ToyNet2d, {}),
+            'optimizer'   : (nh.optimizers.SGD, {
+                'lr': 0.0001
+            }),
+            # focal loss is usually better than nh.criterions.CrossEntropyLoss
+            'criterion'   : (nh.criterions.FocalLoss, {}),
+            'initializer' : (nh.initializers.KaimingNormal, {
+                'param': 0,
+            }),
+            # these may receive an overhaul soon
+            'scheduler'   : (nh.schedulers.ListedLR, {
+                'points': {0: .0001, 2: .01, 5: .015, 6: .005, 9: .001},
+                'interpolate': True,
+            }),
+            'monitor'     : (nh.Monitor, {
+                'max_epoch': 10,
+            }),
+            # dynamics are a config option that modify the behavior of the main
+            # training loop. These parameters effect the learned model.
+            'dynamics'   : {'batch_step': 4},
+        })
+        return hyper
 
 if __name__ == '__main__':
     r"""

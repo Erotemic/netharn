@@ -1,8 +1,9 @@
 import torch
 import numpy as np
+from netharn import layers
 
 
-class ToyNet1d(torch.nn.Module):
+class ToyNet1d(layers.Module):
     """
     Demo model for a simple 2 class learning problem
 
@@ -40,7 +41,7 @@ class ToyNet1d(torch.nn.Module):
         return dset
 
 
-class ToyNet2d(torch.nn.Module):
+class ToyNet2d(layers.Module):
     """
     Demo model for a simple 2 class learning problem
 

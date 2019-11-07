@@ -122,7 +122,15 @@ def draw_perclass_prcurve(cx_to_peritem, classes, prefix=''):
         peritem = cx_to_peritem[cx]
         catname = classes[cx]
         ap = peritem['ap']
-        pr = peritem['pr']
+        if 'pr' in peritem:
+            pr = peritem['pr']
+        elif 'ppv' in peritem:
+            pr = (peritem['ppv'], peritem['tpr'])
+        elif 'prec' in peritem:
+            pr = (peritem['prec'], peritem['rec'])
+        else:
+            raise KeyError('pr, prec, or ppv not in peritem')
+
         if np.isfinite(ap):
             aps.append(ap)
             (precision, recall) = pr

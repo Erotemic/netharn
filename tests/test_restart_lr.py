@@ -61,7 +61,7 @@ def test_restart_lr():
         harn.run()
     except Failpoint as ex:
         pass
-    failpoint_lrs = harn._current_lrs()
+    failpoint_lrs = set(harn._current_lrs())
 
     # Restarting the harness should begin at the same point
     harn = MyHarn(hyper=hyper)
@@ -69,7 +69,7 @@ def test_restart_lr():
     harn.config['use_tensorboard'] = False
     harn.initialize()
 
-    restart_lrs = harn._current_lrs()
+    restart_lrs = set(harn._current_lrs())
     print('failpoint_lrs = {!r}'.format(failpoint_lrs))
     print('restart_lrs = {!r}'.format(restart_lrs))
 

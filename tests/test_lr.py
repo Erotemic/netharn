@@ -39,7 +39,7 @@ class MyHarn(nh.FitHarn):
 
     def _run_epoch(harn, loader, tag, learn=False):
         # Overload run_epoch to do nothing
-        lrs = harn._current_lrs()
+        lrs = set(harn._current_lrs())
         print('* RUN WITH lrs = {!r}'.format(lrs))
         harn.epoch_to_lr[harn.epoch] = lrs
         epoch_metrics = {'loss': 3}
@@ -89,7 +89,7 @@ def test_lr():
 
     print(ub.repr2(harn.epoch_to_lr, nl=1))
 
-    # restart_lrs = harn._current_lrs()
+    # restart_lrs = set(harn._current_lrs())
     # print('restart_lrs = {!r}'.format(restart_lrs))
 
 if __name__ == '__main__':

@@ -15,6 +15,8 @@ tensorboard_logger >= 0.1.0
 tensorboard >= 1.8.0
 sympy >= 1.3
 
+pycocotools
+
 
 # Other
 # =====
@@ -27,3 +29,4 @@ sympy >= 1.3
 # scikit-image
 # onnx
 # sortedcontainers
+

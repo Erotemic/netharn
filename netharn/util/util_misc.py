@@ -8,17 +8,21 @@ class SupressPrint():
     """
     Temporarily replace the print function in a module with a noop
     """
-    def __init__(self, *mods):
+    def __init__(self, *mods, enabled=True):
         self.mods = mods
+        self.enabled = enabled
         self.oldprints = {}
+
     def __enter__(self):
-        for mod in self.mods:
-            oldprint = getattr(self.mods, 'print', print)
-            self.oldprints[mod] = oldprint
-            mod.print = lambda *args, **kw: None
+        if self.enabled:
+            for mod in self.mods:
+                oldprint = getattr(self.mods, 'print', print)
+                self.oldprints[mod] = oldprint
+                mod.print = lambda *args, **kw: None
     def __exit__(self, a, b, c):
-        for mod in self.mods:
-            mod.print = self.oldprints[mod]
+        if self.enabled:
+            for mod in self.mods:
+                mod.print = self.oldprints[mod]
 
 
 class FlatIndexer(ub.NiceRepr):

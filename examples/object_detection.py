@@ -889,7 +889,6 @@ def setup_harn(cmdline=True, **kw):
         'log_iter_train': 50,
     })
     harn.fit_config = config
-    harn.coder = model.coder
     print('harn = {!r}'.format(harn))
     print('samplers = {!r}'.format(samplers))
     return harn

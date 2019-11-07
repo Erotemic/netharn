@@ -633,6 +633,68 @@ class DeployedModel(ub.NiceRepr):
 
         return model, xpu
 
+    @classmethod
+    def coerce(DeployedModel, arg):
+        """
+        Attempt to coerce the argument into a deployed model.
+
+        Args:
+            arg (DeployedModel | PathLike | torch.nn.Module) : can be:
+                (1) a DeployedModel object
+                (2) a path to a deploy file
+                (3) a live pytorch module
+                (4) a path to a .pt file in a netharn train snapshot directory.
+
+        Returns:
+            DeployedModel
+        """
+        from os.path import dirname
+        import torch
+        if isinstance(arg, DeployedModel):
+            # The input is already a DeployedModel
+            deployed = arg
+        elif isinstance(arg, torch.nn.Module):
+            # The argument is a live pytorch model
+            deployed = DeployedModel(None)
+            deployed._model = arg
+        elif isinstance(arg, six.string_types):
+            # handle the case where we are given a weights file in a snapshot directory
+            if arg.endswith('.pt'):
+                snap_fpath = arg
+                dpath_cands = []
+                # Look the pt file's directory for topology and train info
+                dpath1 = dirname(snap_fpath)
+                dpath_cands = [dpath1]
+                # The files might also be in the parent directory
+                if not exists(join(dpath1, 'train_info.json')):
+                    dpath_cands.append(dirname(dpath1))
+                # Search for the files in the candidate directories
+                train_info_cands = list(ub.find_path(
+                    'train_info.json', path=dpath_cands, exact=True))
+                model_cands = list(ub.find_path(
+                    '*.py', path=dpath_cands, exact=False))
+                if len(model_cands) == 0:
+                    raise Exception('Model topology does not exist for {!r}.'.format(arg))
+                elif len(model_cands) > 1:
+                    raise Exception('Conflicting model topologies for {!r}.'.format(arg))
+                else:
+                    model_fpath = model_cands[0]
+                if len(train_info_cands) == 0:
+                    train_info_fpath = None
+                elif len(train_info_cands) > 1:
+                    raise AssertionError('Conflicting train_info.json files')
+                else:
+                    train_info_fpath = train_info_cands[0]
+                deployed = DeployedModel.custom(snap_fpath, model_fpath,
+                                                train_info_fpath=train_info_fpath)
+            else:
+                # Assume we have a netharn deploy path
+                deployed = DeployedModel(arg)
+        else:
+            # Unhandled case
+            raise TypeError(type(arg))
+        return deployed
+
 
 def _demodata_zip_fpath():
     zip_path = DeployedModel(_demodata_trained_dpath()).package()

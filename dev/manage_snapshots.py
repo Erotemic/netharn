@@ -325,6 +325,8 @@ if __name__ == '__main__':
         python ~/code/netharn/dev/manage_snapshots.py
 
         python ~/code/netharn/dev/manage_snapshots.py --mode=snapshots --workdir=~/work/voc_yolo2/
-        python ~/code/netharn/dev/manage_snapshots.py --mode=runs --workdir=~/work/mc_harn3/
+        python ~/code/netharn/dev/manage_snapshots.py --mode=runs --workdir=~/work/voc_yolo2/
+
+        python ~/code/netharn/dev/manage_snapshots.py --mode=snapshots --workdir=~/work/mc_harn3/ --recent 2 --factor 40
     """
     main()

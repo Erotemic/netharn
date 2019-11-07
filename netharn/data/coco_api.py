@@ -1305,7 +1305,7 @@ class MixinCocoAddRemove(object):
     def remove_categories(self, cids_or_cats, verbose=0):
         """
         Remove categories and all annotations in those categories.
-        Currently does not change any heirarchy information
+        Currently does not change any hierarcy information
 
         Args:
             cids_or_cats (List): list of category dicts, names, or ids

@@ -33,6 +33,13 @@ class Pretrained(api.Initializer, ub.NiceRepr):
             leftover weights that were not in the pretrained file. Can either
             be an initializer class or a coercable initializer string.
 
+        mangle (bool, default=True): If True, mangles tensors that have the
+            same key, but different shapes forcing them to fit. This might
+            destroy information when forcing a a larger tensor into a smaller
+            tensor, or leave extra uninitialized room when a small tensor is
+            placed in a larger one. Note be careful when mangling a
+            classification layer if class indexes are not aligned.
+
         info (dict, optional): specify explicit history info
 
         initializer (netharn.Initializer): DEPRICATED use the `leftover`.
@@ -74,7 +81,8 @@ class Pretrained(api.Initializer, ub.NiceRepr):
         >>> # Apply the partial pretrained weights to a new model
         >>> self(model2)
     """
-    def __init__(self, fpath, leftover=None, info=None, initializer=None):
+    def __init__(self, fpath, leftover=None, mangle=True, info=None,
+                 initializer=None):
         if initializer is not None:
             import warnings
             warnings.warn('Pretrained `initializer` kwarg is depricated '
@@ -87,6 +95,7 @@ class Pretrained(api.Initializer, ub.NiceRepr):
             leftover = initializer_[0](**initializer_[1])
 
         self.leftover = leftover
+        self.mangle = mangle
         self.info = info
 
     def __nice__(self):
@@ -183,7 +192,8 @@ class Pretrained(api.Initializer, ub.NiceRepr):
         # Remove any DataParallel / DataSerial
         raw_model = xpu.raw(model)
         info = load_partial_state(raw_model, model_state_dict,
-                                  initializer=self.leftover,
+                                  leftover=self.leftover,
+                                  mangle=self.mangle,
                                   verbose=verbose)
         return info
 
@@ -207,7 +217,7 @@ class Pretrained(api.Initializer, ub.NiceRepr):
                     # Info might be inside of a zipfile
                     info = nh.util.read_json(nh.util.zopen(info_fpath))
                     break
-                except Exception as ex:
+                except Exception:
                     pass
             if info is None:
                 info = '__UNKNOWN__'

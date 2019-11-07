@@ -33,10 +33,53 @@ class DetectionMetrics(object):
         dmet.gid_to_pred_dets = {}
         dmet._imgname_to_gid = {}
 
+    @classmethod
+    def from_coco(DetectionMetrics, true_coco, pred_coco):
+        """
+        Create detection metrics from two coco files representing the truth and
+        predictions.
+
+        Args:
+            true_coco (ndsampler.CocoDataset):
+            pred_coco (ndsampler.CocoDataset):
+
+        Example:
+            >>> import ndsampler
+            >>> true_coco = ndsampler.CocoDataset.demo('shapes')
+            >>> pred_coco = true_coco
+            >>> self = DetectionMetrics.from_coco(true_coco, pred_coco)
+            >>> self.score_voc()
+        """
+        import kwimage
+
+        classes = true_coco.object_categories()
+        self = DetectionMetrics(classes)
+
+        def _coco_to_dets(coco_dset):
+            for img in coco_dset.imgs.values():
+                gid = img['id']
+                imgname = img['file_name']
+                aids = coco_dset.gid_to_aids[gid]
+                annots = [coco_dset.anns[aid] for aid in aids]
+                dets = kwimage.Detections.from_coco_annots(annots, dset=coco_dset)
+                yield dets, imgname, gid
+
+        for dets, imgname, gid in _coco_to_dets(true_coco):
+            self.add_truth(dets, imgname, gid=gid)
+
+        for dets, imgname, gid in _coco_to_dets(pred_coco):
+            self.add_predictions(dets, imgname, gid=gid)
+
+        return self
+
     def _register_imagename(dmet, imgname, gid=None):
         if gid is not None:
+            if imgname is None:
+                imgname = 'gid_{}'.format(str(gid))
             dmet._imgname_to_gid[imgname] = gid
         else:
+            if imgname is None:
+                raise ValueError('must specify imgname or gid')
             try:
                 gid = dmet._imgname_to_gid[imgname]
             except KeyError:
@@ -82,10 +125,18 @@ class DetectionMetrics(object):
         Assigns predicted boxes to the true boxes so we can transform the
         detection problem into a classification problem for scoring.
 
+        Args:
+            compat (str): can be ('ancestors' | 'mutex' | 'all').
+                determines which pred boxes are allowed to match which true
+                boxes. If 'mutex', then pred boxes can only match true boxes of
+                the same class. If 'ancestors', then pred boxes can match true
+                boxes that match or have a coarser label. If 'all', then any
+                pred can match any true, regardless of if it is correct or not.
+
         Ignore:
             globals().update(xdev.get_func_kwargs(dmet.confusion_vectors))
         """
-        import netharn as nh
+        import kwarray
         y_accum = ub.ddict(list)
 
         TRACK_PROBS = True
@@ -123,7 +174,7 @@ class DetectionMetrics(object):
                 y_accum[k].extend(v)
 
         # Avoid pandas when possible
-        cfsn_data = nh.util.DataFrameArray(ub.map_vals(np.array, y_accum))
+        cfsn_data = kwarray.DataFrameArray(ub.map_vals(np.array, y_accum))
         if TRACK_PROBS:
             y_prob = np.vstack(prob_accum)
         else:
@@ -133,24 +184,113 @@ class DetectionMetrics(object):
 
         return cfsn_vecs
 
+    def score_kwant(dmet, ovthresh=0.5):
+        """
+        Scores the detections using kwant
+        """
+        try:
+            from kwil.misc import kwant
+            if not kwant.is_available():
+                raise ImportError
+        except ImportError:
+            raise RuntimeError('kwant is not available')
+
+        from kwil import kw18
+        gids = list(dmet.gid_to_true_dets.keys())
+        true_kw18s = []
+        pred_kw18s = []
+        for gid in ub.ProgIter(gids, desc='convert to kw18'):
+            true_dets = dmet.gid_to_true_dets[gid]
+            pred_dets = dmet.gid_to_pred_dets[gid]
+
+            if len(true_dets) == 0:
+                print('foo')
+            if len(pred_dets) == 0:
+                # kwant breaks on 0 predictions, hack in a bad prediction
+                import kwimage
+                hack_ = kwimage.Detections.random(1)
+                hack_.scores[:] = 0
+                pred_dets = hack_
+
+            true_kw18 = kw18.make_kw18_from_detections(true_dets,
+                                                       frame_number=gid,
+                                                       timestamp=gid)
+            pred_kw18 = kw18.make_kw18_from_detections(pred_dets,
+                                                       frame_number=gid,
+                                                       timestamp=gid)
+            true_kw18s.append(true_kw18)
+            pred_kw18s.append(pred_kw18)
+
+        true_kw18 = true_kw18s
+        pred_kw18 = pred_kw18s
+
+        roc_info = kwant.score_events(true_kw18s, pred_kw18s,
+                                      ovthresh=ovthresh, prefiltered=True,
+                                      verbose=3)
+
+        fp = roc_info['fp'].values
+        tp = roc_info['tp'].values
+
+        ppv = tp / (tp + fp)
+        ppv[np.isnan(ppv)] = 1
+
+        tpr = roc_info['pd'].values
+        fpr = fp / fp[0]
+        import sklearn
+        roc_auc = sklearn.metrics.auc(fpr, tpr)
+
+        from netharn.metrics.functional import _average_precision
+        ap = _average_precision(tpr, ppv)
+
+        roc_info['fpr'] = fpr
+        roc_info['ppv'] = ppv
+
+        info = {
+            'roc_info': roc_info,
+            'ap': ap,
+            'roc_auc': roc_auc,
+        }
+
+        if False:
+            import kwil
+            kwil.autompl()
+            kwil.multi_plot(roc_info['fa'], roc_info['pd'],
+                            xlabel='fa (fp count)',
+                            ylabel='pd (tpr)', fnum=1,
+                            title='kwant roc_auc={:.4f}'.format(roc_auc))
+
+            import kwil
+            kwil.autompl()
+            kwil.multi_plot(tpr, ppv,
+                            xlabel='recall (fpr)',
+                            ylabel='precision (tpr)',
+                            fnum=2,
+                            title='kwant ap={:.4f}'.format(ap))
+
+        return info
+
     def score_netharn(dmet, ovthresh=0.5, bias=0, gids=None,
-                      compat='all', prioritize='correct'):
+                      compat='all', prioritize='iou'):
         """ our scoring method """
         cfsn_vecs = dmet.confusion_vectors(ovthresh=ovthresh, bias=bias,
                                            gids=gids,
                                            compat=compat,
                                            prioritize=prioritize)
 
-        cfsn_peritem = cfsn_vecs.binarize_peritem()
-        cfsn_perclass = cfsn_vecs.binarize_ovr(mode=1)
+        # THE BINARIZE_PERITEM IS BROKEN
+        # cfsn_peritem = cfsn_vecs.binarize_peritem()
+        # peritem = cfsn_peritem.precision_recall()
 
-        peritem = cfsn_peritem.precision_recall()
-        perclass = cfsn_perclass.precision_recall()
-        info = {
-            'mAP': perclass['mAP'],
-            'perclass': perclass['perclass'],
-            'peritem': peritem,
-        }
+        info = {}
+        # info['peritem'] = peritem
+        try:
+            cfsn_perclass = cfsn_vecs.binarize_ovr(mode=1)
+            perclass = cfsn_perclass.precision_recall()
+        except Exception as ex:
+            print('warning: ex = {!r}'.format(ex))
+        else:
+            info['perclass'] = perclass['perclass']
+            info['mAP'] = perclass['mAP']
         return info
 
     def score_voc(dmet, ovthresh=0.5, bias=1, method='voc2012', gids=None):
@@ -163,7 +303,8 @@ class DetectionMetrics(object):
             >>> print(dmet.score_voc()['mAP'])
             0.9399...
         """
-        from . import voc_metrics
+        # from . import voc_metrics
+        from netharn.metrics import voc_metrics
         if gids is None:
             gids = sorted(dmet._imgname_to_gid.values())
         # Convert true/pred detections into VOC format
@@ -177,7 +318,9 @@ class DetectionMetrics(object):
         return voc_scores
 
     def _to_coco(dmet):
-        # Convert to a coco representation
+        """
+        Convert to a coco representation of truth and predictions
+        """
         import ndsampler
         true = ndsampler.CocoDataset()
         pred = ndsampler.CocoDataset()
@@ -205,7 +348,10 @@ class DetectionMetrics(object):
 
         for gid, pred_dets in dmet.gid_to_pred_dets.items():
             pred_boxes = pred_dets.boxes
-            pred_scores = pred_dets.scores
+            if 'scores' in pred_dets.data:
+                pred_scores = pred_dets.scores
+            else:
+                pred_scores = np.ones(len(pred_dets))
             pred_cids = list(ub.take(idx_to_id, pred_dets.class_idxs))
             pred_xywh = pred_boxes.to_xywh().data.tolist()
             for bbox, cid, score in zip(pred_xywh, pred_cids, pred_scores):
@@ -213,7 +359,10 @@ class DetectionMetrics(object):
 
         for gid, true_dets in dmet.gid_to_true_dets.items():
             true_boxes = true_dets.boxes
-            true_weights = true_dets.weights
+            if 'weights' in true_dets.data:
+                true_weights = true_dets.weights
+            else:
+                true_weights = np.ones(len(true_boxes))
             true_cids = list(ub.take(idx_to_id, true_dets.class_idxs))
             true_xywh = true_boxes.to_xywh().data.tolist()
             for bbox, cid, weight in zip(true_xywh, true_cids, true_weights):
@@ -221,7 +370,7 @@ class DetectionMetrics(object):
 
         return pred, true
 
-    def score_coco(dmet):
+    def score_coco(dmet, verbose=0):
         """
         score using ms-coco method
 
@@ -239,7 +388,8 @@ class DetectionMetrics(object):
 
         pred, true = dmet._to_coco()
 
-        with nh.util.SupressPrint(coco, cocoeval):
+        quiet = verbose == 0
+        with nh.util.SupressPrint(coco, cocoeval, enabled=quiet):
             cocoGt = true._aspycoco()
             cocoDt = pred._aspycoco()
 
@@ -260,6 +410,7 @@ class DetectionMetrics(object):
             coco_ap = evaler.stats[1]
             coco_scores = {
                 'mAP': coco_ap,
+                'evalar_stats': evaler.stats
             }
         return coco_scores
 
@@ -296,16 +447,17 @@ class DetectionMetrics(object):
             >>> dmet = DetectionMetrics.demo(**kwargs)
             >>> print('dmet.classes = {}'.format(dmet.classes))
             dmet.classes = <CategoryTree(nNodes=12, maxDepth=3, maxBreadth=4...)>
-            >>> # Can grab nh.util.Detection object for any image
+            >>> # Can grab kwimage.Detection object for any image
             >>> print(dmet.true_detections(gid=0))
             <Detections(4)>
             >>> print(dmet.pred_detections(gid=0))
             <Detections(7)>
         """
-        import netharn as nh
+        import kwimage
+        import kwarray
         import ndsampler
         # Parse kwargs
-        rng = nh.util.ensure_rng(kwargs.get('rng', 0))
+        rng = kwarray.ensure_rng(kwargs.get('rng', 0))
         nclasses = kwargs.get('nclasses', 1)
         nimgs = kwargs.get('nimgs', 1)
         box_noise = kwargs.get('box_noise', 0)
@@ -352,7 +504,7 @@ class DetectionMetrics(object):
         frgnd_cx_RV = distributions.DiscreteUniform(
             1, nclasses + 1, rng=rng)
 
-        # Create the category heirarchy
+        # Create the category hierarcy
         graph = nx.DiGraph()
         graph.add_node('background', id=0)
         for cid in range(1, nclasses + 1):
@@ -380,7 +532,7 @@ class DetectionMetrics(object):
             dmet._register_imagename(imgname, gid)
 
             # Generate random ground truth detections
-            true_boxes = nh.util.Boxes.random(num=nboxes_, scale=scale,
+            true_boxes = kwimage.Boxes.random(num=nboxes_, scale=scale,
                                               anchors=anchors, rng=rng,
                                               format='cxywh')
             # Prevent 0 sized boxes: increase w/h by 1
@@ -412,7 +564,7 @@ class DetectionMetrics(object):
 
             # Add false positive boxes
             if n_fp_:
-                false_boxes = nh.util.Boxes.random(num=n_fp_, scale=scale,
+                false_boxes = kwimage.Boxes.random(num=n_fp_, scale=scale,
                                                    rng=rng, format='cxywh')
                 false_cxs = frgnd_cx_RV(n_fp_)
                 false_scores = false_score_RV(n_fp_)
@@ -423,14 +575,15 @@ class DetectionMetrics(object):
 
             # Transform the scores for the assigned class into a predicted
             # probability for each class. (Currently a bit hacky).
-            class_probs = _construct_probs(pred_cxs, pred_scores, classes, rng,
-                                           hacked=kwargs.get('hacked', 0))
+            class_probs = _demo_construct_probs(
+                pred_cxs, pred_scores, classes, rng,
+                hacked=kwargs.get('hacked', 0))
 
-            true_dets = nh.util.Detections(boxes=true_boxes,
+            true_dets = kwimage.Detections(boxes=true_boxes,
                                            class_idxs=true_cxs,
                                            weights=true_weights)
 
-            pred_dets = nh.util.Detections(boxes=pred_boxes,
+            pred_dets = kwimage.Detections(boxes=pred_boxes,
                                            class_idxs=pred_cxs,
                                            scores=pred_scores)
 
@@ -443,10 +596,13 @@ class DetectionMetrics(object):
         return dmet
 
 
-def _construct_probs(pred_cxs, pred_scores, classes, rng, hacked=1):
+def _demo_construct_probs(pred_cxs, pred_scores, classes, rng, hacked=1):
+    """
+    Constructs random probabilities for demo data
+    """
     # Setup probs such that the assigned class receives a probability
     # equal-(ish) to the assigned score.
-    # Its a bit tricky to setup heirarchical probs such that we get the
+    # Its a bit tricky to setup hierarchical probs such that we get the
     # scores in the right place. We punt and just make probs
     # conditional. The right thing to do would be to do this, and then
     # perterb ancestor categories such that the probability evenetually
@@ -515,3 +671,105 @@ def _construct_probs(pred_cxs, pred_scores, classes, rng, hacked=1):
     # print([p[x] for p, x in zip(class_probs, pred_cxs)])
     # print(pred_scores2)
     return class_probs
+
+
+def eval_detections_cli(**kw):
+    """
+    CommandLine:
+        xdoctest -m ~/code/netharn/netharn/metrics/detect_metrics.py eval_detections_cli
+    """
+    import scriptconfig as scfg
+    import ndsampler
+
+    class EvalDetectionCLI(scfg.Config):
+        default = {
+            'true': scfg.Path(None, help='true coco dataset'),
+            'pred': scfg.Path(None, help='predicted coco dataset'),
+            'out_dpath': scfg.Path('./out', help='output directory')
+        }
+        pass
+
+    config = EvalDetectionCLI()
+    cmdline = kw.pop('cmdline', True)
+    config.load(kw, cmdline=cmdline)
+
+    true_coco = ndsampler.CocoDataset(config['true'])
+    pred_coco = ndsampler.CocoDataset(config['pred'])
+
+    from netharn.metrics.detect_metrics import DetectionMetrics
+    dmet = DetectionMetrics.from_coco(true_coco, pred_coco)
+
+    voc_info = dmet.score_voc()
+
+    cls_info = voc_info['perclass'][0]
+    tp = cls_info['tp']
+    fp = cls_info['fp']
+    fn = cls_info['fn']
+
+    tpr = cls_info['tpr']
+    ppv = cls_info['ppv']
+    fp = cls_info['fp']
+
+    # Compute the MCC as TN->inf
+    thresh = cls_info['thresholds']
+
+    # https://erotemic.wordpress.com/2019/10/23/closed-form-of-the-mcc-when-tn-inf/
+    mcc_lim = tp / (np.sqrt(fn + tp) * np.sqrt(fp + tp))
+    f1 = 2 * (ppv * tpr) / (ppv + tpr)
+
+    draw = False
+    if draw:
+
+        mcc_idx = mcc_lim.argmax()
+        f1_idx = f1.argmax()
+
+        import kwplot
+        plt = kwplot.autoplt()
+
+        kwplot.multi_plot(
+            xdata=thresh,
+            ydata=mcc_lim,
+            xlabel='threshold',
+            ylabel='mcc*',
+            fnum=1, pnum=(1, 4, 1),
+            title='MCC*',
+            color=['blue'],
+        )
+        plt.plot(thresh[mcc_idx], mcc_lim[mcc_idx], 'r*', markersize=20)
+        plt.plot(thresh[f1_idx], mcc_lim[f1_idx], 'k*', markersize=20)
+
+        kwplot.multi_plot(
+            xdata=fp,
+            ydata=tpr,
+            xlabel='fp (fa)',
+            ylabel='tpr (pd)',
+            fnum=1, pnum=(1, 4, 2),
+            title='ROC',
+            color=['blue'],
+        )
+        plt.plot(fp[mcc_idx], tpr[mcc_idx], 'r*', markersize=20)
+        plt.plot(fp[f1_idx], tpr[f1_idx], 'k*', markersize=20)
+
+        kwplot.multi_plot(
+            xdata=tpr,
+            ydata=ppv,
+            xlabel='tpr (recall)',
+            ylabel='ppv (precision)',
+            fnum=1, pnum=(1, 4, 3),
+            title='PR',
+            color=['blue'],
+        )
+        plt.plot(tpr[mcc_idx], ppv[mcc_idx], 'r*', markersize=20)
+        plt.plot(tpr[f1_idx], ppv[f1_idx], 'k*', markersize=20)
+
+        kwplot.multi_plot(
+            xdata=thresh,
+            ydata=f1,
+            xlabel='threshold',
+            ylabel='f1',
+            fnum=1, pnum=(1, 4, 4),
+            title='F1',
+            color=['blue'],
+        )
+        plt.plot(thresh[mcc_idx], f1[mcc_idx], 'r*', markersize=20)
+        plt.plot(thresh[f1_idx], f1[f1_idx], 'k*', markersize=20)

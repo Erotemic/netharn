@@ -22,9 +22,8 @@ import ubelt as ub
 
 
 def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
-                              ovthresh=0.5, bg_cidx=-1, bias=0.0,
-                              classes=None, compat='ancestors',
-                              prioritize='iou'):
+                              ovthresh=0.5, bg_cidx=-1, bias=0.0, classes=None,
+                              compat='all', prioritize='iou'):
     """
     Create confusion vectors for detections by assigning to ground true boxes
 
@@ -45,27 +44,37 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
 
         bias : for computing overlap either 1 or 0
 
-        compat (str):
+        compat (str): can be ('mutex' | 'all' | 'ancestors').
             determines which pred boxes are allowed to match which true boxes.
-            If mutex, then pred boxes can only match true boxes of the same
-            class. If ancestors, then pred boxes can match true boxes that
-            match or have a coarser label. If all, then any pred can match any
-            true, regardless of if it is correct or not.
+            If 'mutex', then pred boxes can only match true boxes of the same
+            class. If 'ancestors', then pred boxes can match true boxes that
+            match or have a coarser label. If 'all', then any pred can match
+            any true, regardless of if the predicted class label matches or
+            not.
 
-        prioritize (str):
+        prioritize (str): can be ('iou' | 'class' | 'correct'}
             determines which class to assign to if mutiple boxes overlap.
             if prioritize is iou, then the true box with maximum iou (above
             ovthresh) will be chosen. If prioritize is class, then it will
             prefer matching a compatible class above a higher iou. If
-            prioritize is correct, then ancestors are preferred over
-            descendents, over unreleated.
+            prioritize is correct, then ancestors of the true class are
+            preferred over descendents of the true class, over unreleated
+            classes.
 
     TODO:
         - [ ] This is a bottleneck function. An implementation in C / C++ /
         Cython would likely improve the overall system.
 
     Returns:
-        dict: with relevant confusion vectors
+        dict: with relevant confusion vectors. This keys of this dict can be
+            interpreted as columns of a data frame. The `txs` / `pxs` columns
+            represent the indexes of the true / predicted annotations that were
+            assigned as matching. Additionally each row also contains the true
+            and predicted class index, the predicted score, the true weight and
+            the iou of the true and predicted boxes. A `txs` value of -1 means
+            that the predicted box was not assigned to a true annotation and a
+            `pxs` value of -1 means that the true annotation was not assigne to
+            any predicted annotation.
 
     Example:
         >>> import pandas as pd
@@ -205,9 +214,14 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
     isvalid_lookup = {px: ious > ovthresh for px, ious in iou_lookup.items()}
 
     # sort predictions by descending score
-    _pred_sortx = pred_dets.scores.argsort()[::-1]
+    if 'scores' in pred_dets.data:
+        _scores = pred_dets.scores
+    else:
+        _scores = np.ones(len(pred_dets))
+
+    _pred_sortx = _scores.argsort()[::-1]
     _pred_cxs = pred_dets.class_idxs.take(_pred_sortx, axis=0)
-    _pred_scores = pred_dets.scores.take(_pred_sortx, axis=0)
+    _pred_scores = _scores.take(_pred_sortx, axis=0)
 
     return _critical_loop(true_dets, pred_dets, _pred_sortx, _pred_cxs,
                           _pred_scores, iou_lookup, isvalid_lookup,
@@ -302,11 +316,14 @@ def _critical_loop(true_dets, pred_dets, _pred_sortx, _pred_cxs, _pred_scores,
             tx = unused_true_idxs[ovidx]
             true_unused[tx] = False  # mark this true box as used
 
-            weight = true_dets.weights[tx]
+            if 'weights' in true_dets.data:
+                weight = true_dets.weights[tx]
+            else:
+                weight = 1.0
             true_cx = true_dets.class_idxs[tx]
             # If the prediction is a finer-grained category than the truth
             # change the prediction to match the truth (because it is
-            # compatible). This is the key to heirarchical scoring.
+            # compatible). This is the key to hierarchical scoring.
             if true_cx in cx_to_ancestors[pred_cx]:
                 pred_cx = true_cx
 
@@ -336,14 +353,41 @@ def _critical_loop(true_dets, pred_dets, _pred_sortx, _pred_cxs, _pred_scores,
     bg_px = -1
     unused_txs = np.where(true_unused)[0]
     n = len(unused_txs)
+
+    unused_y_true = true_dets.class_idxs[unused_txs].tolist()
+    if 'weights' in true_dets.data:
+        unused_y_weight = true_dets.weights[unused_txs].tolist()
+    else:
+        unused_y_weight = [1.0] * n
+
     y_pred_raw.extend([-1] * n)
     y_pred.extend([-1] * n)
-    y_true.extend(true_dets.class_idxs[unused_txs].tolist())
+    y_true.extend(unused_y_true)
     y_score.extend([0.0] * n)
     y_iou.extend([-1] * n)
-    y_weight.extend(true_dets.weights[unused_txs].tolist())
+    y_weight.extend(unused_y_weight)
     y_pxs.extend([bg_px] * n)
     y_txs.extend(unused_txs.tolist())
+
+    # TODO:
+    # Can we augment these vectors to balance these false negatives with
+    # implicit false positives?
+
+    BALANCE_FN = True
+    if BALANCE_FN:
+        # balance each false negatives with a false positive
+        # Note: doing this is more correct, but is also more expensive Upweight
+        # these True negative examples to capture the fact that there are
+        # effectively infinite true negatives.
+        w_factor = 10000000
+        y_pred_raw.extend(unused_y_true)
+        y_pred.extend(unused_y_true)
+        y_true.extend([-1] * n)
+        y_score.extend([0.0] * n)
+        y_iou.extend([-1] * n)
+        y_weight.extend((np.array(unused_y_weight) * w_factor).tolist())
+        y_pxs.extend([bg_px] * n)
+        y_txs.extend([bg_px] * n)
 
     y = {
         'pred_raw': y_pred_raw,

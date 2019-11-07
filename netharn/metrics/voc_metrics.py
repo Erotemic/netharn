@@ -5,15 +5,34 @@ import ubelt as ub
 
 
 class VOC_Metrics(object):
+    """
+    API to compute object detection scores using Pascal VOC evaluation method.
+
+    To use, add true and predicted detections for each image and then run the
+    `score` function.
+
+    Attributes:
+        recs (Dict[int, List[dict]): true boxes for each image.
+            maps image ids to a list of records within that image.
+            Each record is a tlbr bbox, a difficult flag, and a class name.
+
+        cx_to_lines (Dict[int, List]): VOC formatted prediction preditions.
+            mapping from class index to all predictions for that category.
+            Each "line" is a list of [
+                [<imgid>, <score>, <tl_x>, <tl_y>, <br_x>, <br_y>]].
+    """
     def __init__(self):
         self.recs = {}
         self.cx_to_lines = ub.ddict(list)
 
     def add_truth(self, true_dets, gid):
         self.recs[gid] = []
+        true_weights = true_dets.data.get('weights', None)
+        if true_weights is None:
+            true_weights = [1.0] * len(true_dets)
         for bbox, cx, weight in zip(true_dets.boxes.to_tlbr().data,
                                     true_dets.class_idxs,
-                                    true_dets.weights):
+                                    true_weights):
             self.recs[gid].append({
                 'bbox': bbox,
                 'difficult': weight < .5,
@@ -21,21 +40,28 @@ class VOC_Metrics(object):
             })
 
     def add_predictions(self, pred_dets, gid):
+        pred_scores = pred_dets.data.get('scores', None)
+        if pred_scores is None:
+            pred_scores = [1.0] * len(pred_dets)
         for bbox, cx, score in zip(pred_dets.boxes.to_tlbr().data,
                                    pred_dets.class_idxs,
-                                   pred_dets.scores):
-            self.cx_to_lines[cx].append([gid, score] + list(bbox))
+                                   pred_scores):
+            voc_line = [gid, score] + list(bbox)
+            self.cx_to_lines[cx].append(voc_line)
 
     def score(self, ovthresh=0.5, bias=1, method='voc2012'):
-        perclass = ub.ddict(dict)
+        """
+        Compute VOC scores for every category
+        """
+        perclass = {}
         for cx in self.cx_to_lines.keys():
             lines = self.cx_to_lines[cx]
             classname = cx
-            rec, prec, ap = _voc_eval(lines, self.recs, classname,
-                                      ovthresh=ovthresh, bias=bias,
-                                      method=method)
-            perclass[cx]['pr'] = (rec, prec)
-            perclass[cx]['ap'] = ap
+            info = _voc_eval(lines, self.recs, classname, ovthresh=ovthresh,
+                             bias=bias, method=method)
+            perclass[cx] = info
+            # perclass[cx]['pr'] = (info['tpr'], info['ppv'])
+            # perclass[cx]['ap'] = info['ap']
 
         mAP = np.nanmean([d['ap'] for d in perclass.values()])
         voc_scores = {
@@ -145,16 +171,37 @@ def _pr_curves(y, method='voc2012'):
     return ap, prec, rec
 
 
-def _voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012', bias=1):
+def _voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012',
+              bias=1.0):
     """
-    Raw replication of matlab implementation of creating assignments and
-    the resulting PR-curves and AP. Based on MATLAB code [1].
+    VOC AP evaluation for a single category.
+
+    Args:
+        lines (List[list]): VOC formatted predictions.  Each "line" is a list
+            of [[<imgid>, <score>, <tl_x>, <tl_y>, <br_x>, <br_y>]].
+
+        recs (Dict[int, List[dict]): true boxes for each image.
+            maps image ids to a list of records within that image.
+            Each record is a tlbr bbox, a difficult flag, and a class name.
+
+        classname (str): the category to evaluate.
+
+        method (str): code for how the AP is computed.
+
+        bias (float): either 1.0 or 0.0.
+
+    Returns:
+        Dict: info about the evaluation containing AP. Contains fp, tp, prec,
+            rec,
+
+    Notes:
+        Raw replication of matlab implementation of creating assignments and
+        the resulting PR-curves and AP. Based on MATLAB code [1].
 
     References:
         [1] http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCdevkit_18-May-2011.tar
     """
     import copy
-    # imagenames = ([x.strip().split(' ')[0] for x in lines])
     imagenames = ([x[0] for x in lines])
     recs2 = copy.deepcopy(recs)
 
@@ -177,14 +224,11 @@ def _voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012', bias=1):
                                  'difficult': difficult,
                                  'det': det}
 
+    # Unlike the original implementation our input is presplit
     splitlines = lines
     image_ids = [x[0] for x in splitlines]
     confidence = np.array([x[1] for x in splitlines])
     BB = np.array([[z for z in x[2:]] for x in splitlines])
-
-    # splitlines = [x.strip().split(' ') for x in lines]
-    # confidence = np.array([float(x[1]) for x in splitlines])
-    # BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
 
     # sort by confidence
     sorted_ind = np.argsort(-confidence)
@@ -200,7 +244,10 @@ def _voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012', bias=1):
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', message='invalid .* true_divide')
 
+        # For each prediction
         for d in range(nd):
+
+            # Check if it overlaps any true box.
             R = class_recs[image_ids[d]]
             bb = BB[d, :].astype(float)
             ovmax = -np.inf
@@ -229,6 +276,7 @@ def _voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012', bias=1):
             if ovmax > ovthresh:
                 if not R['difficult'][jmax]:
                     if not R['det'][jmax]:
+                        # Mark that this true box has been used.
                         tp[d] = 1.
                         R['det'][jmax] = 1
                     else:
@@ -236,22 +284,36 @@ def _voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012', bias=1):
             else:
                 fp[d] = 1.
 
+        thresholds = confidence[sorted_ind]
         # compute precision recall
         fp = np.cumsum(fp)
         tp = np.cumsum(tp)
+        fn = npos - tp
+
         rec = tp / float(npos)
         # avoid divide by zero in case the first detection matches a difficult
         # ground truth
         prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
 
         ap = _voc_ave_precision(rec=rec, prec=prec, method=method)
-    return rec, prec, ap
+
+    info = {
+        'fp': fp,
+        'tp': tp,
+        'fn': fn,
+        'tpr': rec,    # (true positive rate) == (recall)
+        'ppv': prec,  # (positive predictive value) == (precision)
+        'thresholds': thresholds,
+        'npos': npos,
+        'ap': ap,
+    }
+    return info
 
 
 def _voc_ave_precision(rec, prec, method='voc2012'):
     """
     Compute AP from precision and recall
-    Based on MATLAB code [1,2,3].
+    Based on MATLAB code in [1]_, [2]_, and [3]_.
 
     Args:
         rec (ndarray): recall
@@ -262,9 +324,9 @@ def _voc_ave_precision(rec, prec, method='voc2012'):
         float: ap: average precision
 
     References:
-        [1] http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCdevkit_18-May-2011.tar
-        [2] https://github.com/rbgirshick/voc-dpm/blob/master/test/pascal_eval.m
-        [3] https://github.com/rbgirshick/voc-dpm/blob/c0b88564bd668bcc6216bbffe96cb061613be768/utils/bootstrap/VOCevaldet_bootstrap.m
+        .. [1] http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCdevkit_18-May-2011.tar
+        .. [2] https://github.com/rbgirshick/voc-dpm/blob/master/test/pascal_eval.m
+        .. [3] https://github.com/rbgirshick/voc-dpm/blob/c0b88564bd668bcc6216bbffe96cb061613be768/utils/bootstrap/VOCevaldet_bootstrap.m
     """
     if method == 'voc2007':
         # 11 point metric
@@ -291,10 +353,13 @@ def _voc_ave_precision(rec, prec, method='voc2012'):
 
         # and sum (\Delta recall) * prec
         ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+    elif method == 'sklearn':
+        # sklearn metric
+        # Note: the voc rec, prec dont extend all the way to 1, so this AUC
+        # might not be accurate.
+        from sklearn.metrics import auc
+        ap = auc(rec, prec)
+        # ap = -np.sum(np.diff(rec[::-1]) * np.array(prec[::-1])[:-1])
     else:
         raise KeyError(method)
-
-    if False:
-        # sklearn metric
-        ap = -np.sum(np.diff(rec[::-1]) * np.array(prec[::-1])[:-1])
     return ap

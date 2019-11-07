@@ -158,3 +158,24 @@ def _pr_curves(y):
             is_correct, y['score'], sample_weight=y['weight'],
         )
     return ap, prec, rec
+
+
+def _average_precision(tpr, ppv):
+    """
+    Compute average precision of a binary PR curve. This is simply the area
+    under the curve.
+
+    Args:
+        tpr (ndarray): true positive rate - aka recall
+        ppv (ndarray): positive predictive value - aka precision
+    """
+    # The average precision is simply the area under the PR curve.
+    xdata = tpr
+    ydata = ppv
+    if xdata[0] > xdata[-1]:
+        xdata = xdata[::-1]
+        ydata = ydata[::-1]
+    # Note: we could simply use sklearn.metrics.auc, which has more robust
+    # checks.
+    ap = np.trapz(y=ydata, x=xdata)
+    return ap

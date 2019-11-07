@@ -434,6 +434,9 @@ class Closer(ub.NiceRepr):
 
                         try:
                             native_modpath = ub.modname_to_modpath(d.native_modname)
+                            if native_modpath is None:
+                                raise Exception('Cannot find the module path for modname={!r}. '
+                                                'Are you missing an __init__.py?'.format(d.native_modname))
                             sub_closer = Closer(closer.tag + '.sub')
                             sub_closer.add_static(d.name, native_modpath)
                             # sub_visitor = sub_closer.visitors[d.native_modname]

@@ -205,6 +205,9 @@ class ConfusionVectors(object):
             >>> class_idxs = list(dmet.classes.node_to_idx.values())
             >>> binvecs = self.binarize_peritem()
         """
+        import warnings
+        warnings.warn('binarize_peritem DOES NOT PRODUCE CORRECT RESULTS')
+
         import netharn as nh
         bin_data = nh.util.DataFrameArray({
             'is_true': self.data['true'] == self.data['pred'],
@@ -217,9 +220,15 @@ class ConfusionVectors(object):
         binvecs = BinaryConfusionVectors(bin_data)
         return binvecs
 
-    def binarize_ovr(self, mode=0):
+    def binarize_ovr(self, mode=1):
         """
         Transforms self into one-vs-rest BinaryConfusionVectors for each category.
+
+        Args:
+            mode (int): 0 for heirarchy aware or 1 for voc like
+
+        Returns:
+            Dict[int, BinaryConfusionVectors]: cx_to_binvecs
 
         Notes:
             Consider we want to measure how well we can classify beagles.
@@ -252,17 +261,16 @@ class ConfusionVectors(object):
             case. All other cases are negative. The scores come from the
             predicted probability of beagle, which must be remembered outside
             the dataframe.
-
-        Returns:
-            Dict[int, BinaryConfusionVectors]: cx_to_binvecs
         """
         import netharn as nh
-        if self.probs is None:
-            raise ValueError('cannot binarize without probs')
 
         classes = self.classes
         data = self.data
-        pdist = classes.idx_pairwise_distance()
+
+        if mode == 0:
+            if self.probs is None:
+                raise ValueError('cannot binarize in mode=0 without probs')
+            pdist = classes.idx_pairwise_distance()
 
         cx_to_binvecs = {}
         for cx in range(len(classes)):
@@ -270,6 +278,9 @@ class ConfusionVectors(object):
                 continue
 
             if mode == 0:
+                # NOTE: THIS CALCLUATION MIGHT BE WRONG. MANY OTHERS
+                # IN THIS FILE WERE, AND I HAVENT CHECKED THIS ONE YET
+
                 # Lookup original probability predictions for the class of interest
                 new_scores = self.probs[:, cx]
 
@@ -305,7 +316,7 @@ class ConfusionVectors(object):
                 bin_cfsn = BinaryConfusionVectors(bin_data, cx, classes)
 
             elif mode == 1:
-                # More VOC-like, not heirarchy friendly
+                # More VOC-like, not hierarcy friendly
 
                 flags1 = data['pred'] == cx
                 flags2 = data['true'] == cx
@@ -314,7 +325,11 @@ class ConfusionVectors(object):
                 y_group = data.compress(flags)
 
                 bin_data = {
-                    'is_true': y_group['pred'] == y_group['true'],
+                    # NOTE: THIS USED TO CHECK IF PRED==TRUE BUT
+                    # IT REALLY NEEDS TO KNOW IF TRUE IS THE LABEL OF INTEREST
+                    # 'is_true': y_group['pred'] == y_group['true'],
+                    'is_true': y_group['true'] == cx,
+
                     'pred_score': y_group['score'],
                     'weight': y_group['weight'],
                     'txs': y_group['txs'],
@@ -376,6 +391,14 @@ class BinaryConfusionVectors(object):
         `is_true` - if the row is an instance of class `classes[cx]`
         `pred_score` - the predicted probability of class `classes[cx]`, and
         `weight` - sample weight of the example
+
+    Example:
+        {'is_true': {0: True, 1: True, 2: False, 3: False, 4: False, 5: False, 6: False, 7: False},
+        'pred_score': {0: 0.979, 1: 0.97035, 2: 0.88388, 3: 0.7680, 4: 0.435, 5: 0.2763, 6: 0.1799, 7: 0.0},
+        'weight': {0: 0.9, 1: 0.9, 2: 1.0, 3: 1.0, 4: 1.0, 5: 1.0, 6: 1.0, 7: 0.9},
+        'txs': {0: 2, 1: 0, 2: -1, 3: -1, 4: -1, 5: -1, 6: -1, 7: 1},
+        'pxs': {0: 1, 1: 0, 2: 2, 3: 3, 4: 6, 5: 5, 6: 4, 7: -1},
+        'gid': {0: 61, 1: 61, 2: 61, 3: 61, 4: 61, 5: 61, 6: 61, 7: 61}}
     """
 
     def __init__(self, data, cx=None, classes=None):
@@ -399,6 +422,11 @@ class BinaryConfusionVectors(object):
                 sample_weight=data['weight'],
             )
 
+        # FIXME
+        # USING true == pred IS WRONG.
+        # when pred=-1 and true=0 the score=0, but is_true=False.
+        # THIS CAUSES the total number of TRUE sklearn vecs to be incorrect
+
         # Get the total weight (typically number of) positive and negative
         # examples of this class
         realpos_total = (data['is_true'] * data['weight']).sum()
@@ -407,8 +435,8 @@ class BinaryConfusionVectors(object):
 
         prs_info = {
             'ap': ap,
-            'pr': (prec, rec),
-            'ppv': prec,  # (positive predictive value) == (precision)
+            # 'pr': (prec, rec),
+            'ppv': prec,   # (positive predictive value) == (precision)
             'tpr': rec,    # (true positive rate) == (recall)
             'thresholds': thresholds,
             'nsupport': nsupport,

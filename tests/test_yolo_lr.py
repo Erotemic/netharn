@@ -120,7 +120,7 @@ def test_yolo_lr():
     except Failpoint as ex:
         pass
     print('\nFAILPOINT REACHED\n')
-    failpoint_lrs = harn._current_lrs()
+    failpoint_lrs = set(harn._current_lrs())
 
     old_harn = harn
 
@@ -132,7 +132,7 @@ def test_yolo_lr():
     harn.xdata = old_harn.xdata
     harn.ydata = old_harn.ydata
 
-    restart_lrs = harn._current_lrs()
+    restart_lrs = set(harn._current_lrs())
     print('failpoint_lrs = {!r}'.format(failpoint_lrs))
     print('restart_lrs   = {!r}'.format(restart_lrs))
 
