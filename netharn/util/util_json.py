@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import json
+import six
 import numpy as np
 import ubelt as ub
 import pandas as pd
@@ -41,8 +42,9 @@ class LossyJSONEncoder(json.JSONEncoder):
         >>>         return {self.__class__.__name__: self.__dict__}
         >>> self = MyClass()
         >>> text = json.dumps(self, cls=LossyJSONEncoder)
-        >>> print(text)
-        {"MyClass": {"foo": "bar", "spam": 32, "eggs": [32]}}
+        >>> reloaded = json.loads(text)
+        >>> expected = {'MyClass': {'foo': 'bar', 'spam': 32, 'eggs': [32]}}
+        >>> assert reloaded == expected
     """
     def default(self, obj):
         if hasattr(obj, '__json__'):
@@ -53,7 +55,7 @@ class LossyJSONEncoder(json.JSONEncoder):
             return obj.item()
         if isinstance(obj, np.ndarray):
             return obj.tolist()
-        return super().default(obj)
+        return super(LossyJSONEncoder, self).default(obj)
         # return json.JSONEncoder.default(self, obj)
 
 
@@ -113,7 +115,7 @@ def read_json(fpath):
     """
     Write human readable json files
     """
-    if isinstance(fpath, str):
+    if isinstance(fpath, six.string_types):
         return json.load(open(fpath, 'r'))
     else:
         return json.load(fpath)

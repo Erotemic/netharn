@@ -15,7 +15,6 @@ import numpy as np  # NOQA
 from torch.autograd import Variable
 from netharn import util
 from netharn.util import profiler
-import ubelt as ub
 
 __all__ = ['RegionLoss']
 
@@ -66,6 +65,7 @@ class RegionLoss(BaseLossWithCudaState):
         python ~/code/netharn/netharn/models/yolo2/light_region_loss.py RegionLoss:0
 
     Example:
+        >>> # DISABLE_DOCTEST
         >>> from netharn.models.yolo2.light_yolo import Yolo
         >>> torch.random.manual_seed(0)
         >>> network = Yolo(num_classes=2, conf_thresh=4e-2)
@@ -99,6 +99,7 @@ class RegionLoss(BaseLossWithCudaState):
         output.sum() = 2.15
 
     Example:
+        >>> # DISABLE_DOCTEST
         >>> from netharn.models.yolo2.light_yolo import Yolo
         >>> torch.random.manual_seed(0)
         >>> network = Yolo(num_classes=2, conf_thresh=4e-2)
@@ -122,16 +123,17 @@ class RegionLoss(BaseLossWithCudaState):
 
     def __init__(self, num_classes, anchors, coord_scale=1.0,
                  noobject_scale=1.0, object_scale=5.0, class_scale=1.0,
-                 thresh=0.6):
-        super().__init__()
+                 thresh=0.6, seen_thresh=12800,
+                 small_boxes=False,
+                 mse_factor=0.5):
+        super(RegionLoss, self).__init__()
 
         self.num_classes = num_classes
 
+        self.seen_thresh = seen_thresh
+
         self.anchors = torch.Tensor(anchors)
         self.num_anchors = len(anchors)
-
-        # self.anchor_step = len(self.anchors) // self.num_anchors
-        self.reduction = 32             # input_dim/output_dim
 
         self.coord_scale = coord_scale
         self.noobject_scale = noobject_scale
@@ -152,12 +154,8 @@ class RegionLoss(BaseLossWithCudaState):
         rel_anchors_cxywh = torch.cat([torch.zeros_like(self.anchors), self.anchors], 1)
         self.rel_anchors_boxes = util.Boxes(rel_anchors_cxywh, 'cxywh')
 
-        self._prev_pred_init = None
-        self._prev_pred_dim = None
-
-        self.iou_mode = None
-
-        self.ORIG = not ub.argflag('--eav')
+        self.small_boxes = small_boxes
+        self.mse_factor = mse_factor
 
     @profiler.profile
     def forward(self, output, target, seen=0, gt_weights=None):
@@ -176,6 +174,7 @@ class RegionLoss(BaseLossWithCudaState):
             seen (int): number of training batches the networks has "seen"
 
         Example:
+            >>> # DISABLE_DOCTEST
             >>> nC = 2
             >>> self = RegionLoss(num_classes=nC, anchors=np.array([[1, 1]]))
             >>> nA = len(self.anchors)
@@ -243,13 +242,7 @@ class RegionLoss(BaseLossWithCudaState):
             if nC > 1:
                 masked_tcls = tcls[cls_mask].view(-1).long()
 
-        # tcoord = Variable(tcoord, requires_grad=False)
-        # tconf = Variable(tconf, requires_grad=False)
-        # coord_mask = Variable(coord_mask, requires_grad=False)
-        # conf_mask = Variable(conf_mask, requires_grad=False)
         if nC > 1:
-            # tcls = Variable(tcls, requires_grad=False)
-
             # Swaps the dimensions to be [B, A, H, W, C]
             # (Allowed because 3rd dimension is guarneteed to be 1 here)
             cls_probs_mask = cls_mask.reshape(nB, nA, nH, nW, 1).repeat(1, 1, 1, 1, nC)
@@ -258,22 +251,20 @@ class RegionLoss(BaseLossWithCudaState):
 
         # Compute losses
 
-        mse_factor = 0.5 if self.ORIG else 1.0
-        cls_factor = 1.0 if self.ORIG else 2.0
-
         # Bounding Box Loss
         # To be compatible with the original YOLO code we add a seemingly
         # random multiply by .5 in our MSE computation so the torch autodiff
-        # algorithm produces the same result as darknet.
-        loss_coord = mse_factor * self.coord_scale * self.coord_mse(coord_mask * coord, coord_mask * tcoord) / nB
+        # algorithm produces the same result as darknet. (but maybe its not a
+        # good idea?)
+        loss_coord = self.mse_factor * self.coord_scale * self.coord_mse(coord_mask * coord, coord_mask * tcoord) / nB
 
         # Objectness Loss
         # object_scale and noobject_scale are incorporated in conf_mask.
-        loss_conf = mse_factor * self.conf_mse(conf_mask * conf, conf_mask * tconf) / nB
+        loss_conf = self.mse_factor * self.conf_mse(conf_mask * conf, conf_mask * tconf) / nB
 
         # Class Loss
         if nC > 1 and masked_cls_probs.numel():
-            loss_cls = cls_factor * self.class_scale * self.cls_critrion(masked_cls_probs, masked_tcls) / nB
+            loss_cls = self.class_scale * self.cls_critrion(masked_cls_probs, masked_tcls) / nB
             self.loss_cls = float(loss_cls.data.cpu().numpy())
         else:
             self.loss_cls = loss_cls = 0
@@ -385,7 +376,7 @@ class RegionLoss(BaseLossWithCudaState):
         # relative center of a grid cell) fill the mask with ones so all
         # outputs are punished for not predicting center anchor locations ---
         # unless tcoord is overriden by a real groundtruth target later on.
-        if seen < 12800:
+        if seen < self.seen_thresh:
             # PJreddies version
             # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L254
 
@@ -393,14 +384,14 @@ class RegionLoss(BaseLossWithCudaState):
             tcoord[:, :, 0:2, :, :].fill_(0.5)
             # By default encourage the network to predict no scale (in logspace)
             tcoord[:, :, 2:4, :, :].fill_(0.0)
-            # In the warmup phase we care about changing the coords to be
-            # exactly the anchors if they don't predict anything, but the
-            # weight is only 0.01, set it to 0.01 / self.coord_scale.
-            # Note we will apply the required sqrt later
 
-            if self.ORIG and False:
-                # This hurts even thought it seems like its what darknet does
+            if False:
+                # In the warmup phase we care about changing the coords to be
+                # exactly the anchors if they don't predict anything, but the
+                # weight is only 0.01, set it to 0.01 / self.coord_scale.
+                # Note we will apply the required sqrt later
                 coord_mask.fill_((0.01 / self.coord_scale))
+                # This hurts even thought it seems like its what darknet does
             else:
                 coord_mask.fill_(1)
 
@@ -441,7 +432,7 @@ class RegionLoss(BaseLossWithCudaState):
         # Undocumented darknet detail: multiply coord weight by two minus the
         # area of the true box in normalized coordinates.  the square root is
         # because the weight.
-        if self.ORIG:
+        if self.small_boxes:
             gt_coord_weights = (gt_weights * (2.0 - gt_boxes_norm.area[..., 0]))
         else:
             gt_coord_weights = gt_weights
@@ -476,7 +467,8 @@ class RegionLoss(BaseLossWithCudaState):
             # NOTE: IOU computation is the bottleneck in this function
 
             # Assign groundtruth boxes to anchor boxes
-            cur_anchor_gt_ious = self.rel_anchors_boxes.ious(cur_rel_gt_boxes, bias=0)
+            cur_anchor_gt_ious = self.rel_anchors_boxes.ious(
+                cur_rel_gt_boxes, bias=0)
             _, cur_true_anchor_axs = cur_anchor_gt_ious.max(dim=0)  # best_ns in YOLO
 
             # Get the anchor (w,h) assigned to each true object
@@ -497,6 +489,8 @@ class RegionLoss(BaseLossWithCudaState):
             # Broadcast the loop over true boxes
             ####
             # Convert the true box coordinates to be comparable with pred output
+            # * translate each gtbox to be relative to its assignd gridcell
+            # * make w/h relative to anchor box w / h and convert to logspace
             cur_tcoord_x = cur_gx - cur_true_is.float()
             cur_tcoord_y = cur_gy - cur_true_js.float()
             cur_tcoord_w = (cur_gw / cur_true_anchor_w).log()
@@ -508,9 +502,6 @@ class RegionLoss(BaseLossWithCudaState):
             # Get the ious with the assigned boxes for each truth
             cur_true_ious = cur_pred_true_ious.view(-1)[iou_raveled_idxs]
 
-            # import ubelt
-            # for timer in ubelt.Timerit(100, bestof=10, label='time'):
-            #     with timer:
             raveled_idxs = np.ravel_multi_index([
                 [bx], cur_true_anchor_axs, [0], cur_true_js, cur_true_is
             ], coord_mask.shape)
@@ -519,94 +510,28 @@ class RegionLoss(BaseLossWithCudaState):
             raveled_idxs_b0 = np.ravel_multi_index([
                 [bx], cur_true_anchor_axs, [0], cur_true_js, cur_true_is
             ], tcoord.shape)
-            # raveled_idxs_b1 = np.ravel_multi_index([
-            #     [bx], cur_true_anchor_axs, [1], cur_true_js, cur_true_is
-            # ], tcoord.shape)
-            # raveled_idxs_b2 = np.ravel_multi_index([
-            #     [bx], cur_true_anchor_axs, [2], cur_true_js, cur_true_is
-            # ], tcoord.shape)
-            # raveled_idxs_b3 = np.ravel_multi_index([
-            #     [bx], cur_true_anchor_axs, [3], cur_true_js, cur_true_is
-            # ], tcoord.shape)
-
+            # A bit faster than ravel_multi_indexes with [1], [2], and [3]
             raveled_idxs_b1 = raveled_idxs_b0 + nPixels
             raveled_idxs_b2 = raveled_idxs_b0 + nPixels * 2
             raveled_idxs_b3 = raveled_idxs_b0 + nPixels * 3
             # --------------------------------------------
 
             coord_mask.view(-1)[raveled_idxs] = cur_true_coord_weights
-            cls_mask.view(-1)[raveled_idxs] = cur_true_cls_weights
-            conf_mask.view(-1)[raveled_idxs] = cur_true_conf_weights
+            cls_mask.view(-1)[raveled_idxs]   = cur_true_cls_weights
+            conf_mask.view(-1)[raveled_idxs]  = cur_true_conf_weights
 
             tcoord.view(-1)[raveled_idxs_b0] = cur_tcoord_x
             tcoord.view(-1)[raveled_idxs_b1] = cur_tcoord_y
             tcoord.view(-1)[raveled_idxs_b2] = cur_tcoord_w
             tcoord.view(-1)[raveled_idxs_b3] = cur_tcoord_h
 
-            tcls.view(-1)[raveled_idxs] = cur_gt_cls
+            tcls.view(-1)[raveled_idxs]  = cur_gt_cls
             tconf.view(-1)[raveled_idxs] = cur_true_ious
 
-            # [cur_true_anchor_axs, cur_true_js, cur_true_is]
-
-            # import ubelt
-            # for timer in ubelt.Timerit(100, bestof=10, label='time'):
-            #     with timer:
-            # if False:
-            #     for t in range(cur_gt_boxes.shape[0]):
-            #         coord_weight = cur_true_coord_weights[t]
-            #         cls_weight = cur_true_cls_weights[t]
-            #         conf_weight = cur_true_conf_weights[t]
-            #         # This ground truth's grid cell
-            #         gi = cur_true_is[t].item()
-            #         gj = cur_true_js[t].item()
-
-            #         gcls = cur_gt_cls[t]
-
-            #         # The assigned (best) anchor index
-            #         ax = cur_true_anchor_axs[t].item()
-
-            #         # The prediction will be punished if it does not match this true box
-            #         # pred_box_ = cur_pred_boxes[best_n, gj, gi]
-
-            #         # Get the precomputed iou of the truth with this box
-            #         # corresponding to the assigned anchor and grid cell
-            #         # iou = cur_pred_true_ious[ax, gj, gi, t]
-            #         iou = cur_true_ious[t]
-
-            #         # Mark that we will care about the predicted box with some weight
-            #         coord_mask[bx, ax, 0, gj, gi] = coord_weight
-
-            #         # PJReddie delta_region_class:
-            #         # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L112
-            #         # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L314
-            #         cls_mask[bx, ax, 0, gj, gi] = cls_weight
-
-            #         conf_mask[bx, ax, 0, gj, gi] = conf_weight
-
-            #         # The true box is converted into coordinates comparable to the
-            #         # network outputs by:
-            #         # (1) we center the true box on its assigned grid cell
-            #         # (2) we divide its width and height by its assigned anchor
-            #         # (3) we take the log of width and height because the raw
-            #         #     network wh outputs are in logspace.
-            #         tcoord[bx, ax, 0, gj, gi] = cur_tcoord_x[t]
-            #         tcoord[bx, ax, 1, gj, gi] = cur_tcoord_y[t]
-            #         tcoord[bx, ax, 2, gj, gi] = cur_tcoord_w[t]
-            #         tcoord[bx, ax, 3, gj, gi] = cur_tcoord_h[t]
-            #         tconf[bx, ax, 0, gj, gi] = iou  # if rescore else 1
-            #         tcls[bx, ax, 0, gj, gi] = gcls
-
         # because coord and conf masks are witin this MSE we need to sqrt them
-        if self.ORIG:
-            coord_mask = coord_mask.sqrt()
+        coord_mask = coord_mask.sqrt()
         conf_mask = conf_mask.sqrt()
         coord_mask = coord_mask.expand_as(tcoord)
-
-        # masked_tcls = tcls[cls_mask].view(-1).long()
-        # cls_probs_mask = cls_mask.reshape(nB, nA, nH, nW, 1).repeat(1, 1, 1, 1, nC)
-        # cls_probs_mask = Variable(cls_probs_mask, requires_grad=False)
-        # masked_cls_probs = cls_probs[cls_probs_mask].view(-1, nC)
-
         return coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls
 
 

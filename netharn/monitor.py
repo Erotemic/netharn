@@ -183,7 +183,7 @@ class Monitor(object):
         prev_loss = monitor.smooth_metrics[-1]['loss']
         best_loss = monitor.best_smooth_metrics['loss']
 
-        message = 'vloss: {:.4f} (n_bad_epochs={:2d}, best={:.4f})'.format(
+        message = 'vloss: {:.4f} (n_bad={:02d}, best={:.4f})'.format(
             prev_loss, monitor.n_bad_epochs, best_loss,
         )
         if monitor.patience is None:
@@ -204,10 +204,12 @@ class Monitor(object):
 
         Example:
             >>> monitor = demodata_monitor()
-            >>> monitor.best_epochs(5)
-            {'loss': array([297, 299, 298, 296, 295]),
-             'miou': array([299, 298, 297, 296, 295])}
-
+            >>> metric_ranks = monitor.best_epochs(5)
+            >>> print(ub.repr2(metric_ranks, with_dtype=False, nl=1))
+            {
+                'loss': np.array([297, 299, 298, 296, 295]),
+                'miou': np.array([299, 298, 297, 296, 295]),
+            }
         """
         metric_ranks = {}
         for key in it.chain(monitor.minimize, monitor.maximize):

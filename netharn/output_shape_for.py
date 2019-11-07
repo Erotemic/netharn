@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import math
 import torch
 import torch.nn as nn
@@ -115,8 +117,8 @@ class OutputShapeFor(object):
         """
         math = OutputShapeFor.math
         (N, C, H_in, W_in) = input_shape
-        H_out = math.floor(H_in * module.scale_factor)
-        W_out = math.floor(W_in  * module.scale_factor)
+        H_out = int(math.floor(H_in * module.scale_factor))
+        W_out = int(math.floor(W_in * module.scale_factor))
         output_shape = SHAPE_CLS([N, C, H_out, W_out])
         return output_shape
 
@@ -142,12 +144,14 @@ class OutputShapeFor(object):
             output_shape = (1, 3, 100, 100, 100)
         """
         math = OutputShapeFor.math
-        N, C, *DIMS_in = input_shape
+        # N, C, *DIMS_in = input_shape
+        N, C = input_shape[0:2]
+        DIMS_in = input_shape[2:]
 
         if module.size is None:
             scale_factor = ensure_iterablen(module.scale_factor, len(DIMS_in))
             DIMS_out = [
-                math.floor(D_in * scale_factor[i])
+                int(math.floor(D_in * scale_factor[i]))
                 for i, D_in in enumerate(DIMS_in)
             ]
         else:
@@ -242,7 +246,10 @@ class OutputShapeFor(object):
             >>> print('output_shape = {!r}'.format(output_shape))
             output_shape = (1, 11, 23, 30, 30)
         """
-        N, C_in, *DIMS_in = input_shape
+        # N, C_in, *DIMS_in = input_shape
+        N, C_in = input_shape[0:2]
+        DIMS_in = input_shape[2:]
+
         C_out = module.out_channels
         stride = module.stride
         kernel_size = module.kernel_size
@@ -273,7 +280,10 @@ class OutputShapeFor(object):
             output_shape = (1, 11, 254, 254)
         """
         math = OutputShapeFor.math
-        N, C_in, *DIMS_in = input_shape
+        # N, C_in, *DIMS_in = input_shape
+        N, C_in = input_shape[0:2]
+        DIMS_in = input_shape[2:]
+
         C_out = module.out_channels
         padding = module.padding
         stride = module.stride
@@ -281,7 +291,7 @@ class OutputShapeFor(object):
         kernel_size = module.kernel_size
 
         DIMS_out = [
-            math.floor((D_in  + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1)
+            int(math.floor((D_in  + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1))
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C_out] + DIMS_out)
@@ -310,7 +320,9 @@ class OutputShapeFor(object):
             :math:`W_{out} = floor((W_{in}  + 2 * padding[1] - dilation[1] * (kernel\_size[1] - 1) - 1) / stride[1] + 1)`
         """
         math = OutputShapeFor.math
-        N, C, *DIMS_in = input_shape
+        # N, C, *DIMS_in = input_shape
+        N, C = input_shape[0:2]
+        DIMS_in = input_shape[2:]
 
         padding = ensure_iterablen(module.padding, n)
         stride = ensure_iterablen(module.stride, n)
@@ -318,7 +330,7 @@ class OutputShapeFor(object):
         kernel_size = ensure_iterablen(module.kernel_size, n)
 
         DIMS_out = [
-            math.floor((D_in  + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1)
+            int(math.floor((D_in  + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1) / stride[i] + 1))
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C] + DIMS_out)
@@ -335,14 +347,16 @@ class OutputShapeFor(object):
                 :math:`W_{out} = floor((W_{in}  + 2 * padding[1] - kernel\_size[1]) / stride[1] + 1)`
         """
         math = OutputShapeFor.math
-        N, C, *DIMS_in = input_shape
+        # N, C, *DIMS_in = input_shape
+        N, C = input_shape[0:2]
+        DIMS_in = input_shape[2:]
 
         padding = ensure_iterablen(module.padding, n)
         stride = ensure_iterablen(module.stride, n)
         kernel_size = ensure_iterablen(module.kernel_size, n)
 
         DIMS_out = [
-            math.floor((D_in + 2 * padding[i] - kernel_size[i]) / stride[i] + 1)
+            int(math.floor((D_in + 2 * padding[i] - kernel_size[i]) / stride[i] + 1))
             for i, D_in in enumerate(DIMS_in)
         ]
         output_shape = SHAPE_CLS([N, C] + DIMS_out)
@@ -358,8 +372,12 @@ class OutputShapeFor(object):
                - Output: :math:`(N, *, out\_features)` where all but the last dimension
                  are the same shape as the input.
         """
-        N, *other, in_feat = input_shape
-        output_shape = [N] + other + [module.out_features]
+        # N, *other, in_feat = input_shape
+        N = input_shape[0]
+        other = input_shape[1:-1]
+        in_feat = input_shape[-1]  # NOQA
+
+        output_shape = [N] + list(other) + [module.out_features]
         return SHAPE_CLS(output_shape)
 
     @staticmethod

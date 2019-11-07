@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 import torch
 import ubelt as ub
@@ -391,6 +393,18 @@ class _BoxPropertyMixins(object):
         w, h = self.to_tlwh().components[-2:]
         return w * h
 
+    @property
+    def center(self):
+        """
+        Example:
+            >>> Boxes([25, 30, 15, 10], 'tlwh').area
+            array([150])
+            >>> Boxes([[25, 30, 0, 0]], 'tlwh').area
+            array([[0]])
+        """
+        cx, cy = self.to_cxywh().components[0:2]
+        return cx, cy
+
 
 def _numel(data):
     """ compatable API between torch and numpy """
@@ -490,11 +504,18 @@ class _BoxTransformMixins(object):
             self2 = self
         else:
             self2 = self.to_tlbr(copy=True)
-        x1, y1, x2, y2 = self2.data.T
-        np.clip(x1, x_min, x_max, out=x1)
-        np.clip(y1, y_min, y_max, out=y1)
-        np.clip(x2, x_min, x_max, out=x2)
-        np.clip(y2, y_min, y_max, out=y2)
+        if torch.is_tensor(self2.data):
+            x1, y1, x2, y2 = self2.data.t()
+            x1.clamp_(x_min, x_max)
+            y1.clamp_(y_min, y_max)
+            x2.clamp_(x_min, x_max)
+            y2.clamp_(y_min, y_max)
+        else:
+            x1, y1, x2, y2 = self2.data.T
+            np.clip(x1, x_min, x_max, out=x1)
+            np.clip(y1, y_min, y_max, out=y1)
+            np.clip(x2, x_min, x_max, out=x2)
+            np.clip(y2, y_min, y_max, out=y2)
         return self2
 
     def transpose(self):
@@ -606,8 +627,8 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             num (int): number of boxes to generate
             scale (float): size of imgdims
             format (str): format of boxes to be created (e.g. tlbr, xywh)
-            anchors (ndarray): width / heights of anchor boxes to perterb and
-                randomly place.
+            anchors (ndarray): normalized width / heights of anchor boxes to
+                perterb and randomly place. (must be in range 0-1)
 
         Example:
             >>> # xdoctest: +IGNORE_WHITESPACE
@@ -645,6 +666,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             tlbr[:, 2] = br_x
             tlbr[:, 3] = br_y
         else:
+            anchors = np.asarray(anchors)
             assert np.all(anchors <= 1.0)
             assert np.all(anchors > 0.0)
             anchor_xs = rng.randint(0, len(anchors), size=num)

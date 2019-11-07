@@ -3,9 +3,10 @@ import numpy as np
 import ubelt as ub
 from netharn import util
 from netharn.util import profiler
+import warnings
 
 
-class DetectionMetrics:
+class DetectionMetrics(object):
     """
     Attributes:
         true (nh.data.CocoAPI): ground truth dataset
@@ -141,10 +142,12 @@ class DetectionMetrics:
         for bbox, cid, weight in zip(true_boxes.to_xywh(), true_cids, true_weights):
             dmet.true.add_annotation(true_gid, cid, bbox=bbox, weight=weight)
 
-    def score_netharn(dmet, ovthresh=0.5, bias=0, method='voc2012'):
+    def score_netharn(dmet, ovthresh=0.5, bias=0, method='voc2012', gids=None):
         y_accum = ub.ddict(list)
         # confusions = []
-        for gid in dmet.pred.imgs.keys():
+        if gids is None:
+            gids = dmet.pred.imgs.keys()
+        for gid in gids:
             pred_annots = dmet.pred.annots(gid=gid)
             true_annots = dmet.true.annots(gid=gid)
 
@@ -193,11 +196,13 @@ class DetectionMetrics:
         }
         return nh_scores
 
-    def score_voc(dmet, ovthresh=0.5, bias=1, method='voc2012'):
+    def score_voc(dmet, ovthresh=0.5, bias=1, method='voc2012', gids=None):
         recs = {}
         cx_to_lines = ub.ddict(list)
         # confusions = []
-        for gid in dmet.pred.imgs.keys():
+        if gids is None:
+            gids = dmet.pred.imgs.keys()
+        for gid in gids:
             pred_annots = dmet.pred.annots(gid=gid)
             true_annots = dmet.true.annots(gid=gid)
 
@@ -268,7 +273,7 @@ class DetectionMetrics:
 
 
 @profiler.profile
-def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5, bg_cls=-1, bias=0.0) -> dict:
+def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_scores, pred_cxs, bg_weight=1.0, ovthresh=0.5, bg_cls=-1, bias=0.0):
     """ Classify detections by assigning to groundtruth boxes.
 
     Given predictions and truth for an image return (y_pred, y_true,
@@ -290,7 +295,7 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
         bias : for computing overlap either 1 or 0
 
     Returns:
-        pd.DataFrame: with relevant clf information
+        dict: with relevant clf information
 
     Ignore:
         from xinspect.dynamic_kwargs import get_func_kwargs
@@ -470,9 +475,11 @@ def detection_confusions(true_boxes, true_cxs, true_weights, pred_boxes, pred_sc
     return y
 
 
-def _ave_precision(rec, prec, method='voc2012') -> float:
+def _ave_precision(rec, prec, method='voc2012'):
     """ Compute AP from precision and recall
 
+    Returns:
+        float
 
     ap = voc_ap(rec, prec, [use_07_metric])
     Compute VOC AP given precision and recall.
@@ -512,13 +519,16 @@ def _ave_precision(rec, prec, method='voc2012') -> float:
     return ap
 
 
-def score_detection_assignment(y, labels=None, method='voc2012') -> pd.DataFrame:
+def score_detection_assignment(y, labels=None, method='voc2012'):
     """ Measures scores of predicted detections assigned to groundtruth objects
 
     Args:
         y (pd.DataFrame): pre-measured frames of predictions, truth,
             weight and class.
         method (str): either voc2007 voc2012 or sklearn
+
+    Returns:
+        pd.DataFrame
 
     Example:
         >>> # xdoc: +IGNORE_WANT
@@ -694,51 +704,55 @@ def voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012', bias=1):
     nd = len(image_ids)
     tp = np.zeros(nd)
     fp = np.zeros(nd)
-    for d in range(nd):
-        R = class_recs[image_ids[d]]
-        bb = BB[d, :].astype(float)
-        ovmax = -np.inf
-        BBGT = R['bbox'].astype(float)
 
-        if BBGT.size > 0:
-            # compute overlaps
-            # intersection
-            ixmin = np.maximum(BBGT[:, 0], bb[0])
-            iymin = np.maximum(BBGT[:, 1], bb[1])
-            ixmax = np.minimum(BBGT[:, 2], bb[2])
-            iymax = np.minimum(BBGT[:, 3], bb[3])
-            iw = np.maximum(ixmax - ixmin + bias, 0.)
-            ih = np.maximum(iymax - iymin + bias, 0.)
-            inters = iw * ih
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
 
-            # union
-            uni = ((bb[2] - bb[0] + bias) * (bb[3] - bb[1] + bias) +
-                   (BBGT[:, 2] - BBGT[:, 0] + bias) *
-                   (BBGT[:, 3] - BBGT[:, 1] + bias) - inters)
+        for d in range(nd):
+            R = class_recs[image_ids[d]]
+            bb = BB[d, :].astype(float)
+            ovmax = -np.inf
+            BBGT = R['bbox'].astype(float)
 
-            overlaps = inters / uni
-            ovmax = np.max(overlaps)
-            jmax = np.argmax(overlaps)
+            if BBGT.size > 0:
+                # compute overlaps
+                # intersection
+                ixmin = np.maximum(BBGT[:, 0], bb[0])
+                iymin = np.maximum(BBGT[:, 1], bb[1])
+                ixmax = np.minimum(BBGT[:, 2], bb[2])
+                iymax = np.minimum(BBGT[:, 3], bb[3])
+                iw = np.maximum(ixmax - ixmin + bias, 0.)
+                ih = np.maximum(iymax - iymin + bias, 0.)
+                inters = iw * ih
 
-        if ovmax > ovthresh:
-            if not R['difficult'][jmax]:
-                if not R['det'][jmax]:
-                    tp[d] = 1.
-                    R['det'][jmax] = 1
-                else:
-                    fp[d] = 1.
-        else:
-            fp[d] = 1.
+                # union
+                uni = ((bb[2] - bb[0] + bias) * (bb[3] - bb[1] + bias) +
+                       (BBGT[:, 2] - BBGT[:, 0] + bias) *
+                       (BBGT[:, 3] - BBGT[:, 1] + bias) - inters)
 
-    # compute precision recall
-    fp = np.cumsum(fp)
-    tp = np.cumsum(tp)
-    rec = tp / float(npos)
-    # avoid divide by zero in case the first detection matches a difficult
-    # ground truth
-    prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+                overlaps = inters / uni
+                ovmax = np.max(overlaps)
+                jmax = np.argmax(overlaps)
 
-    ap = _ave_precision(rec=rec, prec=prec, method=method)
+            if ovmax > ovthresh:
+                if not R['difficult'][jmax]:
+                    if not R['det'][jmax]:
+                        tp[d] = 1.
+                        R['det'][jmax] = 1
+                    else:
+                        fp[d] = 1.
+            else:
+                fp[d] = 1.
+
+        # compute precision recall
+        fp = np.cumsum(fp)
+        tp = np.cumsum(tp)
+        rec = tp / float(npos)
+        # avoid divide by zero in case the first detection matches a difficult
+        # ground truth
+        prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+
+        ap = _ave_precision(rec=rec, prec=prec, method=method)
     return rec, prec, ap
 
 

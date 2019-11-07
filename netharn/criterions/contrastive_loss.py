@@ -1,7 +1,9 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import torch
-# import numpy as np
-# import torch.nn.functional as F
 import torch.nn as nn
+
+__all__ = ['ContrastiveLoss']
 
 
 class ContrastiveLoss(nn.Module):

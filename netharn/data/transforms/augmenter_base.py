@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 from collections import OrderedDict
 import imgaug
 
@@ -9,9 +10,9 @@ class ParamatarizedAugmenter(imgaug.augmenters.Augmenter):
     """
 
     def __init__(self, *args, **kwargs):
-        super().__setattr__('_initialized', True)
-        super().__setattr__('_registered_params', OrderedDict())
-        super().__init__(*args, **kwargs)
+        super(ParamatarizedAugmenter, self).__setattr__('_initialized', True)
+        super(ParamatarizedAugmenter, self).__setattr__('_registered_params', OrderedDict())
+        super(ParamatarizedAugmenter, self).__init__(*args, **kwargs)
 
     def _setparam(self, name, value):
         self._registered_params[name] = value
@@ -30,7 +31,7 @@ class ParamatarizedAugmenter(imgaug.augmenters.Augmenter):
                 self._registered_params[key] = value
             elif isinstance(value, imgaug.parameters.StochasticParameter):
                 self._registered_params[key] = value
-        super().__setattr__(key, value)
+        super(ParamatarizedAugmenter, self).__setattr__(key, value)
 
     def _augment_heatmaps(self):
         raise NotImplemented

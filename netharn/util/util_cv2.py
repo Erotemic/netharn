@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import cv2
 import numpy as np  # NOQA
 
@@ -5,6 +7,11 @@ import numpy as np  # NOQA
 def draw_boxes_on_image(img, boxes, color='blue', thickness=1,
                         box_format=None):
     """
+    Draws boxes on an image.
+
+    Args:
+        img (ndarray): image to copy and draw on
+        boxes (nh.util.Boxes): boxes to draw
 
     Example:
         >>> from netharn import util
@@ -15,7 +22,7 @@ def draw_boxes_on_image(img, boxes, color='blue', thickness=1,
         >>> img2 = draw_boxes_on_image(img, boxes, color, thickness)
         >>> # xdoc: +REQUIRES(--show)
         >>> from netharn.util import mplutil
-        >>> mplutil.qtensure()  # xdoc: +SKIP
+        >>> mplutil.autompl()  # xdoc: +SKIP
         >>> mplutil.figure(doclf=True, fnum=1)
         >>> mplutil.imshow(img2)
     """
@@ -41,17 +48,27 @@ def draw_text_on_image(img, text, org, **kwargs):
     """
     Draws multiline text on an image using opencv
 
-    TODO:
-        [ ] - add a test
+    Args:
+        img (ndarray): image to draw on
+        text (str): text to draw
+        org (tuple): x, y Bottom-left corner of the text string in the image
+        **kwargs:
+            color (tuple): default blue
+            thickneess (int): defaults to 2
+            fontFace (int): defaults to cv2.FONT_HERSHEY_SIMPLEX
+            fontScale (float): defaults to 1.0
 
     References:
         https://stackoverflow.com/questions/27647424/
 
     Example:
-        stacked = putMultiLineText(stacked, text, org=center1,
-                                   fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                                   fontScale=1.5, color=accepted_color,
-                                   thickness=2, lineType=cv2.LINE_AA)
+        >>> import netharn as nh
+        >>> img = nh.util.grab_test_image(space='bgr')
+        >>> img2 = nh.util.draw_text_on_image(img, 'FOOBAR', org=(0, 100))
+        >>> # xdoc: +REQUIRES(--show)
+        >>> nh.util.autompl()
+        >>> nh.util.imshow(img2, fontScale=10)
+        >>> nh.util.show_if_requested()
     """
     if 'color' not in kwargs:
         kwargs['color'] = (255, 0, 0)
@@ -64,6 +81,9 @@ def draw_text_on_image(img, text, org, **kwargs):
 
     if 'fontScale' not in kwargs:
         kwargs['fontScale'] = 1.0
+
+    if 'lineType' not in kwargs:
+        kwargs['lineType'] = cv2.LINE_AA
 
     getsize_kw = {
         k: kwargs[k]
@@ -81,4 +101,7 @@ def draw_text_on_image(img, text, org, **kwargs):
 
 
 def putMultiLineText(*args, **kw):
+    # DEPRICATED
+    import warnings
+    warnings.warn('putMultiLineText is depricated. Use draw_text_on_image', DeprecationWarning)
     return draw_text_on_image(*args, **kw)

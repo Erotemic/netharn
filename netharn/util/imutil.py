@@ -7,10 +7,12 @@ import warnings
 import numpy as np
 import cv2
 import six
-try:
-    import skimage.io
-except ImportError:
-    pass
+# try:
+#     # Don't import skimage.io immediately because it imports pyplot
+#     # See GH Issue https://github.com/scikit-image/scikit-image/issues/3347
+#     import skimage.io
+# except ImportError:
+#     pass
 
 
 CV2_INTERPOLATION_TYPES = {
@@ -407,7 +409,7 @@ def ensure_grayscale(img, colorspace_hint='BGR'):
 
 
 def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
-    r"""
+    """
     Converts colorspace of img.
     Convinience function around cv2.cvtColor
 
@@ -419,12 +421,37 @@ def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
     Returns:
         ndarray[uint8_t, ndim=2]: img -  image data
 
+    Note:
+        Note the LAB and HSV colorspaces in float do not go into the 0-1 range.
+
+        For HSV the floating point range is:
+            0:360, 0:1, 0:1
+        For LAB the floating point range is:
+            0:100, -86.1875:98.234375, -107.859375:94.46875
+            (Note, that some extreme combinations of a and b are not valid)
+
     Example:
         >>> convert_colorspace(np.array([[[0, 0, 1]]], dtype=np.float32), 'LAB', src_space='RGB')
         >>> convert_colorspace(np.array([[[0, 1, 0]]], dtype=np.float32), 'LAB', src_space='RGB')
         >>> convert_colorspace(np.array([[[1, 0, 0]]], dtype=np.float32), 'LAB', src_space='RGB')
         >>> convert_colorspace(np.array([[[1, 1, 1]]], dtype=np.float32), 'LAB', src_space='RGB')
         >>> convert_colorspace(np.array([[[0, 0, 1]]], dtype=np.float32), 'HSV', src_space='RGB')
+
+    Ignore:
+        # Check LAB output ranges
+        import itertools as it
+        s = 1
+        _iter = it.product(range(0, 256, s), range(0, 256, s), range(0, 256, s))
+        minvals = np.full(3, np.inf)
+        maxvals = np.full(3, -np.inf)
+        for r, g, b in ub.ProgIter(_iter, total=(256 // s) ** 3):
+            img255 = np.array([[[r, g, b]]], dtype=np.uint8)
+            img01 = (img255 / 255.0).astype(np.float32)
+            lab = convert_colorspace(img01, 'lab', src_space='rgb')
+            np.minimum(lab[0, 0], minvals, out=minvals)
+            np.maximum(lab[0, 0], maxvals, out=maxvals)
+        print('minvals = {}'.format(ub.repr2(minvals, nl=0)))
+        print('maxvals = {}'.format(ub.repr2(maxvals, nl=0)))
     """
     dst_space = dst_space.upper()
     src_space = src_space.upper()
@@ -439,7 +466,7 @@ def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
         code = _lookup_colorspace_code(dst_space, src_space)
         # Note the conversion to colorspaces like LAB and HSV in float form
         # do not go into the 0-1 range. Instead they go into
-        # (0-100, -111-111hs, -111-111is) and (0-360, 0-1, 0-1) respectively
+        # (0-100, -111-111ish, -111-111ish) and (0-360, 0-1, 0-1) respectively
         img2 = cv2.cvtColor(img, code, dst=dst)
     return img2
 
@@ -656,6 +683,7 @@ def imread(fpath, **kw):
     reads image data in BGR format
 
     Example:
+        >>> # xdoctest: +REQUIRES(--network)
         >>> import tempfile
         >>> from os.path import splitext  # NOQA
         >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
@@ -669,6 +697,7 @@ def imread(fpath, **kw):
         >>> assert np.all(img2 == img1)
 
     Example:
+        >>> # xdoctest: +REQUIRES(--network)
         >>> import tempfile
         >>> #img1 = (np.arange(0, 12 * 12 * 3).reshape(12, 12, 3) % 255).astype(np.uint8)
         >>> img1 = imread(ub.grabdata('http://i.imgur.com/iXNf4Me.png', fname='ada.png'))
@@ -681,6 +710,7 @@ def imread(fpath, **kw):
         >>> assert np.all(tif_im == png_im)
 
     Example:
+        >>> # xdoctest: +REQUIRES(--network)
         >>> import tempfile
         >>> #img1 = (np.arange(0, 12 * 12 * 3).reshape(12, 12, 3) % 255).astype(np.uint8)
         >>> tif_fpath = ub.grabdata('https://ghostscript.com/doc/tiff/test/images/rgb-3c-16b.tiff')
@@ -704,7 +734,33 @@ def imread(fpath, **kw):
         assert int(Image.PILLOW_VERSION.split('.')[0]) > 4
     """
     try:
-        if fpath.endswith(('.tif', '.tiff')):
+        if fpath.lower().endswith(('.ntf', '.nitf')):
+            try:
+                import gdal
+            except ImportError:
+                raise Exception('cannot read NITF images without gdal')
+            try:
+                gdal_dset = gdal.Open(fpath)
+                if gdal_dset.RasterCount == 1:
+                    band = gdal_dset.GetRasterBand(1)
+                    image = np.array(band.ReadAsArray())
+                elif gdal_dset.RasterCount == 3:
+                    bands = [
+                        gdal_dset.GetRasterBand(i)
+                        for i in [1, 2, 3]
+                    ]
+                    channels = [np.array(band.ReadAsArray()) for band in bands]
+                    image = np.dstack(channels)
+                else:
+                    raise NotImplementedError(
+                        'Can only read 1 or 3 channel NTF images. '
+                        'Got {}'.format(gdal_dset.RasterCount))
+            except Exception:
+                raise
+            finally:
+                gdal_dset = None
+        elif fpath.lower().endswith(('.tif', '.tiff')):
+            import skimage.io
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 # skimage reads in RGB, convert to BGR
@@ -733,6 +789,7 @@ def imwrite(fpath, image, **kw):
     writes image data in BGR format
     """
     if fpath.endswith(('.tif', '.tiff')):
+        import skimage.io
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             # skimage writes in RGB, convert from BGR

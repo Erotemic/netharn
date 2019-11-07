@@ -1,23 +1,23 @@
 |Travis| |Codecov| |Appveyor| |Pypi|
 
 
-Netharn
--------
+NetHarn - a PyTorch Network Harness
+-----------------------------------
 
 NAME:
-    netharn (pronounced "net-harn")
+    NetHarn (pronounced "net-harn")
 FRAMEWORK:
-    pytorch
+    PyTorch
 FEATURES: 
     * hyperparameter tracking
     * training directory management
     * callback-based public API 
     * XPU - code abstraction for [cpu, gpu, multi-gpu].
-    * single-file deployments (pending public release).
+    * single-file deployments (NEW in version ``0.1.0``).
     * reasonable test coverage using pytest and xdoctest
     * CI testing on appveyor and travis (note a few tests are failing due to minor issues)
     * A rich utility set
-    * Extensions of pytorch objects (e.g. critions, initializers, layers,
+    * Extensions of PyTorch objects (e.g. critions, initializers, layers,
       optimizers, schedulers)
 BUILTINS:
    - training loop boilerplate
@@ -26,7 +26,7 @@ BUILTINS:
    - data provenance of training history in ``train_info.json``
    - tensorboard metric visualization (optional)
 DESIGN PHILOSOPHY: 
-   Built-it yourself but don't repeat yourself.
+   Avoid boilerplate, built-it yourself when you need to, and don't repeat yourself.
 SLOGAN: 
     Rein and train.
 USAGE PATTERNS:
@@ -95,7 +95,7 @@ setup instructions, but for now they are the same.
 Description
 ===========
 
-Parameterized fit and prediction harnesses for pytorch.
+Parameterized fit and prediction harnesses for PyTorch.
 
 Trains models and keeps track of your hyperparameters.
 
@@ -103,6 +103,17 @@ This is a clean port of the good parts developed in my research repo: ``clab``.
 
 See the netharn/examples folder for example usage. The doctests are also a good
 resource. It would be nice if we had better docs.
+
+NetHarn is a research framework for training and deploying arbitrary PyTorch models.
+It was designed for the purpose of minimizing training-loop boilerplate and tracking hyperparameters to
+  encourage reproducible research.
+NetHarn separates the problem of training a model into the following core hyperparameter components:
+the datasets, model, criterion, initializer, optimizer, and learning rate scheduler.
+Runs with different hyperparameters are automatically logged to separate directories which makes it simple
+  to compare the results of two experiments.
+NetHarn also has the ability to create a single-file deployment of a trained model
+  that is independent of the system used to train it.
+This makes it fast and simple for research results to be externally verified and moved into production.
 
 
 .. |TravisOld| image:: https://img.shields.io/travis/Erotemic/netharn/master.svg?label=Travis%20CI
@@ -142,7 +153,7 @@ Example:
 ========
 
 This following example is the doctest in ``netharn/fit_harn.py``. It
-demonstrates how to use netharn to train a model to solve a toy problem.  
+demonstrates how to use NetHarn to train a model to solve a toy problem.  
 
 In this toy problem, we do not extend the nh.FitHarn object, so we are using
 the default behavior of ``run_batch``. The default ``on_batch``, and

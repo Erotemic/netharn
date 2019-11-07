@@ -6,7 +6,7 @@ import ubelt as ub
 from os.path import dirname, exists, join, normpath
 from netharn import util
 import torch
-
+import six
 from netharn.initializers import nninit_base
 
 
@@ -21,15 +21,19 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
     Example:
         >>> from netharn.initializers.nninit_core import *
         >>> from netharn.models import toynet
-        >>> self = Orthogonal()
-        >>> model = toynet.ToyNet2d()
-        >>> self(model)
-        >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
-        >>> self(layer)
+        >>> from os.path import join
+        >>> model1 = toynet.ToyNet2d()
+        >>> dpath = ub.ensure_app_cache_dir('netharn', 'tests')
+        >>> fpath = join(dpath, 'toynet_weights.pt')
+        >>> torch.save(model1.state_dict(), fpath)
+        >>> model2 = toynet.ToyNet2d()
+        >>> self = Pretrained(fpath)
+        >>> self(model2)
+        >>> #model2.state_dict() == model1.state_dict()
     """
     def __init__(self, fpath, initializer=None, info=None):
         self.fpath = fpath
-        if isinstance(initializer, str):
+        if isinstance(initializer, six.string_types):
             from netharn import initializers
             initializer = getattr(initializers, initializer)()
         self.initializer = initializer
@@ -42,9 +46,18 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
         from netharn import XPU
         xpu = XPU.from_data(model)
         # model_state_dict = xpu.load(self.fpath)
-        model_state_dict = xpu.load(util.zopen(self.fpath, 'rb', seekable=True))
+        if self.fpath is None:
+            raise ValueError('Pretrained fpath is None!')
+        try:
+            model_state_dict = xpu.load(util.zopen(self.fpath, 'rb', seekable=True))
+        except Exception:
+            print('Failed to open self.fpath = {!r}'.format(self.fpath))
+            raise
+
         if 'model_state_dict' in model_state_dict:
             model_state_dict = model_state_dict['model_state_dict']
+        elif 'weights' in model_state_dict:
+            model_state_dict = model_state_dict['weights']
         nninit_base.load_partial_state(model, model_state_dict,
                                        initializer=self.initializer)
 
@@ -93,7 +106,11 @@ class Orthogonal(nninit_base._BaseInitializer):
         >>> from netharn.models import toynet
         >>> self = Orthogonal()
         >>> model = toynet.ToyNet2d()
-        >>> self(model)
+        >>> try:
+        >>>     self(model)
+        >>> except RuntimeError:
+        >>>     import pytest
+        >>>     pytest.skip('geqrf: Lapack probably not availble')
         >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
         >>> self(layer)
     """

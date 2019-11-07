@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import ubelt as ub  # NOQA
 import cv2
 import numpy as np
@@ -118,6 +120,7 @@ class SlidingWindow(ub.NiceRepr):
         self.overlap = overlap
 
         self.window = window
+        self.input_shape = shape
 
         # The undershot basis shape, only contains indices that correspond
         # perfectly to the input. It may crop a bit of the ends.  If this is
@@ -177,7 +180,9 @@ class SlidingWindow(ub.NiceRepr):
             yield slices
 
     def __iter__(self):
-        yield from self._iter_slices()
+        # yield from
+        for _ in self._iter_slices():
+            yield _
 
     @property
     def grid(self):
@@ -304,7 +309,7 @@ class SlidingSlices(ub.NiceRepr):
 
         # NOTE: if we have overshot, then basis shape will not perfectly
         # align to the original image. This shape will be a bit bigger.
-        slider.basis_slices = [list(nh.util.wide_strides_1d(**kw))
+        slider.basis_slices = [tuple(nh.util.wide_strides_1d(**kw))
                                for kw in stide_kw]
         slider.basis_shape = [len(b) for b in slider.basis_slices]
         slider.n_total = np.prod(slider.basis_shape)
@@ -360,7 +365,9 @@ class SlidingSlices(ub.NiceRepr):
             yield chip
 
     def __iter__(slider):
-        yield from zip(slider.slices, slider.chips)
+        # yield from zip(slider.slices, slider.chips)
+        for _ in zip(slider.slices, slider.chips):
+            yield _
 
     @property
     def grid(self):
@@ -558,7 +565,7 @@ class SlidingIndexDataset(torch_data.Dataset):
     def __getitem__(slider_dset, index):
         slider = slider_dset.slider
         basis_idx = np.unravel_index(index, slider.basis_shape)
-        slices = [bdim[i] for bdim, i in zip(slider.basis_slices, basis_idx)]
+        slices = tuple([bdim[i] for bdim, i in zip(slider.basis_slices, basis_idx)])
         chip = slider.source[slices]
         tensor_chip = torch.FloatTensor(chip)
         tensor_basis_idx = torch.LongTensor(np.array(basis_idx))

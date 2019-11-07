@@ -1,4 +1,5 @@
-from __future__ import absolute_import, division, print_function
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import cv2
 import itertools as it
 import pandas as pd
@@ -56,10 +57,26 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
         matplotlib.org/examples/api/barchart_demo.html
 
     CommandLine:
-        python -m netharn.util.mplutil multi_plot:0 --show
-        python -m netharn.util.mplutil multi_plot:1 --show
+        xdoctest netharn.util.mplutil multi_plot
+        xdoctest netharn.util.mplutil multi_plot:0 --show
+        xdoctest netharn.util.mplutil multi_plot:1 --show
 
     Example:
+        >>> import netharn as nh
+        >>> nh.util.autompl()
+        >>> # The new way to use multi_plot is to pass ydata as a dict of lists
+        >>> ydata = {
+        >>>     'spamΣ': [1, 1, 2, 3, 5, 8, 13],
+        >>>     'eggs': [3, 3, 3, 3, 3, np.nan, np.nan],
+        >>>     'jamµ': [5, 3, np.nan, 1, 2, np.nan, np.nan],
+        >>>     'pram': [4, 2, np.nan, 0, 0, np.nan, 1],
+        >>> }
+        >>> fig = nh.util.multi_plot(ydata=ydata, title='ΣΣΣµµµ',
+        >>>                          xlabel='\nfdsΣΣΣµµµ', linestyle='-')
+        >>> nh.util.show_if_requested()
+
+    Example:
+        >>> # Old way to use multi_plot is a list of lists
         >>> autompl()
         >>> xdata = [1, 2, 3, 4, 5]
         >>> ydata_list = [[1, 2, 3, 4, 5], [3, 3, 3, 3, 3], [5, 4, np.nan, 2, 1], [4, 3, np.nan, 1, 0]]
@@ -69,8 +86,9 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
         >>> show_if_requested()
 
     Example:
+        >>> # Simple way to use multiplot is to pass xdata and ydata exactly
+        >>> # like you would use plt.plot
         >>> autompl()
-        >>> fig1 = multi_plot([1, 2, 3], [4, 5, 6])
         >>> fig2 = multi_plot([1, 2, 3], [4, 5, 6], fnum=4)
         >>> show_if_requested()
     """
@@ -684,6 +702,7 @@ def pandas_plot_matrix(df, rot=90, ax=None, grid=True, label=None,
     import matplotlib as mpl
     import copy
     from matplotlib import pyplot as plt
+    import matplotlib.cm  # NOQA
     if ax is None:
         fig = figure(fnum=1, pnum=(1, 1, 1))
         fig.clear()
@@ -1625,14 +1644,23 @@ def set_mpl_backend(backend, verbose=None):
     current_backend = mpl.get_backend()
     if verbose:
         print('* current_backend = {!r}'.format(current_backend))
-    if backend != mpl.get_backend():
+    if backend != current_backend:
         # If we have already imported pyplot, then we need to use experimental
         # behavior. Otherwise, we can just set the backend.
         if 'matplotlib.pyplot' in sys.modules:
             from matplotlib import pyplot as plt
+            if verbose:
+                print('plt.switch_backend({!r})'.format(current_backend))
             plt.switch_backend(backend)
         else:
+            if verbose:
+                print('mpl.use({!r})'.format(backend))
             mpl.use(backend)
+    else:
+        if verbose:
+            print('not changing backends')
+    if verbose:
+        print('* new_backend = {!r}'.format(mpl.get_backend()))
 
 
 def autompl(verbose=0):
@@ -1643,6 +1671,9 @@ def autompl(verbose=0):
 
     References:
         https://stackoverflow.com/questions/637005/how-to-check-if-x-server-is-running
+
+    CommandLine:
+        python -c "import netharn as nh; nh.util.autompl(verbose=1)"
     """
     import os
     import sys
@@ -1670,9 +1701,19 @@ def autompl(verbose=0):
             backend = 'agg'
         else:
             if ub.modname_to_modpath('PyQt5'):
-                backend = 'Qt5Agg'
+                try:
+                    import PyQt5  # NOQA
+                except ImportError:
+                    backend = 'agg'
+                else:
+                    backend = 'Qt5Agg'
             elif ub.modname_to_modpath('PyQt4'):
-                backend = 'Qt4Agg'
+                try:
+                    import Qt4Agg  # NOQA
+                except ImportError:
+                    backend = 'agg'
+                else:
+                    backend = 'Qt4Agg'
             else:
                 backend = 'agg'
 
@@ -1913,6 +1954,7 @@ def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
     """
     import matplotlib as mpl
     import matplotlib.pyplot as plt
+    import matplotlib.cm  # NOQA
     assert len(scalars) == len(colors), 'scalars and colors must be corresponding'
     if len(scalars) == 0:
         return None
@@ -2456,6 +2498,7 @@ class PlotNums(object):
                 nRows = int(np.ceil(nSubplots / nCols))
         return nRows, nCols
 
+    @staticmethod
     def _get_square_row_cols(nSubplots, max_cols=None, fix=False, inclusive=True):
         r"""
         Args:
@@ -2648,6 +2691,7 @@ def make_heatmask(probs, cmap='plasma', with_alpha=True):
     """
     import matplotlib as mpl
     from netharn.util import imutil
+    import matplotlib.cm  # NOQA
     assert len(probs.shape) == 2
     cmap_ = mpl.cm.get_cmap(cmap)
     probs = imutil.ensure_float01(probs)

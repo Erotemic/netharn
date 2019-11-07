@@ -4,6 +4,10 @@ import torch.nn.functional as F
 import torch.nn.modules
 import numpy as np
 from torch import autograd
+from packaging import version
+
+
+_HAS_REDUCTION = version.parse(torch.__version__) >= version.parse('0.4.1')
 
 
 def one_hot_embedding(labels, num_classes):
@@ -75,6 +79,27 @@ def one_hot_embedding(labels, num_classes):
     #     return y_onehot
 
 
+def _backwards_compat_reduction_kw(size_average, reduce, reduction):
+    if size_average is None and reduce is None:
+        if reduction == 'none':
+            size_average = False
+            reduce = False
+        elif reduction == 'elementwise_mean':
+            size_average = True
+            reduce = True
+        elif reduction == 'sum':
+            size_average = False
+            reduce = True
+        else:
+            raise ValueError(reduction + " is not a valid value for reduction")
+    else:
+        if size_average is None or reduce is None:
+            raise Exception(
+                'Must specify both size_average and reduce in '
+                'torch < 0.4.1, or specify neither and use reduction')
+    return size_average, reduce
+
+
 class FocalLoss(torch.nn.modules.loss._WeightedLoss):
     r"""
 
@@ -129,7 +154,7 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
         https://discuss.pytorch.org/t/how-to-implement-focal-loss-in-pytorch/6469/11
 
     Example:
-        >>> self = FocalLoss(reduce=False)
+        >>> self = FocalLoss(reduction='none')
         >>> # input is of size N x C
         >>> N, C = 8, 5
         >>> data = autograd.Variable(torch.randn(N, C), requires_grad=True)
@@ -161,11 +186,22 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
         self = FocalLoss(reduce=False, weight=weight)
     """
 
-    def __init__(self, focus=2, weight=None, size_average=True,
-                 reduce=True, ignore_index=-100):
-        super(FocalLoss, self).__init__(weight, size_average)
+    def __init__(self, focus=2, weight=None, size_average=None, reduce=None,
+                 reduction='elementwise_mean', ignore_index=-100):
+
+        if _HAS_REDUCTION:
+            super(FocalLoss, self).__init__(weight=weight, reduce=reduce,
+                                            size_average=size_average,
+                                            reduction=reduction)
+        else:
+            size_average, reduce = _backwards_compat_reduction_kw(
+                size_average, reduce, reduction)
+            super(FocalLoss, self).__init__(weight=weight,
+                                            size_average=size_average)
+            self.size_average = size_average  # fix for travis?
+            self.reduce = reduce
+
         self.focus = focus
-        self.reduce = reduce
         self.ignore_index = ignore_index
 
     def focal_loss(self, input, target):
@@ -191,14 +227,16 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             >>> target = autograd.Variable((torch.rand(N) * C).long())
             >>> input = autograd.Variable(torch.randn(N, C), requires_grad=True)
             >>> # Check to be sure that when gamma=0, FL becomes CE
-            >>> loss0 = FocalLoss(reduce=False, focus=0).focal_loss(input, target)
-            >>> loss1 = F.cross_entropy(input, target, reduce=False)
-            >>> loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, reduce=False)
+            >>> loss0 = FocalLoss(reduction='none', focus=0).focal_loss(input, target)
+            >>> #loss1 = F.cross_entropy(input, target, reduction='none')
+            >>> loss1 = F.cross_entropy(input, target, size_average=False, reduce=False)
+            >>> #loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, reduction='none')
+            >>> loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, size_average=False, reduce=False)
             >>> assert np.all(np.abs((loss1 - loss0).data.numpy()) < 1e-6)
             >>> assert np.all(np.abs((loss2 - loss0).data.numpy()) < 1e-6)
-            >>> lossF = FocalLoss(reduce=False, focus=2, ignore_index=0).focal_loss(input, target)
+            >>> lossF = FocalLoss(reduction='none', focus=2, ignore_index=0).focal_loss(input, target)
             >>> weight = torch.rand(C)
-            >>> lossF = FocalLoss(reduce=False, focus=2, weight=weight, ignore_index=0).focal_loss(input, target)
+            >>> lossF = FocalLoss(reduction='none', focus=2, weight=weight, ignore_index=0).focal_loss(input, target)
         """
         if self.weight is None:
             alpha = 1
@@ -242,10 +280,17 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             (tensor) loss
         """
         output = self.focal_loss(input, target)
-        if self.reduce:
-            output = output.sum()
-            if self.size_average:
+        if _HAS_REDUCTION:
+            if self.reduction == 'elementwise_mean':
+                output = output.sum()
                 output = output / input.shape[0]
+            elif self.reduction == 'sum':
+                output = output.sum()
+        else:
+            if self.reduce:
+                output = output.sum()
+                if self.size_average:
+                    output = output / input.shape[0]
         return output
 
 

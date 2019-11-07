@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 
 
@@ -14,8 +16,24 @@ def write_h5arr(fpath, arr):
 
 
 def read_arr(fpath):
+    """
+    Example:
+        >>> import ubelt as ub
+        >>> import netharn as nh
+        >>> from os.path import join
+        >>> dpath = ub.ensure_app_cache_dir('netharn', 'tests')
+        >>> arr = np.random.rand(10)
+        >>> fpath = join(dpath, 'arr.npy')
+        >>> nh.util.write_arr(fpath, arr)
+        >>> arr2 = nh.util.read_arr(fpath)
+        >>> assert np.all(arr == arr2)
+        >>> fpath = join(dpath, 'arr.h5')
+        >>> nh.util.write_arr(fpath, arr)
+        >>> arr2 = nh.util.read_arr(fpath)
+        >>> assert np.all(arr == arr2)
+    """
     if fpath.endswith('.npy'):
-        return np.read(fpath)
+        return np.load(fpath)
     elif fpath.endswith('.h5'):
         return read_h5arr(fpath)
     else:

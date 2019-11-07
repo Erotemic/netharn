@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 import torch.optim.lr_scheduler
 
@@ -177,7 +179,7 @@ class Exponential(_LRScheduler2):
     def __init__(self, optimizer, gamma=0.1, stepsize=100):
         self.gamma = gamma
         self.stepsize = stepsize
-        super().__init__(optimizer)
+        super(Exponential, self).__init__(optimizer)
 
     def get_lr(self):
         """
@@ -209,7 +211,7 @@ class BatchLR(_LRScheduler2):
         # epochs where the lr changes
         self.key_epochs = sorted(self.points.keys())
 
-        super(ListedLR, self).__init__(optimizer, last_epoch)
+        super(BatchLR, self).__init__(optimizer, last_epoch)
 
         self.bx = 0
 
@@ -221,7 +223,7 @@ class BatchLR(_LRScheduler2):
 
     def step(self, *a, **kw):
         self.bx = 0
-        return super().step(*a, **kw)
+        return super(BatchLR, self).step(*a, **kw)
 
     step_epoch = step
 

@@ -35,7 +35,7 @@ class GetBoundingBoxes(object):
         self.nms_thresh = nms_thresh
 
     @profiler.profile
-    def __call__(self, network_output, nms_mode=0, box_mode=2):
+    def __call__(self, network_output, nms_mode=4):
         """ Compute bounding boxes after thresholding and nms
 
             network_output (torch.autograd.Variable): Output tensor from the lightnet network
@@ -116,11 +116,11 @@ class GetBoundingBoxes(object):
         """
         # boxes = self._get_boxes(network_output.data, nms_mode=nms_mode)
         # mode1 is the same as 0, just lots faster
-        boxes = self._get_boxes(network_output.data, box_mode=box_mode)
+        boxes = self._get_boxes(network_output.data)
         boxes = [self._nms(box, nms_mode=nms_mode) for box in boxes]
 
         # force all boxes to be inside the image
-        boxes = [self._clip_boxes(box) for box in boxes]
+        # boxes = [self._clip_boxes(box) for box in boxes]
         postout = boxes
         return postout
 
@@ -187,7 +187,7 @@ class GetBoundingBoxes(object):
         return obj(network_output)
 
     @profiler.profile
-    def _get_boxes(self, output, box_mode=2):
+    def _get_boxes(self, output):
         """
         Returns array of detections for every image in batch
 
@@ -208,10 +208,6 @@ class GetBoundingBoxes(object):
         """
         # dont modify inplace
         output = output.clone()
-
-        # Check dimensions
-        # if output.dim() == 3:
-        #     output.unsqueeze_(0)
 
         # Variables
         bsize = output.shape[0]
@@ -280,7 +276,7 @@ class GetBoundingBoxes(object):
         return boxes
 
     @profiler.profile
-    def _nms(self, cxywh_score_cls, nms_mode=0):
+    def _nms(self, cxywh_score_cls, nms_mode=4):
         """ Non maximum suppression.
         Source: https://www.pyimagesearch.com/2015/02/16/faster-non-maximum-suppression-python/
 
@@ -384,14 +380,13 @@ class GetBoundingBoxes(object):
             keep = util.non_max_supression(tlbr_tensor, scores,
                                            self.nms_thresh, classes=classes_np,
                                            bias=0, impl='torch')
-            # keep = []
-            # for idxs in ub.group_items(range(len(classes_np)), classes_np).values():
-            #     cls_tlbr_np = tlbr_np.take(idxs, axis=0)
-            #     cls_scores_np = scores_np.take(idxs, axis=0)
-            #     cls_keep = util.non_max_supression(cls_tlbr_np, cls_scores_np,
-            #                                        self.nms_thresh, bias=0)
-            #     keep.extend(list(ub.take(idxs, cls_keep)))
             keep = sorted(keep)
+        elif nms_mode == 4:
+            # Dont group, but use torch
+            from netharn.util.nms.torch_nms import torch_nms
+            keep = torch_nms(tlbr_tensor, scores,
+                             thresh=self.nms_thresh, bias=0)
+            return cxywh_score_cls[keep]
         else:
             raise KeyError(nms_mode)
         return cxywh_score_cls[torch.LongTensor(keep)]
@@ -399,7 +394,7 @@ class GetBoundingBoxes(object):
 
 def benchmark_nms_version():
     """
-        python -m netharn.models.yolo2.light_postproc benchmark_nms_version
+        xdoctset netharn.models.yolo2.light_postproc benchmark_nms_version
     """
     # Build random test boxes and scores
     from lightnet.data.transform._postprocess import NonMaxSupression
@@ -475,6 +470,13 @@ def benchmark_nms_version():
             torch.cuda.synchronize()
     nh_keep_3 = _ln_output_to_keep(nh_output, gpu_ln_boxes)
 
+    t1 = ub.Timerit(N, bestof=bestof, label='netharn(mode4)')
+    for timer in t1:
+        with timer:
+            nh_output = self._nms(gpu_ln_boxes, nms_mode=4)
+            torch.cuda.synchronize()
+    nh_keep_4 = _ln_output_to_keep(nh_output, gpu_ln_boxes)
+
     nh_keep_0 == nh_keep_2
     nh_keep_0 == nh_keep_3
 
@@ -483,6 +485,7 @@ def benchmark_nms_version():
     print('len(nh_keep_1) = {!r}'.format(len(nh_keep_1)))
     print('len(nh_keep_2) = {!r}'.format(len(nh_keep_2)))
     print('len(nh_keep_3) = {!r}'.format(len(nh_keep_3)))
+    print('len(nh_keep_4) = {!r}'.format(len(nh_keep_4)))
 
 
 # def _nms_torch(tlbr_tensor, scores, nms_thresh=.5):

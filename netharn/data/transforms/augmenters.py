@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 import cv2
 from imgaug.parameters import (Uniform, Binomial)
@@ -39,7 +41,7 @@ def demodata_hsv_image(w=200, h=200):
 
 
 class HSVShift(augmenter_base.ParamatarizedAugmenter):
-    r"""
+    """
     Perform random HSV shift on the RGB data.
 
     MODIFIED FROM LIGHTNET YOLO into imgaug format
@@ -106,7 +108,7 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         >>> mplutil.show_if_requested()
     """
     def __init__(self, hue, sat, val, input_colorspace='rgb'):
-        super().__init__()
+        super(HSVShift, self).__init__()
         self.input_colorspace = input_colorspace
         self.hue = Uniform(-hue, hue)
         self.sat = Uniform(1, sat)
@@ -245,7 +247,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
                                                              target_size)
     """
     def __init__(self, target_size, fill_color=127, mode='letterbox'):
-        super().__init__()
+        super(Resize, self).__init__()
         self.target_size = None if target_size is None else np.array(target_size)
         self.fill_color = fill_color
         self.mode = mode
@@ -281,6 +283,8 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             >>>     kps_ois.append(imgaug.KeypointsOnImage(kps, shape=bbs_oi.shape))
             >>> keypoints_on_images = kps_ois
             >>> self = LetterboxResize((400, 400))
+            >>> aug = self.augment_keypoints(keypoints_on_images)
+            >>> assert np.all(aug[0].shape == self.target_size[::-1])
         """
         result = []
         target_size = np.array(self.target_size)
@@ -300,6 +304,8 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
 
             new_keypoint = imgaug.KeypointsOnImage.from_coords_array(
                 xy_aug, shape=target_shape)
+            # Fix bug in imgaug (TODO: report the bug)
+            new_keypoint.shape = target_shape
             result.append(new_keypoint)
         return result
 

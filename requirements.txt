@@ -26,20 +26,23 @@ coverage >= 4.3.4
 # These are absolutely required
 torch >= 0.4.0
 numpy >= 1.14.5
-ubelt >= 0.4.0
+ubelt >= 0.5.0
+progiter >= 0.0.2
+parse >= 1.8.4
+packaging >= 17.1
+pyflakes >= 1.6.0
 
 
 # Optional(ish)
 # =============
 # With a little work they might actually be optional
 
-parse >= 1.8.4
 tqdm >= 4.23.4
 pandas >= 0.23.3
 Pillow >= 5.2.0
 opencv-python >= 3.4.1
 torchvision >= 0.2.1
-pyqt5  # >= 5.11.2
+pyqt5>= 5.11.2;python_version>'2.7'  # 
 matplotlib >= 2.2.2
 h5py >= 2.8.0
 imgaug >= 0.2.6

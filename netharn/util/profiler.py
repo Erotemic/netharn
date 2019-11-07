@@ -4,9 +4,9 @@ import six
 import operator
 import atexit
 import sys
-import ubelt as ub
 import re
 import itertools as it
+from collections import defaultdict
 
 if '--profile' in sys.argv:
     import line_profiler
@@ -88,6 +88,7 @@ class KernprofParser(object):
         return output_text, summary_text
 
     def dump_text(self):
+        import ubelt as ub
         print("Dumping Profile Information")
         try:
             output_text, summary_text = self.get_text()
@@ -209,7 +210,7 @@ class KernprofParser(object):
         Build a map from times to line_profile blocks
         """
         prefix_list = []
-        timemap = ub.ddict(list)
+        timemap = defaultdict(list)
         for ix in range(len(profile_block_list)):
             block = profile_block_list[ix]
             total_time = self.get_block_totaltime(block)
@@ -226,12 +227,13 @@ class KernprofParser(object):
         References:
             https://github.com/rkern/line_profiler
         """
+        import ubelt as ub
         time_list = [self.get_block_totaltime(block) for block in profile_block_list]
         time_list = [time if time is not None else -1 for time in time_list]
 
         @ub.memoize
         def readlines(fpath):
-            return ub.readfrom(fpath, aslines=True)
+            return open(fpath, 'r').readlines()
 
         blockid_list = [self.get_block_id(block, readlines=readlines)
                         for block in profile_block_list]
@@ -279,7 +281,7 @@ class KernprofParser(object):
     def clean_lprof_file(self, input_fname, output_fname=None):
         """ Reads a .lprof file and cleans it """
         # Read the raw .lprof text dump
-        text = ub.readfrom(input_fname)
+        text = open(input_fname, 'r').read()
         # Sort and clean the text
         output_text = self.clean_line_profile_text(text)
         return output_text
@@ -289,19 +291,21 @@ def find_parent_class(fpath, funcname, lineno, readlines=None):
     """
     Example:
         >>> from netharn.util import profiler
+        >>> import ubelt as ub
         >>> funcname = 'clean_lprof_file'
         >>> func = getattr(profiler.KernprofParser, funcname)
         >>> lineno = func.__code__.co_firstlineno
         >>> fpath = profiler.__file__
         >>> #fpath = ub.truepath('~/code/netharn/netharn/util/profiler.py')
         >>> #lineno   = 264
-        >>> readlines = lambda x: ub.readfrom(x, aslines=True)
+        >>> readlines = lambda x: open(x, 'r').readlines()
         >>> classname = find_parent_class(fpath, funcname, lineno, readlines)
+        >>> print('classname = {!r}'.format(classname))
         >>> assert classname == 'KernprofParser'
     """
     if readlines is None:
         def readlines(fpath):
-            return ub.readfrom(fpath, aslines=True)
+            return open(fpath, 'r').readlines()
 
     try:
         line_list = readlines(fpath)

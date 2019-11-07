@@ -1,8 +1,12 @@
 import ubelt as ub
 import torch
 from netharn.output_shape_for import OutputShapeFor
+import six
 from netharn import util
-import math
+if six.PY2:
+    from fractions import gcd
+else:
+    from math import gcd
 
 
 def rectify_nonlinearity(key=ub.NoParam, dim=2):
@@ -23,7 +27,7 @@ def rectify_nonlinearity(key=ub.NoParam, dim=2):
     if key is ub.NoParam:
         key = 'relu'
 
-    if isinstance(key, str):
+    if isinstance(key, six.string_types):
         if key == 'relu':
             key = {'type': 'relu'}
         elif key == 'leaky_relu':
@@ -74,7 +78,7 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
     if key is ub.NoParam:
         key = 'batch'
 
-    if isinstance(key, str):
+    if isinstance(key, six.string_types):
         if key == 'batch':
             key = {'type': 'batch'}
         elif key == 'group':
@@ -104,7 +108,7 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
         in_channels_key = 'num_channels'
         if isinstance(key['num_groups'], tuple):
             if key['num_groups'][0] == 'gcd':
-                key['num_groups'] = math.gcd(
+                key['num_groups'] = gcd(
                     key['num_groups'][1], in_channels)
         if in_channels % key['num_groups'] != 0:
             raise AssertionError(
@@ -139,7 +143,7 @@ class _ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
     def __init__(self, dim, in_channels, out_channels, kernel_size, stride=1,
                  bias=True, padding=0, noli='relu', norm='batch',
                  groups=1):
-        super().__init__()
+        super(_ConvNormNd, self).__init__()
 
         conv_cls = {
             1: torch.nn.Conv1d,
@@ -191,10 +195,12 @@ class ConvNorm1d(_ConvNormNd):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  bias=True, padding=0, noli='relu', norm='batch',
                  groups=1):
-        super().__init__(dim=1, in_channels=in_channels,
-                         out_channels=out_channels, kernel_size=kernel_size,
-                         stride=stride, bias=bias, padding=padding, noli=noli,
-                         norm=norm, groups=groups)
+        super(ConvNorm1d, self).__init__(dim=1, in_channels=in_channels,
+                                         out_channels=out_channels,
+                                         kernel_size=kernel_size,
+                                         stride=stride, bias=bias,
+                                         padding=padding, noli=noli, norm=norm,
+                                         groups=groups)
 
 
 class ConvNorm2d(_ConvNormNd):
@@ -220,10 +226,12 @@ class ConvNorm2d(_ConvNormNd):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  bias=True, padding=0, noli='relu', norm='batch',
                  groups=1):
-        super().__init__(dim=2, in_channels=in_channels,
-                         out_channels=out_channels, kernel_size=kernel_size,
-                         stride=stride, bias=bias, padding=padding, noli=noli,
-                         norm=norm, groups=groups)
+        super(ConvNorm2d, self).__init__(dim=2, in_channels=in_channels,
+                                         out_channels=out_channels,
+                                         kernel_size=kernel_size,
+                                         stride=stride, bias=bias,
+                                         padding=padding, noli=noli, norm=norm,
+                                         groups=groups)
 
 
 class ConvNorm3d(_ConvNormNd):
@@ -249,10 +257,12 @@ class ConvNorm3d(_ConvNormNd):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  bias=True, padding=0, noli='relu', norm='batch',
                  groups=1):
-        super().__init__(dim=3, in_channels=in_channels,
-                         out_channels=out_channels, kernel_size=kernel_size,
-                         stride=stride, bias=bias, padding=padding, noli=noli,
-                         norm=norm, groups=groups)
+        super(ConvNorm3d, self).__init__(dim=3, in_channels=in_channels,
+                                         out_channels=out_channels,
+                                         kernel_size=kernel_size,
+                                         stride=stride, bias=bias,
+                                         padding=padding, noli=noli, norm=norm,
+                                         groups=groups)
 
 
 if __name__ == '__main__':

@@ -45,12 +45,15 @@ import torch.nn
 import torchvision  # NOQA
 import torch.nn.functional as F
 from torch import nn
-import netharn
+import netharn as nh
+import copy
+import numpy as np
 
 
 class MnistNet(nn.Module):
     def __init__(self, n_channels=1, n_classes=10):
         super(MnistNet, self).__init__()
+        self.n_classes = n_classes
         self.conv1 = nn.Conv2d(n_channels, 10, kernel_size=5)
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
         self.conv2_drop = nn.Dropout2d()
@@ -67,6 +70,52 @@ class MnistNet(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
+class MnistHarn(nh.FitHarn):
+    """
+    Customize relevant parts of the training loop
+    """
+
+    def prepare_batch(harn, raw_batch):
+        """
+        Ensure batch is in a standardized structure
+        """
+        # Simply move the data from the datasets on the the GPU(s)
+        inputs, labels = raw_batch
+        inputs = harn.xpu.variable(inputs)
+        labels = harn.xpu.variable(labels)
+        batch = {
+            'inputs': inputs,
+            'labels': labels,
+        }
+        return batch
+
+    def run_batch(harn, batch):
+        """ Core learning / backprop """
+        inputs = batch['inputs']
+        labels = batch['labels']
+
+        outputs = harn.model(inputs)
+
+        loss = harn.criterion(outputs, labels)
+        return outputs, loss
+
+    def on_batch(harn, batch, outputs, loss):
+        """ Compute relevent metrics to monitor """
+        true_labels = batch['labels'].cpu().numpy()
+
+        class_probs = torch.nn.functional.softmax(outputs, dim=1)
+        scores, pred = class_probs.max(dim=1)
+
+        pred_labels = pred.cpu().numpy()
+
+        acc = (true_labels == pred_labels).mean()
+
+        metrics_dict = {
+            'acc': acc,
+        }
+        return metrics_dict
+
+
 def train_mnist():
     """
     CommandLine:
@@ -75,20 +124,7 @@ def train_mnist():
         python ~/code/netharn/examples/mnist.py --gpu=2
         python ~/code/netharn/examples/mnist.py
     """
-
-    """
-    TODO: IPython notebookize this demo
-
-    So, you made a pytorch model
-    You have a pytorch.Dataset
-    How will you train your model?
-    With FitHarness
-    """
-    import copy
-    import numpy as np
     root = os.path.expanduser('~/data/mnist/')
-
-    dry = ub.argflag('--dry')
 
     # Define your dataset
     transform = torchvision.transforms.Compose([
@@ -120,11 +156,8 @@ def train_mnist():
     train_idx = torch.LongTensor(learn_idx[n_vali:][::reduction])
 
     def _torch_take(tensor, indices, axis):
-        if torch.__version__.startswith('0.3'):
-            TensorType = type(learn_dset.train_data)
-        else:
-            TensorType = learn_dset.train_data.type()
-            TensorType = getattr(torch, TensorType.split('.')[1])
+        TensorType = learn_dset.train_data.type()
+        TensorType = getattr(torch, TensorType.split('.')[1])
         return TensorType(tensor.numpy().take(indices, axis=axis))
 
     vali_dset.train_data   = _torch_take(learn_dset.train_data, valid_idx,
@@ -145,36 +178,17 @@ def train_mnist():
 
     # Give the training dataset an input_id
     datasets['train'].input_id = 'mnist_' + ub.hash_data(train_idx.numpy())[0:8]
-    del datasets['test']
 
     batch_size = 128
     n_classes = 10
-    xpu = netharn.xpu_device.XPU.from_argv(min_memory=300)
+    xpu = nh.XPU.from_argv(min_memory=300)
 
     if False:
-        initializer = (netharn.initializers.Pretrained, {
+        initializer = (nh.initializers.Pretrained, {
             'fpath': 'path/to/pretained/weights.pt'
         })
     else:
-        initializer = (netharn.initializers.KaimingNormal, {'nonlinearity': 'relu'})
-
-    """
-    # Here is the fit_harness magic.
-    # This keeps track of your stuff
-    """
-    hyper = netharn.hyperparams.HyperParams(
-        model=(MnistNet, dict(n_channels=1, n_classes=n_classes)),
-        # optimizer=torch.optim.Adam,
-        optimizer=(torch.optim.SGD, {'lr': 0.01}),
-        scheduler='ReduceLROnPlateau',
-        criterion=torch.nn.CrossEntropyLoss,
-        initializer=initializer,
-        other={
-            # record any other information that will be used to compare
-            # different training runs here
-            'n_classes': n_classes,
-        }
-    )
+        initializer = (nh.initializers.KaimingNormal, {})
 
     loaders = ub.odict()
     data_kw = {'batch_size': batch_size}
@@ -192,29 +206,53 @@ def train_mnist():
                                              **data_kw_)
         loaders[tag] = loader
 
-    harn = netharn.fit_harness.FitHarness(
-        xpu=xpu, hyper=hyper, loaders=loaders, dry=dry,
-        min_keys=['loss'], max_keys=['global_acc', 'class_acc'],
+    # Workaround deadlocks with DataLoader
+    import cv2
+    cv2.setNumThreads(0)
+
+    """
+    # Here is the FitHarn magic.
+    # This keeps track of your stuff
+    """
+    hyper = nh.hyperparams.HyperParams(
+        nice='mnist',
+        xpu=xpu,
+        workdir=ub.truepath('~/data/work/mnist/'),
+        datasets=datasets,
+        loaders=loaders,
+        model=(MnistNet, dict(n_channels=1, n_classes=n_classes)),
+        # optimizer=torch.optim.Adam,
+        optimizer=(torch.optim.SGD, {'lr': 0.01}),
+        # FIXME: the ReduceLROnPleateau is broken with restarts
+        scheduler='ReduceLROnPlateau',
+        criterion=torch.nn.CrossEntropyLoss,
+        initializer=initializer,
+        monitor=(nh.Monitor, {
+            # 'minimize': ['loss'],
+            # 'maximize': ['acc'],
+            'patience': 10,
+            'max_epoch': 300,
+            'smoothing': .4,
+        }),
+        other={
+            # record any other information that will be used to compare
+            # different training runs here
+            'n_classes': n_classes,
+        }
     )
 
-    all_labels = np.arange(n_classes)
+    harn = MnistHarn(hyper=hyper)
 
-    @harn.add_batch_metric_hook
-    def custom_metrics(harn, output, labels):
-        # ignore_label = datasets['train'].ignore_label
-        # labels = datasets['train'].task.labels
-        label = labels[0]
-        metrics_dict = netharn.metrics._clf_metrics(output, label,
-                                                    all_labels=all_labels)
-        return metrics_dict
+    # Set how often vali / test will be run
+    harn.intervals.update({
+        # 'vali': slice(5, None, 1),
 
-    workdir = ub.truepath('~/data/work/mnist/')
-    train_dpath = harn.setup_dpath(workdir, hashed=True)
-    print('train_dpath = {!r}'.format(train_dpath))
+        # Start testing after the 5th epoch and then test every 4 epochs
+        'test': slice(5, None, 4),
+    })
 
-    if ub.argflag('--reset'):
-        ub.delete(train_dpath)
-
+    reset = ub.argflag('--reset')
+    harn.initialize(reset=reset)
     harn.run()
 
     # if False:
@@ -237,5 +275,7 @@ if __name__ == '__main__':
     r"""
     CommandLine:
         python examples/mnist.py
+
+        tensorboard --logdir ~/data/work/mnist/fit/nice
     """
     train_mnist()

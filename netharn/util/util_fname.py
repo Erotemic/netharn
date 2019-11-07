@@ -4,7 +4,7 @@ Processing for filenames. The logic is relatively hacky.
 
 pip install pygtrie
 """
-from __future__ import print_function, division
+from __future__ import absolute_import, division, print_function, unicode_literals
 from os.path import commonprefix, isdir, dirname
 # from os.path import relpath, splitext
 import numpy as np  # NOQA
@@ -239,7 +239,7 @@ def align_paths(paths1, paths2):
         >>>     assert align_paths(list(np.take(paths1, sortx)), paths2_) == list(np.take(paths2, sortx))
         >>> #
         >>> def test_input_arrangements(paths1, paths2):
-        >>>     paths2_ = paths2.copy()
+        >>>     paths2_ = list(paths2)
         >>>     test_gt_arrangements(paths1, paths2, paths2_)
         >>>     test_gt_arrangements(paths1, paths2, paths2_[::-1])
         >>>     np.random.shuffle(paths2_)

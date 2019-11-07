@@ -334,11 +334,13 @@ def demo_voc_weights(key='lightnet'):
 
     if key == 'lightnet':
         url = 'https://gitlab.com/EAVISE/lightnet/raw/master/examples/yolo-voc/lightnet_weights.pt'
+        hash_prefix = 'c4597fed8eb1b01da3495'
     elif key == 'darknet':
         url = 'https://pjreddie.com/media/files/yolo-voc.weights'
+        hash_prefix = '3033f5f510c25ab3ff6b9'
     else:
         raise KeyError(key)
-    fpath = ub.grabdata(url, appname='netharn')
+    fpath = ub.grabdata(url, appname='netharn', hash_prefix=hash_prefix)
     # import lightnet
     # from os.path import dirname, join
     # dpath = dirname(dirname(lightnet.__file__))
@@ -349,18 +351,25 @@ def demo_voc_weights(key='lightnet'):
 def initial_imagenet_weights():
     # import os
     import ubelt as ub
-    # fpath = ub.grabdata(url)
-    torch_fpath = ub.grabdata('https://data.kitware.com/api/v1/item/5b16b81b8d777f15ebe1ffcd/download',
-                              fname='darknet19_448.conv.23.pt', appname='netharn')
-    # weight_fpath = ub.grabdata(
-    #     'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='netharn')
-    # torch_fpath = weight_fpath + '.pt'
-    # if not os.path.exists(torch_fpath):
-    #     import lightnet.models
-    #     # hack to transform initial state
-    #     model = lightnet.models.Yolo(num_classes=1000)
-    #     model.load_weights(weight_fpath)
-    #     torch.save(model.state_dict(), torch_fpath)
+    try:
+        darknet_weight_fpath = ub.grabdata(
+            'https://pjreddie.com/media/files/darknet19_448.conv.23',
+            appname='netharn', hash_prefix='8016f5b7ddc15c5d7dad2315')
+        torch_fpath = darknet_weight_fpath + '_lntf.pt'
+        import os
+        if not os.path.exists(torch_fpath):
+            import lightnet.models
+            # hack to transform initial state
+            model = lightnet.models.Yolo(num_classes=20)
+            model.load_weights(darknet_weight_fpath)
+            torch.save(model.state_dict(), torch_fpath)
+    except ImportError:
+        # Maybe this had a weird bad init state?
+        torch_fpath = ub.grabdata('https://data.kitware.com/api/v1/item/5b16b81b8d777f15ebe1ffcd/download',
+                                  fname='darknet19_448.conv.23.pt',
+                                  appname='netharn',
+                                  # hash_prefix='fd2b99b9f66bb4',
+                                  hash_prefix='f38968224a81a')
     return torch_fpath
 
 

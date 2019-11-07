@@ -45,6 +45,7 @@ Example:
 
 
 """
+from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 import ubelt as ub
 import torch
@@ -91,8 +92,12 @@ def _class_default_params(cls):
     """
     cls = torch.optim.Adam
     """
-    import inspect
-    sig = inspect.signature(cls)
+    if six.PY2:
+        import funcsigs
+        sig = funcsigs.signature(cls)
+    else:
+        import inspect
+        sig = inspect.signature(cls)
     default_params = {
         k: p.default
         for k, p in sig.parameters.items()
@@ -259,14 +264,19 @@ def _rectify_loaders(arg, kw):
     loaders = None
 
     if isinstance(arg, dict):
-        if isinstance(arg.get('train', None), torch_data.DataLoader):
+        # Check if all args are already data loaders
+        # if isinstance(arg.get('train', None), torch_data.DataLoader):
+        if len(arg) and all(isinstance(v, torch_data.DataLoader) for v in arg.values()):
             # loaders were custom specified
             loaders = arg
             # TODO: extract relevant loader params efficiently
             cls = None
-            kw2 = {
-                'batch_size': loaders['train'].batch_sampler.batch_size,
-            }
+            if 'train' in loaders:
+                kw2 = {
+                    'batch_size': loaders['train'].batch_sampler.batch_size,
+                }
+            else:
+                kw2 = {}
         else:
             # loaders is kwargs for `torch_data.DataLoader`
             arg = (torch_data.DataLoader, arg)
@@ -274,7 +284,7 @@ def _rectify_loaders(arg, kw):
     else:
         raise ValueError('Loaders should be a dict')
 
-    kwnice = ub.dict_subset(kw2, ['batch_size'])
+    kwnice = ub.dict_subset(kw2, ['batch_size'], default=None)
     return loaders, cls, kw2, kwnice
 
 
@@ -324,7 +334,8 @@ class HyperParams(object):
                  dynamics=None,
                  monitor=None,
                  augment=None,
-                 other=None,
+                 other=None,  # incorporated into the hash
+                 extra=None,  # ignored when computing the hash
                  ):
         kwargs = {}
 
@@ -367,6 +378,7 @@ class HyperParams(object):
 
         hyper.augment = augment
         hyper.other = other
+        hyper.extra = extra
 
     def make_model(hyper):
         """ Instanciate the model defined by the hyperparams """
@@ -487,6 +499,9 @@ class HyperParams(object):
         _append_part('scheduler', hyper.scheduler_cls, hyper.scheduler_params)
         _append_part('criterion', hyper.criterion_cls, hyper.criterion_params)
 
+        # TODO: should other be included in initkw? I think it should.
+        # probably should also include monitor, xpu, nice
+
         # Loader is a bit hacked
         _append_part('loader', hyper.loader_cls, hyper.loader_params_nice)
         _append_part('dynamics', 'Dynamics', hyper.dynamics)
@@ -532,7 +547,7 @@ class HyperParams(object):
         """
         if hyper.augment is None:
             return None
-        elif isinstance(hyper.augment, str):
+        elif isinstance(hyper.augment, six.string_types):
             return hyper.augment
         # if isinstance(hyper.augment, (dict, list)):  # cant check for list because Seq inherits from it
         elif isinstance(hyper.augment, ub.odict):

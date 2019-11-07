@@ -16,7 +16,7 @@ class MyHarn(nh.FitHarn):
     def _run_batch(harn, *a, **kw):
         if harn.epoch == harn.failpoint:
             raise Failpoint
-        return super()._run_batch(*a, **kw)
+        return super(MyHarn, harn)._run_batch(*a, **kw)
 
     def run_batch(harn, batch):
         loss = torch.rand((1,), requires_grad=True)

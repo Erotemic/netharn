@@ -1,9 +1,27 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 import random
 import itertools as it
 import ubelt as ub  # NOQA
+import torch
 
 _SEED_MAX = (2 ** 32 - 1)
+
+
+def seed_global(seed, offset=0):
+    """
+    Seeds the python, numpy, and torch global random states
+
+    Args:
+        seed (int): seed to use
+        offset (int, optional): if specified, uses a different seed for each
+            global random state separated by this offset.
+    """
+    random.seed((seed) % _SEED_MAX)
+    np.random.seed((seed + offset) % _SEED_MAX)
+    torch.random.manual_seed((seed + 2 * offset) % _SEED_MAX)
+    torch.cuda.manual_seed_all((seed + 3 * offset) % _SEED_MAX)
 
 
 def shuffle(items, rng=None):
@@ -180,8 +198,8 @@ def ensure_rng(rng, api='numpy'):
     Returns a random number generator
 
     Args:
-        seed: if None, then the rng is unseeded. Otherwise the seed can be an
-            integer or a RandomState class
+        seed: if None, then deafults to the global rng.
+            Otherwise the seed can be an integer or a RandomState class
 
     Example:
         >>> rng = ensure_rng(None)
@@ -210,10 +228,28 @@ def ensure_rng(rng, api='numpy'):
         >>> print(pn_nums)
         >>> assert np_nums == pp_nums
         >>> assert pn_nums == nn_nums
+
+    Ignore:
+        >>> np.random.seed(0)
+        >>> np.random.randint(0, 10000)
+        2732
+        >>> np.random.seed(0)
+        >>> np.random.mtrand._rand.randint(0, 10000)
+        2732
+        >>> np.random.seed(0)
+        >>> nh.util.ensure_rng(None).randint(0, 10000)
+        2732
+        >>> np.random.randint(0, 10000)
+        9845
+        >>> nh.util.ensure_rng(None).randint(0, 10000)
+        3264
     """
     if api == 'numpy':
         if rng is None:
-            rng = np.random.RandomState(seed=None)
+            # Dont do this because it seeds using dev/urandom
+            # rng = np.random.RandomState(seed=None)
+            # This is the underlying random state of the np.random module
+            rng = np.random.mtrand._rand
         elif isinstance(rng, int):
             rng = np.random.RandomState(seed=rng % _SEED_MAX)
         elif isinstance(rng, random.Random):

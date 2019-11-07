@@ -1,6 +1,12 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 # from os.path import join, normpath, dirname
 from os.path import dirname, join, normpath
 import ubelt as ub
+import os
+import sys
+import warnings
+import platform
 from netharn import util
 
 
@@ -8,8 +14,10 @@ class Folders(object):
     def __init__(self, hyper):
         self.hyper = hyper
 
-    def train_info(self, short=True, hashed=True):
+    def train_info(self, train_dpath=None, short=True, hashed=True):
         """
+        TODO: maybe this doesn't belong in folders?
+
         CommandLine:
             python ~/code/netharn/netharn/folders.py Folders.train_info
 
@@ -48,6 +56,7 @@ class Folders(object):
             >>> info = folders.train_info()
             >>> print(ub.repr2(info))
         """
+        given_explicit_train_dpath = train_dpath is not None
         # TODO: needs MASSIVE cleanup and organization
 
         # TODO: if pretrained is another netharn model, then we should read that
@@ -60,13 +69,12 @@ class Folders(object):
             raise ValueError('model_cls is None')
         # arch = hyper.model_cls.__name__
 
-        train_dset = hyper.datasets['train']
-        if hasattr(train_dset, 'input_id'):
+        train_dset = hyper.datasets.get('train', None)
+        if train_dset is not None and hasattr(train_dset, 'input_id'):
             input_id = train_dset.input_id
             if callable(input_id):
                 input_id = input_id()
         else:
-            import warnings
             warnings.warn(
                 'FitHarn cannot track the training dataset state because '
                 'harn.datasets["train"] is missing the "input_id" attribute.'
@@ -95,21 +103,22 @@ class Folders(object):
         # Gather all information about this run into a single hash
         train_hashid = _hash_data(train_id)[0:8]
 
-        # input_dname = 'input_' + input_id
-        # verbose_dpath = join(self.hyper.workdir, 'fit', 'link', 'arch', arch, input_dname, train_id)
-        hashed_dpath = normpath(
-                join(self.hyper.workdir, 'fit', 'runs', train_hashid))
+        nice = hyper.nice
 
-        # setup a cannonical and a linked symlink dir
-        train_dpath = hashed_dpath
-        # link_dpath = verbose_dpath
-
-        # also setup a "nice" custom name, which may conflict, but oh well
-        if hyper.nice:
-            nice_dpath = normpath(
-                    join(self.hyper.workdir, 'fit', 'nice', hyper.nice))
-        else:
-            nice_dpath = None
+        nice_dpath = None
+        if not given_explicit_train_dpath:
+            # setup a cannonical and a linked symlink dir
+            train_dpath = normpath(
+                    join(self.hyper.workdir, 'fit', 'runs', nice, train_hashid))
+            # also setup a "nice" custom name, which may conflict, but oh well
+            if nice:
+                try:
+                    nice_dpath = normpath(
+                            join(self.hyper.workdir, 'fit', 'nice', nice))
+                except Exception:
+                    print('self.hyper.workdir = {!r}'.format(self.hyper.workdir))
+                    print('hyper.nice = {!r}'.format(hyper.nice))
+                    raise
 
         # make temporary initializer so we can infer the history
         temp_initializer = hyper.make_initializer()
@@ -138,26 +147,44 @@ class Folders(object):
 
             ('nice', hyper.nice),
 
+            ('old_train_dpath', normpath(
+                join(self.hyper.workdir, 'fit', 'runs', train_hashid))),
+
             ('train_dpath', train_dpath),
             # ('link_dpath', link_dpath),
             ('nice_dpath', nice_dpath),
+
+            ('given_explicit_train_dpath', given_explicit_train_dpath),
 
             # TODO, add in n_classes if applicable
             # TODO, add in centering if applicable
             # ('centering', hyper.centering),
 
+            ('other', hyper.other),
+
             # HACKED IN
             ('augment', hyper.augment_json()),
+
+            ('extra', hyper.extra),
+
+            ('argv', sys.argv),
+            ('hostname', platform.node()),
         ])
         return train_info
 
-    def setup_dpath(self, short=True, hashed=True):
-        train_info = self.train_info(short, hashed)
+    def setup_dpath(self, train_dpath, short=True, hashed=True):
+        train_info = self.train_info(train_dpath, short, hashed)
 
         train_dpath = ub.ensuredir(train_info['train_dpath'])
-        train_info_fpath = join(train_dpath, 'train_info.json')
 
-        util.write_json(train_info_fpath, train_info)
+        # backwards compatability code,
+        # can eventually remove after a major version change
+        if True:
+            # backwards compatability code
+            if os.path.exists(train_info['old_train_dpath']) and not os.path.islink(train_info['old_train_dpath']):
+                ub.delete(train_info['train_dpath'])
+                ub.symlink(train_info['old_train_dpath'], train_info['train_dpath'],
+                           overwrite=True, verbose=3)
 
         # setup symlinks
         # ub.ensuredir(dirname(train_info['link_dpath']))

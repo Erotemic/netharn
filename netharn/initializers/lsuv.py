@@ -67,7 +67,7 @@ class Orthonormal(nninit_base._BaseInitializer):
                     w_ortho = svd_orthonormal(shape, self.rng, cache_key=name)
                     m.weight_v.data[:] = torch.from_numpy(w_ortho)
                     try:
-                        nn.init.constant(m.bias, 0)
+                        nn.init.constant_(m.bias, 0)
                     except Exception:
                         pass
                 else:
@@ -75,7 +75,7 @@ class Orthonormal(nninit_base._BaseInitializer):
                     w_ortho = svd_orthonormal(shape, self.rng, cache_key=name)
                     m.weight.data[:] = torch.from_numpy(w_ortho)
                     try:
-                        nn.init.constant(m.bias, 0)
+                        nn.init.constant_(m.bias, 0)
                     except Exception:
                         pass
         return model

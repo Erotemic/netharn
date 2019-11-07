@@ -9,8 +9,6 @@ import torch
 # sys.path.append(ub.truepath('~/code/netharn/netharn/examples'))  # NOQA
 # import mkinit
 # exec(dynamic_init('yolo_voc'))
-from yolo_voc import setup_harness, light_yolo
-
 """
 mkinit /code/netharn/netharn/examples/example_test.py --dry
 """
@@ -31,8 +29,6 @@ def evaluate_model():
     train_dpath = ub.truepath('~/work/voc_yolo2/fit/nice/pjr_run')
     snapshot_fpath = join(train_dpath, 'torch_snapshots', '_epoch_00000314.pt')
 
-    # anchors = np.asarray([(1.08, 1.19), (3.42, 4.41), (6.63, 11.38),
-    #                       (9.42, 5.11), (16.62, 10.52)], dtype=np.float)
     anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
                         (5.05587, 8.09892), (9.47112, 4.84053),
                         (11.2364, 10.0071)])
@@ -402,7 +398,7 @@ def _compare_map():
     import sys
     from os.path import exists  # NOQA
     sys.path.append(ub.truepath('~/code/netharn/netharn/examples'))  # NOQA
-    from yolo_voc import setup_harness, light_yolo  # NOQA
+    yolo_voc = ub.import_module_from_path(ub.truepath('~/code/netharn/examples/yolo_voc.py'))
     import shutil
     import lightnet as ln
     ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
@@ -413,40 +409,43 @@ def _compare_map():
     ln_weights_fpath = ub.truepath('~/remote/namek/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
     ln_weights_fpath = ub.truepath('~/remote/namek/code/lightnet/examples/yolo-voc/backup/weights_45000.pt')
     ln_weights_fpath = ub.truepath('~/remote/namek/code/lightnet/examples/yolo-voc/backup/final.pt')
+
+    ln_weights_fpath = yolo_voc.light_yolo.demo_voc_weights()
     assert exists(my_weights_fpath)
     assert exists(ln_weights_fpath)
 
-    ln_weights_fpath_ = ub.truepath('~/tmp/ln_weights.pt')
-    my_weights_fpath_ = ub.truepath('~/tmp/my_weights.pt')
+    # ln_weights_fpath_ = ub.truepath('~/tmp/ln_weights.pt')
+    # my_weights_fpath_ = ub.truepath('~/tmp/my_weights.pt')
 
-    # Move the weights to the local computer
-    stamp = nh.util.CacheStamp(
-        'ln_weights.stamp', product=ln_weights_fpath_, cfgstr='ln',
-        dpath=ub.truepath('~/tmp'))
-    if stamp.expired():
-        shutil.copy2(ln_weights_fpath, ln_weights_fpath_)
-        stamp.renew()
+    # # Move the weights to the local computer
+    # stamp = nh.util.CacheStamp(
+    #     'ln_weights.stamp', product=ln_weights_fpath_, cfgstr='ln',
+    #     dpath=ub.truepath('~/tmp'))
+    # if stamp.expired():
+    #     shutil.copy2(ln_weights_fpath, ln_weights_fpath_)
+    #     stamp.renew()
 
-    stamp = nh.util.CacheStamp(
-        'nh_weights.stamp', product=my_weights_fpath_, cfgstr='nh',
-        dpath=ub.truepath('~/tmp'))
-    if stamp.expired():
-        shutil.copy2(my_weights_fpath, my_weights_fpath_)
-        stamp.renew()
+    # stamp = nh.util.CacheStamp(
+    #     'nh_weights.stamp', product=my_weights_fpath_, cfgstr='nh',
+    #     dpath=ub.truepath('~/tmp'))
+    # if stamp.expired():
+    #     shutil.copy2(my_weights_fpath, my_weights_fpath_)
+    #     stamp.renew()
 
     ########
     # Create instances of netharn and lightnet YOLOv2 model
     ########
 
     # Netharn model, postprocess, and lightnet weights
-    nh_harn = setup_harness(bsize=2)
+    yolo_voc = ub.import_module_from_path(ub.truepath('~/code/netharn/examples/yolo_voc.py'))
+    nh_harn = yolo_voc.setup_yolo_harness(bsize=2)
     xpu = nh_harn.hyper.xpu = nh.XPU.cast('auto')
     nh_harn.initialize()
     my_model = nh_harn.model
     my_model.load_state_dict(nh_harn.xpu.load(my_weights_fpath)['model_state_dict'])
 
     # Netharn model, postprocess, and lightnet weights
-    ln_harn = setup_harness(bsize=2)
+    ln_harn = yolo_voc.setup_yolo_harness(bsize=2)
     ln_harn.initialize()
     ln_weights = {'module.' + k: v for k, v in ln_harn.xpu.load(ln_weights_fpath)['weights'].items()}
     ln_harn.model.load_state_dict(ln_weights)
@@ -682,17 +681,41 @@ def _ln_data_nh_map(ln_model, xpu, harn, num=None):
 
 
 def _nh_data_nh_map(harn, num=10):
+
+    tag = 'test'
+    harn.current_tag = tag
+    cacher = ub.Cacher('dmet2', cfgstr=tag, appname='netharn')
+    dmet = cacher.tryload()
+    if dmet is None:
+        dmet = nh.metrics.detections.DetectionMetrics()
+        dmet.true = harn.datasets[tag].to_coco()
+        # Truth and predictions share the same images and categories
+        dmet.pred.dataset['images'] = dmet.true.dataset['images']
+        dmet.pred.dataset['categories'] = dmet.true.dataset['categories']
+        dmet.pred.dataset['annotations'] = []  # start empty
+        dmet.true.dataset['annotations'] = []
+        dmet.pred._clear_index()
+        dmet.true._clear_index()
+        cacher.save(dmet)
+
+    dmet.true._build_index()
+    dmet.pred._build_index()
+    harn.dmets[tag] = dmet
+
+    # Reset
+    dmet.pred.remove_all_annotations()
+    dmet.true.remove_all_annotations()
+
+    # postprocess = harn.model.module.postprocess
+    # postprocess.conf_thresh = 0.001
+    # postprocess.nms_thresh = 0.5
+    # batch_confusions = []
+    moving_ave = nh.util.util_averages.CumMovingAve()
+    loader = harn.loaders['test']
+    prog = ub.ProgIter(iter(loader), desc='')
     with torch.no_grad():
-        postprocess = harn.model.module.postprocess
-        # postprocess.conf_thresh = 0.001
-        # postprocess.nms_thresh = 0.5
-        batch_confusions = []
-        moving_ave = nh.util.util_averages.CumMovingAve()
-        loader = harn.loaders['test']
-        prog = ub.ProgIter(iter(loader), desc='')
         for bx, batch in enumerate(prog):
             inputs, labels = harn.prepare_batch(batch)
-            inp_size = np.array(inputs.shape[-2:][::-1])
             outputs = harn.model(inputs)
 
             loss = harn.criterion(outputs, labels['targets'],
@@ -709,9 +732,12 @@ def _nh_data_nh_map(harn, num=10):
             desc = ub.repr2(average_losses, nl=0, precision=2, si=True)
             prog.set_description(desc, refresh=False)
 
-            postout = postprocess(outputs)
-            for y in harn._measure_confusion(postout, labels, inp_size):
-                batch_confusions.append(y)
+            harn._record_predictions(tag, batch, outputs)
+
+            # inp_size = np.array(inputs.shape[-2:][::-1])
+            # postout = postprocess(outputs)
+            # for y in harn._measure_confusion(postout, labels, inp_size):
+            #     batch_confusions.append(y)
 
             # batch_output.append((outputs.cpu().data.numpy().copy(), inp_size))
             # batch_labels.append([x.cpu().data.numpy().copy() for x in labels])
@@ -721,22 +747,27 @@ def _nh_data_nh_map(harn, num=10):
         average_losses = moving_ave.average()
         print('average_losses {}'.format(ub.repr2(average_losses)))
 
-    if False:
-        from netharn.util import mplutil
-        mplutil.qtensure()  # xdoc: +SKIP
-        harn.visualize_prediction(batch, outputs, postout, thresh=.1)
+    # if False:
+    #     from netharn.util import mplutil
+    #     mplutil.qtensure()  # xdoc: +SKIP
+    #     harn.visualize_prediction(batch, outputs, postout, thresh=.1)
 
-    y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
-    precision, recall, ap = nh.metrics.detections._multiclass_ap(y)
+    print(dmet.score_voc()['mAP'])
+    print(dmet.score_netharn()['mAP'])
 
-    ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
-    num_classes = len(ln_test.LABELS)
-    cls_labels = list(range(num_classes))
+    # Reset
+    dmet.pred.remove_all_annotations()
+    dmet.true.remove_all_annotations()
 
-    aps = nh.metrics.ave_precisions(y, cls_labels, method='voc2007')
-    aps = aps.rename(dict(zip(cls_labels, ln_test.LABELS)), axis=0)
+    # y = pd.concat([pd.DataFrame(c) for c in batch_confusions])
+    # precision, recall, ap = nh.metrics.detections._multiclass_ap(y)
+    # ln_test = ub.import_module_from_path(ub.truepath('~/code/lightnet/examples/yolo-voc/test.py'))
+    # num_classes = len(ln_test.LABELS)
+    # cls_labels = list(range(num_classes))
+    # aps = nh.metrics.ave_precisions(y, cls_labels, method='voc2007')
+    # aps = aps.rename(dict(zip(cls_labels, ln_test.LABELS)), axis=0)
     # return ap
-    return ap, aps
+    # return ap, aps
 
 
 def brambox_to_labels(ln_bramboxes, inp_size, LABELS):
@@ -769,13 +800,14 @@ def brambox_to_labels(ln_bramboxes, inp_size, LABELS):
 
 
 def _run_quick_test():
-    harn = setup_harness(bsize=2)
+    yolo_voc = ub.import_module_from_path(ub.truepath('~/code/netharn/examples/yolo_voc.py'))
+    harn = yolo_voc.setup_yolo_harness(bsize=2)
     harn.hyper.xpu = nh.XPU(0)
     harn.initialize()
 
     if 0:
         # Load up pretrained VOC weights
-        weights_fpath = light_yolo.demo_voc_weights()
+        weights_fpath = yolo_voc.light_yolo.demo_voc_weights()
         state_dict = harn.xpu.load(weights_fpath)['weights']
         harn.model.module.load_state_dict(state_dict)
     else:
@@ -862,7 +894,8 @@ def _run_quick_test():
 
 
 def compare_loss():
-    harn = setup_harness(bsize=2)
+    yolo_voc = ub.import_module_from_path(ub.truepath('~/code/netharn/examples/yolo_voc.py'))
+    harn = yolo_voc.setup_yolo_harness(bsize=2)
     harn.hyper.xpu = nh.XPU(0)
     harn.initialize()
 
@@ -975,8 +1008,9 @@ def _test_with_lnstyle_data():
     # (These were trained using the lightnet harness and achived a good mAP)
     weights_fpath = ub.truepath('~/code/lightnet/examples/yolo-voc/backup/weights_30000.pt')
 
+    yolo_voc = ub.import_module_from_path(ub.truepath('~/code/netharn/examples/yolo_voc.py'))
     # Load weights into a netharn model
-    harn = setup_harness(bsize=2)
+    harn = yolo_voc.setup_yolo_harness(bsize=2)
     harn.hyper.xpu = nh.XPU(0)
     harn.initialize()
     state_dict = harn.xpu.load(weights_fpath)['weights']
