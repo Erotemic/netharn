@@ -202,7 +202,7 @@ class GaussianBlurNd(common.Module):
     def output_shape_for(self, input_shape):
         return input_shape
 
-    def receptive_field_for(self, prev=None):
+    def receptive_field_for(self, input_field=None):
         # Even though this does change the receptive feild a little bit
         # lets pretend that it doesnt
-        return prev, prev
+        return input_field

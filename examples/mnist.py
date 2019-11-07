@@ -45,8 +45,8 @@ import torch.nn
 import torchvision  # NOQA
 import torch.nn.functional as F
 from torch import nn
+from os.path import join
 import netharn as nh
-import copy
 import numpy as np
 
 
@@ -84,15 +84,15 @@ class MnistHarn(nh.FitHarn):
         inputs = harn.xpu.variable(inputs)
         labels = harn.xpu.variable(labels)
         batch = {
-            'inputs': inputs,
-            'labels': labels,
+            'input': inputs,
+            'label': labels,
         }
         return batch
 
     def run_batch(harn, batch):
         """ Core learning / backprop """
-        inputs = batch['inputs']
-        labels = batch['labels']
+        inputs = batch['input']
+        labels = batch['label']
 
         outputs = harn.model(inputs)
 
@@ -101,12 +101,16 @@ class MnistHarn(nh.FitHarn):
 
     def on_batch(harn, batch, outputs, loss):
         """ Compute relevent metrics to monitor """
-        true_labels = batch['labels'].cpu().numpy()
-
         class_probs = torch.nn.functional.softmax(outputs, dim=1)
         scores, pred = class_probs.max(dim=1)
 
         pred_labels = pred.cpu().numpy()
+        true_labels = batch['label'].cpu().numpy()
+
+        bx = harn.bxs[harn.current_tag]
+        if bx < 3:
+            decoded = harn._decode(outputs, batch['label'])
+            harn._draw_batch(bx, batch, decoded)
 
         acc = (true_labels == pred_labels).mean()
 
@@ -115,8 +119,112 @@ class MnistHarn(nh.FitHarn):
         }
         return metrics_dict
 
+    def _decode(harn, outputs, true_cxs=None):
+        class_probs = torch.nn.functional.softmax(outputs, dim=1)
+        pred_scores, pred_cxs = class_probs.data.max(dim=1)
 
-def train_mnist():
+        decoded = {
+            'class_probs': class_probs,
+            'pred_cxs': pred_cxs,
+            'pred_scores': pred_scores,
+        }
+        if true_cxs is not None:
+            hot = nh.criterions.focal.one_hot_embedding(true_cxs, class_probs.shape[1])
+            true_probs = (hot * class_probs).sum(dim=1)
+            decoded['true_scores'] = true_probs
+        return decoded
+
+    def _draw_batch(harn, bx, batch, decoded, limit=32):
+        """
+        CommandLine:
+            xdoctest -m ~/code/netharn/examples/cifar.py CIFAR_FitHarn._draw_batch --show --arch=wrn_22
+
+        Example:
+            >>> import sys
+            >>> sys.path.append('/home/joncrall/code/netharn/examples')
+            >>> from mnist import *
+            >>> harn = setup_mnist_harn().initialize()
+            >>> #
+            >>> batch = harn._demo_batch(0, tag='test')
+            >>> outputs, loss = harn.run_batch(batch)
+            >>> bx = harn.bxs[harn.current_tag]
+            >>> decoded = harn._decode(outputs, batch['label'])
+            >>> fpath = harn._draw_batch(bx, batch, decoded, limit=42)
+            >>> print('fpath = {!r}'.format(fpath))
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import netharn as nh
+            >>> nh.util.autompl()
+            >>> nh.util.imshow(fpath, colorspace='rgb', doclf=True)
+            >>> nh.util.show_if_requested()
+        """
+        inputs = batch['input']
+        inputs = inputs[0:limit]
+
+        input_shape = inputs.shape
+        dims = [160] * (len(input_shape) - 2)
+        min_, max_ = inputs.min(), inputs.max()
+        inputs = (inputs - min_) / (max_ - min_)
+        inputs = torch.nn.functional.interpolate(inputs, size=dims)
+        inputs = (inputs * 255).byte()
+        inputs = inputs.data.cpu().numpy()
+
+        dset = harn.datasets[harn.current_tag]
+        catgraph = dset.categories
+
+        pred_cxs = decoded['pred_cxs'].data.cpu().numpy()
+        pred_scores = decoded['pred_scores'].data.cpu().numpy()
+
+        true_cxs = batch['label'].data.cpu().numpy()
+        true_scores = decoded['true_scores'].data.cpu().numpy()
+
+        todraw = []
+        for im, pcx, tcx, pred_score, true_score in zip(inputs, pred_cxs, true_cxs, pred_scores, true_scores):
+            im_ = im.transpose(1, 2, 0)
+            im_ = nh.util.convert_colorspace(im_, 'gray', 'rgb')
+            im_ = np.ascontiguousarray(im_)
+            h, w = im_.shape[0:2][::-1]
+
+            true_name = catgraph[tcx]
+            pred_name = catgraph[pcx]
+            org1 = np.array((2, h - 32))
+            org2 = np.array((2, 25))
+            pred_label = 'p:{pcx}@{pred_score:.2f}:\n{pred_name}'.format(**locals())
+            true_label = 't:{tcx}@{true_score:.2f}:\n{true_name}'.format(**locals())
+            if pcx == tcx:
+                true_label = 't:{tcx}:{true_name}'.format(**locals())
+
+            fontkw = {
+                'fontScale': 1.0,
+                'thickness': 2
+            }
+            color = 'dodgerblue' if pcx == tcx else 'orangered'
+
+            im_ = nh.util.draw_text_on_image(im_, pred_label, org=org1 - 2,
+                                             color='white', **fontkw)
+            im_ = nh.util.draw_text_on_image(im_, true_label, org=org2 - 2,
+                                             color='white', **fontkw)
+
+            for i in [-2, -1, 1, 2]:
+                for j in [-2, -1, 1, 2]:
+                    im_ = nh.util.draw_text_on_image(im_, pred_label, org=org1 + i,
+                                                     color='black', **fontkw)
+                    im_ = nh.util.draw_text_on_image(im_, true_label, org=org2 + j,
+                                                     color='black', **fontkw)
+
+            im_ = nh.util.draw_text_on_image(im_, pred_label, org=org1,
+                                             color=color, **fontkw)
+            im_ = nh.util.draw_text_on_image(im_, true_label, org=org2,
+                                             color='lawngreen', **fontkw)
+            todraw.append(im_)
+
+        dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
+        fpath = join(dpath, 'batch_{}_epoch_{}.jpg'.format(bx, harn.epoch))
+        stacked = nh.util.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
+        nh.util.imwrite(fpath, stacked)
+        return fpath
+
+
+def setup_mnist_harn():
     """
     CommandLine:
         python examples/mnist.py
@@ -138,12 +246,8 @@ def train_mnist():
     test_dset = torchvision.datasets.MNIST(root, transform=transform,
                                            train=True, download=True)
 
-    train_dset = learn_dset
-    vali_dset = copy.copy(learn_dset)
-
     # split the learning dataset into training and validation
     # take a subset of data
-    # factor = .15
     factor = .15
     n_vali = int(len(learn_dset) * factor)
     learn_idx = np.arange(len(learn_dset))
@@ -151,30 +255,23 @@ def train_mnist():
     rng = np.random.RandomState(0)
     rng.shuffle(learn_idx)
 
-    reduction = 1
-    valid_idx = torch.LongTensor(learn_idx[:n_vali][::reduction])
+    reduction = int(ub.argval('--reduction', default=1))
+    vali_idx  = torch.LongTensor(learn_idx[:n_vali][::reduction])
     train_idx = torch.LongTensor(learn_idx[n_vali:][::reduction])
 
-    def _torch_take(tensor, indices, axis):
-        TensorType = learn_dset.train_data.type()
-        TensorType = getattr(torch, TensorType.split('.')[1])
-        return TensorType(tensor.numpy().take(indices, axis=axis))
+    train_dset = torch.utils.data.Subset(learn_dset, train_idx)
+    vali_dset = torch.utils.data.Subset(learn_dset, vali_idx)
 
-    vali_dset.train_data   = _torch_take(learn_dset.train_data, valid_idx,
-                                         axis=0)
-    vali_dset.train_labels = _torch_take(learn_dset.train_labels, valid_idx,
-                                         axis=0).long()
-
-    train_dset.train_data   = _torch_take(learn_dset.train_data, train_idx,
-                                          axis=0)
-    train_dset.train_labels = _torch_take(learn_dset.train_labels, train_idx,
-                                          axis=0).long()
+    categories = ['zero', 'one', 'two', 'three', 'four', 'five', 'six',
+                  'seven', 'eight', 'nine']
 
     datasets = {
         'train': train_dset,
         'vali': vali_dset,
         'test': test_dset,
     }
+    for tag, dset in datasets.items():
+        dset.categories = categories
 
     # Give the training dataset an input_id
     datasets['train'].input_id = 'mnist_' + ub.hash_data(train_idx.numpy())[0:8]
@@ -200,36 +297,31 @@ def train_mnist():
         dset = datasets[tag]
         shuffle = tag == 'train'
         data_kw_ = data_kw.copy()
-        if tag != 'train':
-            data_kw_['batch_size'] = max(batch_size // 4, 1)
-        loader = torch.utils.data.DataLoader(dset, shuffle=shuffle,
-                                             **data_kw_)
+        loader = torch.utils.data.DataLoader(dset, shuffle=shuffle, **data_kw_)
         loaders[tag] = loader
 
     # Workaround deadlocks with DataLoader
     import cv2
     cv2.setNumThreads(0)
 
-    """
     # Here is the FitHarn magic.
-    # This keeps track of your stuff
-    """
+    # They nh.HyperParams object keeps track of and helps log all declarative
+    # info related to training a model.
     hyper = nh.hyperparams.HyperParams(
         nice='mnist',
         xpu=xpu,
-        workdir=ub.truepath('~/data/work/mnist/'),
+        workdir=ub.truepath('~//work/mnist/'),
         datasets=datasets,
         loaders=loaders,
         model=(MnistNet, dict(n_channels=1, n_classes=n_classes)),
         # optimizer=torch.optim.Adam,
         optimizer=(torch.optim.SGD, {'lr': 0.01}),
-        # FIXME: the ReduceLROnPleateau is broken with restarts
         scheduler='ReduceLROnPlateau',
         criterion=torch.nn.CrossEntropyLoss,
         initializer=initializer,
         monitor=(nh.Monitor, {
-            # 'minimize': ['loss'],
-            # 'maximize': ['acc'],
+            'minimize': ['loss'],
+            'maximize': ['acc'],
             'patience': 10,
             'max_epoch': 300,
             'smoothing': .4,
@@ -250,26 +342,31 @@ def train_mnist():
         # Start testing after the 5th epoch and then test every 4 epochs
         'test': slice(5, None, 4),
     })
+    return harn
 
+
+def train_mnist():
+    harn = setup_mnist_harn()
     reset = ub.argflag('--reset')
+
+    # Initializing a FitHarn object can take a little time, but not too much.
+    # This is where instances of the model, optimizer, scheduler, monitor, and
+    # initializer are created. This is also where we check if there is a
+    # pre-existing checkpoint that we can restart from.
     harn.initialize(reset=reset)
-    harn.run()
 
-    # if False:
-    #     import plottool as pt
-    #     pt.qtensure()
-    #     ims, gts = next(iter(harn.loaders['train']))
-    #     pic = im_loaders.rgb_tensor_to_imgs(ims, norm=False)[0]
-    #     pt.clf()
-    #     pt.imshow(pic, norm=True, cmap='viridis', data_colorbar=True)
+    if ub.argval(('--vd', '--view-directory')):
+        ub.startfile(harn.train_dpath)
 
-    #     with pt.RenderingContext() as render:
-    #         tensor_data = datasets['train'][0][0][None, :]
-    #         pic = im_loaders.rgb_tensor_to_imgs(tensor_data, norm=False)[0]
-    #         pt.figure(fnum=1, doclf=True)
-    #         pt.imshow(pic, norm=True, cmap='viridis', data_colorbar=True,
-    #                   fnum=1)
-    #     render.image
+    # This starts the main loop which will run until a the monitor's terminator
+    # criterion is satisfied. If the initialize step loaded a checkpointed that
+    # already met the termination criterion, then this will simply return.
+    deploy_fpath = harn.run()
+
+    # The returned deploy_fpath is the path to an exported netharn model.
+    # This model is the on with the best weights according to the monitor.
+    print('deploy_fpath = {!r}'.format(deploy_fpath))
+
 
 if __name__ == '__main__':
     r"""

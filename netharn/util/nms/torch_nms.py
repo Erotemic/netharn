@@ -350,7 +350,7 @@ def _benchmark():
             print('    * {:<20}, {:<20}: {:0.4f}'.format(k1, k2, jaccard))
 
     nh.util.mplutil.autompl()
-    nh.util.mplutil.multi_plot(xdata, ydata, xlabel='num boxes', ylabel='seconds')
+    nh.util.multi_plot(xdata, ydata, xlabel='num boxes', ylabel='seconds')
     nh.util.show_if_requested()
 
 

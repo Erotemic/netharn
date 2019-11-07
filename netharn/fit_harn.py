@@ -194,7 +194,7 @@ class ExtraMixins:
             for tag, loader in harn.loaders.items()
         }
         loader = harn.loaders[tag]
-        epoch_metrics = harn._run_epoch(loader, tag='vali', learn=learn)
+        epoch_metrics = harn._run_epoch(loader, tag=tag, learn=learn)
         return epoch_metrics
 
     def _demo_batch(harn, index=0, tag='train', raw=False):
@@ -316,16 +316,17 @@ class InitializeMixin:
             # TODO: we may fold the functionality of Folders into Hyperparams
             train_info = harn.hyper.train_info(harn.train_dpath)
             ub.ensuredir(train_info['train_dpath'])
-            if train_info['nice_dpath']:
-                # Link the hashed run dir to the human friendly nice dir
-                ub.ensuredir(os.path.dirname(train_info['nice_dpath']))
-                ub.symlink(train_info['train_dpath'], train_info['nice_dpath'],
-                           overwrite=True, verbose=3)
 
-            # Make a very simple MRU link
-            if True:
+            if train_info['nice_dpath']:
+                ub.ensuredir(os.path.dirname(train_info['nice_dpath']))
+
+                # Make a very simple MRU (most recently used) link
                 mru_dpath = join(harn.hyper.workdir, '_mru')
                 ub.symlink(train_info['train_dpath'], mru_dpath,
+                           overwrite=True, verbose=1)
+
+                # Link the hashed run dir to the human friendly nice dir
+                ub.symlink(train_info['train_dpath'], train_info['nice_dpath'],
                            overwrite=True, verbose=3)
 
             harn.train_info = train_info
@@ -455,15 +456,6 @@ class InitializeMixin:
         harn.dynamics = harn.hyper.dynamics.copy()
 
         harn._export()
-
-    def _export(harn):
-        """ Export the model topology to the train_dpath """
-        # TODO: might be good to check for multiple model exports at this time
-        model_cls = harn.hyper.model_cls
-        model_params = harn.hyper.model_params
-        static_modpath = export.export_model_code(harn.train_dpath, model_cls,
-                                                  initkw=model_params)
-        harn.info('Exported model topology to {}'.format(static_modpath))
 
     def reset_weights(harn):
         """
@@ -838,6 +830,8 @@ class SnapshotCallbacks:
             'optimizer_state_dict': harn.optimizer.state_dict(),
             'monitor_state_dict': harn.monitor.state_dict(),
         }
+        if harn.scheduler:
+            snapshot_state['scheduler_state_dict'] = harn.scheduler.state_dict()
         return snapshot_state
 
     def set_snapshot_state(harn, snapshot_state):
@@ -872,12 +866,20 @@ class SnapshotCallbacks:
             harn.optimizer.load_state_dict(snapshot_state['optimizer_state_dict'])
             harn.debug('loaded optimizer_state_dict')
 
+        if 'scheduler_state_dict' in snapshot_state:
+            harn.scheduler.load_state_dict(snapshot_state['optimizer_state_dict'])
+            harn.debug('loaded scheduler_state_dict')
+
         # Ensure scheduler is given current information
         if harn.scheduler:
             if getattr(harn.scheduler, '__batchaware__', False):
                 harn.scheduler.reset_epoch(epoch=harn.epoch)
             else:
-                harn.scheduler.step(epoch=harn.epoch - 1)
+                if harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
+                    # This is handled via state
+                    pass
+                else:
+                    harn.scheduler.step(epoch=harn.epoch - 1)
 
 
 @register_mixin
@@ -1099,14 +1101,33 @@ class CoreMixin:
         harn.info('exiting fit harness.')
         return deploy_fpath
 
+    def _export(harn):
+        """ Export the model topology to the train_dpath """
+        # TODO: might be good to check for multiple model exports at this time
+        try:
+            model_cls = harn.hyper.model_cls
+            model_params = harn.hyper.model_params
+            export_modules = harn.config['export_modules']
+            static_modpath = export.export_model_code(harn.train_dpath, model_cls,
+                                                      initkw=model_params,
+                                                      export_modules=export_modules)
+            harn.info('Exported model topology to {}'.format(static_modpath))
+        except Exception as ex:
+            harn.warn('Failed to export model topology: {}'.format(repr(ex)))
+
     def _deploy(harn):
         """
         Packages the best validation (or most recent) weights with the exported
         model topology into a single-file model deployment that is "mostly"
         independent of the code used to train the model.
         """
-        deploy_fpath = export.DeployedModel(harn.train_dpath).package()
-        harn.info('wrote single-file deployment to: {!r}'.format(deploy_fpath))
+        try:
+            deploy_fpath = export.DeployedModel(harn.train_dpath).package()
+            harn.info('wrote single-file deployment to: {!r}'.format(deploy_fpath))
+        except Exception as ex:
+            deploy_fpath = None
+            harn.warn('Failed to deploy: {}'.format(repr(ex)))
+
         return deploy_fpath
 
     @profiler.profile
@@ -1161,7 +1182,11 @@ class CoreMixin:
 
         if tensorboard_logger:
             # Perhaps dump tensorboard metrics to png / pickle?
-            pass
+            try:
+                from netharn.mixins import _dump_monitor_tensorboard
+                _dump_monitor_tensorboard(harn)
+            except Exception as ex:
+                harn.warn(str(ex))
 
         harn.after_epochs()
 
@@ -1421,20 +1446,21 @@ class CoreCallbacks:
         Overload Encouraged, but not always necessary
         """
         try:
-            batch_inputs, batch_labels = raw_batch
+            if isinstance(raw_batch, (tuple, list)):
+                batch_inputs, batch_labels = raw_batch
+                raw_batch = {
+                    'input': batch_inputs,
+                    'label': batch_labels,
+                }
+            if isinstance(raw_batch, dict):
+                batch = raw_batch.copy()
+                batch['input'] = harn.xpu.move(batch['input'])
+                batch['label'] = harn.xpu.move(batch['label'])
+            else:
+                print('raw_batch = {}'.format(type(raw_batch)))
+                raise TypeError(
+                    'could not prepare raw batch {}'.format(type(raw_batch)))
 
-            # the dataset should return a inputs/target 2-tuple of lists.
-            # in most cases each list will be length 1, unless there are
-            # multiple input branches or multiple output branches.
-            if not isinstance(batch_inputs, (list, tuple)):
-                batch_inputs = [batch_inputs]
-            if not isinstance(batch_labels, (list, tuple)):
-                batch_labels = [batch_labels]
-
-            inputs = [harn.xpu.variable(d) for d in batch_inputs]
-            labels = [harn._tovar(d) for d in batch_labels]
-
-            batch = (inputs, labels)
         except Exception:
             harn.warn('Error occurred in default prepare_batch. '
                       'Perhaps you should overload it?')
@@ -1452,9 +1478,15 @@ class CoreCallbacks:
         """
         # Simple forward prop and loss computation
         try:
-            inputs, labels = batch
-            outputs = harn.model(*inputs)
-            loss = harn.criterion(outputs, *labels)
+            if isinstance(batch, dict):
+                outputs = harn.model(batch['input'])
+                loss = harn.criterion(outputs, batch['label'])
+            elif isinstance(batch, tuple):
+                inputs, labels = batch
+                outputs = harn.model(*inputs)
+                loss = harn.criterion(outputs, *labels)
+            else:
+                raise TypeError('Could not run batch')
         except Exception:
             harn.warn('Error occurred in default run_batch. '
                       'Perhaps you should overload it?')
@@ -1686,6 +1718,12 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             'show_prog': True,
             'use_tqdm': None,
             'prog_backend': 'tqdm',
+            # 'prog_backend': 'progiter',
+
+            # Set this to a list of modules that the final standalone deployed
+            # zipfile should not depend on. The exporter will expand any code
+            # from these modules that are referenced by the model class.
+            'export_modules': [],
 
             # A loss that would be considered large
             # (This tells netharn when to check for divergence)

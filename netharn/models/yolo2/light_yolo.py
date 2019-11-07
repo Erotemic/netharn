@@ -333,14 +333,21 @@ def demo_voc_weights(key='lightnet'):
     import ubelt as ub
 
     if key == 'lightnet':
-        url = 'https://gitlab.com/EAVISE/lightnet/raw/master/examples/yolo-voc/lightnet_weights.pt'
-        hash_prefix = 'c4597fed8eb1b01da3495'
+        # url = 'https://gitlab.com/EAVISE/lightnet/raw/master/examples/yolo-voc/lightnet_weights.pt'
+        # hash_prefix = 'c4597fed8eb1b01da3495'
+        fpath = ub.grabdata('https://data.kitware.com/api/v1/file/5c2e6e1a8d777f072bf2dc65/download',
+                            fname='lightnet_weights.pt',
+                            appname='netharn',
+                            hasher='sha512',
+                            hash_prefix='c4597fed8eb1b01')
+        return fpath
     elif key == 'darknet':
         url = 'https://pjreddie.com/media/files/yolo-voc.weights'
         hash_prefix = '3033f5f510c25ab3ff6b9'
+        fpath = ub.grabdata(url, appname='netharn', hash_prefix=hash_prefix)
+        return fpath
     else:
         raise KeyError(key)
-    fpath = ub.grabdata(url, appname='netharn', hash_prefix=hash_prefix)
     # import lightnet
     # from os.path import dirname, join
     # dpath = dirname(dirname(lightnet.__file__))
@@ -365,10 +372,10 @@ def initial_imagenet_weights():
             torch.save(model.state_dict(), torch_fpath)
     except ImportError:
         # Maybe this had a weird bad init state?
-        torch_fpath = ub.grabdata('https://data.kitware.com/api/v1/item/5b16b81b8d777f15ebe1ffcd/download',
+        torch_fpath = ub.grabdata('https://data.kitware.com/api/v1/file/5b16b81c8d777f15ebe1ffce/download',
                                   fname='darknet19_448.conv.23.pt',
                                   appname='netharn',
-                                  # hash_prefix='fd2b99b9f66bb4',
+                                  hasher='sha512',
                                   hash_prefix='f38968224a81a')
     return torch_fpath
 

@@ -129,7 +129,7 @@ def ensure_float01(img, dtype=np.float32, copy=True):
     return img_
 
 
-def make_channels_comparable(img1, img2):
+def make_channels_comparable(img1, img2, atleast3d=False):
     """
     Broadcasts image arrays so they can have elementwise operations applied
 
@@ -151,11 +151,19 @@ def make_channels_comparable(img1, img2):
         >>>         assert img1.size == img2.size, 'new imgs should have same size'
         >>>         print('--------')
     """
+    # if img1.shape[0:2] != img2.shape[0:2]:
+    #     raise ValueError(
+    #         'Spatial sizes of {!r} and {!r} are not compatible'.format(
+    #             img1.shape, img2.shape))
     if img1.shape != img2.shape:
-        c1 = get_num_channels(img1)
-        c2 = get_num_channels(img2)
+        c1 = num_channels(img1)
+        c2 = num_channels(img2)
         if len(img1.shape) == 2 and len(img2.shape) == 2:
-            raise AssertionError('UNREACHABLE: Both are 2-grayscale')
+            # Both images are 2d grayscale
+            if atleast3d:
+                # add the third dim with 1 channel
+                img1 = img1[:, None]
+                img2 = img2[:, None]
         elif len(img1.shape) == 3 and len(img2.shape) == 2:
             # Image 2 is grayscale
             if c1 == 3:
@@ -208,6 +216,23 @@ def _alpha_fill_for(img):
 
 
 def get_num_channels(img):
+    """ Returns the number of color channels """
+    ndims = len(img.shape)
+    if ndims == 2:
+        nChannels = 1
+    elif ndims == 3 and img.shape[2] == 3:
+        nChannels = 3
+    elif ndims == 3 and img.shape[2] == 4:
+        nChannels = 4
+    elif ndims == 3 and img.shape[2] == 1:
+        nChannels = 1
+    else:
+        raise ValueError('Cannot determine number of channels '
+                         'for img.shape={}'.format(img.shape))
+    return nChannels
+
+
+def num_channels(img):
     """ Returns the number of color channels """
     ndims = len(img.shape)
     if ndims == 2:
@@ -405,15 +430,26 @@ def ensure_grayscale(img, colorspace_hint='BGR'):
         return convert_colorspace(img, 'gray', colorspace_hint)
 
 
-def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
+def convert_colorspace(img, src_space, dst_space, copy=False,
+                       implicit=False, dst=None):
     """
     Converts colorspace of img.
     Convinience function around cv2.cvtColor
 
     Args:
-        img (ndarray[uint8_t, ndim=2]):  image data
-        colorspace (str): RGB, LAB, etc
-        dst_space (unicode): (default = u'BGR')
+        img (ndarray[uint8_t, ndim=2]): image data
+
+        src_space (str): input image colorspace. (e.g. BGR, GRAY)
+
+        dst_space (str): desired output colorspace. (e.g. RGB, HSV, LAB)
+
+        implicit (bool):
+            if False, the user must correctly specify if the input/output
+                colorspaces contain alpha channels.
+            If True and the input image has an alpha channel, we modify
+                src_space and dst_space to ensure they both end with "A".
+
+        dst (ndarray[uint8_t, ndim=2], optional): inplace-output array.
 
     Returns:
         ndarray[uint8_t, ndim=2]: img -  image data
@@ -428,11 +464,12 @@ def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
             (Note, that some extreme combinations of a and b are not valid)
 
     Example:
-        >>> convert_colorspace(np.array([[[0, 0, 1]]], dtype=np.float32), 'LAB', src_space='RGB')
-        >>> convert_colorspace(np.array([[[0, 1, 0]]], dtype=np.float32), 'LAB', src_space='RGB')
-        >>> convert_colorspace(np.array([[[1, 0, 0]]], dtype=np.float32), 'LAB', src_space='RGB')
-        >>> convert_colorspace(np.array([[[1, 1, 1]]], dtype=np.float32), 'LAB', src_space='RGB')
-        >>> convert_colorspace(np.array([[[0, 0, 1]]], dtype=np.float32), 'HSV', src_space='RGB')
+        >>> import numpy as np
+        >>> convert_colorspace(np.array([[[0, 0, 1]]], dtype=np.float32), 'RGB', 'LAB')
+        >>> convert_colorspace(np.array([[[0, 1, 0]]], dtype=np.float32), 'RGB', 'LAB')
+        >>> convert_colorspace(np.array([[[1, 0, 0]]], dtype=np.float32), 'RGB', 'LAB')
+        >>> convert_colorspace(np.array([[[1, 1, 1]]], dtype=np.float32), 'RGB', 'LAB')
+        >>> convert_colorspace(np.array([[[0, 0, 1]]], dtype=np.float32), 'RGB', 'HSV')
 
     Ignore:
         # Check LAB output ranges
@@ -444,14 +481,33 @@ def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
         for r, g, b in ub.ProgIter(_iter, total=(256 // s) ** 3):
             img255 = np.array([[[r, g, b]]], dtype=np.uint8)
             img01 = (img255 / 255.0).astype(np.float32)
-            lab = convert_colorspace(img01, 'lab', src_space='rgb')
+            lab = convert_colorspace(img01, 'rgb', 'lab')
             np.minimum(lab[0, 0], minvals, out=minvals)
             np.maximum(lab[0, 0], maxvals, out=maxvals)
         print('minvals = {}'.format(ub.repr2(minvals, nl=0)))
         print('maxvals = {}'.format(ub.repr2(maxvals, nl=0)))
     """
-    dst_space = dst_space.upper()
     src_space = src_space.upper()
+    dst_space = dst_space.upper()
+
+    if implicit:
+        # Assume the user meant grayscale if there is only one channel
+        if num_channels(img) == 1:
+            src_space = 'gray'
+
+        # We give the caller some slack by assuming RGB means RGBA if the input
+        # image has an alpha channel.
+        if num_channels(img) == 4:
+            if src_space[-1] != 'A':
+                src_space = src_space + 'A'
+            if dst_space[-1] != 'A':
+                dst_space = dst_space + 'A'
+
+        if img.dtype.kind == 'f':
+            # opencv requires float32 input
+            if img.dtype.itemsize == 8:
+                img = img.astype(np.float32)
+
     if src_space == dst_space:
         img2 = img
         if dst is not None:
@@ -460,7 +516,7 @@ def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
         elif copy:
             img2 = img2.copy()
     else:
-        code = _lookup_colorspace_code(dst_space, src_space)
+        code = _lookup_cv2_colorspace_conversion_code(src_space, dst_space)
         # Note the conversion to colorspaces like LAB and HSV in float form
         # do not go into the 0-1 range. Instead they go into
         # (0-100, -111-111ish, -111-111ish) and (0-360, 0-1, 0-1) respectively
@@ -468,7 +524,7 @@ def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
     return img2
 
 
-def _lookup_colorspace_code(dst_space, src_space='BGR'):
+def _lookup_cv2_colorspace_conversion_code(src_space, dst_space):
     src = src_space.upper()
     dst = dst_space.upper()
     convert_attr = 'COLOR_{}2{}'.format(src, dst)
@@ -781,7 +837,7 @@ def imread(fpath, **kw):
         raise
 
 
-def imwrite(fpath, image, **kw):
+def imwrite(fpath, image, space='rgb'):
     """
     writes image data in BGR format
     """
@@ -790,13 +846,25 @@ def imwrite(fpath, image, **kw):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             # skimage writes in RGB, convert from BGR
-            if get_num_channels(image) == 3:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            elif get_num_channels(image) == 4:
-                image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
+            image = convert_colorspace(image, space, dst_space='rgb',
+                                       implicit=True)
             return skimage.io.imsave(fpath, image)
     else:
-        return cv2.imwrite(fpath, image)
+        # OpenCV writes in bgr
+        image = convert_colorspace(image, space, dst_space='bgr',
+                                   implicit=True)
+        if len(image.shape) == 3 and image.shape[2] == 4:
+            image = convert_colorspace(image, 'bgra', dst_space='bgr',
+                                       implicit=False)
+        try:
+            return cv2.imwrite(fpath, image)
+        except cv2.error as ex:
+            if 'could not find a writer for the specified extension' in str(ex):
+                raise ValueError(
+                    'Image fpath {!r} does not have a known image extension '
+                    '(e.g. png/jpg)'.format(fpath))
+            else:
+                raise
 
 
 def stack_multiple_images(images, axis=0, resize=None, interpolation=None, overlap=0):
@@ -807,13 +875,13 @@ def stack_multiple_images(images, axis=0, resize=None, interpolation=None, overl
     return img1
 
 
-def stack_images(img1, img2, axis=0, resize=None, interpolation=None,
-                 overlap=0):
+def stack_images(images, axis=0, resize=None, interpolation=None, overlap=0,
+                 return_info=False, bg_value=None):
     """
     Make a new image with the input images side-by-side
 
     Args:
-        img1 (ndarray[ndim=2]):  image data
+        images (Iterable[ndarray[ndim=2]]):  image data
         img2 (ndarray[ndim=2]):  image data
         axis (int): axis to stack on (either 0 or 1)
         resize (int, str, or None): if None image sizes are not modified,
@@ -824,37 +892,110 @@ def stack_images(img1, img2, axis=0, resize=None, interpolation=None,
             only used if resize or overlap > 0
         overlap (int): number of pixels to overlap. Using a negative
             number results in a border.
+        return_info (bool): if True, returns transforms (scales and
+            translations) to map from original image to its new location.
 
-    Returns:
-        Tuple[ndarray, Tuple, Tuple]: imgB, offset_tup, sf_tup
+    CommandLine:
+        xdoctest -m netharn.util.imutil stack_images
 
     Example:
-        >>> from netharn import util
-        >>> img1 = util.grab_test_image('carl', space='bgr')
-        >>> img2 = util.grab_test_image('astro', space='bgr')
-        >>> imgB, offs, sfs = stack_images(img1, img2, axis=0, resize=0,
-        >>>                                overlap=-10)
-        >>> woff, hoff = offs
-        >>> # verify results
-        >>> result = str((imgB.shape, woff, hoff))
-        >>> print(result)
-        >>> # xdoctest: +REQUIRES(--show)
         >>> import netharn as nh
+        >>> img1 = nh.util.grab_test_image('carl', space='rgb')
+        >>> img2 = nh.util.grab_test_image('astro', space='rgb')
+        >>> images = [img1, img2]
+        >>> imgB, transforms = stack_images(images, axis=0, resize='larger',
+        >>>                                 overlap=-10, return_info=True)
+        >>> print(imgB.shape)
+        >>> # xdoctest: +REQUIRES(--show)
         >>> nh.util.autompl()
-        >>> nh.util.imshow(imgB, colorspace='bgr')
-        >>> wh1 = np.multiply(img1.shape[0:2][::-1], sfs[0])
-        >>> wh2 = np.multiply(img2.shape[0:2][::-1], sfs[1])
-        >>> nh.util.draw_boxes([(0, 0, wh1[0], wh1[1])], 'xywh', color=(1.0, 0, 0))
-        >>> nh.util.draw_boxes([(woff[1], hoff[1], wh2[0], wh2[0])], 'xywh', color=(0, 1.0, 0))
+        >>> nh.util.imshow(imgB, colorspace='rgb')
+        >>> wh1 = np.multiply(img1.shape[0:2][::-1], transforms[0].scale)
+        >>> wh2 = np.multiply(img2.shape[0:2][::-1], transforms[1].scale)
+        >>> xoff1, yoff1 = transforms[0].translation
+        >>> xoff2, yoff2 = transforms[1].translation
+        >>> xywh1 = (xoff1, yoff1, wh1[0], wh1[1])
+        >>> xywh2 = (xoff2, yoff2, wh2[0], wh2[1])
+        >>> nh.util.draw_boxes(nh.util.Boxes([xywh1], 'xywh'), color=(1.0, 0, 0))
+        >>> nh.util.draw_boxes(nh.util.Boxes([xywh2], 'xywh'), color=(1.0, 0, 0))
         >>> nh.util.show_if_requested()
         ((662, 512, 3), (0.0, 0.0), (0, 150))
+    """
+    import skimage
+    imgiter = iter(images)
+    img1 = next(imgiter)
+
+    if return_info:
+        transforms_ = [skimage.transform.AffineTransform(
+            scale=[1.0, 1.0], translation=[0.0, 0.0]
+        )]
+
+    for img2 in imgiter:
+        img1, offset_tup, sf_tup = _stack_two_images(img1, img2, axis=axis,
+                                                     resize=resize,
+                                                     bg_value=bg_value,
+                                                     interpolation=interpolation,
+                                                     overlap=overlap)
+        if return_info:
+            off1, off2 = offset_tup
+            sf1, sf2 = sf_tup
+
+            tf1 = skimage.transform.AffineTransform(scale=sf1, translation=off1)
+            tf2 = skimage.transform.AffineTransform(scale=sf2, translation=off2)
+
+            # Apply transforms to the first image to all previous transforms
+            for t in transforms_:
+                t.params = t.params.dot(tf1.params)
+            # Append the second transform
+            transforms_.append(tf2)
+
+    if return_info:
+        return img1, transforms_
+    else:
+        return img1
+
+
+def stack_images_grid(images, chunksize=None, axis=0, overlap=0, return_info=False, bg_value=None):
+    """
+    Stacks images in a grid. Optionally return transforms of original image
+    positions in the output image.
+    """
+    if chunksize is None:
+        chunksize = int(len(images) ** .5)
+    stack1_list = []
+    tfs1_list = []
+    assert axis in [0, 1]
+    for batch in ub.chunks(images, chunksize, bordermode='none'):
+        stack1, tfs1 = stack_images(batch, overlap=overlap, return_info=True,
+                                    bg_value=bg_value,
+                                    resize=None, axis=1 - axis)
+        tfs1_list.append(tfs1)
+        stack1_list.append(stack1)
+
+    img_grid, tfs2 = stack_images(stack1_list, overlap=overlap,
+                                  bg_value=bg_value,
+                                  return_info=True, axis=axis)
+    transforms_ = [tf1 + tf2
+                   for tfs1, tf2 in zip(tfs1_list, tfs2)
+                   for tf1 in tfs1]
+
+    if return_info:
+        return img_grid, transforms_
+    else:
+        return img_grid
+
+
+def _stack_two_images(img1, img2, axis=0, resize=None, interpolation=None,
+                      overlap=0, bg_value=None):
+    """
+    Returns:
+        Tuple[ndarray, Tuple, Tuple]: imgB, offset_tup, sf_tup
     """
 
     def _rectify_axis(img1, img2, axis):
         """ determine if we are stacking in horzontally or vertically """
         (h1, w1) = img1.shape[0: 2]  # get chip dimensions
         (h2, w2) = img2.shape[0: 2]
-        woff, hoff = 0, 0
+        xoff2, yoff2 = 0, 0
         vert_wh  = max(w1, w2), h1 + h2
         horiz_wh = w1 + w2, max(h1, h2)
         if axis is None:
@@ -864,13 +1005,13 @@ def stack_images(img1, img2, axis=0, resize=None, interpolation=None,
             axis = 0 if vert_ar < horiz_ar else 1
         if axis == 0:  # vertical stack
             wB, hB = vert_wh
-            hoff = h1
+            yoff2 = h1
         elif axis == 1:
             wB, hB = horiz_wh
-            woff = w1
+            xoff2 = w1
         else:
             raise ValueError('axis can only be 0 or 1')
-        return axis, h1, h2, w1, w2, wB, hB, woff, hoff
+        return axis, h1, h2, w1, w2, wB, hB, xoff2, yoff2
 
     def _round_dsize(dsize, scale):
         """
@@ -909,47 +1050,53 @@ def stack_images(img1, img2, axis=0, resize=None, interpolation=None,
         partB = (part1 * (1.0 - alpha)) + (part2 * (alpha))
         return partB
 
-    interpolation = _rectify_interpolation(interpolation, default=cv2.INTER_NEAREST)
+    interpolation = _rectify_interpolation(
+        interpolation, default=cv2.INTER_NEAREST)
 
     img1, img2 = make_channels_comparable(img1, img2)
-    nChannels = get_num_channels(img1)
+    nChannels = num_channels(img1)
 
     assert img1.dtype == img2.dtype, (
         'img1.dtype=%r, img2.dtype=%r' % (img1.dtype, img2.dtype))
 
-    axis, h1, h2, w1, w2, wB, hB, woff, hoff = _rectify_axis(img1, img2, axis)
+    axis, h1, h2, w1, w2, wB, hB, xoff2, yoff2 = _rectify_axis(img1, img2, axis)
 
-    # allow for some overlap / blending of the images
-    if overlap:
-        if axis == 0:
-            hB -= overlap
-        else:
-            wB -= overlap
     # Rectify both images to they are the same dimension
     if resize:
         # Compre the lengths of the width and height
         length1 = img1.shape[1 - axis]
         length2 = img2.shape[1 - axis]
+
         if resize == 'larger':
             resize = 0 if length1 > length2 else 1
         elif resize == 'smaller':
             resize = 0 if length1 < length2 else 1
+
         if resize == 0:
-            tonew_sf2 = (1., 1.)
+            # Resize the first image
+            sf2 = (1., 1.)
             scale = length2 / length1
-            dsize, tonew_sf1 = _round_dsize(img1.shape[0:2][::-1], scale)
+            dsize, sf1 = _round_dsize(img1.shape[0:2][::-1], scale)
             img1 = cv2.resize(img1, dsize, interpolation=interpolation)
         elif resize == 1:
-            tonew_sf1 = (1., 1.)
+            # Resize the second image
+            sf1 = (1., 1.)
             scale = length1 / length2
-            dsize, tonew_sf2 = _round_dsize(img2.shape[0:2][::-1], scale)
+            dsize, sf2 = _round_dsize(img2.shape[0:2][::-1], scale)
             img2 = cv2.resize(img2, dsize, interpolation=interpolation)
         else:
-            raise ValueError('resize can only be 0 or 1')
-        axis, h1, h2, w1, w2, wB, hB, woff, hoff = _rectify_axis(img1, img2, axis)
+            raise ValueError('resize can only be 0 or 1 - or a special key')
+        axis, h1, h2, w1, w2, wB, hB, xoff2, yoff2 = _rectify_axis(img1, img2, axis)
     else:
-        tonew_sf1 = (1., 1.)
-        tonew_sf2 = (1., 1.)
+        sf1 = (1.0, 1.0)
+        sf2 = (1.0, 1.0)
+
+    # allow for some overlap / blending of the images
+    if overlap != 0:
+        if axis == 0:
+            hB -= overlap
+        elif axis == 1:
+            wB -= overlap
 
     # Do image concatentation
     if nChannels > 1 or len(img1.shape) > 2:
@@ -958,39 +1105,46 @@ def stack_images(img1, img2, axis=0, resize=None, interpolation=None,
         newshape = (hB, wB)
     # Allocate new image for both
     imgB = np.zeros(newshape, dtype=img1.dtype)
+    if bg_value is not None:
+        imgB[:, :] = bg_value
 
     # Insert the images in the larger frame
+
+    # Insert the first image
+    xoff1 = yoff1 = 0
+    imgB[yoff1:(yoff1 + h1), xoff1:(xoff1 + w1)] = img1
+
     if overlap:
         if axis == 0:
-            hoff -= overlap
+            yoff2 -= overlap
         elif axis == 1:
-            woff -= overlap
-        # Insert the images
-        imgB[0:h1, 0:w1] = img1
-        imgB[hoff:(hoff + h2), woff:(woff + w2)] = img2
+            xoff2 -= overlap
+
+        imgB[yoff2:(yoff2 + h2), xoff2:(xoff2 + w2)] = img2
+
         if overlap > 0:
             # Blend the overlapping part
             if axis == 0:
                 part1 = img1[-overlap:, :]
-                part2 = imgB[hoff:(hoff + overlap), 0:w1]
+                part2 = imgB[yoff2:(yoff2 + overlap), 0:w1]
                 alpha = _ramp(part1.shape[0:2], axis=axis)
                 blended = _blend(part1, part2, alpha)
-                imgB[hoff:(hoff + overlap), 0:w1] = blended
+                imgB[yoff2:(yoff2 + overlap), 0:w1] = blended
             elif axis == 1:
                 part1 = img1[:, -overlap:]
-                part2 = imgB[0:h1, woff:(woff + overlap)]
+                part2 = imgB[0:h1, xoff2:(xoff2 + overlap)]
                 alpha = _ramp(part1.shape[0:2], axis=axis)
                 blended = _blend(part1, part2, alpha)
-                imgB[0:h1, woff:(woff + overlap)] = blended
+                imgB[0:h1, xoff2:(xoff2 + overlap)] = blended
     else:
-        imgB[0:h1, 0:w1] = img1
-        imgB[hoff:(hoff + h2), woff:(woff + w2)] = img2
+        imgB[yoff2:(yoff2 + h2), xoff2:(xoff2 + w2)] = img2
 
-    offset1 = (0.0, 0.0)
-    offset2 = (woff, hoff)
+    offset1 = (xoff1, yoff1)
+    offset2 = (xoff2, yoff2)
     offset_tup = (offset1, offset2)
-    sf_tup = (tonew_sf1, tonew_sf2)
+    sf_tup = (sf1, sf2)
     return imgB, offset_tup, sf_tup
+
 
 
 if __name__ == '__main__':

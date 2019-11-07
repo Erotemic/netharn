@@ -3,13 +3,12 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import ubelt as ub
 
 
-def read_tensorboard_scalars(train_dpath):
+def read_tensorboard_scalars(train_dpath, verbose=1, cache=1):
     """
     Reads all tensorboard scalar events in a directory.
     Caches them becuase reading events of interest from protobuf can be slow.
     """
     import glob
-    import tqdm
     from os.path import join
     try:
         from tensorboard.backend.event_processing import event_accumulator
@@ -17,15 +16,13 @@ def read_tensorboard_scalars(train_dpath):
         raise ImportError('tensorboard is not installed')
     event_paths = sorted(glob.glob(join(train_dpath, 'events.out.tfevents*')))
     # make a hash so we will re-read of we need to
-    cfgstr = ub.hash_data(list(map(ub.hash_file, event_paths)))
-    # cfgstr = ub.hash_data(list(map(basename, event_paths)))
-    cacher = ub.Cacher('tb_scalars',
-                       dpath=ub.ensuredir((train_dpath, '_cache')),
-                       cfgstr=cfgstr)
+    cfgstr = ub.hash_data(list(map(ub.hash_file, event_paths))) if cache else ''
+    cacher = ub.Cacher('tb_scalars', cfgstr=cfgstr, enabled=cache,
+                       dpath=join(train_dpath, '_cache'))
     datas = cacher.tryload()
     if datas is None:
         datas = {}
-        for p in tqdm.tqdm(list(reversed(event_paths)), desc='read tensorboard'):
+        for p in ub.ProgIter(list(reversed(event_paths)), desc='read tensorboard', enabled=verbose):
             ea = event_accumulator.EventAccumulator(p)
             ea.Reload()
             for key in ea.scalars.Keys():

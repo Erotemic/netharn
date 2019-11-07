@@ -54,4 +54,4 @@ class L2Norm(common.Module):
         return output_shape_for.OutputShape.coerce(input_shape)
 
     def receptive_field_for(self, input_field=None):
-        return input_field, input_field
+        return input_field

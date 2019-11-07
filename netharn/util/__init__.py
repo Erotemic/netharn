@@ -20,6 +20,7 @@ if __DYNAMIC__:
 else:
     # <AUTOGEN_INIT>
     from netharn.util import imutil
+    from netharn.util import mpl_multiplot
     from netharn.util import mplutil
     from netharn.util import nms
     from netharn.util import profiler
@@ -52,9 +53,12 @@ else:
                                      ensure_grayscale, get_num_channels,
                                      image_slices, imread, imscale, imwrite,
                                      load_image_paths, make_channels_comparable,
-                                     overlay_alpha_images, overlay_colorized,
-                                     run_length_encoding, stack_images,
+                                     num_channels, overlay_alpha_images,
+                                     overlay_colorized, run_length_encoding,
+                                     stack_images, stack_images_grid,
                                      stack_multiple_images, wide_strides_1d,)
+    from netharn.util.mpl_multiplot import (is_list_of_lists, is_list_of_scalars,
+                                            is_listlike, multi_plot,)
     from netharn.util.mplutil import (Color, PlotNums, adjust_subplots, aggensure,
                                       autompl, axes_extent, colorbar,
                                       colorbar_image, copy_figure_to_clipboard,
@@ -63,7 +67,7 @@ else:
                                       draw_line_segments, ensure_fnum,
                                       extract_axes_extents, figure, imshow,
                                       interpolated_colormap, legend, make_heatmask,
-                                      make_legend_img, multi_plot, next_fnum,
+                                      make_legend_img, next_fnum,
                                       pandas_plot_matrix, qtensure,
                                       render_figure_to_image, reverse_colormap,
                                       save_parts, savefig2, scores_to_cmap,
@@ -136,25 +140,28 @@ else:
                'grad_context', 'group_consecutive', 'group_consecutive_indices',
                'group_indices', 'group_items', 'image_slices', 'imread', 'imscale',
                'imshow', 'imutil', 'imwrite', 'interpolated_colormap',
+               'is_list_of_lists', 'is_list_of_scalars', 'is_listlike',
                'isect_flags', 'iter_reduce_ufunc', 'legend', 'load_image_paths',
                'make_channels_comparable', 'make_heatmask', 'make_idstr',
-               'make_legend_img', 'make_short_idstr', 'mplutil', 'multi_plot',
-               'next_fnum', 'nms', 'non_max_supression', 'number_of_parameters',
-               'one_hot_embedding', 'one_hot_lookup', 'overlay_alpha_images',
-               'overlay_colorized', 'pandas_plot_matrix', 'profile',
-               'profile_onthefly', 'profiler', 'putMultiLineText', 'qtensure',
-               'random_combinations', 'random_product', 'read_arr', 'read_h5arr',
-               'read_json', 'read_tensorboard_scalars', 'render_figure_to_image',
+               'make_legend_img', 'make_short_idstr', 'mpl_multiplot', 'mplutil',
+               'multi_plot', 'next_fnum', 'nms', 'non_max_supression',
+               'num_channels', 'number_of_parameters', 'one_hot_embedding',
+               'one_hot_lookup', 'overlay_alpha_images', 'overlay_colorized',
+               'pandas_plot_matrix', 'profile', 'profile_onthefly', 'profiler',
+               'putMultiLineText', 'qtensure', 'random_combinations',
+               'random_product', 'read_arr', 'read_h5arr', 'read_json',
+               'read_tensorboard_scalars', 'render_figure_to_image',
                'reverse_colormap', 'roundrobin', 'run_length_encoding',
                'save_parts', 'savefig2', 'scores_to_cmap', 'scores_to_color',
                'seed_global', 'set_figtitle', 'set_mpl_backend',
                'shortest_unique_prefixes', 'shortest_unique_suffixes',
                'show_if_requested', 'shuffle', 'split_archive', 'stack_images',
-               'stack_multiple_images', 'stats_dict', 'trainable_layers',
-               'util_averages', 'util_boxes', 'util_cachestamp', 'util_cv2',
-               'util_dataframe', 'util_demodata', 'util_filesys', 'util_fname',
-               'util_groups', 'util_idstr', 'util_io', 'util_iter', 'util_json',
-               'util_misc', 'util_numpy', 'util_random', 'util_resources',
-               'util_slider', 'util_subextreme', 'util_tensorboard', 'util_torch',
-               'util_zip', 'walk_json', 'wide_strides_1d', 'write_arr',
-               'write_h5arr', 'write_json', 'zopen']
+               'stack_images_grid', 'stack_multiple_images', 'stats_dict',
+               'trainable_layers', 'util_averages', 'util_boxes',
+               'util_cachestamp', 'util_cv2', 'util_dataframe', 'util_demodata',
+               'util_filesys', 'util_fname', 'util_groups', 'util_idstr',
+               'util_io', 'util_iter', 'util_json', 'util_misc', 'util_numpy',
+               'util_random', 'util_resources', 'util_slider', 'util_subextreme',
+               'util_tensorboard', 'util_torch', 'util_zip', 'walk_json',
+               'wide_strides_1d', 'write_arr', 'write_h5arr', 'write_json',
+               'zopen']

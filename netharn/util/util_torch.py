@@ -12,6 +12,16 @@ class ModuleMixin(object):
     def number_of_parameters(self, trainable=True):
         return number_of_parameters(self, trainable)
 
+    def _device_dict(self):
+        return {key: item.device for key, item in self.state_dict().items()}
+
+    def devices(self):
+        """
+        Returns all devices this module state is mounted on
+        """
+        state_devices = self._device_dict()
+        return set(state_devices.values())
+
 
 def number_of_parameters(model, trainable=True):
     """

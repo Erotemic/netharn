@@ -5,6 +5,10 @@ import numpy as np
 
 
 def test_convT_rf():
+    """
+    CommandLine:
+        xdoctest -m ~/code/netharn/tests/test_receptive_feild.py test_convT_rf
+    """
     # Test that we always invert whatever weird crazy thing we do
     import netharn as nh
     rng = np.random.RandomState(3668028386)
@@ -39,15 +43,15 @@ def test_convT_rf():
             layers[key] = convT
 
         module = nn.Sequential(layers)
-        fields, field = nh.ReceptiveFieldFor(module)()
+        field = nh.ReceptiveFieldFor(module)()
 
-        input_rf = nh.ReceptiveFieldFor.input()[1]
-        symmetric = [('input', input_rf)] + list(fields.items())
+        input_rf = nh.ReceptiveFieldFor.input()
+        symmetric = [('input', input_rf)] + list(field.hidden.items())
 
         for a, b, in ub.iter_window(symmetric, 2):
             k1, v1 = a
             k2, v2 = b
-            assert np.all(v1['size'] <= v2['size']), 'v1={} v2={}'.format(v1, v2)
+            assert np.all(v1['shape'] <= v2['shape']), 'v1={} v2={}'.format(v1, v2)
 
         for a, b in zip(symmetric, symmetric[::-1]):
             k1, v1 = a

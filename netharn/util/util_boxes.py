@@ -112,8 +112,8 @@ def _box_ious_torch(boxes1, boxes2, bias=0):
                     _box_ious_py(boxes1, boxes2, bias)
             ydata['numpy'].append(t3.ave_secs)
 
-        nh.util.mplutil.qtensure()
-        nh.util.mplutil.multi_plot(xdata, ydata, xlabel='num boxes', ylabel='seconds')
+        nh.util.autompl()
+        nh.util.multi_plot(xdata, ydata, xlabel='num boxes', ylabel='seconds')
 
 
 

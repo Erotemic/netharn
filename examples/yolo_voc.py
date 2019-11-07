@@ -946,7 +946,7 @@ def setup_yolo_harness(bsize=16, workers=0):
             'max_epoch': max_epoch,
         }),
 
-        'augment': datasets['train'].augmenter,
+        # 'augment': datasets['train'].augmenter,
 
         'dynamics': {
             # Controls how many batches to process before taking a step in the
@@ -1024,6 +1024,9 @@ if __name__ == '__main__':
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE3 --lr=0.001 --bstep=8 --workers=4 --eav --weights=imagenet
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=HOPE4 --lr=0.001 --bstep=8 --workers=4 --eav --weights=imagenet
+
+
+        python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --workers=4 --weights=lightnet
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

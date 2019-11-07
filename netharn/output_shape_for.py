@@ -99,20 +99,20 @@ def _simplify(shape):
     return shape
 
 
-class HiddenShape(OrderedDict, ub.NiceRepr):
+class HiddenShapes(OrderedDict, ub.NiceRepr):
     """
     Augments normal hidden shape dicts with a convinience setitem
 
     Doctest:
         >>> from netharn.output_shape_for import *
         >>> shape = OutputShape.coerce([None, 3, 32, 32], 'foo')
-        >>> print(HiddenShape({'e': shape}))
-        <HiddenShape({'e': 'foo'})>
-        >>> hidden = HiddenShape({'a': 1})
+        >>> print(HiddenShapes({'e': shape}))
+        <HiddenShapes({'e': 'foo'})>
+        >>> hidden = HiddenShapes({'a': 1})
         >>> hidden['b'] = 2
         >>> hidden['c'] = shape
         >>> print(hidden)
-        <HiddenShape({'a': 1, 'b': 2, 'c': 'foo'})>
+        <HiddenShapes({'a': 1, 'b': 2, 'c': 'foo'})>
     """
     def __nice__(self):
         return ub.repr2(self, nl=0)
@@ -136,13 +136,13 @@ class HiddenShape(OrderedDict, ub.NiceRepr):
         """
         if n == 0:
             last = self
-            while isinstance(last, HiddenShape):
+            while isinstance(last, HiddenShapes):
                 last = list(last.values())[-1]
             return last
         else:
-            output = self.__class__()
+            output = OrderedDict()
             for key, value in self.items():
-                if isinstance(value, HiddenShape):
+                if isinstance(value, HiddenShapes):
                     output[key] = value.shallow(n - 1)
                 else:
                     output[key] = value
@@ -247,7 +247,7 @@ class OutputShapeFor(object):
         >>>     def output_shape_for(self, input_shape):
         >>>         x = input_shape
         >>>         # Note using hidden shapes is optional, but sometimes useful
-        >>>         hidden = HiddenShape()
+        >>>         hidden = HiddenShapes()
         >>>         # The basic idea is to simply mirror the forward func
         >>>         # but instead of calling the modules use output shape for
         >>>         hidden['conv1'] = x = OutputShapeFor(self.conv1)(x)
@@ -269,7 +269,7 @@ class OutputShapeFor(object):
         >>> # a populated hidden shape attribute, then you can access it
         >>> # to inspect how the shape changes in the hidden layer of the net
         >>> print(OutputShapeFor(net)(input_shape).hidden)
-        <HiddenShape({'conv1': (None, 5, 7, 7), 'pool1': (None, 5, 3, 3), 'conv2': (None, 7, 1, 1)})>
+        <HiddenShapes({'conv1': (None, 5, 7, 7), 'pool1': (None, 5, 3, 3), 'conv2': (None, 7, 1, 1)})>
 
     Example:
         >>> # Example showing how this class is used on basic torch Modules
@@ -740,7 +740,7 @@ class OutputShapeFor(object):
                 '2': (1, 7, 1, 5),
             }
         """
-        hidden = HiddenShape()
+        hidden = HiddenShapes()
         shape = input_shape
         for key, child in module._modules.items():
             hidden[key] = shape = OutputShapeFor(child)(shape)
@@ -753,7 +753,7 @@ class OutputShapeFor(object):
         residual_shape = input_shape
         shape = input_shape
 
-        hidden = HiddenShape()
+        hidden = HiddenShapes()
         hidden['conv1'] = shape = OutputShapeFor(module.conv1)(shape)
         hidden['bn1']   = shape = OutputShapeFor(module.bn1)(shape)
         hidden['relu1'] = shape = OutputShapeFor(module.relu)(shape)
@@ -780,7 +780,7 @@ class OutputShapeFor(object):
         residual_shape = input_shape
         shape = input_shape
 
-        hidden = HiddenShape()
+        hidden = HiddenShapes()
         hidden['conv1'] = shape = OutputShapeFor(module.conv1)(shape)
         hidden['bn1']   = shape = OutputShapeFor(module.bn1)(shape)
         hidden['relu1'] = shape = OutputShapeFor(module.relu)(shape)
@@ -811,7 +811,7 @@ class OutputShapeFor(object):
     def resnet_model(module, input_shape):
         shape = input_shape
 
-        hidden = HiddenShape()
+        hidden = HiddenShapes()
         hidden['conv1'] = shape = OutputShapeFor(module.conv1)(shape)
         hidden['bn1'] = shape = OutputShapeFor(module.bn1)(shape)
         hidden['relu1'] = shape = OutputShapeFor(module.relu)(shape)

@@ -48,29 +48,30 @@ Example:
     >>> harn.initialize(reset='delete')
     >>> harn.run()
     --- STEP 1: TRAIN A MODEL ---
-    Symlink: ...tests/deploy/fit/runs/deploy_demo/imlbrwnc -> ...tests/deploy/fit/nice/deploy_demo
+    Symlink: ...tests/deploy/fit/runs/deploy_demo/onnxqaww -> ...tests/deploy/fit/nice/deploy_demo
     Model has 824 parameters
-    Mounting ToyNet2d model on CPU
-    Initializing model weights
-     * harn.train_dpath = '...tests/deploy/fit/runs/deploy_demo/imlbrwnc'
-     * harn.nice_dpath  = '...tests/deploy/fit/nice/deploy_demo'
-    Snapshots will save to harn.snapshot_dpath = '...tests/deploy/fit/runs/deploy_demo/imlbrwnc/torch_snapshots'
-    dont forget to start:
+    INFO: Mounting ToyNet2d model on CPU
+    INFO: Initializing model weights
+    INFO: * harn.train_dpath = '...tests/deploy/fit/runs/deploy_demo/onnxqaww'
+    INFO: * harn.nice_dpath  = '...tests/deploy/fit/nice/deploy_demo'
+    INFO: Snapshots will save to harn.snapshot_dpath = '...tests/deploy/fit/runs/deploy_demo/onnxqaww/torch_snapshots'
+    INFO: dont forget to start:
         tensorboard --logdir .../tests/deploy/fit/nice
-    === begin training 0 / 3 ===
+    INFO: === begin training 0 / 3 ===
     epoch lr:0.1 │ vloss is unevaluated: 100%|██████████████████████████| 3/3 ...
     train x64 │ loss:0.692 │: 100%|███████████████████████████████████████████████████████| ...
     test x64 │ loss:0.735 │: 100%|████████████████████████████████████████████████████████| ...
     <BLANKLINE>
-    Maximum harn.epoch reached, terminating ...
+    INFO: Maximum harn.epoch reached, terminating ...
     <BLANKLINE>
-    training completed
-    exiting fit harness.
+    INFO: training completed
+    INFO: exiting fit harness.
     >>> #
     >>> ##########################################
     >>> print('--- STEP 2: DEPLOY THE MODEL ---')
     >>> # First we export the model topology to a standalone file
-    >>> # (This step is not done in the run itself)
+    >>> # (Note: this step is done automatically in `harn.run`, but we do
+    >>> #  it again here for demo purposes)
     >>> from netharn.export import exporter
     >>> topo_fpath = exporter.export_model_code(harn.train_dpath, harn.hyper.model_cls, harn.hyper.model_params)
     >>> # Now create an instance of deployed model that points to the
@@ -83,8 +84,8 @@ Example:
     >>> print('We exported the topology to: {!r}'.format(topo_fpath))
     >>> print('We exported the topology+weights to: {!r}'.format(zip_fpath))
     --- STEP 2: DEPLOY THE MODEL ---
-    We exported the topology to: '...tests/deploy/fit/runs/deploy_demo/imlbrwnc/ToyNet2d_0962a2.py'
-    We exported the topology+weights to: '...tests/deploy/fit/runs/deploy_demo/imlbrwnc/imlbrwnc.zip'
+    We exported the topology to: '...tests/deploy/fit/runs/deploy_demo/onnxqaww/ToyNet2d_2a3f49.py'
+    We exported the topology+weights to: '...tests/deploy/fit/runs/deploy_demo/onnxqaww/deploy_ToyNet2d_onnxqaww_002_HVWCGI.zip'
     >>> #
     >>> #################################################
     >>> print('--- STEP 3: LOAD THE DEPLOYED MODEL ---')
@@ -97,15 +98,15 @@ Example:
     >>> # This model is now loaded with the corret weights.
     >>> # You can use it as normal.
     >>> model.eval()
-    >>> images = harn._demo_batch(0)[0][0][0:1]
+    >>> images = harn._demo_batch(0)['input'][0:1]
     >>> outputs = model(images)
     >>> print('outputs = {!r}'.format(outputs))
     >>> # Not that the loaded model is independent of harn.model
     >>> print('model.__module__ = {!r}'.format(model.__module__))
     >>> print('harn.model.module.__module__ = {!r}'.format(harn.model.module.__module__))
     --- STEP 3: LOAD THE DEPLOYED MODEL ---
-    outputs = tensor([[ 0.5423,  0.4577]])
-    model.__module__ = 'imlbrwnc/ToyNet2d_b558e1'
+    outputs = tensor([[0.4105, 0.5895]], grad_fn=<SoftmaxBackward>)
+    model.__module__ = 'deploy_ToyNet2d_onnxqaww_002_HVWCGI/ToyNet2d_2a3f49'
     harn.model.module.__module__ = 'netharn.models.toynet'
 """
 import glob
@@ -537,7 +538,7 @@ def _demodata_zip_fpath():
     return zip_path
 
 
-def _demodata_trained_dpath():
+def _demodata_toy_harn():
     # This will train a toy model with toy data using netharn
     import netharn as nh
     hyper = nh.HyperParams(**{
@@ -553,6 +554,11 @@ def _demodata_trained_dpath():
         'monitor'     : (nh.Monitor, {'max_epoch': 1}),
     })
     harn = nh.FitHarn(hyper)
+    return harn
+
+
+def _demodata_trained_dpath():
+    harn = _demodata_toy_harn()
     harn.run()  # TODO: make this run faster if we don't need to rerun
     if len(list(glob.glob(join(harn.train_dpath, '*.py')))) > 1:
         # If multiple models are deployed some hash changed. Need to reset

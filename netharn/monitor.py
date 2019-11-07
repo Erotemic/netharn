@@ -80,15 +80,14 @@ class Monitor(object):
         Draws the monitored metrics using matplotlib
         """
         import matplotlib.pyplot as plt
-        from netharn.util import mplutil
+        from netharn import util
         import pandas as pd
-        # mplutil.autompl()
         smooth_ydatas = pd.DataFrame.from_dict(monitor._smooth_metrics).to_dict('list')
         raw_ydatas = pd.DataFrame.from_dict(monitor._raw_metrics).to_dict('list')
         keys = monitor.minimize + monitor.maximize
-        pnum_ = mplutil.PlotNums(nSubplots=len(keys))
+        pnum_ = util.PlotNums(nSubplots=len(keys))
         for i, key in enumerate(keys):
-            mplutil.multi_plot(
+            util.multi_plot(
                 monitor._epochs, {'raw ' + key: raw_ydatas[key],
                                   'smooth ' + key: smooth_ydatas[key]},
                 xlabel='epoch', ylabel=key, pnum=pnum_[i], fnum=1,

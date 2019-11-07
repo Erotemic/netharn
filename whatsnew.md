@@ -1,11 +1,25 @@
-Version 0.1.3
+Version 0.1.4
 ==============
+* Ported `multi_plot` from KWIL 
+* Scheduler states are now saved by default
+* Netharn now dumps tensorboard plots every epoch by default
+* The default `prepare_batch` now returns a dictionary with keys `input` and `label`.
+* `FitHarn.config` can now specify `export_modules`, which will be modules to
+  expand when running the pytorch exporter.
+* Ported modifications from KWIL to `imwrite`, `stack_imges`, etc...
+* Fix issue with relative imports in netharn exporter
+* Refactored the exporter closure-extractor into its own file.
+* Add `devices` to `nh.layers.Module`
 * Deprecate `HiddenShapesFor`
 * Move `HiddenShapesFor` functionality to `OutputShapeFor`
-* Clean CIFAR example.
+* Improve CIFAR example.
+* Improve MNIST example.
 * Rename internal variables of `nh.Monitor`
 * Improve doc-strings for `nh.Monitor`
 * Move folder functionality into `hyperparams`.
+
+Version 0.1.3
+==============
 * Add (hacked-in) better `imgaug` hyperparameter logging. 
 * Add verbose kwarg to `Pretrained.forward`
 * Add `IgnoreLayerContext`
