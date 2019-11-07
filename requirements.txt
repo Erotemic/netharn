@@ -1,0 +1,45 @@
+Cython
+cffi
+psutil
+
+ubelt
+xdoctest
+
+pygtrie
+numpy
+
+sortedcontainers
+tqdm
+h5py >= 2.8.0
+bayesian-optimization
+torchvision
+pandas
+tensorboard_logger
+parse
+sympy
+Pillow
+matplotlib
+six
+protobuf
+
+pytest
+pytest-cov
+coverage >= 4.3.4
+tqdm
+
+xxhash
+
+opencv-python
+pyqt5
+
+imgaug>=0.2.6
+
+
+# line_profiler
+# scipy
+# scikit-image
+
+# onnx
+# tensorboard
+
+easydict>=1.7

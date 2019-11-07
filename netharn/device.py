@@ -1,5 +1,3 @@
-__all__ = ['XPU']
-
 """
 Abstracted processing device
 
@@ -10,6 +8,9 @@ import ubelt as ub
 import warnings
 import torch
 import six
+
+
+__all__ = ['XPU']
 
 
 if torch.__version__.startswith('0.3'):
@@ -41,7 +42,7 @@ class XPU(ub.NiceRepr):
         distributed processing
 
     CommandLine:
-        python -m nnharn.device XPU
+        python -m netharn.device XPU
 
     Example:
         >>> print(str(XPU(None)))
@@ -154,7 +155,9 @@ class XPU(ub.NiceRepr):
         Args:
             item : special string, int, list, or None
         """
-        if isinstance(item, XPU):
+        if item is None:
+            return XPU(item)
+        elif isinstance(item, XPU):
             return item
         elif isinstance(item, _TENSOR_TYPES):
             return XPU.from_data(item)
@@ -179,7 +182,10 @@ class XPU(ub.NiceRepr):
                 if ',' in item:
                     item = list(map(int, ','.split(item)))
                 if item == '':
-                    item = XPU.default_gpu()
+                    if torch.cuda.is_available():
+                        item = XPU.default_gpu()
+                    else:
+                        item = None
                 if item == 'none':
                     item = None
                 else:
@@ -193,9 +199,12 @@ class XPU(ub.NiceRepr):
         """
         Determines what a CPU/GPU device to use.
         """
-        n_available = torch.cuda.device_count()
-        gpu_num = find_unused_gpu(min_memory=min_memory)
-        if gpu_num is None or gpu_num >= n_available:
+        if torch.cuda.is_available():
+            n_available = torch.cuda.device_count()
+            gpu_num = find_unused_gpu(min_memory=min_memory)
+            if gpu_num is None or gpu_num >= n_available:
+                gpu_num = None
+        else:
             gpu_num = None
         xpu = XPU(gpu_num)
         return xpu
@@ -206,7 +215,7 @@ class XPU(ub.NiceRepr):
         Respect command line gpu and cpu argument
 
         CommandLine:
-            python -m nnharn.device XPU.from_argv --gpu=0,1
+            python -m netharn.device XPU.from_argv --gpu=0,1
 
         Example:
             >>> xpu = XPU.from_argv()
@@ -322,11 +331,13 @@ class XPU(ub.NiceRepr):
             torch.autograd.Variable: variable on the xpu
 
         Example:
-            >>> from nnharn.device import *
+            >>> from netharn.device import *
             >>> xpu = XPU(None)
             >>> data = torch.FloatTensor([0])
             >>> vari = xpu.variable(data)
             >>> assert isinstance(vari, torch.autograd.Variable)
+            >>> # Ensure this function is idempotent
+            >>> vari2 = xpu.variable(vari)
         """
         assert 'volatile' not in kw, 'volatile is removed'
         cukw = {}
@@ -334,6 +345,10 @@ class XPU(ub.NiceRepr):
             cukw['non_blocking'] = kw.pop('async')
         if 'non_blocking' in kw:
             cukw['non_blocking'] = kw.pop('non_blocking')
+        if torch.__version__.startswith('0.3'):
+            # Unwrap the data and make a new variable
+            if isinstance(item, torch.autograd.Variable):
+                item = item.data
         item = xpu.move(item, **cukw)
         item = torch.autograd.Variable(item, **kw)
         return item
@@ -351,7 +366,7 @@ class XPU(ub.NiceRepr):
         Example:
             >>> print(XPU.default_gpu())
         """
-        if torch.cuda.is_available:
+        if torch.cuda.is_available():
             return torch.cuda.current_device()
         else:
             return None
@@ -362,11 +377,10 @@ class XPU(ub.NiceRepr):
 
         Example:
             >>> import pytest
-            >>> if torch.cuda.is_available:
-            >>>     pytest.skip()
             >>> XPU(None).set_as_default()
-            >>> XPU(0).set_as_default()
-            >>> assert torch.cuda.current_device() == 0
+            >>> if torch.cuda.is_available():
+            >>>     XPU(0).set_as_default()
+            >>>     assert torch.cuda.current_device() == 0
         """
         if xpu.is_gpu():
             torch.cuda.set_device(xpu.main_device)
@@ -381,7 +395,9 @@ class XPU(ub.NiceRepr):
             fpath (str or file): path to torch data file or file-like object
 
         Example:
-            >>> fpath = 'foo.pt'
+            >>> from os.path import join
+            >>> dpath = ub.ensure_app_cache_dir('netharn')
+            >>> fpath = join(dpath, 'foo.pt')
             >>> cpu = XPU(None)
             >>> data = torch.FloatTensor([0])
             >>> torch.save(data, fpath)
@@ -390,7 +406,6 @@ class XPU(ub.NiceRepr):
         """
         # print('Loading data onto {} from {}'.format(xpu, fpath))
         try:
-            xpu._pickle_fixes()
             return torch.load(fpath, map_location=xpu._map_location)
         except Exception:
             print('XPU={} Failed to load fpath={}'.format(xpu, fpath))
@@ -414,12 +429,12 @@ class XPU(ub.NiceRepr):
         else:
             return storage
 
-    def _pickle_fixes(xpu):
-        # HACK: remove this and put in custom code
-        # HACK because we moved metrics module and we should have done that
-        from nnharn import metrics
-        import sys
-        sys.modules['nnharn.torch.metrics'] = metrics
+    def synchronize(xpu):
+        """
+        Should be used when benchmarking performance of GPU implementaions
+        """
+        if xpu.is_gpu():
+            torch.cuda.synchronize()
 
 
 def find_unused_gpu(min_memory=0):
@@ -433,11 +448,12 @@ def find_unused_gpu(min_memory=0):
         int or None: gpu num if a match is found otherwise None
 
     CommandLine:
-        python -c "from nnharn import device; print(device.find_unused_gpu(300))"
+        python -c "from netharn import device; print(device.find_unused_gpu(300))"
 
     Example:
-        >>> item = find_unused_gpu()
-        >>> assert item is None or isinstance(item, int)
+        >>> if torch.cuda.is_available():
+        >>>     item = find_unused_gpu()
+        >>>     assert item is None or isinstance(item, int)
     """
     gpus = gpu_info()
     if not gpus:
@@ -527,7 +543,8 @@ def gpu_info():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m nnharn.device all
+        python -m netharn.device all
+        pytest ~/code/netharn/netharn/device.py
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
