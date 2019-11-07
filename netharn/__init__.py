@@ -4,7 +4,7 @@
 mkinit netharn --noattrs --dry
 mkinit netharn --noattrs
 """
-__version__ = '0.2.0'
+__version__ = '0.3.0.dev0'
 
 from netharn.api import (
     Initializer, Optimizer, Criterion, Loaders, Scheduler, Dynamics,

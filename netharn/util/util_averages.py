@@ -7,6 +7,9 @@ import numpy as np
 
 
 class MovingAve(ub.NiceRepr):
+    """
+    Abstract moving averages API
+    """
     def average(self):
         return self.mean()
 
@@ -365,7 +368,7 @@ class RunningStats(object):
         Sum of squares method to compute standard deviation
         """
         numer = (n * squares - total ** 2)
-        denom = (n * (n - 1))
+        denom = (n * (n - 1.0))
         std = np.sqrt(numer / denom)
         return std
 

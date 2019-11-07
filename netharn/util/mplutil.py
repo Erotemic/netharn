@@ -1068,7 +1068,8 @@ def colorbar_image(domain, cmap='plasma', dpi=96, shape=(200, 20), transparent=F
     return cb_img
 
 
-def make_legend_img(classname_to_rgb, dpi=96, shape=(200, 200), transparent=False):
+def make_legend_img(classname_to_rgb, dpi=96, shape=(200, 200), mode='line',
+                    transparent=False):
     """
     Makes an image of a categorical legend
 
@@ -1115,7 +1116,7 @@ def make_legend_img(classname_to_rgb, dpi=96, shape=(200, 200), transparent=Fals
 
     ax = fig.add_subplot('111')
     for label, color in classname_to_rgb.items():
-        append_phantom_legend_label(label, color, ax=ax)
+        append_phantom_legend_label(label, color, type_=mode, ax=ax)
 
     _phantom_legend_list = getattr(ax, '_phantom_legend_list', None)
     if _phantom_legend_list is None:

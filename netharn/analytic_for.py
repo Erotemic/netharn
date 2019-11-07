@@ -46,3 +46,95 @@ class Hidden(OrderedDict, ub.NiceRepr):
                     value = value.shallow(n - 1)
                 output[key] = value
             return output
+
+
+class OutputFor(object):
+    """
+    Analytic base / identity class
+    """
+    def __init__(self, func):
+        self.func = func
+
+    def __call__(self, *args, **kw):
+        return self.func(*args, **kw)
+
+
+class Output(object):
+    """
+    Analytic base / identity class
+    """
+    @classmethod
+    def coerce(cls, data=None, hidden=None):
+        return data
+
+
+class ForwardFor(OutputFor):
+    """
+    Analytic version of forward functions
+    """
+    def __init__(self, func):
+        self.func = func
+
+    def __call__(self, *args, **kw):
+        return self.func(*args, **kw)
+
+    @staticmethod
+    def getitem(arr):
+        """
+        Wraps getitem calls
+
+        Example:
+            >>> import torch
+            >>> arr = torch.rand(2, 16, 2, 2)
+            >>> result = ForwardFor.getitem(arr)[:, 0:4]
+            >>> assert result.shape == (2, 4, 2, 2)
+        """
+        return _ForwardGetItem(arr)
+
+    @staticmethod
+    def view(arr, *args):
+        """
+        Wraps view calls
+
+        Example:
+            >>> import torch
+            >>> arr = torch.rand(2, 16, 2, 2)
+            >>> result = ForwardFor.view(arr, -1)
+        """
+        return arr.view(*args)
+
+    @staticmethod
+    def shape(arr):
+        """
+        Wraps shape calls
+
+        Example:
+            >>> import torch
+            >>> arr = torch.rand(2, 16, 2, 2)
+            >>> result = ForwardFor.shape(arr)
+        """
+        return arr.shape
+
+    @staticmethod
+    def add(arr1, arr2):
+        return arr1 + arr2
+
+    @staticmethod
+    def mul(arr1, arr2):
+        return arr1 * arr2
+
+    @staticmethod
+    def sub(arr1, arr2):
+        return arr1 - arr2
+
+    @staticmethod
+    def div(arr1, arr2):
+        return arr1 - arr2
+
+
+class _ForwardGetItem(object):
+    def __init__(self, inp):
+        self.inp = inp
+
+    def __getitem__(self, slices):
+        return self.inp.__getitem__(slices)

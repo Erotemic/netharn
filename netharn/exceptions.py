@@ -23,4 +23,7 @@ class TrainingDiverged(NetharnError):
 
 
 class SkipBatch(NetharnError):
-    """ Thrown when netharn detects divergence """
+    """
+    Throw if an event prevents netharn from completing a batch, but does not
+    prevent future batches from being processed.
+    """

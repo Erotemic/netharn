@@ -11,30 +11,82 @@ from netharn.initializers.functional import load_partial_state
 
 class Pretrained(api.Initializer, ub.NiceRepr):
     """
+    This class initializes a model with pretrained weights from a file on disk.
+
+    If the model topology is slightly different (e.g. the shape of the final
+    layer changes), the weights are partially applied. See
+    `netharn.initializers.functional.load_partial_state` for mor details on
+    this process.
+
     Attributes:
-        fpath (str): location of the pretrained weights file
-        initializer (netharn.Initializer): backup initializer if the weights can
-            only be partially applied
+        fpath (str | PathLike): location of the pretrained weights file.
+
+            This can be a pytorch '.pt' file containing the model state, a path
+            to a netharn deploy '.zip' file.
+
+            While it is best practice to use an explicit filepath, we do allow
+            `fpath` be a "fuzzy" glob string as long as the pattern resolves to
+            a single file, otherwise an error will be thrown.
+
+        leftover (netharn.Initializer | str): backup initializer if the weights
+            can only be partially applied. I.E. The initializer applied to the
+            leftover weights that were not in the pretrained file. Can either
+            be an initializer class or a coercable initializer string.
+
         info (dict, optional): specify explicit history info
 
+        initializer (netharn.Initializer): DEPRICATED use the `leftover`.
+
     Example:
+        >>> from netharn.initializers.pretrained import *
         >>> from netharn.models import toynet
         >>> from os.path import join
+        >>> # Save "pretrained" weights to disk
         >>> model1 = toynet.ToyNet2d()
         >>> dpath = ub.ensure_app_cache_dir('netharn', 'tests')
         >>> fpath = join(dpath, 'toynet_weights.pt')
         >>> torch.save(model1.state_dict(), fpath)
-        >>> model2 = toynet.ToyNet2d()
+        >>> # Create the initializer and point to the pretrained weights
         >>> self = Pretrained(fpath)
+        >>> # Apply the pretrained weights to a new model
+        >>> model2 = toynet.ToyNet2d()
         >>> self(model2)
-        >>> #model2.state_dict() == model1.state_dict()
+        >>> # xdoctest: +SKIP
+        >>> # use experimental ubelt features to hash the model state
+        >>> ub.util_hash._HASHABLE_EXTENSIONS._register_torch_extensions()
+        >>> ub.util_hash._HASHABLE_EXTENSIONS._register_agressive_extensions()
+        >>> hash1 = ub.hash_data(model2.state_dict())
+        >>> hash2 = ub.hash_data(model1.state_dict())
+        >>> assert hash1 == hash2
+
+    Example:
+        >>> from netharn.initializers.pretrained import *
+        >>> from netharn.models import toynet
+        >>> from os.path import join
+        >>> # Save "pretrained" weights to disk
+        >>> model1 = toynet.ToyNet2d(num_classes=2)
+        >>> model2 = toynet.ToyNet2d(num_classes=3)
+        >>> dpath = ub.ensure_app_cache_dir('netharn', 'tests')
+        >>> fpath = join(dpath, 'toynet_weights1.pt')
+        >>> torch.save(model1.state_dict(), fpath)
+        >>> # Create the initializer and point to the pretrained weights
+        >>> self = Pretrained(fpath, leftover='kaiming_normal')
+        >>> # Apply the partial pretrained weights to a new model
+        >>> self(model2)
     """
-    def __init__(self, fpath, initializer=None, info=None):
+    def __init__(self, fpath, leftover=None, info=None, initializer=None):
+        if initializer is not None:
+            import warnings
+            warnings.warn('Pretrained `initializer` kwarg is depricated '
+                          'in favor of `leftover`', DeprecationWarning)
+            leftover = initializer
+
         self.fpath = fpath
-        if isinstance(initializer, six.string_types):
-            initializer_ = api.Initializer.coerce(initializer=initializer)
-            initializer = initializer_[0](**initializer_[1])
-        self.initializer = initializer
+        if isinstance(leftover, six.string_types):
+            initializer_ = api.Initializer.coerce(initializer=leftover)
+            leftover = initializer_[0](**initializer_[1])
+
+        self.leftover = leftover
         self.info = info
 
     def __nice__(self):
@@ -51,7 +103,7 @@ class Pretrained(api.Initializer, ub.NiceRepr):
                     candidates = [zinfo.filename]
                     break
                 elif zinfo.filename.endswith('.pt'):
-                    candidates.append(zinfo)
+                    candidates.append(zinfo.filename)
         if len(candidates) == 0:
             raise OSError('Cannot find pretrained weights in {}'.format(
                 self.fpath))
@@ -62,23 +114,40 @@ class Pretrained(api.Initializer, ub.NiceRepr):
             fpath = join(self.fpath, candidates[0])
         return fpath
 
+    def _rectify_fpath(self):
+        """
+        Resolves the `self.fpath`, which may be non-physical path (e.g.
+        globstring or zipfile) to an existing physical path if possible.
+        """
+        if self.fpath is None:
+            raise ValueError('Pretrained fpath is None!')
+        # Handle torch deployment zipfiles
+        if exists(self.fpath) and self.fpath.endswith('.zip'):
+            fpath = self._rectify_deploy_zip_weights_path()
+        else:
+            fpath = self.fpath
+            if not exists(fpath) and '*' in fpath:
+                import glob
+                cands = list(glob.glob(fpath))
+                if len(cands) == 1:
+                    fpath = cands[0]
+                else:
+                    raise Exception(
+                        'Pattern fpath={!r} must resolve to exactly one file, '
+                        'but got cands{!r}'.format(fpath, cands))
+        return fpath
+
     def _load_model_state(self, xpu=None):
         """
         Load the model state from a path or from within a zipfile
         """
         import netharn as nh
         from netharn import XPU
-        if self.fpath is None:
-            raise ValueError('Pretrained fpath is None!')
+
+        fpath = self._rectify_fpath()
 
         if xpu is None:
             xpu = XPU.coerce('cpu')
-
-        # Handle torch deployment zipfiles
-        if exists(self.fpath) and self.fpath.endswith('.zip'):
-            fpath = self._rectify_deploy_zip_weights_path()
-        else:
-            fpath = self.fpath
 
         try:
             file = nh.util.zopen(fpath, 'rb', seekable=True)
@@ -89,10 +158,12 @@ class Pretrained(api.Initializer, ub.NiceRepr):
         return model_state_dict
 
     def forward(self, model, verbose=2):
+        """
+        Apply the pretrained weights to the model
+        """
         from netharn import XPU
         xpu = XPU.from_data(model)
 
-        # model_state_dict = xpu.load(self.fpath)
         model_state_dict = self._load_model_state(xpu=xpu)
 
         if 'model_state_dict' in model_state_dict:
@@ -112,7 +183,7 @@ class Pretrained(api.Initializer, ub.NiceRepr):
         # Remove any DataParallel / DataSerial
         raw_model = xpu.raw(model)
         info = load_partial_state(raw_model, model_state_dict,
-                                  initializer=self.initializer,
+                                  initializer=self.leftover,
                                   verbose=verbose)
         return info
 
@@ -122,31 +193,24 @@ class Pretrained(api.Initializer, ub.NiceRepr):
         """
         import netharn as nh
         if self.info is None:
-            if False:
-                info_dpath = dirname(dirname(ub.truepath(self.fpath)))
-                info_fpath = join(info_dpath, 'train_info.json')
-                if exists(info_fpath):
-                    info = nh.util.read_json(info_fpath)
-                else:
-                    info = '__UNKNOWN__'
-            else:
-                # TODO: check for train_info.json in a few different places
-                snap_fpath = ub.truepath(self.fpath)
-                candidate_paths = [
-                    join(dirname(snap_fpath), 'train_info.json'),
-                    join(dirname(dirname(snap_fpath)), 'train_info.json'),
-                ]
-                info = None
-                for info_fpath in candidate_paths:
-                    info_fpath = normpath(info_fpath)
-                    try:
-                        # Info might be inside of a zipfile
-                        info = nh.util.read_json(nh.util.zopen(info_fpath))
-                        break
-                    except Exception as ex:
-                        pass
-                if info is None:
-                    info = '__UNKNOWN__'
+            # TODO: check for train_info.json in a few different places
+            fpath = self._rectify_fpath()
+            snap_fpath = ub.expandpath(fpath)
+            candidate_paths = [
+                join(dirname(snap_fpath), 'train_info.json'),
+                join(dirname(dirname(snap_fpath)), 'train_info.json'),
+            ]
+            info = None
+            for info_fpath in candidate_paths:
+                info_fpath = normpath(info_fpath)
+                try:
+                    # Info might be inside of a zipfile
+                    info = nh.util.read_json(nh.util.zopen(info_fpath))
+                    break
+                except Exception as ex:
+                    pass
+            if info is None:
+                info = '__UNKNOWN__'
         else:
             info = self.info
         return info

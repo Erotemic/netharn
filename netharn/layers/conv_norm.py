@@ -27,7 +27,7 @@ class ConvNormNd(common.Sequential):
         ConvNormNd(
           (conv): Conv2d(16, 64, kernel_size=(3, 3), stride=(1, 1))
           (norm): BatchNorm2d(64, ...)
-          (noli): ReLU(inplace)
+          (noli): ReLU(...)
         )
 
     Example:
@@ -37,7 +37,7 @@ class ConvNormNd(common.Sequential):
         ConvNormNd(
           (conv): Linear(in_features=16, out_features=64, bias=True)
           (norm): BatchNorm1d(64, ...)
-          (noli): ReLU(inplace)
+          (noli): ReLU(...)
         )
         >>> input_shape = (None, 16)
         >>> print(ub.repr2(self.output_shape_for(input_shape).hidden, nl=1))

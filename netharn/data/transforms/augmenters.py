@@ -2,6 +2,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 import cv2
+import six
 from imgaug.parameters import (Uniform, Binomial)
 from netharn.data.transforms import augmenter_base
 import kwimage
@@ -125,10 +126,8 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         self.flip_val = Binomial(.5)
         self.flip_sat = Binomial(.5)
 
-    def _augment_heatmaps(self, *args, **kw):
-        # TODO
-        raise NotImplementedError
-        pass
+    def _augment_heatmaps(self, heatmaps_on_images, *args, **kw):
+        return heatmaps_on_images
 
     def _augment_images(self, images, random_state, parents, hooks):
         return [self.forward(img, random_state) for img in images]
@@ -196,6 +195,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         aspect ratio using a letterbox.
 
     Example:
+        >>> from netharn.data.transforms.augmenters import *  # NOQA
         >>> img = demodata_hsv_image()
         >>> box = kwimage.Boxes([[.45, .05, .10, .05], [0., 0.0, .199, .199], [.24, .05, .01, .05]], format='xywh').to_tlbr()
         >>> bboi = box.to_imgaug(shape=img.shape)
@@ -204,6 +204,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         >>> bboi1 = self.augment_bounding_boxes([bboi])[0]
 
     Example:
+        >>> from netharn.data.transforms.augmenters import *  # NOQA
         >>> img = demodata_hsv_image()
         >>> box = kwimage.Boxes([[450, 50, 100, 50], [0.0, 0, 199, 199], [240, 50, 10, 50]], format='xywh').to_tlbr()
         >>> bboi = box.to_imgaug(shape=img.shape)
@@ -252,11 +253,46 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         shift, scale, embed_size = self._letterbox_transform(orig_size,
                                                              target_size)
     """
-    def __init__(self, target_size, fill_color=127, mode='letterbox'):
-        super(Resize, self).__init__()
+    def __init__(self, target_size, fill_color=127, mode='letterbox',
+                 border='constant', random_state=None):
+        super(Resize, self).__init__(random_state=random_state)
         self.target_size = None if target_size is None else np.array(target_size)
-        self.fill_color = fill_color
         self.mode = mode
+
+        import imgaug.parameters as iap
+        if fill_color == imgaug.ALL:
+            self.fill_color = iap.Uniform(0, 255)
+        else:
+            self.fill_color = iap.handle_continuous_param(
+                fill_color, "fill_color", value_range=None,
+                tuple_to_uniform=True, list_to_choice=True)
+
+        self._cv2_border_type_map = {
+            'constant': cv2.BORDER_CONSTANT,
+            'edge': cv2.BORDER_REPLICATE,
+            'linear_ramp': None,
+            'maximum': None,
+            'mean': None,
+            'median': None,
+            'minimum': None,
+            'reflect': cv2.BORDER_REFLECT_101,
+            'symmetric': cv2.BORDER_REFLECT,
+            'wrap': cv2.BORDER_WRAP,
+            cv2.BORDER_CONSTANT: cv2.BORDER_CONSTANT,
+            cv2.BORDER_REPLICATE: cv2.BORDER_REPLICATE,
+            cv2.BORDER_REFLECT_101: cv2.BORDER_REFLECT_101,
+            cv2.BORDER_REFLECT: cv2.BORDER_REFLECT
+        }
+        if isinstance(border, six.string_types):
+            if border == imgaug.ALL:
+                border = [k for k, v in self._cv2_border_type_map.items()
+                          if v is not None and isinstance(k, six.string_types)]
+            else:
+                border = [border]
+        if isinstance(border, (list, tuple)):
+            from imgaug.parameters import Choice
+            border = Choice(border)
+        self.border = border
         assert self.mode == 'letterbox', 'thats all folks'
 
     def forward(self, img, random_state=None):
@@ -305,11 +341,18 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
                     orig_size, target_size)
                 prev_size = orig_size
 
-            xy = keypoints_on_image.get_coords_array()
+            try:
+                xy = keypoints_on_image.to_xy_array()
+            except (Exception, AttributeError):
+                xy = keypoints_on_image.get_coords_array()
             xy_aug = (xy * scale) + shift
 
-            new_keypoint = imgaug.KeypointsOnImage.from_coords_array(
-                xy_aug, shape=target_shape)
+            try:
+                new_keypoint = imgaug.KeypointsOnImage.from_xy_array(
+                    xy_aug, shape=target_shape)
+            except (Exception, AttributeError):
+                new_keypoint = imgaug.KeypointsOnImage.from_coords_array(
+                    xy_aug, shape=target_shape)
             # Fix bug in imgaug (TODO: report the bug)
             new_keypoint.shape = target_shape
             result.append(new_keypoint)
@@ -393,6 +436,12 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             orig_size : original wh of the image
             target_size : network input wh
 
+        Returns:
+            Tuple:
+                shift: x,y shift
+                scale: w,h scale
+                embed_size: innner w,h of unpadded region
+
         Example:
             >>> # xdoctest: +IGNORE_WHITESPACE
             >>> Resize(None)._letterbox_transform([5, 10], [10, 10])
@@ -437,10 +486,22 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         interpolation = cv2.INTER_AREA if sf.sum() < 2 else cv2.INTER_CUBIC
         scaled = cv2.resize(img, dsize, interpolation=interpolation)
 
-        fill_color = self.fill_color
+        border = self.border.draw_sample()
+        cval = self.fill_color.draw_sample()
+
+        if scaled.dtype == 'f':
+            value = (float(cval),) * channels
+        else:
+            value = (int(cval),) * channels
+
+        borderType = self._cv2_border_type_map[border]
+        if borderType is None:
+            raise ValueError('bad border type border={}, borderType={}'.format(
+                border, borderType))
+
         hwc255 = cv2.copyMakeBorder(scaled, top, bot, left, right,
-                                    cv2.BORDER_CONSTANT,
-                                    value=(fill_color,) * channels)
+                                    borderType=borderType,
+                                    value=value)
         return hwc255
 
 

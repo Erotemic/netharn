@@ -35,7 +35,11 @@ def get_file_info(fpath, raw=False):
     """
     statbuf = os.stat(fpath)
 
-    owner = getpwuid(statbuf.st_uid).pw_name
+    try:
+        # Sometimes this fails
+        owner = getpwuid(statbuf.st_uid).pw_name
+    except Exception:
+        owner = None
 
     info = OrderedDict([
         ('created', statbuf.st_ctime),

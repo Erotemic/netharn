@@ -35,8 +35,11 @@ class DescriptorNetwork(layers.Module):
     """
     def __init__(self, branch=None, input_shape=(1, 3, 416, 416),
                  norm_desc=False, desc_size=128,
-                 hidden_channels=[1024, 1024]):
+                 hidden_channels=[]):
         """
+        Note:
+            * i have found norm_desc to be generally unhelpful.
+
         Example:
             >>> from netharn.models.descriptor_network import *
             >>> import netharn as nh
@@ -82,7 +85,8 @@ class DescriptorNetwork(layers.Module):
                 )
 
         # Note the advanced usage of output-shape-for
-        if __debug__:
+        if 0 and __debug__:
+            # new torchvision broke this
             branch_field = nh.ReceptiveFieldFor(self.branch)(
                 input_shape=input_shape)
             prepool_field = branch_field.hidden.shallow(1)['layer4']
@@ -125,7 +129,8 @@ class DescriptorNetwork(layers.Module):
         self.branch.fc = layers.MultiLayerPerceptronNd(
             dim=0, in_channels=pool_channels,
             hidden_channels=hidden_channels,
-            out_channels=desc_size, bias=False, residual=False)
+            out_channels=desc_size, bias=False,
+            norm=None, noli='relu', residual=False)
 
     def _debug_hidden(self, input_shape, n=5):
         """

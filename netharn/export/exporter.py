@@ -72,7 +72,9 @@ def export_model_code(dpath, model, initkw=None, export_modules=[]):
             to use `ub.import_module_from_path` to "load" the model instead.
 
     Example:
+        >>> from netharn.export.exporter import export_model_code
         >>> from torchvision.models import densenet
+        >>> import torchvision
         >>> from os.path import basename
         >>> initkw = {'growth_rate': 16}
         >>> model = densenet.DenseNet(**initkw)
@@ -82,10 +84,11 @@ def export_model_code(dpath, model, initkw=None, export_modules=[]):
         ...
         >>> mod_fname = (basename(static_modpath))
         >>> print('mod_fname = {!r}'.format(mod_fname))
-        >>> if six.PY2:
-        >>>     assert mod_fname == 'DenseNet_0b9daf.py'
-        >>> else:
-        >>>     assert mod_fname == 'DenseNet_58cff7.py'
+        >>> if torchvision.__version__ == '0.2.2':
+        >>>     if six.PY2:
+        >>>         assert mod_fname == 'DenseNet_b7ec43.py', 'got={}'.format(mod_fname)
+        >>>     else:
+        >>>         assert mod_fname == 'DenseNet_256629.py', 'got={}'.format(mod_fname)
         >>> # now the module can be loaded
         >>> module = ub.import_module_from_path(static_modpath)
         >>> loaded = module.make()
@@ -158,6 +161,9 @@ def export_model_code(dpath, model, initkw=None, export_modules=[]):
 
     body_footer = body + footer + '\n'
     # dont need to hash the header, because comments are removed anyway
+
+    # with open('debug-closer.py', 'w') as file:
+    #     file.write(body_footer)
     hashid = hash_code(body_footer)
 
     header = ub.codeblock(

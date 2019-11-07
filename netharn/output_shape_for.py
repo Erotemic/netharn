@@ -8,10 +8,10 @@ import torchvision
 from collections import OrderedDict
 from six.moves import builtins
 from netharn import analytic_for
-try:
-    from netharn.device import DataSerial
-except ImportError:
-    DataSerial = None
+# try:
+from netharn.device import DataSerial
+# except ImportError:
+#     DataSerial = None
 
 REGISTERED_TYPES = []
 
@@ -115,6 +115,7 @@ class HiddenShapes(analytic_for.Hidden):
         >>> print(hidden)
         <HiddenShapes({'a': 1, 'b': 2, 'c': 'foo'})>
     """
+    pass
 
 
 # class HiddenShapes(OrderedDict, ub.NiceRepr):
@@ -171,7 +172,7 @@ class HiddenShapes(analytic_for.Hidden):
 #             return output
 
 
-class OutputShape(object):
+class OutputShape(analytic_for.Output):
     """
     Mixin class to extend output shapes with extra information
 
@@ -239,7 +240,7 @@ class OutputShapeDict(OrderedDict, OutputShape):
         OutputShape.__init__(self, data, hidden)
 
 
-class OutputShapeFor(object):
+class OutputShapeFor(analytic_for.OutputFor):
     """
     Compute the output shape for standard torch modules as well as
     any custom modules that follow the OutputShapeFor protocol.
@@ -326,7 +327,7 @@ class OutputShapeFor(object):
                         found.append(_func)
                 except TypeError:
                     pass
-            if len(found) == 1:
+            if len(set(found)) == 1:
                 self._func = found[0]
             elif len(found) == 0:
                 raise TypeError('Unknown (output_shape) module type {}'.format(module))
@@ -407,6 +408,8 @@ class OutputShapeFor(object):
             :math:`W_{out} = floor(W_{in}  * scale\_factor)`
 
         Example:
+            >>> # xdoctest: +SKIP
+            >>> # There is a torch bug in 1.1.0 that prevents this from working
             >>> from netharn.output_shape_for import *
             >>> input_shape = (1, 3, 256, 256, 256)
             >>> module = nn.Upsample(scale_factor=(2, 3, 4))
@@ -438,7 +441,38 @@ class OutputShapeFor(object):
         else:
             DIMS_out = ensure_iterablen(module.size, len(DIMS_in))
 
-        output_shape = SHAPE_CLS([N, C] + DIMS_out)
+        output_shape = SHAPE_CLS([N, C] + list(DIMS_out))
+        if math.__name__ == 'sympy':
+            output_shape = _simplify(output_shape)
+        return output_shape
+
+    @staticmethod
+    @compute_type(torch.nn.functional.interpolate)
+    def interpolate(input_shape, size=None, scale_factor=None, **kwargs):
+        """
+        Example:
+            >>> from netharn.output_shape_for import *
+            >>> input_shape = (1, 3, 256, 256)
+            >>> output_shape = OutputShapeFor(torch.nn.functional.interpolate)(input_shape, size=(32, 32))
+            >>> print('output_shape = {!r}'.format(output_shape))
+            output_shape = (1, 3, 32, 32)
+        """
+        math = OutputShapeFor.math
+        # N, C, *DIMS_in = input_shape
+        N, C = input_shape[0:2]
+        DIMS_in = input_shape[2:]
+
+        if size is None:
+            scale_factor = ensure_iterablen(scale_factor, len(DIMS_in))
+            int = builtins.int if math.__name__ == 'math' else ub.identity
+            DIMS_out = [
+                int(math.floor(D_in * scale_factor[i]))
+                for i, D_in in enumerate(DIMS_in)
+            ]
+        else:
+            DIMS_out = ensure_iterablen(size, len(DIMS_in))
+
+        output_shape = SHAPE_CLS([N, C] + list(DIMS_out))
         if math.__name__ == 'sympy':
             output_shape = _simplify(output_shape)
         return output_shape
@@ -502,6 +536,24 @@ class OutputShapeFor(object):
     @compute_type(nn.AvgPool3d)
     def avepool3d(module, input_shape):
         return OutputShapeFor.avepoolnd(module, input_shape, 3)
+
+    @staticmethod
+    @compute_type(nn.modules.pooling._AdaptiveMaxPoolNd, nn.modules.pooling._AdaptiveAvgPoolNd)
+    def adaptive_poolnd(module, input_shape):
+        """
+        Adaptive pooling is easy because the output-shape is known a-priori
+        """
+        B, C = input_shape[0:2]
+        in_dims = input_shape[2:]
+
+        n = len(in_dims)
+        output_dims = ensure_iterablen(module.output_size, n)
+        for i, d in enumerate(output_dims):
+            if d is None:
+                output_dims[i] = in_dims[i]
+
+        output_shape = SHAPE_CLS([B, C] + list(output_dims))
+        return output_shape
 
     @staticmethod
     def convndT(module, input_shape, n):
@@ -702,10 +754,16 @@ class OutputShapeFor(object):
         return SHAPE_CLS(input_shape)
 
     @staticmethod
+    @compute_type(nn.functional.relu)
+    def relu_func(input_shape):
+        return SHAPE_CLS(input_shape)
+
+    @staticmethod
     @compute_type(nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d,
-                  nn.InstanceNorm1d, nn.InstanceNorm2d, nn.InstanceNorm3d,
-                  nn.LocalResponseNorm, nn.CrossMapLRN2d, nn.LayerNorm,
-                  nn.GroupNorm)
+                  nn.modules.normalization.GroupNorm,
+                  nn.modules.normalization.LocalResponseNorm,
+                  nn.modules.normalization.LayerNorm, nn.CrossMapLRN2d,
+                  nn.InstanceNorm1d, nn.InstanceNorm2d, nn.InstanceNorm3d)
     def normalization(module, input_shape):
         """
             import redbaron
@@ -729,7 +787,7 @@ class OutputShapeFor(object):
         return OutputShapeFor.identity(input_shape)
 
     @staticmethod
-    @compute_type(nn.Threshold, nn.RReLU, nn.Hardtanh, nn.ReLU6,
+    @compute_type(nn.Threshold, nn.RReLU, nn.Hardtanh, nn.ReLU6, nn.ReLU,
                   nn.Sigmoid, nn.Tanh, nn.ELU, nn.CELU, nn.SELU, nn.GLU,
                   nn.Hardshrink, nn.LeakyReLU, nn.LogSigmoid, nn.Softplus,
                   nn.Softshrink, nn.PReLU, nn.Softsign, nn.Tanhshrink,
@@ -839,6 +897,14 @@ class OutputShapeFor(object):
     @staticmethod
     @compute_type(torchvision.models.resnet.ResNet)
     def resnet_model(module, input_shape):
+        """
+        Example:
+            >>> # xdoctest: +REQUIRES(--network)
+            >>> from netharn.output_shape_for import *
+            >>> module = torchvision.models.resnet50()
+            >>> input_shape = (1, 3, 224, 224)
+            >>> field = OutputShapeFor(module)(input_shape=input_shape)
+        """
         shape = input_shape
 
         hidden = HiddenShapes()
@@ -865,6 +931,32 @@ class OutputShapeFor(object):
         hidden['fc'] = shape = OutputShapeFor(module.fc)(shape)
         shape = OutputShape.coerce(shape, hidden=hidden)
         return shape
+
+    @staticmethod
+    @compute_type(nn.functional.adaptive_avg_pool2d)
+    def adaptive_poolnd_func(input_shape, output_shape):
+        """
+        Adaptive pooling is easy because the output-shape is known a-priori
+
+        Example:
+            >>> from netharn.output_shape_for import *
+            >>> input_shape = (1, 3, 256, 256)
+            >>> output_shape = (7, 7)
+            >>> output_shape_ = OutputShapeFor(nn.functional.adaptive_avg_pool2d)(input_shape, output_shape)
+            >>> print('output_shape = {!r}'.format(output_shape_))
+            output_shape = (1, 3, 7, 7)
+        """
+        B, C = input_shape[0:2]
+        in_dims = input_shape[2:]
+
+        n = len(in_dims)
+        output_dims = ensure_iterablen(output_shape, n)
+        for i, d in enumerate(output_dims):
+            if d is None:
+                output_dims[i] = in_dims[i]
+
+        output_shape_ = SHAPE_CLS([B, C] + list(output_dims))
+        return output_shape_
 
     @staticmethod
     @compute_type(torch.cat)
@@ -902,6 +994,96 @@ class OutputShapeFor(object):
     @compute_type(torch.nn.DataParallel)
     def data_parallel(module, *args, **kw):
         return OutputShapeFor(module.module)(*args, **kw)
+
+    @staticmethod
+    def getitem(arr):
+        """
+        Wraps getitem calls
+
+        Example:
+            >>> arr = (2, 32, 9, 9)
+            >>> result = OutputShapeFor.getitem(arr)[:, 0:4]
+            >>> assert result == [2, 4, 9, 9]
+        """
+        return _ShapeGetItem(arr)
+
+    @staticmethod
+    def view(arr, *args):
+        """
+        Wraps view calls
+
+        Example:
+            >>> arr = (2, 32, 9, 9)
+            >>> result = OutputShapeFor.view(arr, -1)
+            >>> assert result == (5184,)
+        """
+        from netharn import layers
+        reshape = layers.Reshape(*args)
+        return reshape.output_shape_for(arr)
+
+    @staticmethod
+    def shape(arr):
+        """
+        Wraps shape calls
+
+        Example:
+            >>> arr = (2, 32, 9, 9)
+            >>> result = OutputShapeFor.shape(arr)
+            >>> assert result == arr
+        """
+        return arr
+
+    @staticmethod
+    def add(arr1, arr2):
+        return _output_shape_broadcast(arr1, arr2)
+
+    @staticmethod
+    def mul(arr1, arr2):
+        return _output_shape_broadcast(arr1, arr2)
+
+    @staticmethod
+    def sub(arr1, arr2):
+        return _output_shape_broadcast(arr1, arr2)
+
+    @staticmethod
+    def div(arr1, arr2):
+        return _output_shape_broadcast(arr1, arr2)
+
+
+def _output_shape_broadcast(arr1, arr2):
+    """
+    Args:
+        arr1 (Tuple | scalar): shape of arr1 or a scalar
+        arr2 (Tuple | scalar): shape of arr2 or a scalar
+    """
+    if not ub.iterable(arr1):
+        return arr2
+    if not ub.iterable(arr2):
+        return arr1
+    if tuple(arr1) != tuple(arr2):
+        # TODO: handle broadcast
+        raise NotImplementedError('Full broadcast not implemented {} != {}'.format(arr1, arr2))
+    return arr1
+
+
+class _ShapeGetItem(object):
+    def __init__(self, inp):
+        self.inp = inp
+
+    def __getitem__(self, slices):
+        ellipsis_type = type(Ellipsis)
+        oup = list(self.inp)
+        if isinstance(slices, slice):
+            slices = (slices,)
+
+        if isinstance(slices, tuple):
+            for i, sl in enumerate(slices):
+                if isinstance(sl, ellipsis_type):
+                    assert i == len(slices) - 1
+                    break
+                start, stop, step = sl.indices(oup[i])
+                oup[i] = (stop - start) // step
+        return oup
 
 
 def ensure_iterablen(scalar, n):

@@ -77,12 +77,11 @@ class MnistHarn(nh.FitHarn):
         pred_labels = pred.cpu().numpy()
         true_labels = batch['label'].cpu().numpy()
 
-        bx = harn.bxs[harn.current_tag]
-        if bx < 3:
+        if harn.batch_index < 3:
             decoded = harn._decode(outputs, batch['label'])
-            stacked = harn._draw_batch(bx, batch, decoded)
+            stacked = harn._draw_batch(batch, decoded)
             dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
-            fpath = join(dpath, 'epoch_{}_batch_{}.jpg'.format(harn.epoch, bx))
+            fpath = join(dpath, 'epoch_{}_batch_{}.jpg'.format(harn.epoch, harn.batch_index))
             nh.util.imwrite(fpath, stacked)
 
         acc = (true_labels == pred_labels).mean()
@@ -102,12 +101,13 @@ class MnistHarn(nh.FitHarn):
             'pred_scores': pred_scores,
         }
         if true_cxs is not None:
-            hot = nh.criterions.focal.one_hot_embedding(true_cxs, class_probs.shape[1])
+            import kwarray
+            hot = kwarray.one_hot_embedding(true_cxs, class_probs.shape[1])
             true_probs = (hot * class_probs).sum(dim=1)
             decoded['true_scores'] = true_probs
         return decoded
 
-    def _draw_batch(harn, bx, batch, decoded, limit=32):
+    def _draw_batch(harn, batch, decoded, limit=32):
         """
         CommandLine:
             xdoctest -m ~/code/netharn/examples/cifar.py CIFAR_FitHarn._draw_batch --show --arch=wrn_22
@@ -257,26 +257,26 @@ def setup_harn(**kw):
         model=(MnistNet, dict(num_channels=1, classes=datasets['train'].classes)),
         # optimizer=torch.optim.Adam,
         optimizer=(torch.optim.SGD, {'lr': 0.01, 'weight_decay': 3e-6}),
-        # scheduler='ReduceLROnPlateau',
-        scheduler=(nh.schedulers.ListedScheduler, {
-            'points': {
-                'lr': {
-                    0   : 0.01,
-                    10  : 0.10,
-                    20  : 0.01,
-                    40  : 0.0001,
-                },
-                'momentum': {
-                    0   : 0.95,
-                    10  : 0.85,
-                    20  : 0.95,
-                    40  : 0.99,
-                },
-                'weight_decay': {
-                    0: 3e-6,
-                }
-            }
-        }),
+        scheduler='ReduceLROnPlateau',
+        # scheduler=(nh.schedulers.ListedScheduler, {
+        #     'points': {
+        #         'lr': {
+        #             0   : 0.01,
+        #             10  : 0.10,
+        #             20  : 0.01,
+        #             40  : 0.0001,
+        #         },
+        #         'momentum': {
+        #             0   : 0.95,
+        #             10  : 0.85,
+        #             20  : 0.95,
+        #             40  : 0.99,
+        #         },
+        #         'weight_decay': {
+        #             0: 3e-6,
+        #         }
+        #     }
+        # }),
         criterion=torch.nn.CrossEntropyLoss,
         initializer=initializer,
         monitor=(nh.Monitor, {

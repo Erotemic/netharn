@@ -1,0 +1,6 @@
+click
+gitpython
+ubelt >= 0.8.2
+Cython >= 0.28.4
+cffi >= 1.11.5
+scikit-build >= 0.8.1 

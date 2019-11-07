@@ -75,34 +75,164 @@ def _hash_data(data):
     return ub.hash_data(data, hasher='sha512', base='abc', types=True)
 
 
+def _ensure_json_serializable(dict_):
+    """
+    Convert numpy and tuples into lists
+    """
+    import copy
+    dict_ = copy.deepcopy(dict_)
+
+    # inplace convert any ndarrays to lists
+    def _walk_json(data, prefix=[]):
+        items = None
+        if isinstance(data, list):
+            items = enumerate(data)
+        elif isinstance(data, tuple):
+            items = enumerate(data)
+        elif isinstance(data, dict):
+            items = data.items()
+        else:
+            raise TypeError(type(data))
+
+        root = prefix
+        level = {}
+        for key, value in items:
+            level[key] = value
+
+        # yield a dict so the user can choose to not walk down a path
+        yield root, level
+
+        for key, value in level.items():
+            if isinstance(value, (dict, list, tuple)):
+                path = prefix + [key]
+                for _ in _walk_json(value, prefix=path):
+                    yield _
+
+    def _convert(dict_, root, key, new_value):
+        d = dict_
+        for k in root:
+            d = d[k]
+        d[key] = new_value
+
+    to_convert = []
+    for root, level in ub.ProgIter(_walk_json(dict_), desc='walk json'):
+        for key, value in level.items():
+            if isinstance(value, tuple):
+                # Convert tuples on the fly so they become mutable
+                new_value = list(value)
+                _convert(dict_, root, key, new_value)
+            elif isinstance(value, np.ndarray):
+                new_value = value.tolist()
+                to_convert.append((root, key, new_value))
+            elif isinstance(value, torch.Tensor):
+                new_value = value.data.cpu().numpy().tolist()
+                to_convert.append((root, key, new_value))
+            elif isinstance(value, (np.float32, np.float64)):
+                new_value = float(value)
+                to_convert.append((root, key, new_value))
+            elif isinstance(value, (np.int32, np.int64)):
+                new_value = float(value)
+                to_convert.append((root, key, new_value))
+            elif hasattr(value, '__json__'):
+                new_value = value.__json__()
+                to_convert.append((root, key, new_value))
+
+    for root, key, new_value in to_convert:
+        _convert(dict_, root, key, new_value)
+    return dict_
+
+
 def _rectify_class(lookup, arg, kw):
-    if arg is None:
-        return None, {}
+    """
+    Args:
+        lookup (func | None):
+            transforms arg or arg[0] into the class type
+
+        arg (Tuple[type, dict] | type | object):
+            Either a (cls, initkw) tuple, a class, or an instance.
+            It is recommended that you don't pass an instance.
+
+        kw (Dict[str, object]):
+            augments initkw if arg is in tuple form otherwise becomes initkw
+
+    Returns:
+        Tuple[type, Dict]:
+            The class type that we want to construct and the keyword args
+            used to do the construction.
+    """
     if lookup is None:
         lookup = ub.identity
 
-    if isinstance(arg, tuple):
-        cls = lookup(arg[0])
-        try:
-            kw2 = arg[1]
-        except Exception:
-            print('lookup = {!r}'.format(lookup))
-            print('arg = {!r}'.format(arg))
-            raise
+    if arg is None:
+        cls = None
+        cls_kw = {}
+        instance = None
     else:
-        cls = lookup(arg)
-        kw2 = {}
+        instance = None
 
-    cls_kw = _class_default_params(cls).copy()
-    cls_kw.update(kw2)
-    for key in cls_kw:
-        if key in kw:
-            cls_kw[key] = kw.pop(key)
-    return cls, cls_kw
+        # Extract the part that identifies the class we care about
+        if isinstance(arg, tuple):
+            cls_key = arg[0]
+            kw2 = arg[1]
+        else:
+            cls_key = arg
+            kw2 = {}
+
+        cls = lookup(cls_key)
+
+        if not isinstance(cls, type):
+            # Rectified an instance to an instance
+            cls = cls.__class__
+
+        instance = None
+        if isinstance(cls_key, cls):
+            # We were passed an actual instance of the class. (for shame)
+            instance = cls_key
+
+        cls_kw = _class_default_params(cls).copy()
+
+        if instance is not None:
+            # Try and introspect the initkw, which is needed for model
+            # deployment and proper hyperparam tracking
+            for key in cls_kw:
+                if hasattr(instance, key):
+                    cls_kw[key] = getattr(instance, key)
+            if hasattr(instance, '_initkw'):
+                # Special attribute that allows safe instance specification and
+                # supresses the instance warning.
+                cls_kw.update(instance._initkw)
+            else:
+                import warnings
+                warnings.warn(ub.paragraph(
+                    '''
+                    Netharn expects hyperparameter objects to be specified as
+                    (type, kw) tuples, but we received a preconstructed
+                    instance. This is only ok if you know what you are doing.
+                    To disable this warning set the _initkw instance attribute
+                    to the correct keyword arguments needed to reconstruct this
+                    class.
+                    '''))
+
+        # Update with explicitly specified information
+        cls_kw.update(kw2)
+        for key in cls_kw:
+            if key in kw:
+                cls_kw[key] = kw.pop(key)
+
+    cls_kw = _ensure_json_serializable(cls_kw)
+    rectified = {
+        'cls': cls,
+        'cls_kw': cls_kw,
+        'instance': instance,
+    }
+    return rectified
+    # return cls, cls_kw
 
 
 def _class_default_params(cls):
     """
+    Grab initkw defaults from the constructor
+
     CommandLine:
         xdoctest -m netharn.hyperparams _class_default_params
 
@@ -137,7 +267,7 @@ def _class_default_params(cls):
 def _rectify_criterion(arg, kw):
     if arg is None:
         # arg = 'CrossEntropyLoss'
-        return None, None
+        return _rectify_class(None, None, kw)
 
     def _lookup(arg):
         if isinstance(arg, six.string_types):
@@ -150,8 +280,8 @@ def _rectify_criterion(arg, kw):
             cls = arg
         return cls
 
-    cls, kw2 = _rectify_class(_lookup, arg, kw)
-    return cls, kw2
+    rectified = _rectify_class(_lookup, arg, kw)
+    return rectified
 
 
 def _rectify_optimizer(arg, kw):
@@ -174,19 +304,19 @@ def _rectify_optimizer(arg, kw):
             cls = arg
         return cls
 
-    cls, kw2 = _rectify_class(_lookup, arg, kw)
+    rectified = _rectify_class(_lookup, arg, kw)
+    kw2 = rectified['cls_kw']
 
     for k, v in kw2.items():
         if v is required:
-            raise ValueError('Must specify {} for {}'.format(k, cls))
+            raise ValueError('Must specify {} for {}'.format(k, rectified['cls']))
 
-    return cls, kw2
+    return rectified
 
 
 def _rectify_lr_scheduler(arg, kw):
     if arg is None:
-        return None, None
-        # arg = 'Constant'
+        return _rectify_class(None, None, kw)
 
     def _lookup(arg):
         if isinstance(arg, six.string_types):
@@ -202,8 +332,8 @@ def _rectify_lr_scheduler(arg, kw):
             cls = arg
         return cls
 
-    cls, kw2 = _rectify_class(_lookup, arg, kw)
-    return cls, kw2
+    rectified = _rectify_class(_lookup, arg, kw)
+    return rectified
 
 
 def _rectify_initializer(arg, kw):
@@ -223,21 +353,20 @@ def _rectify_initializer(arg, kw):
             cls = arg
         return cls
 
-    cls, kw2 = _rectify_class(_lookup, arg, kw)
-    return cls, kw2
+    rectified = _rectify_class(_lookup, arg, kw)
+    return rectified
 
 
 def _rectify_monitor(arg, kw):
     def _lookup(arg):
         if isinstance(arg, six.string_types):
-            options = [
-            ]
+            options = []
             cls = {c.__name__: c for c in options}[arg]
         else:
             cls = arg
         return cls
-    cls, kw2 = _rectify_class(_lookup, arg, kw)
-    return cls, kw2
+    rectified = _rectify_class(_lookup, arg, kw)
+    return rectified
 
 
 def _rectify_dynamics(arg, kw):
@@ -263,7 +392,7 @@ def _rectify_dynamics(arg, kw):
 
 def _rectify_model(arg, kw):
     if arg is None:
-        return None, None
+        return _rectify_class(None, None, kw)
 
     def _lookup_model(arg):
         import torchvision
@@ -277,8 +406,12 @@ def _rectify_model(arg, kw):
             cls = arg
         return cls
 
-    cls, kw2 = _rectify_class(_lookup_model, arg, kw)
-    return cls, kw2
+    # Unwrap the model if was mounted
+    if isinstance(arg, device.MountedModel):
+        arg = arg.module
+
+    rectified = _rectify_class(_lookup_model, arg, kw)
+    return rectified
 
 
 def _rectify_loaders(arg, kw):
@@ -308,7 +441,10 @@ def _rectify_loaders(arg, kw):
         else:
             # loaders is kwargs for `torch_data.DataLoader`
             arg = (torch_data.DataLoader, arg)
-            cls, kw2 = _rectify_class(None, arg, kw)
+            # cls, kw2 = _rectify_class(None, arg, kw)
+            rectified = _rectify_class(None, arg, kw)
+            cls = rectified['cls']
+            kw2 = rectified['cls_kw']
     else:
         raise ValueError('Loaders should be a dict')
 
@@ -377,29 +513,29 @@ class HyperParams(object):
         hyper.loader_params = kw
         hyper.loader_params_nice = kwnice
 
-        cls, kw = _rectify_model(model, kwargs)
-        hyper.model_cls = cls
-        hyper.model_params = kw
+        hyper._model_info = _rectify_model(model, kwargs)
+        hyper.model_cls = hyper._model_info['cls']
+        hyper.model_params = hyper._model_info['cls_kw']
 
-        cls, kw = _rectify_optimizer(optimizer, kwargs)
-        hyper.optimizer_cls = cls
-        hyper.optimizer_params = kw
+        hyper._optimizer_info = _rectify_optimizer(optimizer, kwargs)
+        hyper.optimizer_cls = hyper._optimizer_info['cls']
+        hyper.optimizer_params = hyper._optimizer_info['cls_kw']
 
-        cls, kw = _rectify_lr_scheduler(scheduler, kwargs)
-        hyper.scheduler_cls = cls
-        hyper.scheduler_params = kw
+        hyper._scheduler_info = _rectify_lr_scheduler(scheduler, kwargs)
+        hyper.scheduler_cls = hyper._scheduler_info['cls']
+        hyper.scheduler_params = hyper._scheduler_info['cls_kw']
 
-        cls, kw = _rectify_criterion(criterion, kwargs)
-        hyper.criterion_cls = cls
-        hyper.criterion_params = kw
+        hyper._criterion_info = _rectify_criterion(criterion, kwargs)
+        hyper.criterion_cls = hyper._criterion_info['cls']
+        hyper.criterion_params = hyper._criterion_info['cls_kw']
 
-        cls, kw = _rectify_initializer(initializer, kwargs)
-        hyper.initializer_cls = cls
-        hyper.initializer_params = kw
+        hyper._initializer_info = _rectify_initializer(initializer, kwargs)
+        hyper.initializer_cls = hyper._initializer_info['cls']
+        hyper.initializer_params = hyper._initializer_info['cls_kw']
 
-        cls, kw = _rectify_monitor(monitor, kwargs)
-        hyper.monitor_cls = cls
-        hyper.monitor_params = kw
+        hyper._monitor_info = _rectify_monitor(monitor, kwargs)
+        hyper.monitor_cls = hyper._monitor_info['cls']
+        hyper.monitor_params = hyper._monitor_info['cls_kw']
 
         hyper.dynamics = _rectify_dynamics(dynamics, kw)
 
@@ -409,17 +545,23 @@ class HyperParams(object):
 
     def make_model(hyper):
         """ Instanciate the model defined by the hyperparams """
+        if hyper._model_info['instance'] is not None:
+            return hyper._model_info['instance']
         model = hyper.model_cls(**hyper.model_params)
         return model
 
     def make_optimizer(hyper, parameters):
         """ Instanciate the optimizer defined by the hyperparams """
+        if hyper._optimizer_info['instance'] is not None:
+            return hyper._optimizer_info['instance']
         # What happens if we want to group parameters
         optimizer = hyper.optimizer_cls(parameters, **hyper.optimizer_params)
         return optimizer
 
     def make_scheduler(hyper, optimizer):
         """ Instanciate the lr scheduler defined by the hyperparams """
+        if hyper._scheduler_info['instance'] is not None:
+            return hyper._scheduler_info['instance']
         if hyper.scheduler_cls is None:
             return None
         kw = hyper.scheduler_params.copy()
@@ -429,11 +571,15 @@ class HyperParams(object):
 
     def make_initializer(hyper):
         """ Instanciate the initializer defined by the hyperparams """
+        if hyper._initializer_info['instance'] is not None:
+            return hyper._initializer_info['instance']
         initializer = hyper.initializer_cls(**hyper.initializer_params)
         return initializer
 
     def make_criterion(hyper):
         """ Instanciate the criterion defined by the hyperparams """
+        if hyper._criterion_info['instance'] is not None:
+            return hyper._criterion_info['instance']
         if hyper.criterion_cls is None:
             return None
         criterion = hyper.criterion_cls(**hyper.criterion_params)
@@ -456,6 +602,8 @@ class HyperParams(object):
 
     def make_monitor(hyper):
         """ Instanciate the monitor defined by the hyperparams """
+        if hyper._monitor_info['instance'] is not None:
+            return hyper._monitor_info['instance']
         if hyper.monitor_cls is None:
             return None
         monitor = hyper.monitor_cls(**hyper.monitor_params)
@@ -487,7 +635,7 @@ class HyperParams(object):
             >>> print(ub.repr2(hyper.get_initkw()))
         """
         initkw = OrderedDict()
-        def _append_part(key, cls, params):
+        def _append_part(key, cls, params, initkw):
             """
             append an id-string derived from the class and params.
             TODO: what if we have an instance and not a cls/params tuple?
@@ -519,18 +667,18 @@ class HyperParams(object):
                 # param_str = util.make_idstr(d)
                 initkw[key] = (type_str, d)
 
-        _append_part('model', hyper.model_cls, hyper.model_params)
-        _append_part('initializer', hyper.initializer_cls, hyper.initializer_params)
-        _append_part('optimizer', hyper.optimizer_cls, hyper.optimizer_params)
-        _append_part('scheduler', hyper.scheduler_cls, hyper.scheduler_params)
-        _append_part('criterion', hyper.criterion_cls, hyper.criterion_params)
+        _append_part('model', hyper.model_cls, hyper.model_params, initkw)
+        _append_part('initializer', hyper.initializer_cls, hyper.initializer_params, initkw)
+        _append_part('optimizer', hyper.optimizer_cls, hyper.optimizer_params, initkw)
+        _append_part('scheduler', hyper.scheduler_cls, hyper.scheduler_params, initkw)
+        _append_part('criterion', hyper.criterion_cls, hyper.criterion_params, initkw)
 
         # TODO: should other be included in initkw? I think it should.
         # probably should also include monitor, xpu, nice
 
         # Loader is a bit hacked
-        _append_part('loader', hyper.loader_cls, hyper.loader_params_nice)
-        _append_part('dynamics', 'Dynamics', hyper.dynamics)
+        _append_part('loader', hyper.loader_cls, hyper.loader_params_nice, initkw)
+        _append_part('dynamics', 'Dynamics', hyper.dynamics, initkw)
 
         return initkw
 
@@ -614,6 +762,9 @@ class HyperParams(object):
         Identification string that uniquely determined by training hyper.
         Suitable for hashing.
 
+        Note:
+            setting short=True is deprecated
+
         CommandLine:
             python -m netharn.hyperparams HyperParams.hyper_id
 
@@ -621,10 +772,10 @@ class HyperParams(object):
             >>> from netharn.hyperparams import *
             >>> hyper = HyperParams(criterion='CrossEntropyLoss', other={'n_classes': 10, 'n_channels': 5})
             >>> print(hyper.hyper_id())
-            >>> print(hyper.hyper_id(short=['optimizer']))
-            >>> print(hyper.hyper_id(short=['optimizer'], hashed=True))
-            >>> print(hyper.hyper_id(short=['optimizer', 'criterion'], hashed=['criterion']))
             >>> print(hyper.hyper_id(hashed=True))
+            >>> #print(hyper.hyper_id(short=['optimizer']))
+            >>> #print(hyper.hyper_id(short=['optimizer'], hashed=True))
+            >>> #print(hyper.hyper_id(short=['optimizer', 'criterion'], hashed=['criterion']))
         """
         parts = hyper.get_initkw()
         return hyper._parts_id(parts, short, hashed)
@@ -696,9 +847,7 @@ class HyperParams(object):
             return ub.hash_data(data, hasher='sha512', base='abc', types=True)
 
         train_hyper_id_long = hyper.hyper_id()
-        short = True
-        hashed = True
-        train_hyper_id_brief = hyper.hyper_id(short=short, hashed=hashed)
+        train_hyper_id_brief = hyper.hyper_id(short=False, hashed=True)
         train_hyper_hashid = _hash_data(train_hyper_id_long)[:8]
 
         # TODO: hash this to some degree
@@ -714,6 +863,48 @@ class HyperParams(object):
             aug_brief, other_id)
 
         # Gather all information about this run into a single hash
+
+        """
+        NOTE:
+            On choosing the length to truncate the hash.
+
+            If we have an alphabet of size A=26, and we truncate to M=8
+            samples, then the number of possible hash values is N = A ** M.
+            The probability we will have a collision (assuming an ideal hash
+            function where all outputs are equally likely) in r different
+            inputs is given by the following function. Note this is the
+            birthday paradox problem [1].
+
+
+            ```python
+            from scipy import exp, log
+            from scipy.special import gammaln
+            def prob_unique(N, r):
+                return exp( gammaln(N+1) - gammaln(N-r+1) - r*log(N) )
+
+            A = 26  # size of the alphabet for _hash_data
+            M = 8   # number of characters we truncate at
+            N = A ** M  # number of possible hash values
+
+            r = 1000
+
+            prob_collision = 1 - prob_unique(N, r)
+            print('prob_collision = {!r}'.format(prob_collision))
+            ```
+
+            This is approximately 0.00056 or about 1 in 1784.
+            When r = 10000, it becomes had to compute the number because of
+            floating point errors, but the probability is likely astronomically
+            low. I doubt we will ever run training in the same work directory
+            (and with the same nice name) 10,000 different times, so using an 8
+            character hash seems safe and user friendly for this purpose.
+            Perhaps we may move to 12, 16, or 32+ in the future, but for the
+            pre 1.0 netharn, 8 seems fine.
+
+            References:
+                ..[1] https://www.johndcook.com/blog/2016/01/30/general-birthday-problem/
+
+        """
         train_hashid = _hash_data(train_id)[0:8]
 
         nice = hyper.nice

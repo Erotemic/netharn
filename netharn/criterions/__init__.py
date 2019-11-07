@@ -15,7 +15,7 @@ from netharn.criterions import focal
 from netharn.criterions import triplet
 
 from netharn.criterions.contrastive_loss import (ContrastiveLoss,)
-from netharn.criterions.focal import (ELEMENTWISE_MEAN, FocalLoss,
+from netharn.criterions.focal import (ELEMENTWISE_MEAN, FocalLoss, focal_loss,
                                       nll_focal_loss,)
 from netharn.criterions.triplet import (TripletLoss, all_pairwise_distances,
                                         approx_pdist, exact_pdist,
@@ -24,5 +24,6 @@ from netharn.criterions.triplet import (TripletLoss, all_pairwise_distances,
 __all__ = ['ContrastiveLoss', 'CrossEntropyLoss', 'ELEMENTWISE_MEAN',
            'FocalLoss', 'MSELoss', 'TripletLoss', 'all_pairwise_distances',
            'approx_pdist', 'contrastive_loss', 'exact_pdist', 'focal',
-           'labels_to_adjacency_matrix', 'nll_focal_loss', 'triplet']
+           'focal_loss', 'labels_to_adjacency_matrix', 'nll_focal_loss',
+           'triplet']
 # </AUTOGEN_INIT>

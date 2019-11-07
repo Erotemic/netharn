@@ -243,10 +243,10 @@ class Yolo(nn.Module):
             >>> state_dict = torch.load(demo_voc_weights())['weights']
             >>> self.load_state_dict(state_dict)
             >>> im_data, rgb255 = demo_image(inp_size)
-            >>> im_data = torch.cat([im_data, im_data])  # make a batch size of 2
-            >>> output = self(im_data)
+            >>> inputs = torch.cat([im_data, im_data])  # make a batch size of 2
+            >>> output = self(inputs)
             >>> # Define remaining params
-            >>> orig_sizes = torch.LongTensor([rgb255.shape[0:2][::-1]] * len(im_data))
+            >>> orig_sizes = torch.LongTensor([rgb255.shape[0:2][::-1]] * len(inputs))
             >>> batch_dets = self.postprocess(output)
             >>> dets = batch_dets[0]
             >>> # xdoc: +REQUIRES(--show)

@@ -1,8 +1,10 @@
 import torch.nn.functional as F
 import torch
 from torch import nn
+import ubelt as ub
 from netharn.layers import common
 from netharn import output_shape_for
+from netharn import receptive_field_for
 
 
 class L2Norm(common.Module):
@@ -13,6 +15,9 @@ class L2Norm(common.Module):
         "The L2 normalization technique introduced in [12] to scale the feature
         norm at each location in the feature map to `scale` and learn the scale
         during back propagation."
+
+        * In my experience (author of netharn), using this has tended to hurt
+        more than help.
 
     References:
         [12] Liu, Rabinovich, Berg - ParseNet: Looking wider to see better (ILCR) (2016)
@@ -55,3 +60,56 @@ class L2Norm(common.Module):
 
     def receptive_field_for(self, input_field=None):
         return input_field
+
+
+class InputNorm(common.Module):
+    """
+    Normalizes the input by shifting and dividing by a scale factor.
+
+    This allows for the network to take care of 0-mean 1-std normalization.
+    The developer explicitly specifies what these shift and scale values are.
+    By specifying this as a layer (instead of a data preprocessing step), the
+    netharn exporter will remember and associated this information with any
+    deployed model. This means that a user does not need to remember what these
+    shit/scale arguments were before passing inputs to a network.
+
+    If the mean and std arguments are unspecified, this layer becomes a noop.
+
+    References:
+        https://towardsdatascience.com/why-data-should-be-normalized-before-training-a-neural-network-c626b7f66c7d
+
+    Example:
+        >>> self = InputNorm(mean=50.0, std=29.0)
+        >>> inputs = torch.rand(2, 3, 5, 7) * 100
+        >>> outputs = self(inputs)
+        >>> # If mean and std are unspecified, this becomes a noop.
+        >>> assert torch.all(InputNorm()(inputs) == inputs)
+        >>> # Specifying either the mean or the std is ok.
+        >>> partial1 = InputNorm(mean=50)(inputs)
+        >>> partial2 = InputNorm(std=29)(inputs)
+    """
+
+    def __init__(self, mean=None, std=None):
+        super(InputNorm, self).__init__()
+        if mean is not None:
+            mean = mean if ub.iterable(mean) else [mean]
+            mean = torch.FloatTensor(mean)
+        if std is not None:
+            std = std if ub.iterable(std) else [std]
+            std = torch.FloatTensor(std)
+        self.register_buffer('mean', mean)
+        self.register_buffer('std', std)
+
+    def forward(self, inputs):
+        outputs = inputs
+        if self.mean is not None:
+            outputs = outputs - self.mean
+        if self.std is not None:
+            outputs = outputs / self.std
+        return outputs
+
+    def output_shape_for(self, input_shape):
+        return output_shape_for.OutputShape.coerce(input_shape)
+
+    def receptive_field_for(self, input_field=None):
+        return receptive_field_for.ReceptiveField.coerce(input_field)

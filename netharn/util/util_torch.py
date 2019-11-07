@@ -487,3 +487,100 @@ def torch_ravel_multi_index(multi_index, dims=None, device=None, strides_=None):
     #         result += stride * index
 
     return result
+
+
+class freeze_params(object):
+    """
+    Context manager for freezing / unfreezing specific layers / params.
+
+    Args:
+        layers (Module | List[Module]):
+            the modules containing the params you want to freeze
+
+        enabled (bool, default=True): if this layer is enabled
+
+    Example:
+        >>> inputs, net = freeze_params.demodata()
+        >>> self = freeze_params(net)
+        >>> list(self.named_parameters())
+
+    Example:
+        >>> from netharn.util.util_torch import *
+        >>> inputs, net = freeze_params.demodata()
+        >>> with freeze_params(net[1]) as self:
+        >>>     x = net(inputs)
+        >>> loss = x.sum()
+        >>> loss.backward()
+        >>> for k, v in net.named_parameters():
+        >>>     print('{}.grad = {}'.format(k, v.grad))
+
+        >>> inputs, net = freeze_params.demodata()
+        >>> with freeze_params([net[1], net[2]]) as self:
+        >>>     x = net(inputs)
+        >>> p1 = net(inputs).sum()
+        >>> p2 = x.sum()
+        >>> loss = p1 + p2
+        >>> loss.backward()
+        >>> for k, v in net.named_parameters():
+        >>>     print('{}.grad = {}'.format(k, v.grad))
+
+        >>> inputs, net = freeze_params.demodata()
+        >>> with freeze_params([net[1], net[2]]) as self:
+        >>>     x = net(inputs)
+        >>> loss = x.sum()
+        >>> loss.backward()
+        >>> for k, v in net.named_parameters():
+        >>>     print('{}.grad = {}'.format(k, v.grad))
+    """
+
+    def __init__(self, layers, enabled=True):
+        if isinstance(layers, torch.nn.Module):
+            self.layers = [layers]
+        else:
+            if ub.iterable(layers):
+                self.layers = list(layers)
+            else:
+                raise TypeError(layers)
+        self.enabled = enabled
+        self.state = {}
+
+    @classmethod
+    def demodata(cls):
+        import netharn as nh
+        inputs = torch.rand(2, 1, 1, 1)
+        net = nh.layers.Sequential(
+            nh.layers.ConvNorm2d(1, 1, 1),
+            nh.layers.ConvNorm2d(1, 1, 1),
+            nh.layers.ConvNorm2d(1, 1, 1),
+        )
+        return inputs, net
+
+    def named_parameters(self):
+        """ Iterate through all the parameters this context manages """
+        for i, layer in enumerate(self.layers):
+            prefix = str(i)
+            for name, param in layer.named_parameters(prefix, recurse=True):
+                yield name, param
+
+    def _set_requires_grad(self, flag):
+        for name, param in self.named_parameters():
+            param.requires_grad = flag
+
+    def _push_state(self):
+        assert len(self.state) == 0, 'can only save ones state'
+        for name, param in self.named_parameters():
+            self.state[name] = param.requires_grad
+
+    def _pop_state(self):
+        for name, param in self.named_parameters():
+            param.requires_grad = self.state.pop(name)
+
+    def __enter__(self):
+        if self.enabled:
+            self._push_state()
+            self._set_requires_grad(False)
+        return self
+
+    def __exit__(self, a, b, c):
+        if self.enabled:
+            self._pop_state()

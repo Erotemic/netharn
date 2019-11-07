@@ -1,4 +1,6 @@
 """
+DEPRICATE USE THE ONE IN YOLO2
+
 Originally by EAVISE
 
 Note: my alternative implementation of region_loss is in netharn/dev/ somewhere.

@@ -135,6 +135,7 @@ Example:
     model.__module__ = 'deploy_ToyNet2d_onnxqaww_002_HVWCGI/ToyNet2d_2a3f49'
     harn.model.module.__module__ = 'netharn.models.toynet'
 """
+from __future__ import absolute_import, division, print_function, unicode_literals
 import glob
 import json
 import six
@@ -200,7 +201,11 @@ def unpack_model_info(path):
     structure.
 
     Args:
-        path (PathLike): either a zip deployment or train_dpath
+        path (PathLike): either a zip deployment or train_dpath.
+            Preferably this is a zip deployment file or a path to an unzipped
+            deploy file. If this is a train_dpath, then it should at least
+            contain a model topology py file and snapshot pt file, otherwise
+            subsequent usage will likely fail.
     """
     info = {
         'train_info_fpath': None,
@@ -367,14 +372,16 @@ class DeployedModel(ub.NiceRepr):
         >>> model_ = self.model_definition()
         >>> initializer_ = self.initializer_definition()
         >>> model = model_[0](**model_[1])
+        >>> assert initializer_[1].get('fpath', None) is not None, 'initializer isnt setup correctly'
         >>> initializer = initializer_[0](**initializer_[1])
         >>> initializer(model)
         ...
         >>> print('model.__module__ = {!r}'.format(model.__module__))
-        >>> if six.PY3:
-        ...     assert model.__module__ == 'ToyNet2d_2a3f49'
-        ... else:
-        ...     assert model.__module__ == 'ToyNet2d_d573a3'
+
+        # >>> if six.PY3:
+        # ...     assert model.__module__ == 'ToyNet2d_2a3f49'
+        # ... else:
+        # ...     assert model.__module__ == 'ToyNet2d_d573a3'
 
     Example:
         >>> # Test the zip file as the model deployment
@@ -383,6 +390,7 @@ class DeployedModel(ub.NiceRepr):
         >>> model_ = self.model_definition()
         >>> initializer_ = self.initializer_definition()
         >>> model = model_[0](**model_[1])
+        >>> assert initializer_[1].get('fpath', None) is not None, 'initializer isnt setup correctly'
         >>> initializer = initializer_[0](**initializer_[1])
         >>> initializer(model)
         ...
@@ -406,7 +414,7 @@ class DeployedModel(ub.NiceRepr):
 
         Args:
             snap_fpath (PathLike):
-                path to the exported weights file
+                path to the exported (snapshot) weights file
 
             model (PathLike or nn.Module): can either be
                 (1) a path to model topology (created via `export_model_code`)
@@ -572,6 +580,58 @@ class DeployedModel(ub.NiceRepr):
 
         initializer(model)
         return model
+
+    @classmethod
+    def ensure_mounted_model(cls, deployed, xpu=None, log=print):
+        """
+        Ensure that a deployed model is loaded and mounted.
+
+        Helper method that can accept either a raw model or packaged deployed
+        model is loaded and mounted on a specific XPU. This provides a one line
+        solution for applications that may want to ensure that a model is
+        mounted and ready for predict. When the model is already mounted this
+        is very fast and just passes the data through. If the input is a
+        packaged deployed file, then it does the required work to prep the
+        model.
+
+        Args:
+            deployed (DeployedModel | PathLike | torch.nn.Module):
+                either a packed deployed model, a path to a deployed model, or
+                an already mounted torch Module.
+            xpu (str | XPU): which device to mount on
+            log (callable, optional): logging or print function
+
+        Returns:
+            Tuple[torch.nn.Module, XPU]:
+                the mounted model, and the device it is mounted on.
+        """
+        import netharn as nh
+        import torch
+        if not isinstance(xpu, nh.XPU):
+            xpu = nh.XPU.cast(xpu)
+
+        if isinstance(deployed, six.string_types):
+            deployed = nh.export.DeployedModel(deployed)
+
+        if isinstance(deployed, torch.nn.Module):
+            # User passed in the model directly
+            model = deployed
+            try:
+                if xpu != nh.XPU.from_data(model):
+                    log('Re-Mount model on {}'.format(xpu))
+                    model = xpu.mount(model)
+            except Exception:
+                log('Re-Mount model on {}'.format(xpu))
+                model = xpu.mount(model)
+        elif isinstance(deployed, nh.export.DeployedModel):
+            model = deployed.load_model()
+            log('Mount {} on {}'.format(deployed, xpu))
+            model = xpu.mount(model)
+        else:
+            raise TypeError('Unable to ensure {!r} as a mounted model'.format(
+                deployed))
+
+        return model, xpu
 
 
 def _demodata_zip_fpath():

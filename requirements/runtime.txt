@@ -1,0 +1,17 @@
+# Misc
+# ====
+six >= 1.11.0
+torch >= 1.0.0
+numpy >= 1.14.5
+ubelt >= 0.8.2
+progiter >= 0.0.2
+parse >= 1.8.4
+packaging >= 17.1
+pyflakes >= 1.6.0
+astunparse >= 1.6.1
+pygtrie >= 2.2
+psutil >= 5.4.7
+
+# Python 2.7 Only
+# ====================
+qualname>=0.1.0;python_version < '3.0' 

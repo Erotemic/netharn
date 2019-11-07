@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 """
+NOTE: THIS FILE IS DEPRICATED
+
 Processing for filenames. The logic is relatively hacky.
 
 pip install pygtrie
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 from os.path import commonprefix, isdir, dirname
-# from os.path import relpath, splitext
 import numpy as np  # NOQA
-from collections import deque
-import pygtrie
 
 
 def shortest_unique_prefixes(items, sep=None, allow_simple=True, min_length=0, allow_end=False):
@@ -38,6 +37,7 @@ def shortest_unique_prefixes(items, sep=None, allow_simple=True, min_length=0, a
         pip install pygtrie
 
     Example:
+        >>> # xdoctest: +REQUIRES(--pygtrie)
         >>> items = ["zebra", "dog", "duck", "dove"]
         >>> shortest_unique_prefixes(items)
         ['z', 'dog', 'du', 'dov']
@@ -71,6 +71,7 @@ def shortest_unique_prefixes(items, sep=None, allow_simple=True, min_length=0, a
         Timed for: 3 loops, best of 3
             time per loop: best=4.063 s, mean=4.063 ± 0.0 s
     """
+    import pygtrie
     if len(set(items)) != len(items):
         raise ValueError('inputs must be unique')
 
@@ -126,21 +127,31 @@ def _trie_iternodes(self):
 
     # Hack into the internal structure and insert frequencies at each node
     """
+    from collections import deque
     stack = deque([[self._root]])
     while stack:
         for node in stack.pop():
             yield node
-            stack.append(node.children.values())
+            try:
+                # only works in pygtrie-2.2 broken in pygtrie-2.3.2
+                stack.append(node.children.values())
+            except AttributeError:
+                stack.append([v for k, v in node.children.iteritems()])
 
 
 def shortest_unique_suffixes(items, sep=None):
     r"""
+    CommandLine:
+        xdoctest -m netharn.util.util_fname shortest_unique_suffixes
+
     Example:
+        >>> # xdoctest: +REQUIRES(--pygtrie)
         >>> items = ["zebra", "dog", "duck", "dove"]
         >>> shortest_unique_suffixes(items)
         ['a', 'g', 'k', 'e']
 
     Example:
+        >>> # xdoctest: +REQUIRES(--pygtrie)
         >>> items = ["aa/bb/cc", "aa/bb/bc", "aa/bb/dc", "aa/cc/cc"]
         >>> shortest_unique_suffixes(items)
     """
@@ -156,6 +167,7 @@ def dumpsafe(paths, repl='<sl>'):
     Removes common the common prefix, and replaces slashes with <sl>
 
     Ignore:
+        >>> # xdoctest: +REQUIRES(--pygtrie)
         >>> paths = ['foo/{:04d}/{:04d}'.format(i, j) for i in range(2) for j in range(20)]
         >>> list(dumpsafe(paths, '-'))
     """
@@ -229,6 +241,7 @@ def align_paths(paths1, paths2):
     paths1, paths2 = gt_paths, pred_paths
 
     Doctest:
+        >>> # xdoc: +REQUIRES(--pygtrie)
         >>> def test_gt_arrangements(paths1, paths2, paths2_):
         >>>     # no matter what order paths2_ comes in, it should align with the groundtruth
         >>>     assert align_paths(paths1, paths2_) == paths2
@@ -367,7 +380,7 @@ def check_aligned(paths1, paths2):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m netharn.util.util_fname all
+        xdoctest -m netharn.util.util_fname all --pygtrie
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

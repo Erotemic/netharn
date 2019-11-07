@@ -9,7 +9,7 @@ TODO:
                 [ ] ...
         [ ] segmentation
             [ ] semantic
-                [ ] CamVid
+                [X] CamVid
                 [ ] CityScapes
                 [ ] Diva
                 [ ] UrbanMapper3D
@@ -20,10 +20,10 @@ TODO:
             [ ] ...
         [ ] detection
             [ ] ...
-            [ ] VOC2007
+            [X] VOC2007
         [ ] identification
             [ ] 1-vs-all
             [ ] N-vs-all
-            [ ] (1-vs-1) pairwise
+            [X] (1-vs-1) pairwise
             [ ] (N-vs-N)
             [ ] ...

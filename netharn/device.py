@@ -1,7 +1,8 @@
 """
-Abstracted processing device
+The X Processing Unit --- an agnostic torch device.
 
-Creates a common API for dynamically running on CPU, GPU, or many GPUs
+An XPU is an abstracted (X) procesesing unit (PU) with a common API for running
+torch operations on a CPU, GPU, or many GPUs.
 """
 from __future__ import absolute_import, division, print_function
 import psutil
@@ -16,17 +17,17 @@ from torch._six import container_abcs
 
 __all__ = ['XPU']
 
-try:
-    # minimum memory (MB) needed for auto to resolve to GPU by default
-    NETHARN_MIN_MB = int(os.environ['NETHARN_MIN_MB'])
-except Exception:
-    NETHARN_MIN_MB = 6000
+# try:
+# minimum memory (MB) needed for auto to resolve to GPU by default
+NETHARN_MIN_MB = int(os.environ.get('NETHARN_MIN_MB', 6000))
+# except Exception:
+#     NETHARN_MIN_MB = 6000
 
 
-if torch.__version__.startswith('0.3'):
-    _TENSOR_TYPES = (torch._TensorBase, torch.autograd.Variable)
-else:
-    _TENSOR_TYPES = (torch.Tensor, torch.autograd.Variable)
+# if torch.__version__.startswith('0.3'):
+#     _TENSOR_TYPES = (torch._TensorBase, torch.autograd.Variable)
+# else:
+_TENSOR_TYPES = (torch.Tensor, torch.autograd.Variable)
 
 
 class MountedModel(torch.nn.Module, util.ModuleMixin):
@@ -178,23 +179,27 @@ class XPU(ub.NiceRepr):
             >>> xpu = XPU.from_argv()
             >>> print(xpu)
         """
-        anygpu = ub.argflag('--gpu')
-        if anygpu:
-            gpu_num = XPU.default_gpu()
+        item = ub.argval('--xpu', default=ub.NoParam)
+        if item is not ub.NoParam:
+            xpu = XPU.coerce(item)
         else:
-            gpu_num = ub.argval('--gpu', default=None)
-        if ub.argflag('--cpu'):
-            xpu = XPU(None, check=check)
-        elif gpu_num is None:
-            xpu = XPU.from_auto(**kwargs)
-        else:
-            if gpu_num.lower() == 'none':
-                xpu = XPU(None)
-            if isinstance(gpu_num, six.string_types) and ',' in gpu_num:
-                _device_ids = list(map(int, gpu_num.split(',')))
-                xpu = XPU(_device_ids, check=check)
+            anygpu = ub.argflag('--gpu')
+            if anygpu:
+                gpu_num = XPU.default_gpu()
             else:
-                xpu = XPU(int(gpu_num), check=check)
+                gpu_num = ub.argval('--gpu', default=None)
+            if ub.argflag('--cpu'):
+                xpu = XPU(None, check=check)
+            elif gpu_num is None:
+                xpu = XPU.from_auto(**kwargs)
+            else:
+                if gpu_num.lower() == 'none':
+                    xpu = XPU(None)
+                if isinstance(gpu_num, six.string_types) and ',' in gpu_num:
+                    _device_ids = list(map(int, gpu_num.split(',')))
+                    xpu = XPU(_device_ids, check=check)
+                else:
+                    xpu = XPU(int(gpu_num), check=check)
         return xpu
 
     @classmethod
@@ -238,7 +243,7 @@ class XPU(ub.NiceRepr):
         else:
             raise TypeError(type(item))
 
-    of = from_data
+    of = from_data  # alias
 
     @classmethod
     def coerce(cls, item, **kwargs):
@@ -660,13 +665,20 @@ def find_unused_gpu(min_memory=0):
     gpus = gpu_info()
     if not gpus:
         return None
-    gpu_avail_mem = {n: gpu['mem_avail'] for n, gpu in gpus.items()}
-    usage_order = ub.argsort(gpu_avail_mem)
-    gpu_num = usage_order[-1]
-    if gpu_avail_mem[gpu_num] < min_memory:
-        return None
-    else:
-        return gpu_num
+
+    # Order GPUs by most available memory
+    # gpu_avail_mem = {n: -gpu['mem_avail'] for n, gpu in gpus.items()}
+
+    # Order GPUs by fewest compute processes, and then by available memory
+    gpu_avail_mem = {n: (gpu['num_compute_procs'], -gpu['mem_avail'])
+                     for n, gpu in gpus.items()}
+    ranked_order = ub.argsort(gpu_avail_mem)
+
+    for gpu_num in ranked_order:
+        gpu = gpus[gpu_num]
+        if gpu['mem_avail'] >= min_memory:
+            return gpu_num
+    return None
 
 
 def gpu_info():
@@ -689,7 +701,7 @@ def gpu_info():
         >>> # xdoctest: +REQUIRES(--cuda)
         >>> from netharn.device import *
         >>> gpus = gpu_info()
-        >>> print('gpus = {}'.format(ub.repr2(gpus)))
+        >>> print('gpus = {}'.format(ub.repr2(gpus, nl=3)))
         >>> assert len(gpus) == torch.cuda.device_count()
     """
     try:
@@ -703,8 +715,32 @@ def gpu_info():
 
     lines = result['out'].splitlines()
 
+    """
+    Ignore:
+        # TODO: make more efficient calls to nvidia-smi
+
+        utilization.gpu
+        utilization.memory
+        compute_mode
+        memory.total
+        memory.used
+        memory.free
+        index
+        name
+        count
+
+        nvidia-smi  --help-query-compute-apps
+        nvidia-smi  --help-query-gpu
+
+        nvidia-smi  --query-gpu="index,memory.total,memory.used,memory.free,count,name,gpu_uuid" --format=csv
+        nvidia-smi  --query-compute-apps="pid,name,gpu_uuid,used_memory" --format=csv
+    """
+
     gpu_lines = []
+    proc_lines = []
     current = None
+
+    state = '0_gpu_read'
 
     for line in lines:
         if current is None:
@@ -712,15 +748,27 @@ def gpu_info():
             if line.startswith('|====='):
                 current = []
         else:
-            if len(line.strip()) == 0:
-                # End of GPU info
-                break
-            elif line.startswith('+----'):
-                # Move to the next GPU
-                gpu_lines.append(current)
-                current = []
+            if state == '0_gpu_read':
+                if len(line.strip()) == 0:
+                    # End of GPU info
+                    state = '1_proc_read'
+                    current = None
+                elif line.startswith('+----'):
+                    # Move to the next GPU
+                    gpu_lines.append(current)
+                    current = []
+                else:
+                    current.append(line)
+            elif state == '1_proc_read':
+                if line.startswith('+----'):
+                    # Move to the next GPU
+                    # End of proc info
+                    state = 'terminate'
+                    break
+                else:
+                    proc_lines.append(line)
             else:
-                current.append(line)
+                raise AssertionError(state)
 
     def parse_gpu_lines(lines):
         line1 = lines[0]
@@ -736,6 +784,26 @@ def gpu_info():
         gpu['mem_avail'] = gpu['mem_total'] - gpu['mem_used']
         return gpu
 
+    def parse_proc_line(line):
+        inner = '|'.join(line.split('|')[1:-1])
+        parts = [p.strip() for p in inner.split(' ')]
+        parts = [p for p in parts if p]
+
+        index = int(parts[0])
+        pid = int(parts[1])
+        proc_type = str(parts[2])
+        proc_name = str(parts[3])
+        used_mem = float(parts[4].replace('MiB', ''))
+
+        proc = {
+            'gpu_num': index,
+            'pid': pid,
+            'type': proc_type,
+            'name': proc_name,
+            'used_mem': used_mem,
+        }
+        return proc
+
     gpus = {}
     for num, lines in enumerate(gpu_lines):
         gpu = parse_gpu_lines(lines)
@@ -744,6 +812,28 @@ def gpu_info():
         assert num not in gpus, (
             'Multiple GPUs labeled as num {}. Probably a parsing error'.format(num))
         gpus[num] = gpu
+        gpus[num]['procs'] = []
+
+    for line in proc_lines:
+        # Give each GPU info on which processes are using it
+        proc = parse_proc_line(line)
+        num = proc['gpu_num']
+        gpus[num]['procs'].append(proc)
+
+    for gpu in gpus.values():
+        # Let each GPU know how many processes are currently using it
+        num_compute_procs = 0
+        num_graphics_procs = 0
+        for proc in gpu['procs']:
+            if proc['type'] == 'C':
+                num_compute_procs += 1
+            elif proc['type'] == 'G':
+                num_graphics_procs += 1
+            else:
+                raise NotImplementedError(proc['type'])
+        gpu['num_compute_procs'] = num_compute_procs
+        gpu['num_graphics_procs'] = num_graphics_procs
+
     return gpus
 
 

@@ -486,3 +486,10 @@ it would produce this more detailed description of what it was doing:
    INFO: wrote single-file deployment to: '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_000_JWPNDC.zip'
    INFO: exiting fit harness.
 
+
+]
+ 
+ 
+Acknowledgements:
+=================
+The authors would like to thank AFRL for their support of this work via `SBIR Contract FA8650-18-C-1075 <https://govtribe.com/award/federal-contract-award/definitive-contract-fa865018c1075>`_. This library is approved for public release via 88ABW.

@@ -46,10 +46,7 @@ import sys
 from os.path import dirname
 from setuptools import find_packages
 from os.path import exists
-from os.path import dirname
 from os.path import join
-from os.path import sys
-import re
 import ast
 import glob
 import ubelt as ub
@@ -106,25 +103,36 @@ def parse_requirements(fname='requirements.txt'):
 
     TODO:
         perhaps use https://github.com/davidfischer/requirements-parser instead
+
+    CommandLine:
+        python -c "import setup; print(setup.parse_requirements())"
     """
-    require_fpath = join(dirname(__file__), fname)
+    from os.path import exists
+    import re
+    require_fpath = fname
 
     def parse_line(line):
         """
         Parse information from a line in a requirements text file
         """
-        info = {}
-        if line.startswith('-e '):
+        if line.startswith('-r '):
+            # Allow specifying requirements in other files
+            target = line.split(' ')[1]
+            for info in parse_require_file(target):
+                yield info
+        elif line.startswith('-e '):
+            info = {}
             info['package'] = line.split('#egg=')[1]
+            yield info
         else:
             # Remove versioning from the package
             pat = '(' + '|'.join(['>=', '==', '>']) + ')'
             parts = re.split(pat, line, maxsplit=1)
             parts = [p.strip() for p in parts]
 
+            info = {}
             info['package'] = parts[0]
             if len(parts) > 1:
-                # FIXME: This breaks if the package doesnt have a version num
                 op, rest = parts[1:]
                 if ';' in rest:
                     # Handle platform specific dependencies
@@ -134,25 +142,28 @@ def parse_requirements(fname='requirements.txt'):
                 else:
                     version = rest  # NOQA
                 info['version'] = (op, version)
-        return info
+            yield info
 
-    # This breaks on pip install, so check that it exists.
-    if exists(require_fpath):
-        with open(require_fpath, 'r') as f:
-            packages = []
+    def parse_require_file(fpath):
+        with open(fpath, 'r') as f:
             for line in f.readlines():
                 line = line.strip()
                 if line and not line.startswith('#'):
-                    info = parse_line(line)
-                    package = info['package']
-                    if not sys.version.startswith('3.4'):
-                        # apparently package_deps are broken in 3.4
-                        platform_deps = info.get('platform_deps')
-                        if platform_deps is not None:
-                            package += ';' + platform_deps
-                    packages.append(package)
-            return packages
-    return []
+                    for info in parse_line(line):
+                        yield info
+
+    # This breaks on pip install, so check that it exists.
+    packages = []
+    if exists(require_fpath):
+        for info in parse_require_file(require_fpath):
+            package = info['package']
+            if not sys.version.startswith('3.4'):
+                # apparently package_deps are broken in 3.4
+                platform_deps = info.get('platform_deps')
+                if platform_deps is not None:
+                    package += ';' + platform_deps
+            packages.append(package)
+    return packages
 
 
 def clean_repo(repodir, modname, rel_paths=[]):
@@ -199,15 +210,19 @@ def clean_repo(repodir, modname, rel_paths=[]):
         if exists(d) and d not in toremove:
             toremove.append(d)
 
-    abs_paths = [join(repodir, p) for pat in rel_paths
-                 for p in glob.glob(pat, recursive=True)]
+    import six
+    if six.PY2:
+        abs_paths = [join(repodir, p) for pat in rel_paths
+                     for p in glob.glob(pat)]
+    else:
+        abs_paths = [join(repodir, p) for pat in rel_paths
+                     for p in glob.glob(pat, recursive=True)]
     for abs_path in abs_paths:
         enqueue(abs_path)
 
     for dpath in toremove:
         # print('Removing dpath = {!r}'.format(dpath))
         ub.delete(dpath, verbose=1)
-
 
 
 def clean():
@@ -249,42 +264,27 @@ compile_setup_kw = dict(
 version = parse_version('netharn')  # needs to be a global var for git tags
 
 if __name__ == '__main__':
-    if 'clean' in sys.argv:
-        # hack
-        clean()
-        sys.exit(0)
-
-    # Parse requirements from install_requires.txt
-    install_requires = parse_requirements('requirements.txt')
-    # optional_requires = parse_requirements('optional-requirements.txt')
-    optional_requires = []
-
-    # Remove build deps, so only runtime deps remain
-    # (this is important for constructing a wheel)
-    to_remove = {
-        'tensorboard',
-        'tensorboard_logger',
-        'scikit-build',
-    }
-    for req in list(install_requires):
-        if req.split(' ')[0] in to_remove:
-            optional_requires.append(req)
+    # if 'clean' in sys.argv:
+    #     # hack
+    #     clean()
+    #     sys.exit(0)
 
     setup(
         name='netharn',
         version=version,
         author='Jon Crall',
-        description='Train and deploy pytorch models',
-        long_description=parse_description(),
-        install_requires=install_requires,
-        extras_require={
-            'all': optional_requires
-        },
         author_email='erotemic@gmail.com',
         url='https://github.com/Erotemic/netharn',
-        license='Apache 2',
+        description='Train and deploy pytorch models',
+        long_description=parse_description(),
+        install_requires=parse_requirements('requirements/runtime.txt'),
+        extras_require={
+            'all': parse_requirements('requirements.txt'),
+            'optional': parse_requirements('requirements/optional.txt'),
+            'tests': parse_requirements('requirements/tests.txt'),
+        },
         packages=find_packages(include='netharn.*'),
-        # packages=['netharn',],
+        license='Apache 2',
         classifiers=[
             # List of classifiers available at:
             # https://pypi.python.org/pypi?%3Aaction=list_classifiers

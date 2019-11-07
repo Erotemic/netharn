@@ -66,15 +66,33 @@ class GetBoundingBoxes(object):
             >>> output = XPU.coerce('auto').move(output)
             >>> batch_dets = self._decode(output.data)
             >>> assert len(batch_dets) == 16
+
+        Ignore:
+            >>> from netharn.models.yolo2.yolo2 import *  # NOQA
+            >>> info = dev_demodata()
+            >>> outputs = info['outputs']
+            >>> cxywh_energy = output['cxywh_energy']
+            >>> raw = info['raw']
+            >>> raw_ = raw.clone()
+
+            >>> self = GetBoundingBoxes(anchors=info['model'].anchors, num_classes=20, conf_thresh=.14, nms_thresh=0.5)
+            >>> dets = self._decode(raw)[0]
+            >>> dets.scores
+
+            >>> self, output = ub.take(info, ['coder', 'outputs'])
+            >>> batch_dets = self.decode_batch(output)
+            >>> dets = batch_dets[0]
+            >>> dets.scores
+
         """
         # dont modify inplace
-        output = output.clone()
+        raw_ = output.clone()
 
         # Variables
-        bsize = output.shape[0]
-        h, w = output.shape[-2:]
+        bsize = raw_.shape[0]
+        h, w = raw_.shape[-2:]
 
-        device = output.device
+        device = raw_.device
 
         if self.anchors.device != device:
             self.anchors = self.anchors.to(device)
@@ -82,20 +100,26 @@ class GetBoundingBoxes(object):
         # Compute xc,yc, w,h, box_score on Tensor
         lin_x = torch.linspace(0, w - 1, w, device=device).repeat(h, 1).view(h * w)
         lin_y = torch.linspace(0, h - 1, h, device=device).repeat(w, 1).t().contiguous().view(h * w)
+
         anchor_w = self.anchors[:, 0].contiguous().view(1, self.num_anchors, 1)
         anchor_h = self.anchors[:, 1].contiguous().view(1, self.num_anchors, 1)
 
         # -1 == 5+num_classes (we can drop feature maps if 1 class)
-        output_ = output.view(bsize, self.num_anchors, -1, h * w)
+        output_ = raw_.view(bsize, self.num_anchors, -1, h * w)
+
         output_[:, :, 0, :].sigmoid_().add_(lin_x).div_(w)          # X center
         output_[:, :, 1, :].sigmoid_().add_(lin_y).div_(h)          # Y center
         output_[:, :, 2, :].exp_().mul_(anchor_w).div_(w)           # Width
         output_[:, :, 3, :].exp_().mul_(anchor_h).div_(h)           # Height
         output_[:, :, 4, :].sigmoid_()                              # Box score
 
+        # output_[:, :, 0:4].sum()
+        # torch.all(cxywh.view(-1) == output_[:, :, 0:4].contiguous().view(-1))
+
         # Compute class_score
         if self.num_classes > 1:
             cls_scores = torch.nn.functional.softmax(output_[:, :, 5:, :], 2)
+
             cls_max, cls_max_idx = torch.max(cls_scores, 2)
             cls_max.mul_(output_[:, :, 4, :])
         else:
@@ -120,7 +144,9 @@ class GetBoundingBoxes(object):
             # Mask select boxes > conf_thresh
             coords = output_.transpose(2, 3)[..., 0:4]
             coords = coords[score_thresh[..., None].expand_as(coords)].view(-1, 4)
+
             scores = cls_max[score_thresh]
+
             class_idxs = cls_max_idx[score_thresh]
 
             stacked_dets = util.Detections(

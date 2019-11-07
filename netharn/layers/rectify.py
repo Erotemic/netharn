@@ -13,9 +13,9 @@ def rectify_nonlinearity(key=ub.NoParam, dim=2):
 
     Example:
         >>> rectify_nonlinearity('relu')
-        ReLU(inplace)
+        ReLU(...)
         >>> rectify_nonlinearity('leaky_relu')
-        LeakyReLU(negative_slope=0.01, inplace)
+        LeakyReLU(negative_slope=0.01...)
         >>> rectify_nonlinearity(None)
         None
     """
@@ -28,6 +28,8 @@ def rectify_nonlinearity(key=ub.NoParam, dim=2):
     if isinstance(key, six.string_types):
         if key == 'relu':
             key = {'type': 'relu'}
+        elif key == 'relu6':
+            key = {'type': 'relu6'}
         elif key == 'leaky_relu':
             key = {'type': 'leaky_relu', 'negative_slope': 1e-2}
         else:
@@ -36,18 +38,20 @@ def rectify_nonlinearity(key=ub.NoParam, dim=2):
         key = key.copy()
     else:
         raise TypeError(type(key))
-
-    noli_type = key.pop('type')
-    if 'inplace' not in key:
-        key['inplace'] = True
+    kw = key
+    noli_type = kw.pop('type')
+    if 'inplace' not in kw:
+        kw['inplace'] = True
 
     if noli_type == 'leaky_relu':
         cls = torch.nn.LeakyReLU
     elif noli_type == 'relu':
         cls = torch.nn.ReLU
+    elif noli_type == 'relu6':
+        cls = torch.nn.ReLU6
     else:
-        raise KeyError('unknown type: {}'.format(key))
-    return cls(**key)
+        raise KeyError('unknown type: {}'.format(kw))
+    return cls(**kw)
 
 
 def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
@@ -69,6 +73,7 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
         BatchNorm3d(8, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
         >>> rectify_normalizer(8, None)
         None
+        >>> rectify_normalizer(8, key={'type': 'syncbatch'})
     """
     if key is None:
         return None
@@ -79,6 +84,8 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
     if isinstance(key, six.string_types):
         if key == 'batch':
             key = {'type': 'batch'}
+        elif key == 'syncbatch':
+            key = {'type': 'syncbatch'}
         elif key == 'group':
             key = {'type': 'group', 'num_groups': ('gcd', min(in_channels, 32))}
         elif key == 'batch+group':
@@ -104,6 +111,9 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
             cls = torch.nn.BatchNorm3d
         else:
             raise ValueError(dim)
+    elif norm_type == 'syncbatch':
+        in_channels_key = 'num_features'
+        cls = torch.nn.SyncBatchNorm
     elif norm_type == 'group':
         in_channels_key = 'num_channels'
         if isinstance(key['num_groups'], tuple):

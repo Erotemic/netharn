@@ -17,8 +17,20 @@ import re
 # int_classes = six.integer_types
 from torch._six import container_abcs
 from torch._six import string_classes, int_classes
-numpy_type_map = torch_data.dataloader.numpy_type_map
 default_collate = torch_data.dataloader.default_collate
+
+
+# numpy_type_map = torch_data.dataloader.numpy_type_map  # moved in torch 1.1.0
+numpy_type_map = {
+    'float64': torch.DoubleTensor,
+    'float32': torch.FloatTensor,
+    'float16': torch.HalfTensor,
+    'int64': torch.LongTensor,
+    'int32': torch.IntTensor,
+    'int16': torch.ShortTensor,
+    'int8': torch.CharTensor,
+    'uint8': torch.ByteTensor,
+}
 
 
 class CollateException(Exception):
@@ -75,6 +87,8 @@ def _collate_else(batch, collate_func):
             return collated
         else:
             return {key: collate_func([d[key] for d in batch]) for key in batch[0]}
+    elif isinstance(batch[0], tuple) and hasattr(batch[0], '_fields'):  # namedtuple
+        return type(batch[0])(*(default_collate(samples) for samples in zip(*batch)))
     elif isinstance(batch[0], container_abcs.Sequence):
         transposed = zip(*batch)
         return [collate_func(samples) for samples in transposed]
@@ -108,7 +122,10 @@ def list_collate(inbatch):
         >>> assert len(out_batch) == 2
         >>> batch_img, batch_boxes = out_batch
         >>> assert list(out_batch[0].shape) == [bsize, 3, 4, 4]
-        >>> assert len(out_batch[1][0]) == bsize
+        >>> assert len(out_batch[1]) == bsize
+        >>> assert len(out_batch[1][0]) == 0
+        >>> assert len(out_batch[1][1]) == 1
+        >>> assert len(out_batch[1][2]) == 2
 
     Example:
         >>> import torch

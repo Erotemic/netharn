@@ -1,0 +1,4 @@
+xdoctest >= 0.8.3
+pytest >= 3.6.3
+pytest-cov >= 2.5.1
+coverage >= 4.3.4

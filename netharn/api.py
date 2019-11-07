@@ -1,8 +1,46 @@
 """
 Newest parts of the top-level API
+
+
+Concepts:
+    # Netharn API Concepts
+
+    TODO: documentation
 """
 import ubelt as ub
 import torch
+
+from distutils.version import LooseVersion
+_TORCH_IS_GE_1_2_0 = LooseVersion(torch.__version__) >= LooseVersion('1.2.0')
+
+
+class Datasets(object):
+    @staticmethod
+    def coerce(config={}, **kw):
+        """
+        Accepts 'datasets', 'train_dataset', 'vali_dataset', and 'test_dataset'.
+
+        Args:
+            config (dict | str): coercable configuration dictionary.
+
+        Returns:
+            Dict: coco_datasets - note these are not torch datasets.
+            They need to be used with ndsampler.
+
+        Examples:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> import netharn as nh
+            >>> config = kw = {'datasets': 'special:shapes'}
+            >>> print(ub.repr2(nh.api.Datasets.coerce(config, **kw)))
+
+            >>> config = kw = {'datasets': 'special:shapes256'}
+            >>> print(ub.repr2(nh.api.Datasets.coerce(config, **kw)))
+        """
+        from ndsampler import coerce_data
+
+        config = _update_defaults(config, kw)
+        torch_datasets = coerce_data.coerce_datasets(config)
+        return torch_datasets
 
 
 class Initializer(object):
@@ -40,10 +78,12 @@ class Initializer(object):
     @staticmethod
     def coerce(config={}, **kw):
         """
-        Accepts 'init', 'pretrained', 'pretrained_fpath', and 'noli'
+        Accepts 'init', 'pretrained', 'pretrained_fpath', 'leftover', and
+        'noli'.
 
         Args:
-            config (dict):
+            config (dict | str): coercable configuration dictionary.
+                if config is a string it is taken as the value for "init".
 
         Returns:
             Tuple[nh.Initializer, dict]: initializer_ = initializer_cls, kw
@@ -62,7 +102,7 @@ class Initializer(object):
             >>> print(ub.repr2(nh.Initializer.coerce(config)))
             (
                 <class 'netharn.initializers.pretrained.Pretrained'>,
-                {'fpath': '/fit/nice/untitled'},
+                {'fpath': '/fit/nice/untitled', 'leftover': None},
             )
             >>> print(ub.repr2(nh.Initializer.coerce({'init': 'kaiming_normal'})))
             (
@@ -71,10 +111,23 @@ class Initializer(object):
             )
         """
         import netharn as nh
+        import six
+        if isinstance(config, six.string_types):
+            config = {
+                'init': config,
+            }
+
         config = _update_defaults(config, kw)
 
         pretrained_fpath = config.get('pretrained_fpath', config.get('pretrained', None))
         init = config.get('initializer', config.get('init', None))
+
+        # Allow init to specify a pretrained fpath
+        if isinstance(init, six.string_types) and pretrained_fpath is None:
+            from os.path import exists
+            pretraind_cand = ub.expandpath(init)
+            if exists(pretraind_cand):
+                pretrained_fpath = pretraind_cand
 
         config['init'] = init
         config['pretrained_fpath'] = pretrained_fpath
@@ -85,7 +138,7 @@ class Initializer(object):
 
         # ---
         initializer_ = None
-        if config['init'] == 'kaiming_normal':
+        if config['init'].lower() in ['kaiming_normal']:
             initializer_ = (nh.initializers.KaimingNormal, {
                 # initialization params should depend on your choice of
                 # nonlinearity in your model. See the Kaiming Paper for details.
@@ -95,13 +148,15 @@ class Initializer(object):
             initializer_ = (nh.initializers.NoOp, {})
         elif config['init'] == 'pretrained':
             initializer_ = (nh.initializers.Pretrained, {
-                'fpath': ub.truepath(config['pretrained_fpath'])})
+                'fpath': ub.expandpath(config['pretrained_fpath']),
+                'leftover': kw.get('leftover', None),
+            })
         elif config['init'] == 'cls':
             # Indicate that the model will initialize itself
             # We have to trust that the user does the right thing here.
             pass
         else:
-            raise KeyError(config['init'])
+            raise KeyError('Unknown coercable init: {!r}'.format(config['init']))
         return initializer_
 
 
@@ -120,6 +175,7 @@ class Optimizer(object):
         key = config.get('optimizer', config.get('optim', 'sgd')).lower()
         lr = config.get('learning_rate', config.get('lr', 3e-3))
         decay = config.get('weight_decay', config.get('decay', 0))
+        # TODO: allow for "discriminative fine-tuning"
         if key == 'sgd':
             optim_ = (torch.optim.SGD, {
                 'lr': lr,
@@ -133,9 +189,15 @@ class Optimizer(object):
                 'weight_decay': decay,
             })
         elif key == 'adamw':
-            optim_ = (nh.optimizers.AdamW, {
-                'lr': lr,
-            })
+            if _TORCH_IS_GE_1_2_0:
+                from torch.optim import AdamW
+                optim_ = (AdamW, {
+                    'lr': lr,
+                })
+            else:
+                optim_ = (nh.optimizers.AdamW, {
+                    'lr': lr,
+                })
         else:
             raise KeyError(key)
         return optim_
@@ -177,58 +239,59 @@ class Scheduler(object):
                 stepsize
         """
         import netharn as nh
+        import parse
         config = _update_defaults(config, kw)
-        key = config.get('scheduler', config.get('schedule', 'onecycle70')).lower()
+        key = config.get('scheduler', config.get('schedule', 'step90'))
         lr = config.get('learning_rate', config.get('lr', 3e-3))
-        if key.startswith('onecycle'):
-            subkey = ''.join(key.split('onecycle')[1:])
-            subkey = int(subkey)
+
+        result = parse.parse('onecycle{:d}', key)
+        if result:
+            size = result.fixed[0]
             scheduler_ = (nh.schedulers.ListedScheduler, {
                 'points': {
                     'lr': {
-                        subkey * 0   : lr * 0.1,
-                        subkey // 2  : lr * 1.0,
-                        subkey * 1   : lr * 0.01,
-                        subkey + 1   : lr * 0.0001,
+                        size * 0   : lr * 0.1,
+                        size // 2  : lr * 1.0,
+                        size * 1   : lr * 0.01,
+                        size + 1   : lr * 0.0001,
                     },
                     'momentum': {
-                        subkey * 0   : 0.95,
-                        subkey // 2  : 0.85,
-                        subkey * 1   : 0.98,
-                        subkey + 1   : 0.999,
+                        size * 0   : 0.95,
+                        size // 2  : 0.85,
+                        size * 1   : 0.98,
+                        size + 1   : 0.999,
                     },
                 },
             })
-        elif key.startswith('step'):
-            subkey = ''.join(key.split('step')[1:])
-            subkey = int(subkey)
+            return scheduler_
+
+        if key.startswith('step'):
+            # Allow step to specify `-` separated step points
+            suffix = key[4:]
+            points = [int(p) for p in suffix.split('-') if p]
+            assert sorted(points) == points, 'points must be in order'
+            lr_pts = {0: lr}
+            for i, epoch in enumerate(points, start=1):
+                lr_pts[epoch] = lr / (10 ** i)
+
             scheduler_ = (nh.schedulers.ListedScheduler, {
                 'points': {
-                    'lr': {
-                        subkey * 0   : lr * 1.0,
-                        subkey * 1   : lr * 0.1,
-                        subkey * 1.5 : lr * 0.01,
-                        subkey * 2.0 : lr * 0.001,
-                    },
-                    # 'momentum': {
-                    #     subkey * 0   : 0.95,
-                    #     subkey * 1   : 0.98,
-                    #     subkey * 1.5 : 0.99,
-                    #     subkey * 2.0 : 0.999,
-                    # },
+                    'lr': lr_pts,
                 },
                 'interpolation': 'left'
             })
+            return scheduler_
         elif key.lower() == 'ReduceLROnPlateau'.lower():
             scheduler_ = (torch.optim.lr_scheduler.ReduceLROnPlateau, {})
+            return scheduler_
         elif key.lower() == 'Exponential'.lower():
             scheduler_ = (nh.schedulers.Exponential, {
                 'gamma': config.get('gamma', 0.1),
                 'stepsize': config.get('stepsize', 100),
             })
+            return scheduler_
         else:
-            raise KeyError
-        return scheduler_
+            raise KeyError(key)
 
 
 class Loaders(object):
@@ -284,7 +347,7 @@ def configure_workdir(config={}, **kw):
     config = _update_defaults(config, kw)
     if config['workdir'] is None:
         config['workdir'] = kw['workdir']
-    workdir = config['workdir'] = ub.truepath(config['workdir'])
+    workdir = config['workdir'] = ub.expandpath(config['workdir'])
     ub.ensuredir(workdir)
     return workdir
 

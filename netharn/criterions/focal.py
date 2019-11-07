@@ -2,8 +2,8 @@
 import torch  # NOQA
 import torch.nn.functional as F
 import torch.nn.modules
-from packaging import version
 import kwarray
+from packaging import version
 
 
 if version.parse(torch.__version__) < version.parse('1.0.0'):
@@ -45,7 +45,19 @@ def _backwards_compat_reduction_kw(size_average, reduce, reduction):
     return size_average, reduce, reduction
 
 
-def nll_focal_loss(logits, targets, focus, dim, weight=None,
+def focal_loss(input, target, focus, dim=1, weight=None, ignore_index=None,
+               reduction=ELEMENTWISE_MEAN):
+    """
+    Functional version of `FocalLoss`
+    """
+    nll = F.log_softmax(input, dim=dim)  # [N,C]
+    output = nll_focal_loss(
+        nll, target, focus=focus, dim=dim, weight=weight,
+        ignore_index=ignore_index, reduction=reduction)
+    return output
+
+
+def nll_focal_loss(logits, targets, focus, dim=1, weight=None,
                    ignore_index=None, reduction='none'):
     r"""
     Focal loss given preprocessed logits (log probs) instead of raw outputs
@@ -54,8 +66,10 @@ def nll_focal_loss(logits, targets, focus, dim, weight=None,
         logits (FloatTensor): log-probabilities for each class
         targets (LongTensor): correct class indices for each example
         focus (float): focus factor
-        dim (int): class dimension
+        dim (int, default=1): class dimension (usually 1)
         weight (FloatTensor): per-class weights
+        ignore_index (int, default=None):
+        reduction (str):
 
     Example:
         >>> from netharn.criterions.focal import *
@@ -140,10 +154,10 @@ def nll_focal_loss(logits, targets, focus, dim, weight=None,
         >>>         loss3.mean().backward(retain_graph=True)
         >>>         torch.cuda.synchronize()
     """
-    if focus == 0:
+    if focus == 0 and dim == 1:
+        # In this case nll_focal_loss is nll_loss, but nll_loss is faster
         if ignore_index is None:
             ignore_index = -100
-        assert dim == 1
         return F.nll_loss(logits, targets, weight=weight,
                           ignore_index=ignore_index, reduction=reduction)
 
@@ -173,20 +187,30 @@ def nll_focal_loss(logits, targets, focus, dim, weight=None,
     # real class, all other classes are not needed (due to softmax magic)
     output = w * -target_logits
 
+    if reduction == ELEMENTWISE_MEAN:
+        output = output.mean()
+    elif reduction == 'sum':
+        output = output.sum()
+    elif reduction == 'none':
+        pass
+    else:
+        raise KeyError(reduction)
+
     return output
 
 
 class FocalLoss(torch.nn.modules.loss._WeightedLoss):
     r"""
+    Generalization of ``CrossEntropyLoss`` with a "focus" modulation term.
 
-    Original implementation in [1]
-
-    # Math:
-    #     FL(p[t]) = -α[t] * (1 − p[t]) ** γ * log(p[t]).
+    Original implementation in [1]_.
 
     .. math::
         FL(p_t) = - \alpha_t * (1 − p[t]) ** γ * log(p[t]).
         focal_loss(x, class) = weight[class] * (-x[class] + log(\sum_j exp(x[j])))
+
+    PythonMath:
+        FL(p[t]) = -α[t] * (1 − p[t]) ** γ * log(p[t]).
 
     Args:
         focus (float): Focusing parameter. Equivelant to Cross Entropy when
@@ -230,6 +254,7 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
         https://discuss.pytorch.org/t/how-to-implement-focal-loss-in-pytorch/6469/11
 
     Example:
+        >>> from netharn.criterions.focal import *  # NOQA
         >>> self = FocalLoss(reduction='none')
         >>> # input is of size N x C
         >>> N, C = 8, 5
@@ -238,7 +263,7 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
         >>> target = (torch.rand(N) * C).long()
         >>> input = torch.nn.LogSoftmax(dim=1)(data)
         >>> #self.focal_loss_alt(input, target)
-        >>> self.focal_loss(input, target)
+        >>> self.forward(input, target)
         >>> output = self(input, target)
         >>> output.sum().backward()
 
@@ -255,7 +280,6 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             [.3, .3, .3, .1],
         ]) * 10
         target = torch.LongTensor([1, 1, 1, 1, 1, 0, 2, 3, 3, 3])
-
         weight = torch.FloatTensor([1, 1, 1, 10])
         self = FocalLoss(reduce=False, weight=weight)
     """
@@ -268,79 +292,6 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
         self.focus = focus
         self.ignore_index = ignore_index
 
-    def focal_loss(self, input, target):
-        """
-        Focal loss standard definition.
-
-        Args:
-          input: (tensor) sized [N,D].
-          target: (tensor) sized [N,].
-
-        Return:
-          (tensor) sized [N,] focal loss for each class
-
-        CommandLine:
-            python -m netharn.loss FocalLoss.focal_loss:0 --profile
-            python -m netharn.loss FocalLoss.focal_loss:1 --profile
-
-        Example:
-            >>> # input is of size N x C
-            >>> import numpy as np
-            >>> N, C = 8, 5
-            >>> # each element in target has to have 0 <= value < C
-            >>> target = (torch.rand(N) * C).long()
-            >>> input = torch.randn(N, C, requires_grad=True)
-            >>> # Check to be sure that when gamma=0, FL becomes CE
-            >>> loss0 = FocalLoss(reduction='none', focus=0).focal_loss(input, target)
-            >>> loss1 = F.cross_entropy(input, target, reduction='none')
-            >>> #loss1 = F.cross_entropy(input, target, size_average=False, reduce=False)
-            >>> loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, reduction='none')
-            >>> #loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, size_average=False, reduce=False)
-            >>> assert np.all(np.abs((loss1 - loss0).data.numpy()) < 1e-6)
-            >>> assert np.all(np.abs((loss2 - loss0).data.numpy()) < 1e-6)
-            >>> lossF = FocalLoss(reduction='none', focus=2, ignore_index=0).focal_loss(input, target)
-            >>> weight = torch.rand(C)
-            >>> lossF = FocalLoss(reduction='none', focus=2, weight=weight, ignore_index=0).focal_loss(input, target)
-        """
-        if True:
-            return self.nll_focal_loss(
-                input, target, focus=self.focus, dim=self.dim,
-                weight=self.weight, ignore_index=self.ignore_index,
-                reduction=self.reduction)
-        else:
-            if self.weight is None:
-                alpha = 1
-            else:
-                # Create a per-input weight
-                alpha = self.weight[target]
-                # alpha = autograd.Variable(self.weight)[target]
-
-            # Compute log(p) for NLL-loss.
-            nll = F.log_softmax(input, dim=1)  # [N,C]
-
-            gamma = self.focus
-
-            num_classes = input.shape[1]
-
-            # remove any loss associated with ignore_label
-            mask = (target != self.ignore_index).float()  # [N,]
-
-            # Determine which entry in nll corresponds to the target
-            t = kwarray.one_hot_embedding(target.data, num_classes)  # [N,C]
-            # t = autograd.Variable(t)
-
-            # We only need the log(p) component corresponding to the target class
-            target_nll = (nll * t).sum(dim=1)  # [N,]  # sameas nll[t > 0]
-            target_p = torch.exp(target_nll)   # [N,]
-
-            # Reduce the weight of easy examples
-            hardness = (1 - target_p)               # [N,]
-            w = alpha * hardness.pow(gamma)  # [N,]
-
-            # Normal cross-entropy computation (but with augmented weights per example)
-            output = -w * mask * target_nll  # [N,]
-            return output
-
     def forward(self, input, target):
         """
         Args:
@@ -349,13 +300,52 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
 
         Returns:
             (tensor) loss
+
+        CommandLine:
+            python -m netharn.loss FocalLoss.forward:0 --profile
+            python -m netharn.loss FocalLoss.forward:1 --profile
+
+        CommandLine:
+            xdoctest -m netharn.criterions.focal FocalLoss.forward
+
+        Example:
+            >>> from netharn.criterions.focal import *  # NOQA
+            >>> import numpy as np
+            >>> # input is of size N x C
+            >>> N, C = 8, 5
+            >>> # each element in target has to have 0 <= value < C
+            >>> target = (torch.rand(N) * C).long()
+            >>> input = torch.randn(N, C, requires_grad=True)
+            >>> # Check to be sure that when gamma=0, FL becomes CE
+            >>> loss0 = FocalLoss(reduction='none', focus=0).forward(input, target)
+            >>> loss1 = F.cross_entropy(input, target, reduction='none')
+            >>> #loss1 = F.cross_entropy(input, target, size_average=False, reduce=False)
+            >>> loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, reduction='none')
+            >>> #loss2 = F.nll_loss(F.log_softmax(input, dim=1), target, size_average=False, reduce=False)
+            >>> assert np.all(np.abs((loss1 - loss0).data.numpy()) < 1e-6)
+            >>> assert np.all(np.abs((loss2 - loss0).data.numpy()) < 1e-6)
+            >>> lossF = FocalLoss(reduction='none', focus=2, ignore_index=0).forward(input, target)
+            >>> weight = torch.rand(C)
+            >>> lossF = FocalLoss(reduction='none', focus=2, weight=weight, ignore_index=0).forward(input, target)
+
+        Ignore:
+            >>> from netharn.criterions.focal import *  # NOQA
+            >>> import numpy as np
+            >>> N, C = 8, 5
+            >>> target = (torch.rand(N) * C).long()
+            >>> input = torch.randn(N, C, requires_grad=True)
+            >>> for reduction in ['sum', 'none', 'mean']:
+            >>>     fl0 = FocalLoss(reduction=reduction, focus=0)
+            >>>     fl2 = FocalLoss(reduction=reduction, focus=2)
+            >>>     cce = torch.nn.CrossEntropyLoss(reduction=reduction)
+            >>>     output1 = fl0(input, target).data.numpy()
+            >>>     output2 = fl2(input, target).data.numpy()
+            >>>     output3 = cce(input, target).data.numpy()
+            >>>     assert np.all(np.isclose(output1, output3))
         """
-        output = self.focal_loss(input, target)
-        if self.reduction == ELEMENTWISE_MEAN:
-            output = output.mean()
-        elif self.reduction == 'sum':
-            output = output.sum()
-        return output
+        return focal_loss(input, target, focus=self.focus, dim=1,
+                          weight=self.weight, ignore_index=self.ignore_index,
+                          reduction=self.reduction)
 
 
 if __name__ == '__main__':

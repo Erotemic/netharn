@@ -1,5 +1,6 @@
 from netharn import util
 from torch import nn
+import torch
 
 
 # TODO: move module mixin from util to here
@@ -10,6 +11,12 @@ class Module(nn.Module, util.ModuleMixin):
     """
     Like torch.nn.Module but contains ModuleMixin (for number_of_parameters)
     """
+
+    def output_shape_for(self, input_shape):
+        raise NotImplementedError
+
+    def receptive_field_for(self, input_field=None):
+        raise NotImplementedError
 
 
 class Sequential(nn.Sequential, util.ModuleMixin):
@@ -36,12 +43,12 @@ class Sequential(nn.Sequential, util.ModuleMixin):
         }
     """
     def output_shape_for(self, input_shape):
-        from netharn.output_shape_for import OutputShapeFor
-        return OutputShapeFor.sequential(self, input_shape)
+        from netharn import output_shape_for
+        return output_shape_for.OutputShapeFor.sequential(self, input_shape)
 
     def receptive_field_for(self, input_field=None):
-        from netharn.receptive_field_for import ReceptiveFieldFor
-        return ReceptiveFieldFor.sequential(self, input_field)
+        from netharn import receptive_field_for
+        return receptive_field_for.ReceptiveFieldFor.sequential(self, input_field)
 
 
 class Identity(Sequential):
@@ -63,6 +70,109 @@ class Identity(Sequential):
 
     def receptive_field_for(self, input_field=None):
         if input_field is None:
-            from netharn.receptive_field_for import ReceptiveFieldFor
-            input_field = ReceptiveFieldFor.input()
+            from netharn import receptive_field_for
+            input_field = receptive_field_for.ReceptiveFieldFor.input()
         return input_field
+
+
+class AnalyticModule(Module):
+    """
+    Provides default implementations for output_shape_for and
+    receptive_field_for if _analytic_forward is defined
+    """
+
+    def _analytic_forward(self, inputs, _OutputFor, _Output, _Hidden,
+                          **kwargs):
+        """
+        Defines a symbolic representation of forward, output shape, and receptive field.
+
+        Example:
+            >>> import netharn as nh
+            >>> globals().update(nh.layers.AnalyticModule._analytic_shape_kw())
+        """
+        # _Output.coerce(output, hidden)
+        raise NotImplementedError
+
+    @classmethod
+    def _analytic_shape_kw(self):
+        from netharn import output_shape_for
+        return {
+            '_OutputFor': output_shape_for.OutputShapeFor,
+            '_Output': output_shape_for.OutputShape,
+            '_Hidden': output_shape_for.HiddenShapes
+        }
+
+    @classmethod
+    def _analytic_field_kw(self):
+        from netharn import receptive_field_for
+        # import netharn as nh
+        return {
+            '_OutputFor': receptive_field_for.ReceptiveFieldFor,
+            '_Output': receptive_field_for.ReceptiveField,
+            '_Hidden': receptive_field_for.HiddenFields
+        }
+
+    @classmethod
+    def _analytic_forward_kw(self):
+        # import netharn as nh
+        from netharn import analytic_for
+        return {
+            '_OutputFor': analytic_for.ForwardFor,
+            '_Output': analytic_for.Output,
+            '_Hidden': analytic_for.Hidden,
+        }
+
+    def output_shape_for(self, input_shape):
+        """
+        Uses custom _analytic_forward to compute output shape
+        """
+        kw = self._analytic_shape_kw()
+        return self._analytic_forward(input_shape, **kw)
+
+    def receptive_field_for(self, input_field=None):
+        """
+        Uses custom _analytic_forward to compute receptive field
+        """
+        # import netharn as nh
+        from netharn import receptive_field_for
+        if input_field is None:
+            input_field = receptive_field_for.ReceptiveFieldFor.input()
+        kw = self._analytic_field_kw()
+        return self._analytic_forward(input_field, **kw)
+
+    def forward(self, inputs, **kw):
+        """
+        Uses custom _analytic_forward to compute receptive field
+        """
+        kw = self._analytic_forward_kw()
+        return self._analytic_forward(inputs, **kw)
+
+
+class Loss(nn.modules.loss._Loss):
+    """
+    Helper to keep track of if a loss module is in cpu or gpu mod
+    """
+
+    def __init__(self):
+        super(Loss, self).__init__()
+        self._iscuda = False
+        self._device_num = None
+
+    def cuda(self, device_num=None, **kwargs):
+        self._iscuda = True
+        self._device_num = device_num
+        return super(Loss, self).cuda(device_num, **kwargs)
+
+    def cpu(self):
+        self._iscuda = False
+        self._device_num = None
+        return super(Loss, self).cpu()
+
+    @property
+    def is_cuda(self):
+        return self._iscuda
+
+    def get_device(self):
+        if self._device_num is None:
+            return torch.device('cpu')
+        return self._device_num

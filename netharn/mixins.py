@@ -11,8 +11,6 @@ makes no sense to write them from scratch for each new project.
 """
 
 
-# import xdev
-# @xdev.profile
 def _dump_monitor_tensorboard(harn, mode='epoch'):
     """
     Dumps PNGs to disk visualizing tensorboard scalars.
@@ -38,15 +36,21 @@ def _dump_monitor_tensorboard(harn, mode='epoch'):
     import netharn as nh
     from os.path import join
     import json
+    import six
     from six.moves import cPickle as pickle
 
     serial = False
     harn.debug('Plotting tensorboard data. serial={}, mode={}'.format(serial, mode))
 
-    tb_data = nh.util.read_tensorboard_scalars(harn.train_dpath, cache=0,
-                                               verbose=0)
+    train_dpath = harn.train_dpath
 
-    out_dpath = ub.ensuredir((harn.train_dpath, 'monitor', 'tensorboard'))
+    tb_data = nh.util.read_tensorboard_scalars(train_dpath, cache=0, verbose=0)
+
+    tb_data['meta'] = {
+        'nice': harn.hyper.nice,
+    }
+
+    out_dpath = ub.ensuredir((train_dpath, 'monitor', 'tensorboard'))
 
     tb_data_pickle_fpath = join(out_dpath, 'tb_data.pkl')
     with open(tb_data_pickle_fpath, 'wb') as file:
@@ -54,61 +58,162 @@ def _dump_monitor_tensorboard(harn, mode='epoch'):
 
     tb_data_json_fpath = join(out_dpath, 'tb_data.json')
     with open(tb_data_json_fpath, 'w') as file:
+        if six.PY2:
+            jsonkw = dict(indent=1)
+        else:
+            jsonkw = dict(indent=' ')
         try:
-            json.dump(tb_data, file, indent=' ')
+            json.dump(tb_data, file, **jsonkw)
         except Exception as ex:
+            print('ex = {!r}'.format(ex))
             json.dump({
                 'error': 'Unable to write to json.',
                 'info': 'See pickle file: {}'.format(tb_data_json_fpath)},
-                file, indent=' ')
+                file, **jsonkw)
 
-    nice = harn.hyper.nice
-
+    # The following function draws the tensorboard result
+    # This might take a some non-trivial amount of time so we attempt to run in
+    # a separate process.
     func = _dump_measures
-    args = (tb_data, nice, out_dpath, mode)
+    args = (tb_data, out_dpath, mode)
 
     if not serial:
-        import multiprocessing
-        proc = multiprocessing.Process(target=func, args=args)
-        proc.daemon = True
-        proc.start()
+
+        if False:
+            # Maybe thread-safer way of doing this? Maybe not, there is a
+            # management thread used by futures.
+            from concurrent import futures
+            if not hasattr(harn, '_internal_executor'):
+                harn._internal_executor = futures.ProcessPoolExecutor(max_workers=1)
+                harn._prev_job = None
+            if harn._prev_job is None or harn._prev_job.done():
+                # Wait to before submitting another job
+                # Unsure if its ok that this job might not be a daemon
+                harn.info('DO MPL DRAW')
+                job = harn._internal_executor.submit(func, *args)
+                harn._prev_job = job
+            else:
+                if harn._prev_job is not None:
+                    harn.info('NOT DOING MPL DRAW')
+                    harn.warn('NOT DOING MPL DRAW')
+        else:
+            # This causes thread-unsafe warning messages in the inner loop
+            # Likely because we are forking while a thread is alive
+            if not hasattr(harn, '_internal_procs'):
+                harn._internal_procs = ub.ddict(dict)
+
+            # Clear finished processes from the pool
+            for pid in list(harn._internal_procs[mode].keys()):
+                proc = harn._internal_procs[mode][pid]
+                if not proc.is_alive():
+                    harn._internal_procs[mode].pop(pid)
+
+            # only start a new process if there is room in the pool
+            if len(harn._internal_procs[mode]) < 1:
+                import multiprocessing
+                proc = multiprocessing.Process(target=func, args=args)
+                proc.daemon = True
+                proc.start()
+                harn._internal_procs[mode][proc.pid] = proc
+            else:
+                harn.warn('NOT DOING MPL DRAW')
     else:
         func(*args)
 
 
-def _dump_measures(tb_data, nice, out_dpath, mode, smoothing=0.6,
+# def _reparse_tensorboard():
+#     """
+#     """
+#     import netharn as nh
+#     tb_data = nh.util.read_tensorboard_scalars(train_dpath, cache=0,
+#                                                verbose=0)
+#     pass
+
+
+def _redump_measures(dpath):
+    """
+    """
+    import json
+    from os.path import join
+
+    import kwplot
+    kwplot.set_mpl_backend('agg')
+
+    try:
+        import seaborn as sns
+        sns.set()
+    except ImportError:
+        pass
+
+    fpath = join(dpath, 'tb_data.json')
+    tb_data = json.load(open(fpath, 'r'))
+
+    out_dpath = dpath
+    mode = 'epoch'
+    _dump_measures(tb_data, out_dpath, mode)
+
+
+def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
                    ignore_outliers=True):
     """
     This is its own function in case we need to modify formatting
 
-    Ignore:
-        # Reread a dumped pickle file
-        import pickle
-        import ubelt as ub
-        out_dpath = ub.expandpath('~/work/project/fit/nice/nicename/monitor/tensorboard/')
-        fpath = join(out_dpath, 'tb_data.pkl')
-        tb_data = pickle.load(open(fpath, 'rb'))
-        nice = 'nicename'
-        _dump_measures(tb_data, nice, out_dpath)
+    CommandLine:
+        xdoctest -m netharn.mixins _dump_measures
 
-    Ignore:
-        import seaborn as sbn
-        sbn.set()
-        # Reread a dumped pickle file
-        from netharn.mixins import _dump_measures
-        import pickle
-        import ubelt as ub
-        out_dpath = ub.expandpath('~/work/lava/fit/nice/holdout_m1_abrams_v7.4.2/monitor/tensorboard/')
-        fpath = join(out_dpath, 'tb_data.pkl')
-        tb_data = pickle.load(open(fpath, 'rb'))
-        nice = 'holdout_m1_abrams_v7.4.2'
-        _dump_measures(tb_data, nice, out_dpath, smoothing=0.6)
+    Example:
+        >>> # SCRIPT
+        >>> # Reread a dumped pickle file
+        >>> from netharn.mixins import *  # NOQA
+        >>> from netharn.mixins import _dump_monitor_tensorboard, _dump_measures
+        >>> import json
+        >>> from os.path import join
+        >>> import ubelt as ub
+        >>> out_dpath = ub.expandpath('~/work/project/fit/nice/nicename/monitor/tensorboard/')
+        >>> out_dpath = ub.argval('--out_dpath', default=out_dpath)
+        >>> mode = 'epoch'
+        >>> fpath = join(out_dpath, 'tb_data.json')
+        >>> tb_data = json.load(open(fpath, 'r'))
+        >>> _dump_measures(tb_data,  out_dpath)
     """
     import ubelt as ub
     import netharn as nh
     from os.path import join
     import numpy as np
     nh.util.autompl()
+
+    # TODO: Is it possible to get htop to show this process with some name that
+    # distinguishes it from the dataloader workers?
+    # import sys
+    # import multiprocessing
+    # if multiprocessing.current_process().name != 'MainProcess':
+    #     if sys.platform.startswith('linux'):
+    #         import ctypes
+    #         libc = ctypes.cdll.LoadLibrary('libc.so.6')
+    #         title = 'Netharn MPL Dump Measures'
+    #         libc.prctl(len(title), title, 0, 0, 0)
+
+    # NOTE: This cause warnings when exeucted as daemon process
+    # try:
+    #     import seaborn as sbn
+    #     sbn.set()
+    # except ImportError:
+    #     pass
+
+    valid_modes = ['epoch', 'iter']
+    if mode is None:
+        mode = valid_modes
+    if ub.iterable(mode):
+        # Hack: Call with all modes
+        for mode_ in mode:
+            _dump_measures(tb_data, out_dpath, mode=mode_, smoothing=smoothing,
+                           ignore_outliers=ignore_outliers)
+        return
+    else:
+        assert mode in valid_modes
+
+    meta = tb_data.get('meta', {})
+    nice = meta.get('nice', '?nice?')
 
     fig = nh.util.figure(fnum=1)
 
@@ -168,27 +273,37 @@ def _dump_measures(tb_data, nice, out_dpath, mode, smoothing=0.6,
         # print('tagged_losses = {!r}'.format(tagged_losses))
         for tag, losses in tagged_losses.items():
 
+            min_abs_y = .01
             xydata = ub.odict()
             for key in sorted(losses):
                 ydata = tb_data[key]['ydata']
                 ydata = smooth_curve(ydata, smoothing)
+
+                try:
+                    pos_ys = ydata[ydata > 0]
+                    min_abs_y = min(min_abs_y, pos_ys.min())
+                except Exception:
+                    pass
+
                 xydata[key] = (tb_data[key]['xdata'], ydata)
 
             if ignore_outliers:
                 low, kw['ymax'] = inlier_ylim([t[1] for t in xydata.values()])
 
-            fig.clf()
-            ax = fig.gca()
-            title = nice + '\n' + tag + '_' + mode + ' losses'
-            nh.util.multi_plot(xydata=xydata, ylabel='loss', xlabel=mode,
-                               # yscale='symlog',
-                               title=title, fnum=1, ax=ax,
-                               **kw)
+            yscales = ['symlog', 'linear']
 
-            # png is slightly smaller than jpg for this kind of plot
-            fpath = join(out_dpath, tag + '_' + mode + '_multiloss.png')
-            # print('fpath = {!r}'.format(fpath))
-            ax.figure.savefig(fpath)
+            for yscale in yscales:
+                fig.clf()
+                ax = fig.gca()
+                title = nice + '\n' + tag + '_' + mode + ' losses'
+                nh.util.multi_plot(xydata=xydata, ylabel='loss', xlabel=mode,
+                                   yscale=yscale, title=title, fnum=1, ax=ax,
+                                   **kw)
+                if yscale == 'symlog':
+                    ax.set_yscale('symlog', linthreshy=min_abs_y)
+                fname = '_'.join([tag, mode, 'multiloss', yscale]) + '.png'
+                fpath = join(out_dpath, fname)
+                ax.figure.savefig(fpath)
 
         # don't dump losses individually if we dump them in a group
         GROUP_AND_INDIVIDUAL = False

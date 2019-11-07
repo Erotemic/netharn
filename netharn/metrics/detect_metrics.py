@@ -295,7 +295,7 @@ class DetectionMetrics(object):
             >>> kwargs['cls_noise'] = 0.5
             >>> dmet = DetectionMetrics.demo(**kwargs)
             >>> print('dmet.classes = {}'.format(dmet.classes))
-            dmet.classes = <CategoryTree(nNodes=12, maxDepth=3, maxBreadth=4)>
+            dmet.classes = <CategoryTree(nNodes=12, maxDepth=3, maxBreadth=4...)>
             >>> # Can grab nh.util.Detection object for any image
             >>> print(dmet.true_detections(gid=0))
             <Detections(4)>

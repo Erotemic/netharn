@@ -1,5 +1,10 @@
+# -*- coding: utf-8 -*-
 """
 Extracts relevant parts of the source code
+
+NOTE:
+    IF THE SOURCE CODE CHANGES WHILE THE RUN IS EXECUTING THEN THIS MAY NOT
+    WORK CORRECTLY.
 
 # TODO:
 # - [x] Maintain a parse tree instead of raw lines
@@ -9,7 +14,9 @@ Extracts relevant parts of the source code
 #     - [X] where it came from
 #     - [ ] what modifications were made to it
 # - [ ] Handle expanding imports nested within functions
+# - [ ] Maintain docstring formatting after using the node transformer
 """
+from __future__ import absolute_import, division, print_function, unicode_literals
 from os.path import isdir
 from os.path import join
 from os.path import basename
@@ -24,11 +31,26 @@ from six.moves import cStringIO
 from os.path import abspath
 from os.path import sys
 
+
+# There is a bug where closing netharn cant find "HiddenFields"
+HACK_FIX_CANNOT_FIND_HIDDEN = 0
+
 DEBUG = 0
 
 
 class Unparser(astunparse.Unparser):
-    """ wraps astunparse to fix 2/3 compatibility minor issues """
+    """
+    wraps astunparse to fix 2/3 compatibility minor issues
+
+    Notes:
+        x = np.random.rand(3, 3)
+        # In python3 this works, but it fails in python2
+        x[(..., 2)]
+        # However, this works in both
+        x[(Ellipsis, 2)]
+        # Interestingly, this also works, but is not how astunparse generates code
+        x[..., 2]
+    """
     def _Ellipsis(self, t):
         # be compatible with python2 if possible
         self.write("Ellipsis")
@@ -111,12 +133,36 @@ def source_closure(obj, expand_names=[]):
         >>> expand_names = ['netharn']
         >>> text = source_closure(obj, expand_names)
         >>> print(text)
+
+    Ignore:
+        import netharn as nh
+        obj = nh.models.yolo2.yolo2.Yolo2
+        expand_names = ['netharn']
+        expand_names = []
+
+        print(chr(10).join(closer.logs))
     """
     closer = Closer()
-    closer.add_dynamic(obj)
-    if expand_names:
-        closer.expand(expand_names)
-    closed_sourcecode = closer.current_sourcecode()
+
+    # First try to add statically (which tends to be slightly nicer)
+    try:
+        try:
+            name = obj.__name__
+            modpath = sys.modules[obj.__module__].__file__
+        except Exception:
+            # Otherwise add dynamically
+            closer.add_dynamic(obj)
+        else:
+            closer.add_static(name, modpath)
+        if expand_names:
+            closer.expand(expand_names)
+        closed_sourcecode = closer.current_sourcecode()
+    except Exception:
+        print('ERROR IN CLOSING')
+        print('[[[ START CLOSE LOGS ]]]')
+        print('closer.logs =\n{}'.format('\n'.join(closer.logs)))
+        print('[[[ END CLOSE LOGS ]]]')
+        raise
     return closed_sourcecode
 
 
@@ -154,6 +200,17 @@ class Closer(ub.NiceRepr):
         >>> #print(ub.repr2(closer.body_defs, si=1))
         >>> print(closer.current_sourcecode())
 
+    Ignore:
+        >>> from netharn.export.closer import *
+        >>> import netharn as nh
+        >>> from netharn.models.yolo2 import yolo2
+        >>> obj = yolo2.Yolo2
+        >>> expand_names = ['netharn']
+        >>> closer = Closer()
+        >>> closer.add_static(obj.__name__, sys.modules[obj.__module__].__file__)
+        >>> closer.expand(expand_names)
+        >>> #print(ub.repr2(closer.body_defs, si=1))
+        >>> print(closer.current_sourcecode())
     """
     def __init__(closer, tag='root'):
         closer.header_defs = ub.odict()
@@ -161,10 +218,17 @@ class Closer(ub.NiceRepr):
         closer.visitors = {}
         closer.tag = tag
 
+        closer.logs = []
+        closer._log_indent = ''
+
+    def debug(closer, msg):
+        closer.logs.append(closer._log_indent + msg)
+
     def __nice__(self):
         return self.tag
 
     def _add_definition(closer, d):
+        closer.debug('_add_definition = {!r}'.format(d))
         import copy
         d = copy.deepcopy(d)
         # print('ADD DEFINITION d = {!r}'.format(d))
@@ -189,6 +253,7 @@ class Closer(ub.NiceRepr):
         """
         Add the source to define a live python object
         """
+        closer.debug('closer.add_dynamic(obj={!r})'.format(obj))
         modname = obj.__module__
         module = sys.modules[modname]
 
@@ -206,6 +271,7 @@ class Closer(ub.NiceRepr):
 
     def add_static(closer, name, modpath):
         # print('ADD_STATIC name = {} from {}'.format(name, modpath))
+        closer.debug('closer.add_static(name={!r}, modpath={!r})'.format(name, modpath))
         if modpath not in closer.visitors:
             visitor = ImportVisitor.parse(modpath=modpath)
             closer.visitors[modpath] = visitor
@@ -222,6 +288,7 @@ class Closer(ub.NiceRepr):
         """
         # Parse the parent module to find only the relevant global varaibles and
         # include those in the extracted source code.
+        closer.debug('closing')
         current_sourcecode = closer.current_sourcecode()
 
         # Loop until all undefined names are defined
@@ -232,9 +299,7 @@ class Closer(ub.NiceRepr):
             # Make sure we process names in the same order for hashability
             prev_names = names
             names = sorted(undefined_names(current_sourcecode))
-            # if DEBUG:
-            #     # print('closer = {!r}'.format(closer))
-            #     # print('names = {!r}'.format(names))
+            closer.debug(' * undefined_names = {}'.format(names))
             if names == prev_names:
                 print('visitor.definitions = {}'.format(ub.repr2(visitor.definitions, si=1)))
                 if DEBUG:
@@ -251,34 +316,46 @@ class Closer(ub.NiceRepr):
             for name in names:
                 try:
                     try:
+                        closer.debug(' * try visitor.extract_definition({})'.format(names))
                         d = visitor.extract_definition(name)
-                    except KeyError:
+                    except KeyError as ex:
+                        closer.debug(' * encountered issue: {!r}'.format(ex))
                         # There is a corner case where we have the definition,
                         # we just need to move it to the top.
                         flag = False
                         for d_ in closer.body_defs.values():
                             if name == d_.name:
+                                closer.debug(' * corner case: move definition to top')
                                 closer._add_definition(d_)
                                 flag = True
                                 break
                         if not flag:
                             raise
                     else:
+                        closer.debug(' * add extracted def {}'.format(name))
                         closer._add_definition(d)
                     # type_, text = visitor.extract_definition(name)
-                except Exception:
+                except Exception as ex:
+                    closer.debug(' * unable to extracted def {} due to {!r}'.format(name, ex))
                     current_sourcecode = closer.current_sourcecode()
                     print('--- <ERROR> ---')
                     print('Error computing source code extract_definition')
                     print(' * failed to close name = {!r}'.format(name))
-                    print('<<< CURRENT_SOURCE >>>\n{}\n<<<>>>'.format(ub.highlight_code(current_sourcecode)))
+                    # print('<<< CURRENT_SOURCE >>>\n{}\n<<<>>>'.format(ub.highlight_code(current_sourcecode)))
                     print('--- </ERROR> ---')
-                    raise
+                    if not HACK_FIX_CANNOT_FIND_HIDDEN:
+                        raise
 
     def expand(closer, expand_names):
         """
         Experimental feature. Remove all references to specific modules by
-        directly copying in the referenced source code.
+        directly copying in the referenced source code. If the code is
+        referenced from a module, then the references will need to change as
+        well.
+
+        TODO:
+            - [ ] Add special unique (mangled) suffixes to all expanded names
+                to avoid name conflicts.
 
         Args:
             expand_name (List[str]): list of module names. For each module
@@ -306,42 +383,48 @@ class Closer(ub.NiceRepr):
             >>> text = closer.current_sourcecode()
             >>> print(text)
         """
-        if DEBUG:
-            print("!!! EXPANDING")
+        closer.debug("!!! EXPANDING")
         # Expand references to internal modules
         flag = True
         while flag:
 
+            # Associate all top-level modules with any possible expand_name
+            # that might trigger them to be expanded. Note this does not
+            # account for nested imports.
             expandable_definitions = ub.ddict(list)
             for d in closer.header_defs.values():
                 parts = d.native_modname.split('.')
                 for i in range(1, len(parts) + 1):
                     root = '.'.join(parts[:i])
                     expandable_definitions[root].append(d)
-            # print('expandable_definitions = {!r}'.format(expandable_definitions.keys()))
+
+            closer.debug('expandable_definitions = {!r}'.format(
+                list(expandable_definitions.keys())))
 
             flag = False
             # current_sourcecode = closer.current_sourcecode()
             # closed_visitor = ImportVisitor.parse(source=current_sourcecode)
             for root in expand_names:
                 needs_expansion = expandable_definitions.get(root, [])
-                # print('root = {!r}'.format(root))
-                # print('needs_expansion = {!r}'.format(needs_expansion))
+
+                closer.debug('root = {!r}'.format(root))
+                closer.debug('needs_expansion = {!r}'.format(needs_expansion))
                 for d in needs_expansion:
-                    # print('needs_expansion = {}'.format(ub.repr2(needs_expansion, sv=1)))
-                    if getattr(d, '_expanded', False):
+                    if d._expanded:
                         continue
                     flag = True
                     # if d.absname == d.native_modname:
                     if ub.modname_to_modpath(d.absname):
-                        if DEBUG:
-                            print('TODO: NEED TO CLOSE module = {}'.format(d))
+                        closer.debug('TODO: NEED TO CLOSE module = {}'.format(d))
+                        # import warnings
+                        # warnings.warn('Closing module {} may not be implemented'.format(d))
                         # definition is a module, need to expand its attributes
                         closer.expand_module_attributes(d)
                         d._expanded = True
                     else:
-                        if DEBUG:
-                            print('TODO: NEED TO CLOSE attribute varname = {}'.format(d))
+                        closer.debug('TODO: NEED TO CLOSE attribute varname = {}'.format(d))
+                        import warnings
+                        # warnings.warn('Closing attribute {} may not be implemented'.format(d))
                         # definition is a non-module, directly copy in its code
                         # We can directly replace this import statement by
                         # copy-pasting the relevant code from the other module
@@ -380,46 +463,47 @@ class Closer(ub.NiceRepr):
 
                         # print('sub_visitor = {!r}'.format(sub_visitor))
                         # closer.close(sub_visitor)
-                        if DEBUG:
-                            print('CLOSED attribute d = {}'.format(d))
+                        closer.debug('CLOSED attribute d = {}'.format(d))
 
     def expand_module_attributes(closer, d):
+        """
+        Args:
+            d (Definition): the definition to expand
+        """
         # current_sourcecode = closer.current_sourcecode()
         # closed_visitor = ImportVisitor.parse(source=current_sourcecode)
         assert 'Import' in d.type
         varname = d.name
         varmodpath = ub.modname_to_modpath(d.absname)
-        # varmodpath = ub.modname_to_modpath(d.native_modname)
-        expansion = d.absname
+        modname = d.absname
 
-        # print('d = {!r}'.format(d))
-        def _exhaust(name, modname, modpath):
-            if DEBUG:
-                print('REWRITE ACCESSOR name={!r}, modname={}, modpath={}'.format(name, modname, modpath))
+        def _exhaust(varname, modname, modpath):
+            closer.debug('REWRITE ACCESSOR varname={!r}, modname={}, modpath={}'.format(varname, modname, modpath))
 
             # Modify the current node definitions and recompute code
             # TODO: make more robust
-            rewriter = RewriteModuleAccess(name)
+            rewriter = RewriteModuleAccess(varname)
             for d_ in closer.body_defs.values():
                 rewriter.visit(d_.node)
                 d_._code = unparse(d_.node)
 
-            # print('rewriter.accessed_attrs = {!r}'.format(rewriter.accessed_attrs))
+            closer.debug('rewriter.accessed_attrs = {!r}'.format(rewriter.accessed_attrs))
+
+            # For each modified attribute, copy in the appropriate source.
             for subname in rewriter.accessed_attrs:
                 submodname = modname + '.' + subname
                 submodpath = ub.modname_to_modpath(submodname)
                 if submodpath is not None:
                     # if the accessor is to another module, exhaust until
                     # we reach a non-module
-                    if DEBUG:
-                        print('EXAUSTING: {}, {}, {}'.format(subname, submodname, submodpath))
+                    closer.debug('EXAUSTING: {}, {}, {}'.format(subname, submodname, submodpath))
                     _exhaust(subname, submodname, submodpath)
                 else:
                     # Otherwise we can directly add the referenced attribute
-                    if DEBUG:
-                        print('FINALIZE: {} from {}'.format(subname, modpath))
+                    closer.debug('FINALIZE: {} from {}'.format(subname, modpath))
                     closer.add_static(subname, modpath)
-        _exhaust(varname, expansion, varmodpath)
+
+        _exhaust(varname, modname, varmodpath)
         d._code = '# ' + d.code
 
 
@@ -494,6 +578,11 @@ def undefined_names(sourcecode):
 
 class RewriteModuleAccess(ast.NodeTransformer):
     """
+    Refactors attribute accesses into top-level references.
+    In other words, instances of <varname>.<attr> change to <attr>.
+
+    Any attributes that were modified are stored in `accessed_attrs`.
+
     Example:
         >>> from netharn.export.closer import *
         >>> source = ub.codeblock(
@@ -506,11 +595,17 @@ class RewriteModuleAccess(ast.NodeTransformer):
         >>> visitor = RewriteModuleAccess('foo')
         >>> orig = unparse(pt)
         >>> print(orig)
+        foo.bar = 3
+        foo.baz.bar = 3
+        biz.foo.baz.bar = 3
         >>> visitor.visit(pt)
         >>> modified = unparse(pt)
         >>> print(modified)
+        bar = 3
+        baz.bar = 3
+        biz.foo.baz.bar = 3
         >>> visitor.accessed_attrs
-
+        ['bar', 'baz']
     """
     def __init__(self, modname):
         self.modname = modname
@@ -527,11 +622,6 @@ class RewriteModuleAccess(ast.NodeTransformer):
         #     return None
         return node
 
-    def visit_Expr(self, node):
-        # if isinstance(node.value, ast.Str):
-        #     return None
-        return node
-
     def visit_FunctionDef(self, node):
         self.level += 1
         self.generic_visit(node)
@@ -545,6 +635,7 @@ class RewriteModuleAccess(ast.NodeTransformer):
         return node
 
     def visit_Attribute(self, node):
+        # print('VISIT ATTR: node = {!r}'.format(node.__dict__))
         self.generic_visit(node)
         if isinstance(node.value, ast.Name):
             if node.value.id == self.modname:

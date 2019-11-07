@@ -13,6 +13,10 @@ import torch
 import torch.nn as nn
 import numpy as np  # NOQA
 from netharn import util
+from distutils.version import LooseVersion
+
+
+_TORCH_HAS_BOOL_COMP = LooseVersion(torch.__version__) >= LooseVersion('1.2.0')
 
 __all__ = ['RegionLoss']
 
@@ -267,14 +271,20 @@ class RegionLoss(BaseLossWithCudaState):
             coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = _tup
 
             if nC > 1:
-                masked_tcls = tcls[cls_mask].view(-1).long()
+                if _TORCH_HAS_BOOL_COMP:
+                    masked_tcls = tcls[cls_mask.bool()].view(-1).long()
+                else:
+                    masked_tcls = tcls[cls_mask].view(-1).long()
 
         if nC > 1:
             # Swaps the dimensions to be [B, A, H, W, C]
             # (Allowed because 3rd dimension is guarneteed to be 1 here)
             cls_probs_mask = cls_mask.reshape(nB, nA, nH, nW, 1).repeat(1, 1, 1, 1, nC)
             cls_probs_mask.requires_grad = False
-            masked_cls_probs = cls_probs[cls_probs_mask].view(-1, nC)
+            if _TORCH_HAS_BOOL_COMP:
+                masked_cls_probs = cls_probs[cls_probs_mask.bool()].view(-1, nC)
+            else:
+                masked_cls_probs = cls_probs[cls_probs_mask].view(-1, nC)
 
         # Compute losses
 
@@ -391,6 +401,7 @@ class RegionLoss(BaseLossWithCudaState):
         # defaults for select grid cells and anchors)
         coord_mask = torch.zeros(nB, nA, 1, nH, nW, device=device)
         conf_mask = torch.ones(nB, nA, 1, nH, nW, device=device)
+        # TODO: this could be a weight instead
         cls_mask = torch.zeros(nB, nA, 1, nH, nW, device=device, dtype=torch.uint8)
 
         # Default conf_mask to the noobject_scale
@@ -464,7 +475,7 @@ class RegionLoss(BaseLossWithCudaState):
         # Pre multiply weights with object scales
         gt_conf_weights = gt_weights * self.object_scale
         # Pre threshold classification weights
-        gt_cls_weights = (gt_weights > .5)
+        gt_cls_weights = (gt_weights > .5).byte()
 
         # Loop over ground_truths and construct tensors
         for bx in range(nB):

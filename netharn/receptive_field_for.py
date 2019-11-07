@@ -10,10 +10,10 @@ import numpy as np
 from collections import OrderedDict
 from netharn.output_shape_for import OutputShapeFor
 from netharn import analytic_for
-try:
-    from netharn.device import MountedModel
-except ImportError:
-    MountedModel = None
+# try:
+# from netharn.device import MountedModel
+# except ImportError:
+#     MountedModel = None
 
 REGISTERED_TYPES = []
 
@@ -34,24 +34,11 @@ def compute_type(*types):
     return _wrap
 
 
-# class ReceptiveField(ub.NiceRepr):
-#     """ container for holding a receptive feild """
-#     def __init__(self, stride, shape, crop):
-#         self.data = {
-#             'stride': stride,  # The stride / scale factor of the network
-#             'shape': shape,  # The receptive feild shape of a single output pixel
-#             'crop': crop,  # The amount of cropping / starting pixel location
-#         }
+class ReceptiveFieldTypeError(TypeError):
+    pass
 
-#     def __nice__(self):
-#         return ub.repr2(self.data, nl=1)
 
-#     def __getitem__(self, key):
-#         return self.data[key]
-
-# ReceptiveField = dict
-
-class ReceptiveField(OrderedDict):
+class ReceptiveField(OrderedDict, analytic_for.Output):
     """
     container for holding a receptive feild
 
@@ -99,7 +86,10 @@ class ReceptiveField(OrderedDict):
             }
         """
         # TODO: make this work like OutputShape
-        if isinstance(data, cls):
+        if data is None:
+            self = ReceptiveFieldFor.input()
+            self.hidden = hidden
+        elif isinstance(data, cls):
             if hidden is None:
                 self = data
             else:
@@ -116,46 +106,7 @@ class HiddenFields(analytic_for.Hidden):
     """
     Augments normal hidden fields dicts with a convinience setitem
     """
-
-
-# class HiddenFields(OrderedDict, ub.NiceRepr):
-#     """
-#     Augments normal hidden fields dicts with a convinience setitem
-#     """
-#     def __nice__(self):
-#         return ub.repr2(self, nl=0)
-
-#     def __str__(self):
-#         return ub.NiceRepr.__str__(self)
-
-#     def __repr__(self):
-#         return ub.NiceRepr.__repr__(self)
-
-#     def __setitem__(self, key, value):
-#         if getattr(value, 'hidden', None) is not None:
-#             # When setting a value to an OutputShape object, if that object has
-#             # a hidden shape, then use that instead.
-#             value = value.hidden
-#         return OrderedDict.__setitem__(self, key, value)
-
-#     def shallow(self, n=1):
-#         """
-#         Grabs only the shallowest n layers of hidden fields
-#         """
-#         if n == 0:
-#             last = self
-#             # while isinstance(last, HiddenFields):
-#             while hasattr(last, 'shallow'):
-#                 last = list(last.values())[-1]
-#             return last
-#         else:
-#             output = OrderedDict()
-#             for key, value in self.items():
-#                 # if isinstance(value, HiddenFields):
-#                 if hasattr(value, 'shallow'):
-#                     value = value.shallow(n - 1)
-#                 output[key] = value
-#             return output
+    pass
 
 
 class _TorchMixin(object):
@@ -472,9 +423,14 @@ class _TorchMixin(object):
         p_ = ensure_array_nd(module.padding, ndim)
         d_ = ensure_array_nd(getattr(module, 'dilation', 1), ndim)
 
-        # TODO: incorporate output padding
-        out_pad = ensure_array_nd(module.output_padding, ndim)
-        assert np.all(out_pad == 0), 'cannot handle nonzero yet'
+        # TODO: incorporate output padding and right-side padding / cropping
+        # Note: output padding does not impact the receptive field, however it
+        # does cause some "right-side" croping, which we are not computing here
+        # yet.
+
+        out_pad = ensure_array_nd(module.output_padding, ndim)  # NOQA
+        # if not np.all(out_pad == 0):
+        #     raise NotImplementedError('cannot handle nonzero output_padding yet')
 
         # Howver, there is an equivalent way of forumulating a convT as convE:
         # a regular conv applied on a specially padded input tensor.
@@ -557,20 +513,40 @@ class _TorchMixin(object):
         return ReceptiveFieldFor._kernelized(module, input_field)
 
     @staticmethod
+    @compute_type(nn.modules.pooling._AdaptiveMaxPoolNd, nn.modules.pooling._AdaptiveAvgPoolNd)
+    def adaptive_avepoolnd(module, input_field=None):
+        """
+        it is not possible to analytically compute an adaptive receptive field.
+
+        References:
+            https://forums.fast.ai/t/ideas-behind-adaptive-max-pooling/12634/3
+            https://arxiv.org/abs/1406.4729
+        """
+        raise Exception('not possible to compute adaptive RF without knowning the input_shape ahead of time')
+        # return ReceptiveFieldFor._kernelized(module, input_field)
+
+    @staticmethod
     @compute_type(nn.ReLU)
     def relu(module, input_field=None):
         return ReceptiveFieldFor._unchanged(module, input_field)
 
     @staticmethod
-    @compute_type(nn.LeakyReLU)
-    def leaky_relu(module, input_field=None):
+    @compute_type(nn.ReLU6, nn.PReLU, nn.LeakyReLU)
+    def _unchanged_activation(module, input_field=None):
         return ReceptiveFieldFor._unchanged(module, input_field)
 
     @staticmethod
-    @compute_type(torch.nn.modules.normalization._BatchNorm,
-                  torch.nn.modules.normalization.GroupNorm,
-                  torch.nn.modules.normalization.LocalResponseNorm,
-                  torch.nn.modules.normalization.LayerNorm)
+    @compute_type(nn.functional.relu, nn.functional.relu6)
+    def _unchanged_activation_func(input_field=None):
+        # return ReceptiveFieldFor._unchanged(module, input_field)
+        return ReceptiveFieldFor._unchanged(None, input_field)
+
+    @staticmethod
+    @compute_type(nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d,
+                  nn.modules.normalization.GroupNorm,
+                  nn.modules.normalization.LocalResponseNorm,
+                  nn.modules.normalization.LayerNorm, nn.CrossMapLRN2d,
+                  nn.InstanceNorm1d, nn.InstanceNorm2d, nn.InstanceNorm3d)
     def normalization(module, input_field=None):
         return ReceptiveFieldFor._unchanged(module, input_field)
 
@@ -720,6 +696,8 @@ class _TorchvisionMixin(object):
             xdoctest -m netharn.receptive_field_for _TorchvisionMixin.resnet_model --network
 
         Example:
+            >>> # DISABLE_DOCTEST
+            >>> # Note: newest torchvision breaks this
             >>> # xdoctest: +REQUIRES(--network)
             >>> from netharn.receptive_field_for import *
             >>> module = torchvision.models.resnet50()
@@ -780,7 +758,7 @@ class _TorchvisionMixin(object):
         return rfield
 
 
-class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
+class ReceptiveFieldFor(analytic_for.OutputFor, _TorchMixin, _TorchvisionMixin):
     """
     Knows how to compute the receptive fields for many pytorch primatives and
     some torchvision components.
@@ -869,7 +847,7 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
             if len(found) == 1:
                 self._func = found[0]
             elif len(found) == 0:
-                raise TypeError('Unknown (rf) module type {}'.format(module))
+                raise ReceptiveFieldTypeError('Unknown (rf) module type {}'.format(module))
             else:
                 raise AssertionError('Ambiguous (rf) module {}. Found {}'.format(module, found))
 
@@ -889,6 +867,53 @@ class ReceptiveFieldFor(_TorchMixin, _TorchvisionMixin):
 
         rfield = ReceptiveField.coerce(rfield)
         return rfield
+
+    # @staticmethod
+    # def view(arr, *args):
+    #     """
+    #     Wraps view calls
+
+    #     Example:
+    #         >>> arr = (2, 32, 9, 9)
+    #         >>> result = OutputShapeFor.view(arr, -1)
+    #         >>> assert result == (5184,)
+    #     """
+    #     from netharn import layers
+    #     reshape = layers.Reshape(*args)
+    #     return reshape.output_shape_for(arr)
+
+    # @staticmethod
+    def shape(arr):
+        """
+        Wraps shape calls
+        """
+        raise ReceptiveFieldTypeError('RF is currently unable to inspect output shape')
+
+    @staticmethod
+    def _elementwise(field1, field2):
+        # Combines two receptive fields in an elementwise fashion
+        field = ReceptiveField({
+            'shape': np.maximum(field1['shape'], field2['shape']),
+            'crop': np.maximum(field1['crop'], field2['crop']),
+            'stride': np.maximum(field1['stride'], field2['stride']),
+        })
+        return field
+
+    @staticmethod
+    def add(field1, field2):
+        return ReceptiveFieldFor._elementwise(field1, field2)
+
+    @staticmethod
+    def mul(field1, field2):
+        return ReceptiveFieldFor._elementwise(field1, field2)
+
+    @staticmethod
+    def sub(field1, field2):
+        return ReceptiveFieldFor._elementwise(field1, field2)
+
+    @staticmethod
+    def div(field1, field2):
+        return ReceptiveFieldFor._elementwise(field1, field2)
 
 
 def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
@@ -996,10 +1021,11 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
     ignored = []
     if ignore_norms:
         ignored += [
-            torch.nn.modules.normalization._BatchNorm,
-            torch.nn.modules.normalization.GroupNorm,
-            torch.nn.modules.normalization.LocalResponseNorm,
-            torch.nn.modules.normalization.LayerNorm,
+            nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d,
+            nn.modules.normalization.GroupNorm,
+            nn.modules.normalization.LocalResponseNorm,
+            nn.modules.normalization.LayerNorm, nn.CrossMapLRN2d,
+            nn.InstanceNorm1d, nn.InstanceNorm2d, nn.InstanceNorm3d,
             nh.layers.L2Norm,
         ]
     if ignore_extra:
