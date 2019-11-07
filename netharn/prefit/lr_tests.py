@@ -132,6 +132,8 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
             raw_batch = next(batch_iter)
             batch = harn.prepare_batch(raw_batch)
             outputs, loss = harn.run_batch(batch)
+            if isinstance(loss, dict):
+                loss = sum(loss.values())
             raw_loss = float(loss.data.cpu().item())
 
             # Compute the smoothed loss

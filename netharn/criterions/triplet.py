@@ -1,18 +1,18 @@
-
-import ubelt as ub
 import numpy as np
 import torch
 import torch.nn.functional as F
 import itertools as it
 
 
-def all_pairwise_distances(x, y=None, hack=1):
+def all_pairwise_distances(x, y=None, squared=False, approx=False):
     """
     Fast pairwise L2 squared distances between two sets of d-dimensional vectors
 
     Args:
         x (Tensor): an Nxd matrix
         y (Tensor, default=None): an optional Mxd matirx
+        squared (bool, default=False): if True returns squared distances
+        approx (bool, default=False): if True uses the quadratic distance approximation
 
     Returns:
         Tensor: dist: an NxM matrix where dist[i,j] is the square norm between
@@ -27,7 +27,7 @@ def all_pairwise_distances(x, y=None, hack=1):
         >>> from netharn.criterions.triplet import *
         >>> N, d = 5, 3
         >>> x = torch.rand(N, d)
-        >>> dist = all_pairwise_distances(x, hack=0)
+        >>> dist = all_pairwise_distances(x)
         >>> assert dist.shape == (N, N)
 
         >>> a = x[None, :].expand(x.shape[0], -1, -1)
@@ -40,52 +40,92 @@ def all_pairwise_distances(x, y=None, hack=1):
         >>> N, M, d = 5, 7, 3
         >>> x = torch.rand(N, d)
         >>> y = torch.rand(M, d)
-        >>> dist = all_pairwise_distances(x, y, hack=0)
+        >>> dist = all_pairwise_distances(x, y)
         >>> assert dist.shape == (N, M)
-
-    Ignore:
-        N, d = 2000, 128
-        x = torch.rand(N, d)
-        import ubelt as ub
-        for timer in ub.Timerit(100, bestof=10, label='time'):
-            with timer:
-                all_pairwise_distances(x)
-                torch.cuda.synchronize()
-
-        for timer in ub.Timerit(100, bestof=10, label='time'):
-            with timer:
-                dist = torch.nn.functional.pdist(x)
-                torch.cuda.synchronize()
-
-
     """
-    if hack:
-        # hack
-        assert y is None
-        dist = torch.zeros(x.shape[0], x.shape[0])
-        triu_idx = np.triu_indices(dist.shape[0], k=1)
-        dist[triu_idx] = torch.nn.functional.pdist(x)
-        dist += dist.t()
-        return dist
+    if approx:
+        return approx_pdist(x, y, squared=squared)
     else:
-        x_norm = x.pow(2).sum(1).view(-1, 1)
-        if y is None:
-            y = x
-            y_norm = x_norm.view(1, -1)
-        else:
-            y_norm = y.pow(2).sum(1).view(1, -1)
+        return exact_pdist(x, y, squared=True)
 
-        yT = torch.transpose(y, 0, 1)
-        if True:
-            # Benchmarks as faster
-            xy_norm = x_norm + y_norm
-            xy = torch.mm(x, yT).mul_(-2.0)
-            dist = xy_norm.add_(xy)
-        else:
-            # x_norm = (x ** 2).sum(1).view(-1, 1)
-            # y_norm = (y ** 2).sum(1).view(1, -1)
-            dist = x_norm + y_norm - 2.0 * torch.mm(x, yT)
-        return dist.clamp_(0, None)
+
+def exact_pdist(x, y=None, squared=True):
+    # Broadcast so all comparisons are NxN pairwise
+    if y is None:
+        y = x
+    x_ = x[:, None, :]
+    y_ = y[None, :, :]
+    squared_dist = ((x_ - y_) ** 2).sum(dim=2)
+    if squared:
+        return squared_dist
+    else:
+        dist = squared_dist.sqrt_()
+        return dist
+
+
+def approx_pdist(x, y=None, squared=True):
+    """
+    This uses a quadratic expansion to approximate pairwise distances
+    """
+    x_norm = x.pow(2).sum(1).view(-1, 1)
+    if y is None:
+        y = x
+        y_norm = x_norm.view(1, -1)
+    else:
+        y_norm = y.pow(2).sum(1).view(1, -1)
+    yT = torch.transpose(y, 0, 1)
+    xy = torch.mm(x, yT).mul_(-2.0)
+    xy_norm = x_norm + y_norm
+    squared_dist = xy_norm.add_(xy)
+    squared_dist.clamp_(0, None)
+    if squared:
+        return squared_dist
+    else:
+        dist = squared_dist.sqrt_()
+        return dist
+
+
+def labels_to_adjacency_matrix(labels, symmetric=True, diagonal=True):
+    """
+    Construct an adjacency matrix of matching instances where `labels[i]` is
+    the "name" or "identity" of the i-th item. The resulting matrix will have
+    values adjm[i, j] == 1 if the i-th and j-th item have the same label and 0
+    otherwise.
+
+    Args:
+        labels (ndarray): array of labels
+        symmetric (bool, default=True): if False only the upper triangle of the
+            matrix is populated.
+        diagonal (bool, default=True): if False the diagonal is set to zero.
+
+    Returns:
+        ndarray: adjm : adjacency matrix
+
+    Example:
+        >>> labels = np.array([0, 0, 1, 1])
+        >>> labels_to_adjacency_matrix(labels)
+        array([[1, 1, 0, 0],
+               [1, 1, 0, 0],
+               [0, 0, 1, 1],
+               [0, 0, 1, 1]], dtype=uint8)
+        >>> labels_to_adjacency_matrix(labels, symmetric=False, diagonal=False)
+        array([[0, 1, 0, 0],
+               [0, 0, 0, 0],
+               [0, 0, 0, 1],
+               [0, 0, 0, 0]], dtype=uint8)
+    """
+    import netharn as nh
+    n = len(labels)
+    adjm = np.zeros((n, n), dtype=np.uint8)
+    unique_labels, groupxs = nh.util.group_indices(labels)
+    pos_idxs = [(i, j) for g in groupxs for (i, j) in it.combinations(sorted(g), 2)]
+    pos_multi_idxs = tuple(zip(*pos_idxs))
+    adjm[pos_multi_idxs] = 1
+    if symmetric:
+        adjm += adjm.T
+    if diagonal:
+        np.fill_diagonal(adjm, 1)
+    return adjm
 
 
 class TripletLoss(torch.nn.TripletMarginLoss):
@@ -94,12 +134,11 @@ class TripletLoss(torch.nn.TripletMarginLoss):
 
     Example:
         >>> dvecs = torch.randn(21, 128)
-        >>> pos_idxs = ([(1, 2), (1, 3), (2, 3), (3, 4)])
-        >>> num = 1
-        >>> pos_dists, neg_dists, triples = TripletLoss.mine_negatives(dvecs, pos_idxs, num)
+        >>> labels = (torch.randn(len(dvecs)) * 4).long()
+        >>> info = TripletLoss().mine_negatives(dvecs, labels)
+        >>> pos_dists, neg_dists = info['pos_dists'], info['neg_dists']
         >>> self = TripletLoss(soft=1)
         >>> loss = self(pos_dists, neg_dists)
-        >>> #
         >>> loss_s = TripletLoss(soft=1, reduction='none')(pos_dists, neg_dists)
         >>> loss_h = TripletLoss(margin=1, reduction='none')(pos_dists, neg_dists)
 
@@ -118,18 +157,30 @@ class TripletLoss(torch.nn.TripletMarginLoss):
         >>> nh.util.multi_plot(xdata.numpy(), ydata, fnum=1)
     """
 
-    def __init__(self, margin=1.0, eps=1e-6, reduction='mean', soft=True):
+    def __init__(self, margin=1.0, eps=1e-6, reduction='mean', soft=False):
         super(TripletLoss, self).__init__(margin=margin, eps=eps,
                                           reduction=reduction)
         self.soft = soft
 
-    @classmethod
-    def mine_negatives(cls, dvecs, pos_idxs, num=1, nxs=None, eps=1e-9):
+    def mine_negatives(self, dvecs, labels, num=1, mode='hardest', eps=1e-9):
         """
         triplets =
              are a selection of anchor, positive, and negative annots
              chosen to be the hardest for each annotation (with a valid
              pos and neg partner) in the batch.
+
+        Args:
+            dvecs (Tensor): descriptor vectors for each item
+            labels (Tensor): id-label for each descriptor vector
+            num (int, default=1): number of negatives per positive combination
+            mode (str, default='hardest'): method for selecting negatives
+            eps (float, default=1e9): distance threshold for near duplicates
+
+        Returns:
+            Dict: info: containing neg_dists, pos_dists, triples, and dist
+
+        CommandLine:
+            xdoctest -m netharn.criterions.triplet TripletLoss.mine_negatives:1 --profile
 
         Example:
             >>> from netharn.criterions.triplet import *
@@ -145,20 +196,20 @@ class TripletLoss(torch.nn.TripletMarginLoss):
             ...     [0.1, 0.0, 0.9, ],  # Looks like 1 [5]
             >>> ])
             >>> import itertools as it
-            >>> clique2 = np.array(list(it.combinations(range(2), 2)))
-            >>> pos_idxs = np.vstack([clique2, clique2 + 2, clique2 + 4])
+            >>> labels = torch.LongTensor([0, 0, 1, 1, 2, 2])
             >>> num = 1
-            >>> pos_dists, neg_dists, triples = TripletLoss.mine_negatives(dvecs, pos_idxs, num)
-            >>> print('neg_dists = {!r}'.format(neg_dists))
-            >>> print('pos_dists = {!r}'.format(pos_dists))
-            >>> assert torch.all(pos_dists < neg_dists)
+            >>> info = TripletLoss().mine_negatives(dvecs, labels, num)
+            >>> print('info = {!r}'.format(info))
+            >>> assert torch.all(info['pos_dists'] < info['neg_dists'])
 
         Example:
-            >>> # xdoctest: +SKIP
+            >>> # xdoxctest: +SKIP
             >>> import itertools as it
             >>> p = 3
             >>> k = 10
             >>> d = p
+            >>> mode = 'consistent'
+            >>> mode = 'hardest'
             >>> for p, k in it.product(range(3, 13), range(2, 13)):
             >>>     d = p
             >>>     def make_individual_dvecs(i):
@@ -166,183 +217,246 @@ class TripletLoss(torch.nn.TripletMarginLoss):
             >>>         vecs[:, i] = torch.linspace(0.9, 1.0, k)
             >>>         return vecs
             >>>     dvecs = torch.cat([make_individual_dvecs(i) for i in range(p)], dim=0)
-            >>>     cliquek = np.array(list(it.combinations(range(k), 2)))
-            >>>     pos_idxs = np.vstack([cliquek + (i * k) for i in range(p)])
+            >>>     labels = torch.LongTensor(np.hstack([[i] * k for i in range(p)]))
             >>>     num = 1
-            >>>     pos_dists, neg_dists, triples = TripletLoss.mine_negatives(dvecs, pos_idxs, num)
-            >>>     assert torch.all(pos_dists < neg_dists)
-            >>>     print('neg_dists = {!r}'.format(neg_dists))
-            >>>     print('pos_dists = {!r}'.format(pos_dists))
-            >>>     print('triples = {!r}'.format(triples))
+            >>>     info = TripletLoss().mine_negatives(dvecs, labels, num, mode=mode)
+            >>>     if mode.startswith('hard'):
+            >>>         assert torch.all(info['pos_dists'] < info['neg_dists'])
             >>>     base = k
-            >>>     for a, p, n in triples:
+            >>>     for a, p, n in info['triples']:
             >>>         x = a // base
             >>>         y = p // base
             >>>         z = n // base
             >>>         assert x == y, str([a, p, n])
             >>>         assert x != z, str([a, p, n])
         """
-        dist = all_pairwise_distances(dvecs)
+        import netharn as nh
+        dist = all_pairwise_distances(dvecs, squared=True, approx=True)
 
         with torch.no_grad():
-            eps = 1e-9
-            eye_adjm = torch.eye(len(dist)).byte()
+            labels_ = labels.numpy()
 
-            pos_adjm = torch.zeros(dist.shape).byte()
-            # p1, p2 = list(zip(*pos_idxs))
-            # pos_adjm[p1, p2] = 1
+            symmetric = False
+            pos_adjm = labels_to_adjacency_matrix(labels_, symmetric=symmetric,
+                                                  diagonal=False)
 
-            flat_pos_idxs = np.ravel_multi_index(list(zip(*pos_idxs)), dist.shape)
-            pos_adjm.view(-1)[flat_pos_idxs] = 1
+            if symmetric:
+                neg_adjm = 1 - pos_adjm
+            else:
+                neg_adjm = 1 - pos_adjm - pos_adjm.T
+            np.fill_diagonal(neg_adjm, 0)
 
-            pos_adjm[eye_adjm] = 0
-            pos_adjm[pos_adjm.t()] = 1
+            # ignore near duplicates
+            dist_ = dist.data.cpu().numpy()
+            is_near_dup = np.where(dist_ < eps)
+            neg_adjm[is_near_dup] = 0
+            pos_adjm[is_near_dup] = 0
 
-            neg_adjm = ~pos_adjm
-            neg_adjm[eye_adjm] = 0
-            neg_adjm[neg_adjm.t()] = 1
+            # Filter out any anchor row that does not have both a positive and
+            # a negative match
+            flags = np.any(pos_adjm, axis=1) & np.any(neg_adjm, axis=1)
 
-            # never consider near duplicates
-            neg_adjm[dist < eps] = 0
-            pos_adjm[dist < eps] = 0
+            anchors_idxs = np.where(flags)[0]
+            pos_adjm_ = pos_adjm[flags].astype(bool)
+            neg_adjm_ = neg_adjm[flags].astype(bool)
 
-            # Ignore reflexive cases
-            # pos_adjm.triu_()
-            # neg_adjm.triu_()
-
-            # Each row gives a ranking of the indices
-            sortx = dist.argsort(dim=1)
-
-            triples = []
-            for anchor_idx, (x, m, n) in enumerate(zip(sortx.data.cpu(), pos_adjm.data.cpu(), neg_adjm.data.cpu())):
-                if torch.any(m) and torch.any(n):
-                    if 0:
-                        d = dist[anchor_idx]
-                        all_pos_cands = torch.nonzero(m).view(-1)
-                        all_pos_dists = d[m]
-
-                        all_neg_cands = torch.nonzero(n).view(-1)
-                        all_neg_dists = d[n]
-
-                        # The hardest positives are at the back
-                        pos_cands = all_pos_cands[all_pos_dists.argsort()]
-
-                        # The hardest negatives are at the front
-                        neg_cands = all_neg_cands[all_neg_dists.argsort()]
-                        # print('pos_cands = {!r}'.format(pos_cands))
-                        # print('neg_cands = {!r}'.format(neg_cands))
-                    else:
-                        # Hardest remaining positive and negative
-                        pos_cands = x[m[x]]
-                        neg_cands = x[n[x]]
-                        # print('pos_cands = {!r}'.format(pos_cands))
-                        # print('neg_cands = {!r}'.format(neg_cands))
-
+            if mode == 'hardest':
+                # Order each anchors positives and negatives by increasing distance
+                sortx_ = dist_[flags].argsort(axis=1)
+                pos_cands_list = [x[m[x]] for x, m in zip(sortx_, pos_adjm_)]
+                neg_cands_list = [x[n[x]] for x, n in zip(sortx_, neg_adjm_)]
+                triples = []
+                backup = []
+                _iter = zip(anchors_idxs, pos_cands_list, neg_cands_list)
+                for (anchor_idx, pos_cands, neg_cands) in _iter:
+                    # Take `num` hardest negative pairs for each positive pair
                     num_ = min(len(neg_cands), len(pos_cands), num)
-                    pos_idxs = pos_cands[-num_:]
+                    pos_idxs = pos_cands
                     neg_idxs = neg_cands[:num_]
-                    for pox_idx, neg_idx in it.product(pos_idxs, neg_idxs):
-                        triples.append((anchor_idx, int(pox_idx), int(neg_idx)))
+
+                    anchor_dists = dist_[anchor_idx]
+
+                    if True:
+                        pos_dists = anchor_dists[pos_idxs]
+                        neg_dists = anchor_dists[neg_idxs]
+
+                        # Ignore any triple that satisfies the margin
+                        # constraint
+                        losses = pos_dists[:, None] - neg_dists[None, :] + self.margin
+                        ilocs, jlocs = np.where(losses > 0)
+
+                        if len(ilocs) > 0:
+                            valid_pos_idxs = pos_idxs[ilocs].tolist()
+                            valid_neg_idxs = neg_idxs[jlocs].tolist()
+
+                            for pos_idx, neg_idx in zip(valid_pos_idxs, valid_neg_idxs):
+                                triples.append((anchor_idx, pos_idx, neg_idx))
+                        elif len(triples) == 0:
+                            # Take everything because we might need a backup
+                            for pos_idx, neg_idx in it.product(pos_idxs, neg_idxs):
+                                backup.append((anchor_idx, pos_idx, neg_idx))
+                    else:
+                        for pos_idx, neg_idx in it.product(pos_idxs, neg_idxs):
+                            # Only take items that will contribute positive loss
+                            d_ap = anchor_dists[pos_idx]
+                            d_an = anchor_dists[neg_idx]
+                            loss = d_ap - d_an + self.margin
+                            if loss > 0:
+                                triples.append((anchor_idx, pos_idx, neg_idx))
+                            elif len(triples) == 0:
+                                backup.append((anchor_idx, pos_idx, neg_idx))
+
+            elif mode == 'moderate':
+                pos_cands_list = [np.where(m)[0].tolist() for m in pos_adjm_]
+                neg_cands_list = [np.where(n)[0].tolist() for n in neg_adjm_]
+                triples = []
+                backup = []
+                _iter = zip(anchors_idxs, pos_cands_list, neg_cands_list)
+                for (anchor_idx, pos_cands, neg_cands) in _iter:
+                    # Take `num` moderate negative pairs for each positive pair
+                    # Only take items that will contribute positive loss
+                    # but try not to take any that are too hard.
+                    anchor_dists = dist_[anchor_idx]
+                    neg_dists = anchor_dists[neg_cands]
+
+                    for pos_idx in pos_cands:
+                        pos_dist = anchor_dists[pos_idx]
+                        losses = pos_dist - neg_dists + self.margin
+
+                        # valid_negs = np.where((losses < margin) & (losses > 0))[0]
+                        valid_negs = np.where(losses > 0)[0]
+                        if len(valid_negs):
+                            neg_idx = neg_cands[np.random.choice(valid_negs)]
+                            triples.append((anchor_idx, pos_idx, neg_idx))
+                        elif len(triples) == 0:
+                            # We try to always return valid triples so, create
+                            # a backup set in case we cant find any valid
+                            # candidates
+                            neg_idx = neg_cands[0]
+                            backup.append((anchor_idx, pos_idx, neg_idx))
+
+            elif mode == 'consistent':
+                # Choose the same triples every time
+                rng = nh.util.ensure_rng(0)
+                pos_cands_list = [nh.util.shuffle(np.where(m)[0], rng=rng)
+                                  for m in pos_adjm_]
+                neg_cands_list = [nh.util.shuffle(np.where(n)[0], rng=rng)
+                                  for n in neg_adjm_]
+                triples = []
+                _iter = zip(anchors_idxs, pos_cands_list, neg_cands_list)
+                for (anchor_idx, pos_cands, neg_cands) in _iter:
+                    num_ = min(len(neg_cands), len(pos_cands), num)
+                    pos_idxs = pos_cands
+                    for pos_idx in pos_idxs:
+                        neg_idx = rng.choice(neg_cands)
+                        triples.append((anchor_idx, pos_idx, neg_idx))
+                rng.shuffle(triples)
+            else:
+                raise KeyError(mode)
 
             if len(triples) == 0:
-                raise RuntimeError('unable to mine triples')
+                triples = backup
+                if len(backup) == 0:
+                    raise RuntimeError('unable to mine triples')
 
-            A, P, N = np.array(triples).T
+            triples = np.array(triples)
+            A, P, N = triples.T
 
             if 0 and __debug__:
-                if nxs is not None:
+                if labels is not None:
                     for a, p, n in triples:
-                        na_ = nxs[a]
-                        np_ = nxs[p]
-                        nn_ = nxs[n]
-                        import xdev
-                        with xdev.embed_on_exception_context:
-                            assert na_ == np_
-                            assert np_ != nn_
+                        na_ = labels[a]
+                        np_ = labels[p]
+                        nn_ = labels[n]
+                        assert na_ == np_
+                        assert np_ != nn_
 
-        pos_dists = dist[A, P].sqrt()
-        neg_dists = dist[A, N].sqrt()
-        return pos_dists, neg_dists, triples
-
-    @classmethod
-    def hard_triples(cls, dvecs, labels):
-        """
-        https://github.com/adambielski/siamese-triplet/blob/master/utils.py#L58
-
-        Example:
-            >>> from netharn.criterions.triplet import *
-            >>> dvecs = torch.FloatTensor([
-            ...     # Individual 1
-            ...     [1.0, 0.0, 0.0, ],
-            ...     [0.9, 0.1, 0.0, ],  # Looks like 2 [1]
-            ...     # Individual 2
-            ...     [0.0, 1.0, 0.0, ],
-            ...     [0.0, 0.9, 0.1, ],  # Looks like 3 [3]
-            ...     # Individual 3
-            ...     [0.0, 0.0, 1.0, ],
-            ...     [0.1, 0.0, 0.9, ],  # Looks like 1 [5]
-            >>> ])
-            >>> import itertools as it
-            >>> labels = torch.LongTensor([1, 1, 2, 2, 3, 3])
-            >>> num = 1
-            >>> pos_dists, neg_dists, triples = TripletLoss.hard_triples(dvecs, labels)
-            >>> print('neg_dists = {!r}'.format(neg_dists))
-            >>> print('pos_dists = {!r}'.format(pos_dists))
-            >>> assert torch.all(pos_dists < neg_dists)
-        """
-        def pdist(vectors):
-            distance_matrix = -2 * vectors.mm(torch.t(vectors)) + vectors.pow(2).sum(dim=1).view(1, -1) + vectors.pow(2).sum(
-                dim=1).view(-1, 1)
-            return distance_matrix
-
-        # distance_matrix = torch.nn.functional.pdist(dvecs)
-        dist = distance_matrix = pdist(dvecs)
-
-        labels_ = labels.cpu().data.numpy()
-        all_pairs = np.array(list(it.combinations(range(len(labels_)), 2)))
-        all_pairs = torch.LongTensor(all_pairs)
-
-        pos_flags = (labels_[all_pairs[:, 0]] == labels_[all_pairs[:, 1]]).nonzero()
-        neg_flags = (labels_[all_pairs[:, 0]] != labels_[all_pairs[:, 1]]).nonzero()
-        positive_pairs = all_pairs[pos_flags]
-        negative_pairs = all_pairs[neg_flags]
-
-        negative_distances = distance_matrix[negative_pairs[:, 0], negative_pairs[:, 1]]
-        negative_distances = negative_distances.cpu().data.numpy()
-        top_negatives = np.argpartition(negative_distances, len(positive_pairs))[:len(positive_pairs)]
-        top_negative_pairs = negative_pairs[torch.LongTensor(top_negatives)]
-
-        ppx_list = positive_pairs.data.cpu().numpy().tolist()
-        npx_list = top_negative_pairs.data.cpu().numpy().tolist()
-
-        triples = []
-        for ppx, npx in zip(ppx_list, npx_list):
-            ppx = set(ppx)
-            npx = set(npx)
-            isect = ppx & npx
-            if isect:
-                a = ub.peek(isect)
-                p = ub.peek(ppx - {a})
-                n = ub.peek(npx - {a})
-                triples.append((a, p, n))
-
-        A, P, N = np.array(triples).T
+        # Note these distances are approximate distances, but they should be
+        # good enough to backprop through (if not see alternate commented code).
         pos_dists = dist[A, P]
         neg_dists = dist[A, N]
+        # pos_dists = (dvecs[A] - dvecs[P]).pow(2).sum(1)
+        # neg_dists = (dvecs[A] - dvecs[N]).pow(2).sum(1)
 
-        return pos_dists, neg_dists, triples
+        info = {
+            'pos_dists': pos_dists,
+            'neg_dists': neg_dists,
+            'triples': triples,
+            'dist': dist,
+        }
+        return info
+
+    @classmethod
+    def _hard_triples2(cls, dvecs, labels, margin=1):
+        """
+        Slow implementation of hard triples. Minimally modified from [1]
+
+        References:
+            ..[1] https://github.com/adambielski/siamese-triplet/blob/master/utils.py#L58
+        """
+        from itertools import combinations
+        with torch.no_grad():
+            embeddings = dvecs
+            pdist = approx_pdist
+            distance_matrix = pdist(embeddings)
+            distance_matrix = distance_matrix.cpu()
+
+            def semihard_negative(loss_values, margin=margin):
+                semihard_negatives = np.where(np.logical_and(loss_values < margin, loss_values > 0))[0]
+                return np.random.choice(semihard_negatives) if len(semihard_negatives) > 0 else None
+
+            def hardest_negative(loss_values):
+                hard_negative = np.argmax(loss_values)
+                return hard_negative if loss_values[hard_negative] > 0 else None
+
+            negative_selection_fn = hardest_negative
+
+            labels_ = labels.cpu().data.numpy()
+            triplets = []
+
+            for label in set(labels_):
+                label_mask = (labels_ == label)
+                label_indices = np.where(label_mask)[0]
+                if len(label_indices) < 2:
+                    continue
+                negative_indices = np.where(np.logical_not(label_mask))[0]
+                anchor_positives = list(combinations(label_indices, 2))  # All anchor-positive pairs
+                anchor_positives = np.array(anchor_positives)
+
+                ap_distances = distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]]
+                for anchor_positive, ap_distance in zip(anchor_positives, ap_distances):
+                    loss_values = ap_distance - distance_matrix[torch.LongTensor(np.array([anchor_positive[0]])), torch.LongTensor(negative_indices)] + margin
+                    loss_values = loss_values.data.cpu().numpy()
+                    hard_negative = negative_selection_fn(loss_values)
+                    if hard_negative is not None:
+                        hard_negative = negative_indices[hard_negative]
+                        triplets.append([anchor_positive[0], anchor_positive[1], hard_negative])
+
+            if len(triplets) == 0:
+                triplets.append([anchor_positive[0], anchor_positive[1], negative_indices[0]])
+
+            triplets = np.array(triplets)
+
+        ap_distances = (embeddings[triplets[:, 0]] - embeddings[triplets[:, 1]]).pow(2).sum(1)  # .pow(.5)
+        an_distances = (embeddings[triplets[:, 0]] - embeddings[triplets[:, 2]]).pow(2).sum(1)  # .pow(.5)
+
+        info = {
+            'pos_dists': ap_distances,
+            'neg_dists': an_distances,
+            'triples': triplets,
+            'dist': distance_matrix,
+        }
+        return info
 
     def _softmargin(self, pos_dists, neg_dists):
-        # log1 = torch.zeros_like(x)[None, :]  # log(1) = 0
-        # dist_and_log1 = torch.cat([self.margin + x[None, :], log1], dim=0)
-        # loss = torch.logsumexp(dist_and_log1, dim=0)
         x = pos_dists - neg_dists
-        loss = F.softplus(self.margin + x)  # log(1 + exp(x))
+        loss = F.softplus(x + self.margin)  # log(1 + exp(x))
         return loss
 
     def _hardmargin(self, pos_dists, neg_dists):
         x = pos_dists - neg_dists
-        loss = (self.margin + x).clamp_(0, None)  # [margin + x]_{+}
+        # loss = (self.margin + x).clamp_(0, None)  # [margin + x]_{+}
+        loss = F.relu(x + self.margin)  # [margin + x]_{+}
         return loss
 
     def forward(self, pos_dists, neg_dists):

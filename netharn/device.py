@@ -29,7 +29,7 @@ else:
     _TENSOR_TYPES = (torch.Tensor, torch.autograd.Variable)
 
 
-class MountedModel(torch.nn.Module, util.util_torch.ModuleMixin):
+class MountedModel(torch.nn.Module, util.ModuleMixin):
     """
     Abstraction of DataParallel and DataSerial
     """
@@ -107,7 +107,7 @@ class XPU(ub.NiceRepr):
                 if item == '':
                     item = 0
                 elif ',' in item:
-                    item = list(map(int, ','.split(item)))
+                    item = list(map(int, item.split(',')))
                 else:
                     item = int(item)
             else:
@@ -124,7 +124,8 @@ class XPU(ub.NiceRepr):
         if item is None:
             xpu._main_device_id = None
             xpu._device_ids = None
-        elif isinstance(item, int):
+        elif isinstance(item, six.integer_types):
+            item = int(item)
             xpu._main_device_id = item
             xpu._device_ids = [item]
         elif isinstance(item, (list, tuple)):
@@ -145,6 +146,172 @@ class XPU(ub.NiceRepr):
 
         if xpu._main_device_id is not None:
             xpu._cuda_device = torch.cuda.device(xpu._main_device_id)
+
+    @classmethod
+    def from_auto(XPU, min_memory=NETHARN_MIN_MB):
+        """
+        Determines what a CPU/GPU device to use based on hardware usage.
+
+        Args:
+            min_memory (int): min memory needed in bytes to default to GPU.
+                defaults to envvar NETHARN_MIN_MB or 6000
+        """
+        if torch.cuda.is_available():
+            n_available = torch.cuda.device_count()
+            gpu_num = find_unused_gpu(min_memory=min_memory)
+            if gpu_num is None or gpu_num >= n_available:
+                gpu_num = None
+        else:
+            gpu_num = None
+        xpu = XPU(gpu_num)
+        return xpu
+
+    @classmethod
+    def from_argv(XPU, check=True, **kwargs):
+        """
+        Determine what CPU/GPU device to use based on sys.argv
+
+        CommandLine:
+            python -m netharn.device XPU.from_argv --gpu=0,1
+
+        Example:
+            >>> xpu = XPU.from_argv()
+            >>> print(xpu)
+        """
+        anygpu = ub.argflag('--gpu')
+        if anygpu:
+            gpu_num = XPU.default_gpu()
+        else:
+            gpu_num = ub.argval('--gpu', default=None)
+        if ub.argflag('--cpu'):
+            xpu = XPU(None, check=check)
+        elif gpu_num is None:
+            xpu = XPU.from_auto(**kwargs)
+        else:
+            if gpu_num.lower() == 'none':
+                xpu = XPU(None)
+            if isinstance(gpu_num, six.string_types) and ',' in gpu_num:
+                _device_ids = list(map(int, gpu_num.split(',')))
+                xpu = XPU(_device_ids, check=check)
+            else:
+                xpu = XPU(int(gpu_num), check=check)
+        return xpu
+
+    @classmethod
+    def from_data(XPU, item, check=True, **kwargs):
+        """
+        Creates an XPU to represent the processing device(s) a Module, Tensor,
+        or Variable currently exists on.
+
+        Example:
+            >>> xpu = XPU.from_data(torch.randn(3))
+            >>> assert not xpu.is_gpu()
+            >>> if torch.cuda.is_available():
+            >>>     xpu = XPU.from_data(torch.randn(3).to('cuda'))
+            >>>     assert xpu.is_gpu()
+            >>>     for i in range(torch.cuda.device_count()):
+            >>>         xpu = XPU.from_data(torch.randn(3).to(i))
+            >>>         assert xpu.is_gpu()
+            >>>         assert xpu._main_device_id == i
+        """
+        if hasattr(item, 'device'):
+            return XPU(item.device, check=check)
+        if hasattr(item, 'is_cuda'):
+            if item.is_cuda:
+                return XPU(item.get_device(), check=check)
+            else:
+                return XPU(None, check=check)
+        elif hasattr(item, 'state_dict'):
+            devices = [item.device for item in item.state_dict().values()]
+            _device_ids = set()
+            for device in devices:
+                if device.type == 'cuda':
+                    index = device.index or 0
+                    _device_ids.add(index)
+                else:
+                    _device_ids.add(None)
+            try:
+                _device_ids = sorted(_device_ids)
+            except TypeError:
+                raise Exception('cannot currently mix CPU and GPU')
+            return XPU(_device_ids, check=check)
+        else:
+            raise TypeError(type(item))
+
+    of = from_data
+
+    @classmethod
+    def coerce(cls, item, **kwargs):
+        """
+        Converts objects of many different types into an XPU.
+
+        I think I like this name better than cast, not sure
+        """
+        return cls.cast(item, **kwargs)
+
+    @classmethod
+    def cast(xpu, item, check=True, **kwargs):
+        """
+        Converts objects of many different types into an XPU.
+
+        Args:
+            item : special string, int, list, or None
+
+        Example:
+            >>> assert XPU.cast('0', check=False) == XPU(0, check=False)
+            >>> assert XPU.cast('0,1,2', check=False) == XPU([0, 1, 2], check=False)
+            >>> assert XPU.cast('2,3,4', check=False) == XPU([2, 3, 4], check=False)
+            >>> assert XPU.cast('gpus=2,3,4', check=False) == XPU([2, 3, 4], check=False)
+            >>> assert XPU.cast([0, 1], check=False) == XPU([0, 1], check=False)
+            >>> assert XPU.cast(torch.Tensor()) == XPU(None)
+            >>> assert XPU.cast(None) == XPU(None)
+            >>> assert XPU.cast('auto', check=False) is not None
+        """
+        try:
+            if item is None:
+                return XPU(item, check=check)
+            elif isinstance(item, XPU):
+                return item
+            elif isinstance(item, _TENSOR_TYPES):
+                return XPU.from_data(item, check=check)
+            elif isinstance(item, torch.nn.Module):
+                return XPU.from_data(item, check=check)
+            elif isinstance(item, six.integer_types):
+                return XPU(int(item), check=check)
+            elif isinstance(item, (list, tuple)):
+                return XPU(item, check=check)
+            elif isinstance(item, six.string_types):
+                if item == 'auto':
+                    return XPU.from_auto(**kwargs)
+                elif item == 'argv':
+                    return XPU.from_argv(check=check, **kwargs)
+                if item == 'cpu' or item is None:
+                    return XPU(None, check=check)
+                elif item == 'cpu' or item is None:
+                    return XPU(None, check=check)
+                else:
+                    item = item.lower()
+                    item = item.replace('=', '')
+                    item = item.replace('cpu', '')
+                    item = item.replace('gpus', '')
+                    item = item.replace('gpu', '')
+                    item = item.replace('cuda', '')
+                    if item == '':
+                        if torch.cuda.is_available():
+                            item = XPU.default_gpu()
+                        else:
+                            item = None
+                    elif ',' in item:
+                        item = list(map(int, item.split(',')))
+                    elif item == 'none':
+                        item = None
+                    else:
+                        item = int(item)
+                    return XPU(item, check=check)
+            else:
+                ValueError
+        except Exception as ex:
+            raise ValueError('cannot cast to XPU. item={!r}. Caused by: {!r}'.format(item, ex))
 
     def __eq__(xpu, other):
         """
@@ -202,7 +369,7 @@ class XPU(ub.NiceRepr):
         """
         if item is None:
             return True
-        elif isinstance(item, int):
+        elif isinstance(item, six.integer_types):
             if item < 0:
                 raise ValueError('gpu num must be positive not {}'.format(item))
             return (torch.cuda.is_available() and
@@ -211,107 +378,6 @@ class XPU(ub.NiceRepr):
             return all(XPU.exists(i) for i in item)
         else:
             raise TypeError(type(item))
-
-    @classmethod
-    def from_data(XPU, item, **kwargs):
-        """
-        Creates an XPU to represent the processing device(s) a Module, Tensor,
-        or Variable currently exists on.
-
-        Example:
-            >>> xpu = XPU.from_data(torch.randn(3))
-            >>> assert not xpu.is_gpu()
-            >>> if torch.cuda.is_available():
-            >>>     xpu = XPU.from_data(torch.randn(3).to('cuda'))
-            >>>     assert xpu.is_gpu()
-            >>>     for i in range(torch.cuda.device_count()):
-            >>>         xpu = XPU.from_data(torch.randn(3).to(i))
-            >>>         assert xpu.is_gpu()
-            >>>         assert xpu._main_device_id == i
-        """
-        if hasattr(item, 'device'):
-            return XPU(item.device)
-        if hasattr(item, 'is_cuda'):
-            if item.is_cuda:
-                return XPU(item.get_device())
-            else:
-                return XPU(None)
-        elif hasattr(item, 'state_dict'):
-            devices = [item.device for item in item.state_dict().values()]
-            _device_ids = set()
-            for device in devices:
-                if device.type == 'cuda':
-                    index = device.index or 0
-                    _device_ids.add(index)
-                else:
-                    _device_ids.add(None)
-            try:
-                _device_ids = sorted(_device_ids)
-            except TypeError:
-                raise Exception('cannot currently mix CPU and GPU')
-            return XPU(_device_ids)
-        else:
-            raise TypeError(type(item))
-
-    of = from_data
-
-    @classmethod
-    def coerce(cls, item, **kwargs):
-        """
-        Converts objects of many different types into an XPU.
-
-        I think I like this name better than cast, not sure
-        """
-        return cls.cast(item, **kwargs)
-
-    @classmethod
-    def cast(xpu, item, **kwargs):
-        """
-        Converts objects of many different types into an XPU.
-
-        Args:
-            item : special string, int, list, or None
-        """
-        if item is None:
-            return XPU(item)
-        elif isinstance(item, XPU):
-            return item
-        elif isinstance(item, _TENSOR_TYPES):
-            return XPU.from_data(item)
-        elif isinstance(item, torch.nn.Module):
-            return XPU.from_data(item)
-        elif isinstance(item, int):
-            return XPU(item)
-        elif isinstance(item, (list, tuple)):
-            return XPU(item)
-        elif isinstance(item, six.string_types):
-            if item == 'auto':
-                return XPU.from_auto(**kwargs)
-            elif item == 'argv':
-                return XPU.from_argv(**kwargs)
-            if item == 'cpu' or item is None:
-                return XPU(None)
-            elif item == 'cpu' or item is None:
-                return XPU(None)
-            else:
-                item = item.lower()
-                item = item.replace('cpu', '')
-                item = item.replace('gpu', '')
-                item = item.replace('cuda', '')
-                if ',' in item:
-                    item = list(map(int, ','.split(item)))
-                if item == '':
-                    if torch.cuda.is_available():
-                        item = XPU.default_gpu()
-                    else:
-                        item = None
-                if item == 'none':
-                    item = None
-                else:
-                    item = int(item)
-                return XPU(item)
-        else:
-            raise ValueError('cannot cast to XPU. item={}'.format(item))
 
     def memory(self):
         """
@@ -350,56 +416,6 @@ class XPU(ub.NiceRepr):
                 info['used'] += gpus[id]['mem_used']
                 info['available'] += gpus[id]['mem_avail']
         return info
-
-    @classmethod
-    def from_auto(XPU, min_memory=NETHARN_MIN_MB):
-        """
-        Determines what a CPU/GPU device to use.
-
-        Args:
-            min_memory (int): min memory needed in bytes to default to GPU.
-                defaults to envvar NETHARN_MIN_MB or 6000
-        """
-        if torch.cuda.is_available():
-            n_available = torch.cuda.device_count()
-            gpu_num = find_unused_gpu(min_memory=min_memory)
-            if gpu_num is None or gpu_num >= n_available:
-                gpu_num = None
-        else:
-            gpu_num = None
-        xpu = XPU(gpu_num)
-        return xpu
-
-    @classmethod
-    def from_argv(XPU, **kwargs):
-        """
-        Respect command line gpu and cpu argument
-
-        CommandLine:
-            python -m netharn.device XPU.from_argv --gpu=0,1
-
-        Example:
-            >>> xpu = XPU.from_argv()
-            >>> print(xpu)
-        """
-        anygpu = ub.argflag('--gpu')
-        if anygpu:
-            gpu_num = XPU.default_gpu()
-        else:
-            gpu_num = ub.argval('--gpu', default=None)
-        if ub.argflag('--cpu'):
-            xpu = XPU(None)
-        elif gpu_num is None:
-            xpu = XPU.from_auto(**kwargs)
-        else:
-            if gpu_num.lower() == 'none':
-                xpu = XPU(None)
-            if isinstance(gpu_num, six.string_types) and ',' in gpu_num:
-                _device_ids = list(map(int, gpu_num.split(',')))
-                xpu = XPU(_device_ids)
-            else:
-                xpu = XPU(int(gpu_num))
-        return xpu
 
     def __str__(xpu):
         return xpu.__nice__()

@@ -1,3 +1,40 @@
+Version 0.2.0
+==============
+* Refactored `netharn.utils` to depend on `kwarray`, `kwimage`, and `kwplot`,
+  this removes a lot of the extra cruft added in `0.1.8`.
+* Can now specify the package zip-file name when deploying.
+* Add option `FitHarn.config['use_tensorboard'] = True` 
+* Add `FitHarn.prepare_epoch` callback.
+* `load_partial_state` now returns dict containing info on which keys were unused
+* `nh.initializers.Pretrained` now returns info dict from `load_partial_state`
+* `nll_focal_loss` now is as fast as `nll_loss` when `focus=0`
+
+
+Version 0.1.8
+==============
+* Backport `ndsampler` Coco-API (PF/IF)
+* Move `Boxes` and `DataFrameLight` from `netharn.util` to `netharn.util.structs` (IF/PF)
+* Enhance `Boxes` and `DataFrameLight` functionality / docs (IF/PF)
+* Add `netharn.util.structs.Detections` (IF/PF)
+# Note: above changes should be reworked to simply depend on ndsampler and kwimage
+* Loss components are now automatically logged when loss is returned as a dict (IF). 
+* Add a small interactive debug interface on `KeyboardInterrupt` (IF)
+* Fix XPU.coerce / XPU.cast when input is multi-gpu
+* Add `draw_clf_on_image` (PF)
+* Add `valign` to `draw_text_on_image` (PF)
+* Add `border` to `draw_text_on_image` (PF)
+* A handful of PF GGR-related commits stashed on my home machine meant for 0.1.7 
+* Add `nh.data.batch_samplers.MatchingSamplerPK` (PF)
+* Add `shift_sat` and `shift_val` to HSV augmenter (PF)
+* Refactor and clean `api.py` (PF)
+* Refactor and clean `netharn.initializers` (PF)
+* Refactor `draw_boxes` and `draw_segments` into `mpl_draw` (IF)
+* Fixed issues with YOLO example (PF)
+* Add `torch_ravel_multi_index` to `nh.util` (PF)
+* Add `arglexmax`, `argmaxima`, `argminima` (IF)
+* Add `util_distributions` (IF)
+
+
 Version 0.1.7
 ==============
 * Modified batch outputs to all use `:g` format (PF)
@@ -82,6 +119,7 @@ Version 0.1.2
 * `nh.Pretrained` initializer now only requires the path to the deploy zip-file. It can figure out which files in the deployment are the weights.
 * `nh.CocoAPI` can now look up images by filename
 * `nh.CocoAPI` can now delete categories by category name
+* 
 
 
 Version 0.1.1

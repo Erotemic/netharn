@@ -1,121 +1,52 @@
-from torch.autograd import Variable
 import numpy as np
 import torch
 import ubelt as ub
-from netharn.util.util_torch import trainable_layers
 
 
-class Initializer(object):
-    """
-    Base class for all netharn initializers
-    """
-    def __call__(self, model, *args, **kwargs):
-        self.forward(model, *args, **kwargs)
-
-    def forward(self, model):
-        """
-        Abstract function that does the initailization
-        """
-        raise NotImplementedError('implement me')
-
-    def history(self):
-        """
-        Initializer methods have histories which are short for algorithms and
-        can be quite long for pretrained models
-        """
-        return None
-
-    def get_initkw(self):
-        """
-        Initializer methods have histories which are short for algorithms and
-        can be quite long for pretrained models
-        """
-        initkw = self.__dict__.copy()
-        # info = {}
-        # info['__name__'] = self.__class__.__name__
-        # info['__module__'] = self.__class__.__module__
-        # info['__initkw__'] = initkw
-        return initkw
-
-    @staticmethod
-    def coerce(config={}, **kw):
-        """
-        Accepts 'init', 'pretrained', 'pretrained_fpath', and 'noli'
-
-        Args:
-            config (dict):
-
-        Returns:
-            Tuple[nh.Initializer, dict]: initializer_ = initializer_cls, kw
-
-        Examples:
-            >>> import netharn as nh
-            >>> print(ub.repr2(nh.Initializer.coerce({'init': 'noop'})))
-            (
-                <class 'netharn.initializers.nninit_base.NoOp'>,
-                {},
-            )
-            >>> config = {
-            ...     'init': 'pretrained',
-            ...     'pretrained_fpath': '/fit/nice/untitled'
-            ... }
-            >>> print(ub.repr2(nh.Initializer.coerce(config)))
-            (
-                <class 'netharn.initializers.nninit_core.Pretrained'>,
-                {'fpath': '/fit/nice/untitled'},
-            )
-            >>> print(ub.repr2(nh.Initializer.coerce({'init': 'kaiming_normal'})))
-            (
-                <class 'netharn.initializers.nninit_core.KaimingNormal'>,
-                {'param': 0},
-            )
-        """
-        import netharn as nh
-        from netharn.api import _update_defaults
-        config = _update_defaults(config, kw)
-
-        pretrained_fpath = config.get('pretrained_fpath', config.get('pretrained', None))
-        config['pretrained_fpath'] = pretrained_fpath
-        config['pretrained'] = pretrained_fpath
-
-        if pretrained_fpath is not None:
-            config['init'] = 'pretrained'
-
-        # ---
-        initializer_ = None
-        if config['init'] == 'kaiming_normal':
-            initializer_ = (nh.initializers.KaimingNormal, {
-                # initialization params should depend on your choice of
-                # nonlinearity in your model. See the Kaiming Paper for details.
-                'param': 1e-2 if config.get('noli', 'relu') == 'leaky_relu' else 0,
-            })
-        elif config['init'] == 'noop':
-            initializer_ = (nh.initializers.NoOp, {})
-        elif config['init'] == 'pretrained':
-            initializer_ = (nh.initializers.Pretrained, {
-                'fpath': ub.truepath(config['pretrained_fpath'])})
-        elif config['init'] == 'cls':
-            # Indicate that the model will initialize itself
-            # We have to trust that the user does the right thing here.
-            pass
-        else:
-            raise KeyError(config['init'])
-        return initializer_
-
-
-_BaseInitializer = Initializer
-
-
-class NoOp(Initializer):
+def trainable_layers(model, names=False):
     """
     Example:
-        >>> from netharn.initializers.nninit_base import *
-        >>> self = NoOp()
-        >>> #info = self.history()
-        >>> #assert info['__name__'] == 'NoOp'
+        >>> import torchvision
+        >>> model = torchvision.models.AlexNet()
+        >>> list(trainable_layers(model, names=True))
     """
-    def forward(self, model):
-        return
+    if names:
+        stack = [('', '', model)]
+        while stack:
+            prefix, basename, item = stack.pop()
+            name = '.'.join([p for p in [prefix, basename] if p])
+            if isinstance(item, torch.nn.modules.conv._ConvNd):
+                yield name, item
+            elif isinstance(item, torch.nn.modules.batchnorm._BatchNorm):
+                yield name, item
+            elif hasattr(item, 'reset_parameters'):
+                yield name, item
+
+            child_prefix = name
+            for child_basename, child_item in list(item.named_children())[::-1]:
+                stack.append((child_prefix, child_basename, child_item))
+    else:
+        queue = [model]
+        while queue:
+            item = queue.pop(0)
+            # TODO: need to put all trainable layer types here
+            # (I think this is just everything with reset_parameters)
+            if isinstance(item, torch.nn.modules.conv._ConvNd):
+                yield item
+            elif isinstance(item, torch.nn.modules.batchnorm._BatchNorm):
+                yield item
+            elif hasattr(item, 'reset_parameters'):
+                yield item
+            # if isinstance(input, torch.nn.modules.Linear):
+            #     yield item
+            # if isinstance(input, torch.nn.modules.Bilinear):
+            #     yield item
+            # if isinstance(input, torch.nn.modules.Embedding):
+            #     yield item
+            # if isinstance(input, torch.nn.modules.EmbeddingBag):
+            #     yield item
+            for child in item.children():
+                queue.append(child)
 
 
 def apply_initializer(input, func, funckw):
@@ -144,12 +75,14 @@ def apply_initializer(input, func, funckw):
         # zero all biases
         input.bias.data.zero_()
 
-    if isinstance(input, (Variable, torch.Tensor)):
+    if isinstance(input, (torch.Tensor)):
         # assert False, ('input is tensor? does this make sense?')
         func(input, **funckw)
         # data = input
     elif isinstance(input, (torch.nn.modules.conv._ConvNd)):
         func(input.weight, **funckw)
+    # elif isinstance(input, (torch.nn.modules.linear.Linear)):
+    #     func(input.weight, **funckw)
     elif isinstance(input, torch.nn.modules.batchnorm._BatchNorm):
         input.reset_parameters()
         # always initialize batch norm weights to 1
@@ -301,7 +234,9 @@ def load_partial_state(model, model_state_dict, initializer=None,
             if verbose > 0:
                 print('Initializing unused keys using {}'.format(initializer))
             for key in self_unset_keys:
-                if key.endswith('.bias'):
+                if key.endswith('.num_batches_tracked'):
+                    pass  # ignore num_batches_tracked
+                elif key.endswith('.bias'):
                     self_state[key].fill_(0)
                 else:
                     initializer(self_state[key])
@@ -310,10 +245,9 @@ def load_partial_state(model, model_state_dict, initializer=None,
             print('Pretrained weights are a perfect fit')
     model.load_state_dict(self_state)
 
-if __name__ == '__main__':
-    """
-    CommandLine:
-        python -m netharn.initializers.nninit_base all
-    """
-    import xdoctest
-    xdoctest.doctest_module(__file__)
+    info = {
+        'seen': seen_keys,
+        'self_unset': self_unset_keys,
+        'other_unused': other_unused_keys
+    }
+    return info

@@ -50,7 +50,8 @@ def test_restart_lr():
         'monitor'    : (nh.Monitor, {'max_epoch': 13}),
     }
     harn = MyHarn(hyper=hyper)
-    harn.config['use_tqdm'] = 0
+    harn.config['prog_backend'] = 'progiter'
+    harn.config['use_tensorboard'] = False
     # Delete previous data
     harn.initialize(reset='delete')
 
@@ -64,7 +65,8 @@ def test_restart_lr():
 
     # Restarting the harness should begin at the same point
     harn = MyHarn(hyper=hyper)
-    harn.config['use_tqdm'] = 0
+    harn.config['prog_backend'] = 'progiter'
+    harn.config['use_tensorboard'] = False
     harn.initialize()
 
     restart_lrs = harn._current_lrs()

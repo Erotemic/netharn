@@ -3,13 +3,13 @@ Modified from:
     https://github.com/ducha-aiki/LSUV-pytorch
 """
 import numpy as np
-import tqdm
 import torch
 import torch.nn.init
 import torch.nn as nn
 import ubelt as ub
 from netharn import util
-from netharn.initializers import nninit_base
+from netharn import api
+from netharn.initializers.functional import trainable_layers
 
 
 def svd_orthonormal(shape, rng=None, cache_key=None):
@@ -54,12 +54,12 @@ def svd_orthonormal(shape, rng=None, cache_key=None):
     return q
 
 
-class Orthonormal(nninit_base._BaseInitializer):
+class Orthonormal(api.Initializer):
     def __init__(self, rng=None):
         self.rng = util.ensure_rng(rng)
 
     def forward(self, model):
-        for name, m in nninit_base.trainable_layers(model, names=True):
+        for name, m in trainable_layers(model, names=True):
             pass
             if isinstance(m, torch.nn.modules.conv._ConvNd) or isinstance(m, nn.Linear):
                 if hasattr(m, 'weight_v'):
@@ -81,7 +81,7 @@ class Orthonormal(nninit_base._BaseInitializer):
         return model
 
 
-class LSUV(nninit_base._BaseInitializer):
+class LSUV(api.Initializer):
     """
     CommandLine:
         python -m netharn.initializers.lsuv LSUV:0
@@ -178,6 +178,7 @@ class LSUV(nninit_base._BaseInitializer):
         return
 
     def forward(self, model, data):
+        import tqdm
         self.gg = {}
         self.gg['hook_position'] = 0
         self.gg['total_fc_conv_layers'] = 0

@@ -13,10 +13,10 @@ class MyHarn(nh.FitHarn):
         harn.xdata = []
         harn.ydata = ub.ddict(list)
 
-    def _run_batch(harn, *a, **kw):
+    def prepare_batch(harn, *a, **kw):
         if harn.epoch == harn.failpoint:
             raise Failpoint
-        return super(MyHarn, harn)._run_batch(*a, **kw)
+        return super(MyHarn, harn).prepare_batch(*a, **kw)
 
     def run_batch(harn, batch):
         loss = torch.rand((1,), requires_grad=True)
@@ -108,7 +108,8 @@ def test_yolo_lr():
         'monitor'    : (nh.Monitor, {'max_epoch': max_epoch}),
     }
     harn = MyHarn(hyper=hyper)
-    harn.config['use_tqdm'] = 0
+    harn.config['prog_backend'] = 'progiter'
+    harn.config['use_tensorboard'] = False
     # Delete previous data
     harn.initialize(reset='delete')
 
@@ -125,7 +126,8 @@ def test_yolo_lr():
 
     # Restarting the harness should begin at the same point
     harn = MyHarn(hyper=hyper)
-    harn.config['use_tqdm'] = 0
+    harn.config['prog_backend'] = 'progiter'
+    harn.config['use_tensorboard'] = False
     harn.initialize()
     harn.xdata = old_harn.xdata
     harn.ydata = old_harn.ydata
@@ -148,7 +150,7 @@ def test_yolo_lr():
 if __name__ == '__main__':
     """
     CommandLine:
-        python ~/code/netharn/tests/test_yolo_lr.py --show
+        python ~/code/netharn/tests/test_yolo_lr.py --show --profile
     """
     # import warnings
     # warnings.filterwarnings('error')

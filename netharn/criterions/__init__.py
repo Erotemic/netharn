@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-mkinit netharn.criterions
+mkinit netharn.criterions -w
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 from torch.nn.modules.loss import CrossEntropyLoss, MSELoss
@@ -16,11 +16,13 @@ from netharn.criterions import triplet
 
 from netharn.criterions.contrastive_loss import (ContrastiveLoss,)
 from netharn.criterions.focal import (ELEMENTWISE_MEAN, FocalLoss,
-                                      nll_focal_loss, one_hot_embedding,)
-from netharn.criterions.triplet import (TripletLoss, all_pairwise_distances,)
+                                      nll_focal_loss,)
+from netharn.criterions.triplet import (TripletLoss, all_pairwise_distances,
+                                        approx_pdist, exact_pdist,
+                                        labels_to_adjacency_matrix,)
 
 __all__ = ['ContrastiveLoss', 'CrossEntropyLoss', 'ELEMENTWISE_MEAN',
            'FocalLoss', 'MSELoss', 'TripletLoss', 'all_pairwise_distances',
-           'contrastive_loss', 'focal', 'nll_focal_loss', 'one_hot_embedding',
-           'triplet']
+           'approx_pdist', 'contrastive_loss', 'exact_pdist', 'focal',
+           'labels_to_adjacency_matrix', 'nll_focal_loss', 'triplet']
 # </AUTOGEN_INIT>

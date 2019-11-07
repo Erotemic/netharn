@@ -1,25 +1,23 @@
-"""
-References:
-    https://github.com/alykhantejani/initializers
-"""
-import ubelt as ub
-from os.path import dirname, exists, join, normpath
-from netharn import util
-import torch
 import six
-from netharn.initializers import nninit_base
+import torch
+import ubelt as ub
+from os.path import dirname
+from os.path import exists
+from os.path import join
+from os.path import normpath
+from netharn import api
+from netharn.initializers.functional import load_partial_state
 
 
-class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
+class Pretrained(api.Initializer, ub.NiceRepr):
     """
     Attributes:
         fpath (str): location of the pretrained weights file
-        initializer (_BaseInitializer): backup initializer if the weights can
+        initializer (netharn.Initializer): backup initializer if the weights can
             only be partially applied
         info (dict, optional): specify explicit history info
 
     Example:
-        >>> from netharn.initializers.nninit_core import *
         >>> from netharn.models import toynet
         >>> from os.path import join
         >>> model1 = toynet.ToyNet2d()
@@ -34,8 +32,8 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
     def __init__(self, fpath, initializer=None, info=None):
         self.fpath = fpath
         if isinstance(initializer, six.string_types):
-            from netharn import initializers
-            initializer = getattr(initializers, initializer)()
+            initializer_ = api.Initializer.coerce(initializer=initializer)
+            initializer = initializer_[0](**initializer_[1])
         self.initializer = initializer
         self.info = info
 
@@ -64,12 +62,17 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
             fpath = join(self.fpath, candidates[0])
         return fpath
 
-    def forward(self, model, verbose=2):
+    def _load_model_state(self, xpu=None):
+        """
+        Load the model state from a path or from within a zipfile
+        """
+        import netharn as nh
         from netharn import XPU
-        xpu = XPU.from_data(model)
-        # model_state_dict = xpu.load(self.fpath)
         if self.fpath is None:
             raise ValueError('Pretrained fpath is None!')
+
+        if xpu is None:
+            xpu = XPU.coerce('cpu')
 
         # Handle torch deployment zipfiles
         if exists(self.fpath) and self.fpath.endswith('.zip'):
@@ -78,10 +81,19 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
             fpath = self.fpath
 
         try:
-            model_state_dict = xpu.load(util.zopen(fpath, 'rb', seekable=True))
+            file = nh.util.zopen(fpath, 'rb', seekable=True)
+            model_state_dict = xpu.load(file)
         except Exception:
             print('Failed to open fpath = {!r}'.format(fpath))
             raise
+        return model_state_dict
+
+    def forward(self, model, verbose=2):
+        from netharn import XPU
+        xpu = XPU.from_data(model)
+
+        # model_state_dict = xpu.load(self.fpath)
+        model_state_dict = self._load_model_state(xpu=xpu)
 
         if 'model_state_dict' in model_state_dict:
             model_state_dict = model_state_dict['model_state_dict']
@@ -99,9 +111,10 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
                     ))
         # Remove any DataParallel / DataSerial
         raw_model = xpu.raw(model)
-        nninit_base.load_partial_state(raw_model, model_state_dict,
-                                       initializer=self.initializer,
-                                       verbose=verbose)
+        info = load_partial_state(raw_model, model_state_dict,
+                                  initializer=self.initializer,
+                                  verbose=verbose)
+        return info
 
     def history(self):
         """
@@ -137,91 +150,3 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
         else:
             info = self.info
         return info
-
-
-class Orthogonal(nninit_base._BaseInitializer):
-    """
-    Same as HeNormal, but uses pytorch implementation
-
-    Example:
-        >>> from netharn.initializers.nninit_core import *
-        >>> from netharn.models import toynet
-        >>> self = Orthogonal()
-        >>> model = toynet.ToyNet2d()
-        >>> try:
-        >>>     self(model)
-        >>> except RuntimeError:
-        >>>     import pytest
-        >>>     pytest.skip('geqrf: Lapack probably not availble')
-        >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
-        >>> self(layer)
-    """
-    def __init__(self, gain=1):
-        self.gain = gain
-
-    def forward(self, model):
-        try:
-            func = torch.nn.init.orthogonal_
-        except AttributeError:
-            func = torch.nn.init.orthogonal
-
-        nninit_base.apply_initializer(model, func, self.__dict__)
-
-
-class KaimingUniform(nninit_base._BaseInitializer):
-    """
-    Same as HeNormal, but uses pytorch implementation
-
-    Example:
-        >>> from netharn.initializers.nninit_core import *
-        >>> from netharn.models import toynet
-        >>> self = KaimingUniform()
-        >>> model = toynet.ToyNet2d()
-        >>> self(model)
-        >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
-        >>> self(layer)
-    """
-    def __init__(self, param=0, mode='fan_in'):
-        self.a = param
-        self.mode = mode
-
-    def forward(self, model):
-        try:
-            func = torch.nn.init.kaiming_uniform_
-        except AttributeError:
-            func = torch.nn.init.kaiming_uniform
-        nninit_base.apply_initializer(model, func, self.__dict__)
-
-
-class KaimingNormal(nninit_base._BaseInitializer):
-    """
-    Same as HeNormal, but uses pytorch implementation
-
-    Example:
-        >>> from netharn.initializers.nninit_core import *
-        >>> from netharn.models import toynet
-        >>> self = KaimingNormal()
-        >>> model = toynet.ToyNet2d()
-        >>> self(model)
-        >>> layer = torch.nn.modules.Conv2d(3, 3, 3)
-        >>> self(layer)
-    """
-    def __init__(self, param=0, mode='fan_in'):
-        self.a = param
-        self.mode = mode
-
-    def forward(self, model):
-        try:
-            func = torch.nn.init.kaiming_normal_
-        except AttributeError:
-            func = torch.nn.init.kaiming_normal
-        nninit_base.apply_initializer(model, func, self.__dict__)
-
-
-if __name__ == '__main__':
-    """
-    CommandLine:
-        python -m netharn.initializers.nninit_core all
-    """
-    import xdoctest
-    xdoctest.doctest_module(__file__)

@@ -1,7 +1,9 @@
 """
-TODO: Implement algorithm from dlib
-http://blog.dlib.net/2018/02/automatic-learning-rate-scheduling-that.html
+Class for monitoring performance on validation data.
 
+TODO:
+    - [ ] Implement algorithm from dlib
+    http://blog.dlib.net/2018/02/automatic-learning-rate-scheduling-that.html
 """
 from netharn import util
 import itertools as it
@@ -47,7 +49,7 @@ class Monitor(object):
         >>> monitor = Monitor(minimize=['loss'], maximize=['miou'], smoothing=.6)
         >>> for epoch, (loss, miou) in enumerate(zip(losses, mious)):
         >>>     monitor.update(epoch, {'loss': loss, 'miou': miou})
-        >>> # xdoc: +REQUIRES(--show)
+        >>> # xdoctest: +REQUIRES(--show)
         >>> monitor.show()
     """
 
@@ -94,14 +96,14 @@ class Monitor(object):
         Draws the monitored metrics using matplotlib
         """
         import matplotlib.pyplot as plt
-        from netharn import util
+        import kwplot
         import pandas as pd
         smooth_ydatas = pd.DataFrame.from_dict(monitor._smooth_metrics).to_dict('list')
         raw_ydatas = pd.DataFrame.from_dict(monitor._raw_metrics).to_dict('list')
         keys = monitor.minimize + monitor.maximize
-        pnum_ = util.PlotNums(nSubplots=len(keys))
+        pnum_ = kwplot.PlotNums(nSubplots=len(keys))
         for i, key in enumerate(keys):
-            util.multi_plot(
+            kwplot.multi_plot(
                 monitor._epochs, {'raw ' + key: raw_ydatas[key],
                                   'smooth ' + key: smooth_ydatas[key]},
                 xlabel='epoch', ylabel=key, pnum=pnum_[i], fnum=1,

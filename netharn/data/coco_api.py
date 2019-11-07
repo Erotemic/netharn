@@ -22,7 +22,7 @@ Dataset Spec:
                 'id': int,
                 'image_id': int,
                 'category_id': int,
-                'bbox': [tl_x, tl_y, w, h],  # optional (tlwh / xywh format)
+                'bbox': [tl_x, tl_y, w, h],  # optional (xywh format)
             },
             ...
         ],
@@ -41,14 +41,13 @@ from os.path import splitext
 from os.path import basename
 from os.path import join
 from collections import OrderedDict
+from six.moves import cStringIO as StringIO
 import json
 import numpy as np
 import ubelt as ub
 import six
 import itertools as it
-from six.moves import cStringIO as StringIO
 import copy
-from netharn import util
 
 __all__ = [
     'CocoDataset',
@@ -251,12 +250,12 @@ class Annots(ObjectList1D):
     @property
     def boxes(self):
         """
-        Returns netharn-style boxes
+        Returns netharn style boxes
 
         Example:
             >>> self = CocoDataset.demo().annots([1, 2, 11])
             >>> print(self.boxes)
-            <Boxes(tlwh,
+            <Boxes(xywh,
                 array([[ 10,  10, 360, 490],
                        [350,   5, 130, 290],
                        [124,  96,  45,  18]]))>
@@ -274,7 +273,7 @@ class Annots(ObjectList1D):
         Example:
             >>> self = CocoDataset.demo().annots([1, 2, 11])
             >>> print(self.boxes)
-            <Boxes(tlwh,
+            <Boxes(xywh,
                 array([[ 10,  10, 360, 490],
                        [350,   5, 130, 290],
                        [124,  96,  45,  18]]))>
@@ -444,74 +443,136 @@ class MixinCocoExtras(object):
                 hash, which can speed up computation. Defaults to True.
             verbose (int): verbosity level
 
-        CommandLine:
-            xdoctest -m netharn.data.coco_api MixinCocoExtras._build_hashid
-
-        Ignore:
-            >>> # IGNORE_DOCTEST
+        Example:
             >>> self = CocoDataset.demo()
-            >>> self._build_hashid(hash_pixels=True)
-            >>> print(ub.repr2(self.hashid_parts))
-            >>> print(self.hashid)
-            c9c3e3c185ea...
-        """
-        hashid_parts = ub.odict()
+            >>> self._build_hashid(hash_pixels=True, verbose=3)
+            ...
+            >>> print('self.hashid_parts = ' + ub.repr2(self.hashid_parts))
+            >>> print('self.hashid = {!r}'.format(self.hashid))
+            self.hashid_parts = {
+                'annotations': {
+                    'json': 'c6e2a55613b...',
+                    'num': 11,
+                },
+                'images': {
+                    'pixels': '67d741fefc8...',
+                    'json': 'd52eeb0c4...',
+                    'num': 3,
+                },
+                'categories': {
+                    'json': '9a92615e2b...',
+                    'num': 7,
+                },
+            }
+            self.hashid = 'b45256273...
 
-        gids = sorted(self.imgs.keys())
-        aids = sorted(self.anns.keys())
-        cids = sorted(self.cats.keys())
+        Doctest:
+            >>> self = CocoDataset.demo()
+            >>> self._build_hashid(hash_pixels=True, verbose=3)
+            >>> self.hashid_parts
+            >>> # Test that when we modify the dataset only the relevant
+            >>> # hashid parts are recomputed.
+            >>> orig = self.hashid_parts['categories']['json']
+            >>> self.add_category('foobar')
+            >>> assert 'categories' not in self.hashid_parts
+            >>> self.hashid_parts
+            >>> self.hashid_parts['images']['json'] = 'should not change'
+            >>> self._build_hashid(hash_pixels=True, verbose=3)
+            >>> assert self.hashid_parts['categories']['json']
+            >>> assert self.hashid_parts['categories']['json'] != orig
+            >>> assert self.hashid_parts['images']['json'] == 'should not change'
+        """
+        # Construct nested container that we will populate with hashable
+        # info corresponding to each type of data that we track.
+        hashid_parts = self.hashid_parts
+        if hashid_parts is None:
+            hashid_parts = OrderedDict()
+
+        # Ensure hashid_parts has the proper root structure
+        parts = ['annotations', 'images', 'categories']
+        for part in parts:
+            if not hashid_parts.get(part, None):
+                hashid_parts[part] = OrderedDict()
+
+        rebuild_parts = []
+        reuse_parts = []
+
+        gids = None
         if hash_pixels:
-            gpaths = [join(self.img_root, gname)
-                      for gname in self.images(gids)._lookup('file_name')]
-            gpath_sha512s = [
-                ub.hash_file(gpath, hasher='sha512')
-                for gpath in ub.ProgIter(gpaths, desc='hashing images',
-                                         verbose=verbose)
-            ]
-            hashid_parts['image_data'] = ub.hash_data(gpath_sha512s)
+            if not hashid_parts['images'].get('pixels', None):
+                gids = sorted(self.imgs.keys())
+                gpaths = [join(self.img_root, gname)
+                          for gname in self.images(gids)._lookup('file_name')]
+                gpath_sha512s = [
+                    ub.hash_file(gpath, hasher='sha512')
+                    for gpath in ub.ProgIter(gpaths, desc='hashing images',
+                                             verbose=verbose)
+                ]
+                hashid_parts['images']['pixels'] = ub.hash_data(gpath_sha512s)
+                rebuild_parts.append('images.pixels')
+            else:
+                reuse_parts.append('images.pixels')
 
         # Hash individual components
         with ub.Timer(label='hash coco parts', verbose=verbose > 1):
-            # Dumping annots to json takes the lonest amount of time
+            # Dumping annots to json takes the longest amount of time
             # However, its faster than hashing the data directly
-            """
-            if False:
-                import ubelt as ub
-                for timer in ub.Timerit(20, bestof=5, label='organize'):
-                    with timer:
-                        anns_ordered = [sorted(self.anns[aid].items()) for aid in aids]
-
-                from collections import OrderedDict
-                import ubelt as ub
-                for timer in ub.Timerit(20, bestof=3, label='organize-alt'):
-                    with timer:
-                        anns_ordered = [self.anns[aid] for aid in aids]
-                        anns_ordered = [list(ann.items()) if isinstance(ann, ub.odict) else sorted(ann.items()) for ann in anns_ordered]
-                with ub.Timer('to_json'):
-                    anns_text = json.dumps(anns_ordered)
-                with ub.Timer('alt_hash'):
-                    ub.hash_data(anns_ordered)
-            """
             def _ditems(d):
                 # return sorted(d.items())
                 return list(d.items()) if isinstance(d, OrderedDict) else sorted(d.items())
-            _anns_ordered = (self.anns[aid] for aid in aids)
-            anns_ordered = [_ditems(ann) for ann in _anns_ordered]
-            anns_text = json.dumps(anns_ordered)
-            hashid_parts['annotations'] = ub.hash_data(anns_text)
-            hashid_parts['images']  = ub.hash_data(json.dumps([
-                _ditems(self.imgs[gid]) for gid in gids]))
-            hashid_parts['categories'] = ub.hash_data(json.dumps([
-                _ditems(self.cats[cid]) for cid in cids]))
 
-        hashid_parts['n_anns'] = len(aids)
-        hashid_parts['n_imgs'] = len(gids)
-        hashid_parts['n_cats'] = len(cids)
+            if not hashid_parts['annotations'].get('json', None):
+                aids = sorted(self.anns.keys())
+                _anns_ordered = (self.anns[aid] for aid in aids)
+                anns_ordered = [_ditems(ann) for ann in _anns_ordered]
+                anns_text = json.dumps(anns_ordered)
+                hashid_parts['annotations']['json'] = ub.hash_data(anns_text, hasher='sha512')
+                hashid_parts['annotations']['num'] = len(aids)
+                rebuild_parts.append('annotations.json')
+            else:
+                reuse_parts.append('annotations.json')
+
+            if not hashid_parts['images'].get('json', None):
+                if gids is None:
+                    gids = sorted(self.imgs.keys())
+                imgs_text = json.dumps([_ditems(self.imgs[gid]) for gid in gids])
+                hashid_parts['images']['json'] = ub.hash_data(imgs_text, hasher='sha512')
+                hashid_parts['images']['num'] = len(gids)
+                rebuild_parts.append('images.json')
+            else:
+                reuse_parts.append('images.json')
+
+            if not hashid_parts['categories'].get('json', None):
+                cids = sorted(self.cats.keys())
+                cats_text = json.dumps([_ditems(self.cats[cid]) for cid in cids])
+                hashid_parts['categories']['json'] = ub.hash_data(cats_text, hasher='sha512')
+                hashid_parts['categories']['num'] = len(cids)
+                rebuild_parts.append('categories.json')
+            else:
+                reuse_parts.append('categories.json')
+
+        if verbose > 1:
+            if reuse_parts:
+                print('Reused hashid_parts: {}'.format(reuse_parts))
+                print('Rebuilt hashid_parts: {}'.format(rebuild_parts))
 
         hashid = ub.hash_data(hashid_parts)
         self.hashid = hashid
         self.hashid_parts = hashid_parts
         return hashid
+
+    def _invalidate_hashid(self, parts=None):
+        """
+        Called whenever the coco dataset is modified. It is possible to specify
+        which parts were modified so unmodified parts can be reused next time
+        the hash is constructed.
+        """
+        self.hashid = None
+        if parts is not None and self.hashid_parts is not None:
+            for part in parts:
+                self.hashid_parts.pop(part, None)
+        else:
+            self.hashid_parts = None
 
     def _ensure_imgsize(self, verbose=1):
         """
@@ -587,8 +648,6 @@ class MixinCocoExtras(object):
             >>> graph = self.category_graph()
 
             import graphid
-            import netharn as nh
-            nh.util.autompl()
             graphid.util.show_nx(graph)
         """
         import networkx as nx
@@ -716,7 +775,8 @@ class MixinCocoExtras(object):
         if rebuild:
             self._build_index()
         else:
-            del self.index[:]
+            self.index.clear()
+        self._invalidate_hashid()
 
     def _aspycoco(self):
         # Converts to the official pycocotools.coco.COCO object
@@ -847,10 +907,10 @@ class MixinCocoStats(object):
             >>> self = CocoDataset.demo()
             >>> print(ub.repr2(self.extended_stats()))
         """
-        from netharn import util
         def mapping_stats(xid_to_yids):
+            import netharn as nh
             n_yids = list(ub.map_vals(len, xid_to_yids).values())
-            return util.stats_dict(n_yids, n_extreme=True)
+            return nh.util.stats_dict(n_yids, n_extreme=True)
         return ub.odict([
             ('annots_per_img', mapping_stats(self.gid_to_aids)),
             # ('cats_per_img', mapping_stats(self.cid_to_gids)),
@@ -902,10 +962,6 @@ class MixinCocoDraw(object):
             aids (list): aids to highlight within the image
             aid (int): a specific aid to focus on. If gid is not give,
                 look up gid based on this aid.
-
-        Ignore:
-            >>> import netharn as nh
-            >>> nh.util.autompl()
         """
         import matplotlib as mpl
         from matplotlib import pyplot as plt
@@ -1013,7 +1069,8 @@ class MixinCocoAddRemove(object):
 
         Example:
             >>> self = CocoDataset.demo()
-            >>> gname = util.grab_test_image_fpath('paraview')
+            >>> import netharn as nh
+            >>> gname = nh.util.grab_test_image_fpath('paraview')
             >>> gid = self.add_image(gname)
             >>> assert self.imgs[gid]['file_name'] == gname
         """
@@ -1028,6 +1085,7 @@ class MixinCocoAddRemove(object):
         img.update(**kw)
         self.dataset['images'].append(img)
         self.index._add_image(gid, img)
+        self._invalidate_hashid()
         return gid
 
     def add_annotation(self, gid, cid, bbox=None, aid=None, **kw):
@@ -1058,13 +1116,15 @@ class MixinCocoAddRemove(object):
         ann['image_id'] = int(gid)
         ann['category_id'] = int(cid)
         if bbox:
-            if isinstance(bbox, util.Boxes):
+            import netharn as nh
+            if isinstance(bbox, nh.util.Boxes):
                 bbox = bbox.to_xywh().data.tolist()
             ann['bbox'] = bbox
         # assert not set(kw).intersection(set(ann))
         ann.update(**kw)
         self.dataset['annotations'].append(ann)
         self.index._add_annotation(aid, gid, cid, ann)
+        self._invalidate_hashid(['annotations'])
         return aid
 
     def add_annotations(self, anns):
@@ -1084,6 +1144,7 @@ class MixinCocoAddRemove(object):
         """
         self.dataset['annotations'].extend(anns)
         self.index._add_annotations(anns)
+        self._invalidate_hashid(['annotations'])
 
     def add_images(self, imgs):
         """
@@ -1100,6 +1161,7 @@ class MixinCocoAddRemove(object):
         """
         self.dataset['images'].extend(imgs)
         self.index._add_images(imgs)
+        self._invalidate_hashid(['images'])
 
     def add_category(self, name, supercategory=None, cid=None):
         """
@@ -1142,6 +1204,7 @@ class MixinCocoAddRemove(object):
 
         # And add to the indexes
         index._add_category(cid, name, cat)
+        self._invalidate_hashid(['categories'])
         return cid
 
     def clear_images(self):
@@ -1154,9 +1217,12 @@ class MixinCocoAddRemove(object):
             >>> print(ub.repr2(self.basic_stats(), nobr=1, nl=0, si=1))
             n_anns: 0, n_imgs: 0, n_cats: 7
         """
+        # self.dataset['images'].clear()
+        # self.dataset['annotations'].clear()
         del self.dataset['images'][:]
         del self.dataset['annotations'][:]
         self.index._remove_all_images()
+        self._invalidate_hashid(['images', 'annotations'])
 
     def clear_annotations(self):
         """
@@ -1168,8 +1234,10 @@ class MixinCocoAddRemove(object):
             >>> print(ub.repr2(self.basic_stats(), nobr=1, nl=0, si=1))
             n_anns: 0, n_imgs: 3, n_cats: 7
         """
+        # self.dataset['annotations'].clear()
         del self.dataset['annotations'][:]
         self.index._remove_all_annotations()
+        self._invalidate_hashid(['annotations'])
 
     remove_all_images = clear_images
     remove_all_annotations = clear_annotations
@@ -1192,6 +1260,7 @@ class MixinCocoAddRemove(object):
         remove_ann = self._resolve_to_ann(aid_or_ann)
         self.dataset['annotations'].remove(remove_ann)
         self.index.clear()
+        self._invalidate_hashid(['annotations'])
 
     def remove_annotations(self, aids_or_anns, verbose=0):
         """
@@ -1200,6 +1269,9 @@ class MixinCocoAddRemove(object):
         Args:
             anns_or_aids (List): list of annotation dicts or ids
 
+        Returns:
+            Dict: num_removed: information on the number of items removed
+
         Example:
             >>> self = CocoDataset.demo()
             >>> aids_or_anns = [self.anns[2], 3, 4, self.anns[1]]
@@ -1207,6 +1279,7 @@ class MixinCocoAddRemove(object):
             >>> assert len(self.dataset['annotations']) == 7
             >>> self._check_index()
         """
+        remove_info = {'annotations': None}
         # Do nothing if given no input
         if aids_or_anns:
             # build mapping from aid to index O(n)
@@ -1216,15 +1289,18 @@ class MixinCocoAddRemove(object):
                 for index, ann in enumerate(self.dataset['annotations'])
             }
             remove_aids = list(map(self._resolve_to_id, aids_or_anns))
+            remove_info['annotations'] = len(remove_aids)
 
             # Lookup the indices to remove, sort in descending order
             if verbose > 1:
-                print('Removing annotations')
+                print('Removing {} annotations'.format(len(remove_aids)))
 
             remove_idxs = list(ub.take(aid_to_index, remove_aids))
             delitems(self.dataset['annotations'], remove_idxs)
 
             self.index._remove_annotations(remove_aids, verbose=verbose)
+            self._invalidate_hashid(['annotations'])
+        return remove_info
 
     def remove_categories(self, cids_or_cats, verbose=0):
         """
@@ -1234,6 +1310,9 @@ class MixinCocoAddRemove(object):
         Args:
             cids_or_cats (List): list of category dicts, names, or ids
 
+        Returns:
+            Dict: num_removed: information on the number of items removed
+
         Example:
             >>> self = CocoDataset.demo()
             >>> cids_or_cats = [self.cats[1], 'rocket', 3]
@@ -1241,6 +1320,7 @@ class MixinCocoAddRemove(object):
             >>> assert len(self.dataset['categories']) == 4
             >>> self._check_index()
         """
+        remove_info = {'annotations': None, 'categories': None}
         if cids_or_cats:
 
             if verbose > 1:
@@ -1255,10 +1335,12 @@ class MixinCocoAddRemove(object):
                 remove_aids = [ann['id'] for ann in self.dataset['annotations']
                                if ann['category_id'] in remove_cids]
 
-            self.remove_annotations(remove_aids, verbose=verbose)
+            rminfo = self.remove_annotations(remove_aids, verbose=verbose)
+            remove_info.update(rminfo)
 
+            remove_info['categories'] = len(remove_cids)
             if verbose > 1:
-                print('Removing category entries')
+                print('Removing {} category entries'.format(len(remove_cids)))
             cid_to_index = {
                 cat['id']: index
                 for index, cat in enumerate(self.dataset['categories'])
@@ -1268,6 +1350,9 @@ class MixinCocoAddRemove(object):
             delitems(self.dataset['categories'], remove_idxs)
 
             self.index._remove_categories(remove_cids, verbose=verbose)
+            self._invalidate_hashid(['categories', 'annotations'])
+
+        return remove_info
 
 
 class CocoIndex(object):
@@ -1560,21 +1645,29 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                 'info': [],
             }
         if isinstance(data, six.string_types):
+            # HACK: rework this
             fpath = data
             key = basename(fpath).split('.')[0]
             data = json.load(open(fpath, 'r'))
             if tag is None:
                 tag = key
-            if img_root is None:
-                img_root = join('.', key)
+            # if img_root is None:
+            #     img_root = join('.', key)
         else:
             if not isinstance(data, dict):
                 raise TypeError('data must be a dict or path to json file')
 
         if img_root is None:
-            img_root = '.'
+            if 'img_root' in data:
+                # allow image root to be specified in the dataset
+                img_root = data['img_root']
+            else:
+                img_root = '.'
 
         self.index = CocoIndex()
+
+        self.hashid = None
+        self.hashid_parts = None
 
         self.tag = tag
         self.dataset = data
@@ -1746,6 +1839,37 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         assert self.index.file_name_to_img == new.index.file_name_to_img
         return True
 
+    def _check_pointers(self, verbose=1):
+        """
+        Check that all category and image ids referenced by annotations exist
+        """
+        if not self.index:
+            raise Exception('Build index before running pointer check')
+        errors = []
+        annots = self.dataset['annotations']
+        iter_ = ub.ProgIter(annots, desc='check annots', enabled=verbose)
+        for ann in iter_:
+            aid = ann['id']
+            cid = ann['category_id']
+            gid = ann['image_id']
+
+            if cid not in self.cats:
+                errors.append('aid={} references bad cid={}'.format(aid, cid))
+            else:
+                if self.cats[cid]['id'] != cid:
+                    errors.append('cid={} has a bad index'.format(cid))
+
+            if gid not in self.imgs:
+                errors.append('aid={} references bad gid={}'.format(aid, gid))
+            else:
+                if self.imgs[gid]['id'] != gid:
+                    errors.append('gid={} has a bad index'.format(gid))
+        if errors:
+            raise Exception('\n'.join(errors))
+        elif verbose:
+            print('Pointers are consistent')
+        return True
+
     def _build_index(self):
         self.index.build(self)
 
@@ -1851,10 +1975,15 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         merged = _coco_union(relative_dsets)
         return CocoDataset(merged, **kw)
 
-    def subset(self, gids):
+    def subset(self, gids, copy=False):
         """
         Return a subset of the larger coco dataset by specifying which images
         to port. All annotations in those images will be taken.
+
+        Args:
+            gids (List[int]): image-ids to copy into a new dataset
+            copy (bool, default=False): if True, makes a deep copy of
+                all nested attributes, otherwise makes a shallow copy.
 
         Example:
             >>> self = CocoDataset.demo()
@@ -1886,6 +2015,10 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         new_dataset['annotations'] = list(ub.take(self.anns, sub_aids))
         new_dataset['images'] = list(ub.take(self.imgs, gids))
 
+        if copy:
+            from copy import deepcopy
+            new_dataset = deepcopy(new_dataset)
+
         sub_dset = CocoDataset(new_dataset, img_root=self.img_root)
         return sub_dset
 
@@ -1907,14 +2040,25 @@ def demo_coco_data():
     """
     Simple data for testing
     """
-    gpath1 = util.grab_test_image_fpath('astro')
-    gpath2 = util.grab_test_image_fpath('carl')
-    gpath3 = util.grab_test_image_fpath('stars')
+    import netharn as nh
+    gpath1 = nh.util.grab_test_image_fpath('astro')
+    gpath2 = nh.util.grab_test_image_fpath('carl')
+    gpath3 = nh.util.grab_test_image_fpath('stars')
     # gpath1 = ub.grabdata('https://i.imgur.com/KXhKM72.png')
     # gpath2 = ub.grabdata('https://i.imgur.com/flTHWFD.png')
     # gpath3 = ub.grabdata('https://i.imgur.com/kCi7C1r.png')
 
+    from os.path import commonprefix, relpath
+    img_root = commonprefix([gpath1, gpath2, gpath3])
+
+    # Make file names relative for consistent testing purpose
+    gname1 = relpath(gpath1, img_root)
+    gname2 = relpath(gpath2, img_root)
+    gname3 = relpath(gpath3, img_root)
+
     dataset = {
+        'img_root': img_root,
+
         'categories': [
             {'id': 1, 'name': 'astronaut', 'supercategory': 'human'},
             {'id': 2, 'name': 'rocket', 'supercategory': 'object'},
@@ -1925,9 +2069,9 @@ def demo_coco_data():
             {'id': 7, 'name': 'astroturf', 'supercategory': 'object'},
         ],
         'images': [
-            {'id': 1, 'file_name': gpath1},
-            {'id': 2, 'file_name': gpath2},
-            {'id': 3, 'file_name': gpath3},
+            {'id': 1, 'file_name': gname1},
+            {'id': 2, 'file_name': gname2},
+            {'id': 3, 'file_name': gname3},
         ],
         'annotations': [
             {'id': 1, 'image_id': 1, 'category_id': 1,

@@ -13,7 +13,7 @@ class Reshape(torch.nn.Module, util.ModuleMixin):
     Args:
         *shape: same ars that would be passed to view.
             if an item in shape is None it means that the output
-            shape should keep the input shap value in that dimension
+            shape should keep the input shape value in that dimension
 
     Example:
         >>> import netharn as nh

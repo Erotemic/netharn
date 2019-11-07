@@ -1,3 +1,11 @@
+"""
+Originally by EAVISE
+
+Note: my alternative implementation of region_loss is in netharn/dev/ somewhere.
+I probably should test if that is faster / more correct and them perhaps use
+that instead.
+
+"""
 import math
 import torch
 import torch.nn as nn
@@ -61,6 +69,9 @@ class RegionLoss(BaseLossWithCudaState):
         self.object_scale = object_scale
         self.class_scale = class_scale
         self.thresh = thresh
+
+        self.mse = nn.MSELoss(reduction='sum')
+        self.clf = nn.CrossEntropyLoss(reduction='sum')
 
     # def extra_repr(self):
     #     repr_str = 'classes={self.num_classes}, reduction={self.reduction}, threshold={self.thresh}, seen={self.seen.item()}\n'
@@ -221,13 +232,11 @@ class RegionLoss(BaseLossWithCudaState):
         conf_ = conf.view(conf_mask.shape)
 
         # Compute losses
-        mse = nn.MSELoss(size_average=False)
-        self.loss_coord = self.coord_scale * \
-            mse(coord_ * coord_mask, tcoord * coord_mask) / nB
-        self.loss_conf = mse(conf_ * conf_mask, tconf * conf_mask) / nB
+        self.loss_coord = self.coord_scale * (
+            self.mse(coord_ * coord_mask, tcoord * coord_mask) / nB)
+        self.loss_conf = self.mse(conf_ * conf_mask, tconf * conf_mask) / nB
         if nC > 1:
-            self.loss_cls = self.class_scale * 2 * \
-                nn.CrossEntropyLoss(size_average=False)(cls_, tcls) / nB
+            self.loss_cls = self.class_scale * 2 * (self.clf(cls_, tcls) / nB)
             self.loss_tot = self.loss_coord + self.loss_conf + self.loss_cls
         else:
             self.loss_cls = None

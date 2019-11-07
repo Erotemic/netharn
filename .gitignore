@@ -113,3 +113,5 @@ profile_output.*
 
 src/
 _skbuild
+
+.idea/*

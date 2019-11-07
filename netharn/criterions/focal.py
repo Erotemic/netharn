@@ -2,92 +2,14 @@
 import torch  # NOQA
 import torch.nn.functional as F
 import torch.nn.modules
-import numpy as np
 from packaging import version
+import kwarray
 
 
 if version.parse(torch.__version__) < version.parse('1.0.0'):
     ELEMENTWISE_MEAN = 'elementwise_mean'
 else:
     ELEMENTWISE_MEAN = 'mean'
-
-
-def one_hot_embedding(labels, num_classes, dim=1):
-    """
-    Embedding labels to one-hot form.
-
-    Args:
-      labels: (LongTensor) class labels, sized [N,].
-      num_classes: (int) number of classes.
-
-    Returns:
-      (tensor) encoded labels, sized [N,#classes].
-
-    References:
-        https://discuss.pytorch.org/t/convert-int-into-one-hot-format/507/4
-
-    CommandLine:
-        python -m netharn.loss one_hot_embedding
-
-    Example:
-        >>> # each element in target has to have 0 <= value < C
-        >>> labels = torch.LongTensor([0, 0, 1, 4, 2, 3])
-        >>> num_classes = max(labels) + 1
-        >>> t = one_hot_embedding(labels, num_classes)
-        >>> assert all(row[y] == 1 for row, y in zip(t.numpy(), labels.numpy()))
-        >>> import ubelt as ub
-        >>> print(ub.repr2(t.numpy().tolist()))
-        [
-            [1.0, 0.0, 0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0, 0.0],
-        ]
-        >>> t2 = one_hot_embedding(labels.numpy(), num_classes)
-        >>> assert np.all(t2 == t.numpy())
-        >>> if torch.cuda.is_available():
-        >>>     t3 = one_hot_embedding(labels.to(0), num_classes)
-        >>>     assert np.all(t3.cpu().numpy() == t.numpy())
-
-    Example:
-        >>> nC = num_classes = 3
-        >>> labels = (torch.rand(10, 11, 12) * nC).long()
-        >>> assert one_hot_embedding(labels, nC, dim=0).shape == (3, 10, 11, 12)
-        >>> assert one_hot_embedding(labels, nC, dim=1).shape == (10, 3, 11, 12)
-        >>> assert one_hot_embedding(labels, nC, dim=2).shape == (10, 11, 3, 12)
-        >>> assert one_hot_embedding(labels, nC, dim=3).shape == (10, 11, 12, 3)
-        >>> labels = (torch.rand(10, 11) * nC).long()
-        >>> assert one_hot_embedding(labels, nC, dim=0).shape == (3, 10, 11)
-        >>> assert one_hot_embedding(labels, nC, dim=1).shape == (10, 3, 11)
-        >>> labels = (torch.rand(10) * nC).long()
-        >>> assert one_hot_embedding(labels, nC, dim=0).shape == (3, 10)
-        >>> assert one_hot_embedding(labels, nC, dim=1).shape == (10, 3)
-    """
-    # if True:
-    if torch.is_tensor(labels):
-        in_dims = labels.ndimension()
-        if dim == 1 and in_dims == 1:
-            # normal case where everything is already flat
-            y = torch.eye(int(num_classes), device=labels.device)
-            y_onehot = y[labels]
-        else:
-            # non-flat case (note that this would handle the normal case, but
-            # why do extra work?)
-            y = torch.eye(int(num_classes), device=labels.device)
-            flat_y_onehot = y[labels.view(-1)]
-            y_onehot = flat_y_onehot.view(*list(labels.shape) + [num_classes])
-            if dim != in_dims:
-                dim_order = list(range(in_dims))
-                dim_order.insert(dim, in_dims)
-                y_onehot = y_onehot.permute(*dim_order)
-    else:
-        if dim != 1 or labels.ndim == 2:
-            raise NotImplementedError('not implemented for this case')
-        y = np.eye(int(num_classes))
-        y_onehot = y[labels]
-    return y_onehot
 
 
 def _backwards_compat_reduction_kw(size_average, reduce, reduction):
@@ -123,8 +45,9 @@ def _backwards_compat_reduction_kw(size_average, reduce, reduction):
     return size_average, reduce, reduction
 
 
-def nll_focal_loss(logits, targets, focus, dim, weight=None, ignore_index=None):
-    """
+def nll_focal_loss(logits, targets, focus, dim, weight=None,
+                   ignore_index=None, reduction='none'):
+    r"""
     Focal loss given preprocessed logits (log probs) instead of raw outputs
 
     Args:
@@ -155,10 +78,78 @@ def nll_focal_loss(logits, targets, focus, dim, weight=None, ignore_index=None):
         >>> dim = 1
         >>> ignore_index = 0
         >>> output = nll_focal_loss(logits, targets, focus, dim, weight, ignore_index)
+
+    Benchmark:
+        >>> from netharn.criterions.focal import *
+        >>> import ubelt as ub
+        >>> import torch.nn.functional as F
+        >>> import netharn as nh
+        >>> B, C = 16, 37
+        >>> DIMS = (128, 128)
+        >>> dim = 1
+        >>> inputs = torch.rand(B, C, *DIMS)
+        >>> inputs.requires_grad = True
+        >>> logits = F.log_softmax(inputs, dim=dim)
+        >>> targets = (torch.rand(B, *DIMS) * C).long()
+        >>> #
+        >>> ti = ub.Timerit(20, bestof=3, verbose=1, unit='us')
+        >>> #
+        >>> devices = [
+        >>>     nh.XPU.coerce('cuda0'),
+        >>>     nh.XPU.coerce('cpu'),
+        >>> ]
+        >>> #
+        >>> # Forward
+        >>> for xpu in devices:
+        >>>     logits = xpu.move(logits)
+        >>>     targets = xpu.move(targets)
+        >>>     print(' --- FORWARD ---')
+        >>>     print('\n\n--- xpu = {!r} ---\n'.format(xpu))
+        >>>     for timer in ti.reset('F.nll_loss'):
+        >>>         with timer:
+        >>>             loss1 = F.nll_loss(logits, targets, reduction='none')
+        >>>             torch.cuda.synchronize()
+        >>>     for timer in ti.reset('nll_focal_loss(focus=0)'):
+        >>>         with timer:
+        >>>             loss2 = nll_focal_loss(logits, targets, focus=0, dim=dim)
+        >>>             torch.cuda.synchronize()
+        >>>     for timer in ti.reset('nll_focal_loss(focus=2)'):
+        >>>         with timer:
+        >>>             loss3 = nll_focal_loss(logits, targets, focus=2, dim=dim)
+        >>>             torch.cuda.synchronize()
+        >>> #
+        >>> # Backward
+        >>> ti = ub.Timerit(5, bestof=1, verbose=1, unit='ms')
+        >>> logits = F.log_softmax(inputs, dim=dim)
+        >>> for xpu in devices:
+        >>>     print(' --- BACKWARD ---')
+        >>>     print('\n\n--- xpu = {!r} ---\n'.format(xpu))
+        >>>     for timer in ti.reset('F.nll_loss'):
+        >>>         with timer:
+        >>>             loss1 = F.nll_loss(logits, targets, reduction='none')
+        >>>         loss1.mean().backward(retain_graph=True)
+        >>>         torch.cuda.synchronize()
+        >>>     for timer in ti.reset('nll_focal_loss(focus=0)'):
+        >>>         with timer:
+        >>>             loss2 = nll_focal_loss(logits, targets, focus=0.0, dim=dim)
+        >>>         loss2.mean().backward(retain_graph=True)
+        >>>         torch.cuda.synchronize()
+        >>>     for timer in ti.reset('nll_focal_loss(focus=2)'):
+        >>>         with timer:
+        >>>             loss3 = nll_focal_loss(logits, targets, focus=2.0, dim=dim)
+        >>>         loss3.mean().backward(retain_graph=True)
+        >>>         torch.cuda.synchronize()
     """
+    if focus == 0:
+        if ignore_index is None:
+            ignore_index = -100
+        assert dim == 1
+        return F.nll_loss(logits, targets, weight=weight,
+                          ignore_index=ignore_index, reduction=reduction)
+
     # Determine which entry in logits corresponds to the target
     num_classes = logits.shape[dim]
-    t = one_hot_embedding(targets.data, num_classes, dim=dim)
+    t = kwarray.one_hot_embedding(targets.data, num_classes, dim=dim)
 
     # We only need the log(p) component corresponding to the target class
     target_logits = (logits * t).sum(dim=dim)  # sameas logits[t > 0]
@@ -311,38 +302,44 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             >>> weight = torch.rand(C)
             >>> lossF = FocalLoss(reduction='none', focus=2, weight=weight, ignore_index=0).focal_loss(input, target)
         """
-        if self.weight is None:
-            alpha = 1
+        if True:
+            return self.nll_focal_loss(
+                input, target, focus=self.focus, dim=self.dim,
+                weight=self.weight, ignore_index=self.ignore_index,
+                reduction=self.reduction)
         else:
-            # Create a per-input weight
-            alpha = self.weight[target]
-            # alpha = autograd.Variable(self.weight)[target]
+            if self.weight is None:
+                alpha = 1
+            else:
+                # Create a per-input weight
+                alpha = self.weight[target]
+                # alpha = autograd.Variable(self.weight)[target]
 
-        # Compute log(p) for NLL-loss.
-        nll = F.log_softmax(input, dim=1)  # [N,C]
+            # Compute log(p) for NLL-loss.
+            nll = F.log_softmax(input, dim=1)  # [N,C]
 
-        gamma = self.focus
+            gamma = self.focus
 
-        num_classes = input.shape[1]
+            num_classes = input.shape[1]
 
-        # remove any loss associated with ignore_label
-        mask = (target != self.ignore_index).float()  # [N,]
+            # remove any loss associated with ignore_label
+            mask = (target != self.ignore_index).float()  # [N,]
 
-        # Determine which entry in nll corresponds to the target
-        t = one_hot_embedding(target.data, num_classes)  # [N,C]
-        # t = autograd.Variable(t)
+            # Determine which entry in nll corresponds to the target
+            t = kwarray.one_hot_embedding(target.data, num_classes)  # [N,C]
+            # t = autograd.Variable(t)
 
-        # We only need the log(p) component corresponding to the target class
-        target_nll = (nll * t).sum(dim=1)  # [N,]  # sameas nll[t > 0]
-        target_p = torch.exp(target_nll)   # [N,]
+            # We only need the log(p) component corresponding to the target class
+            target_nll = (nll * t).sum(dim=1)  # [N,]  # sameas nll[t > 0]
+            target_p = torch.exp(target_nll)   # [N,]
 
-        # Reduce the weight of easy examples
-        hardness = (1 - target_p)               # [N,]
-        w = alpha * hardness.pow(gamma)  # [N,]
+            # Reduce the weight of easy examples
+            hardness = (1 - target_p)               # [N,]
+            w = alpha * hardness.pow(gamma)  # [N,]
 
-        # Normal cross-entropy computation (but with augmented weights per example)
-        output = -w * mask * target_nll  # [N,]
-        return output
+            # Normal cross-entropy computation (but with augmented weights per example)
+            output = -w * mask * target_nll  # [N,]
+            return output
 
     def forward(self, input, target):
         """

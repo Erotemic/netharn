@@ -20,14 +20,25 @@ import astunparse
 import inspect
 import six
 import ubelt as ub
+from six.moves import cStringIO
 from os.path import abspath
 from os.path import sys
 
-# __all__ = [
-#     'source_closure',
-# ]
-
 DEBUG = 0
+
+
+class Unparser(astunparse.Unparser):
+    """ wraps astunparse to fix 2/3 compatibility minor issues """
+    def _Ellipsis(self, t):
+        # be compatible with python2 if possible
+        self.write("Ellipsis")
+
+
+def unparse(tree):
+    """ wraps astunparse to fix 2/3 compatibility minor issues """
+    v = cStringIO()
+    Unparser(tree, file=v)
+    return v.getvalue()
 
 
 def source_closure(obj, expand_names=[]):
@@ -73,13 +84,14 @@ def source_closure(obj, expand_names=[]):
         >>> assert not undefined_names(text)
         >>> got['inception3'] = ub.hash_data(text)
 
-        >>> # Thvisitor.import_infoe hashes will depend on torchvision itself
+        >>> # The hashes will depend on torchvision itself
         >>> if torchvision.__version__ == '0.2.1':
+        >>>     # Note: the hashes may change if the exporter changes formats
         >>>     want = {
         >>>         'alexnet': '4b2ab9c8e27b34602bdff99cbc',
-        >>>         'densenet': '954ca3ea1b7fbeccf2aab021b',
-        >>>         'resnet50': 'fb8e21fc470d33311ad4e7888',
-        >>>         'inception3': '521974d27903c1f440462a9',
+        >>>         'densenet': 'fef4788586d2b93587ec52dd9',
+        >>>         'resnet50': '343e6a73e754557fcce3fdb6',
+        >>>         'inception3': '2e43a58133d0817753383',
         >>>     }
         >>>     failed = []
         >>>     for k in want:
@@ -170,7 +182,7 @@ class Closer(ub.NiceRepr):
         body_lines = [d.code for d in self.body_defs.values()][::-1]
         current_sourcecode = '\n'.join(header_lines)
         current_sourcecode += '\n\n\n'
-        current_sourcecode += '\n\n'.join(body_lines)
+        current_sourcecode += '\n\n\n'.join(body_lines)
         return current_sourcecode
 
     def add_dynamic(closer, obj):
@@ -306,12 +318,15 @@ class Closer(ub.NiceRepr):
                 for i in range(1, len(parts) + 1):
                     root = '.'.join(parts[:i])
                     expandable_definitions[root].append(d)
+            # print('expandable_definitions = {!r}'.format(expandable_definitions.keys()))
 
             flag = False
             # current_sourcecode = closer.current_sourcecode()
             # closed_visitor = ImportVisitor.parse(source=current_sourcecode)
             for root in expand_names:
                 needs_expansion = expandable_definitions.get(root, [])
+                # print('root = {!r}'.format(root))
+                # print('needs_expansion = {!r}'.format(needs_expansion))
                 for d in needs_expansion:
                     # print('needs_expansion = {}'.format(ub.repr2(needs_expansion, sv=1)))
                     if getattr(d, '_expanded', False):
@@ -387,7 +402,7 @@ class Closer(ub.NiceRepr):
             rewriter = RewriteModuleAccess(name)
             for d_ in closer.body_defs.values():
                 rewriter.visit(d_.node)
-                d_._code = astunparse.unparse(d_.node)
+                d_._code = unparse(d_.node)
 
             # print('rewriter.accessed_attrs = {!r}'.format(rewriter.accessed_attrs))
             for subname in rewriter.accessed_attrs:
@@ -489,10 +504,10 @@ class RewriteModuleAccess(ast.NodeTransformer):
         ...     ''')
         >>> pt = ast.parse(source)
         >>> visitor = RewriteModuleAccess('foo')
-        >>> orig = astunparse.unparse(pt)
+        >>> orig = unparse(pt)
         >>> print(orig)
         >>> visitor.visit(pt)
-        >>> modified = astunparse.unparse(pt)
+        >>> modified = unparse(pt)
         >>> print(modified)
         >>> visitor.accessed_attrs
 
@@ -569,7 +584,7 @@ class Definition(ub.NiceRepr):
                 # Fallback on static sourcecode extraction
                 # (NOTE: it should be possible to keep formatting with a bit of
                 # work)
-                self._code = astunparse.unparse(self.node).strip('\n')
+                self._code = unparse(self.node).strip('\n')
         return self._code
 
     def __nice__(self):
@@ -701,7 +716,7 @@ class ImportVisitor(ast.NodeVisitor, ub.NiceRepr):
                     static_val = _parse_static_node_value(node.value)
                     code = '{} = {}'.format(key, ub.repr2(static_val))
                 except TypeError:
-                    #code = astunparse.unparse(node).strip('\n')
+                    #code = unparse(node).strip('\n')
                     code = None
 
                 if DEBUG:

@@ -1,0 +1,35 @@
+    # assert simulated_bsize == 64, 'must be 64'
+
+    # Pascal 2007 + 2012 trainval has 16551 images
+    # Pascal 2007 test has 4952 images
+    # In the original YOLO, one batch is 64 images, therefore:
+    #
+    # ONE EPOCH is 16551 / 64 = 258.609375 = 259 iterations.
+    #
+    # From the original YOLO VOC v2 config
+    # https://github.com/pjreddie/darknet/blob/master/cfg/yolov2-voc.cfg
+    #     learning_rate=0.001
+    #     burn_in=1000
+    #     max_batches = 80200
+    #     policy=steps
+    #     steps=40000,60000
+    #     scales=.1,.1
+    #
+    # However, the LIGHTNET values are
+    #   LR_STEPS = [250, 25000, 35000]
+    #
+    # The DARNKET STEPS ARE:
+    #   DN_STEPS = 1000, 40000, 60000, 80200
+    #
+    # Based in this, the iter to batch conversion is
+    #
+    # Key lightnet batch numbers
+    # >>> np.array([250, 25000, 30000, 35000, 45000]) / (16512 / 64)
+    # array([0.9689,  96.899, 116.2790, 135.658, 174.4186])
+    # -> Round
+    # array([  1.,  97., 135.])
+    # >>> np.array([1000, 40000, 60000, 80200]) / 258
+    # array([  3.86683584, 154.67343363, 232.01015044, 310.12023443])
+    # -> Round
+    # array(4, 157, 232, 310])
+    # array([  3.87596899, 155.03875969, 232.55813953, 310.85271318])

@@ -28,7 +28,7 @@ coverage >= 4.3.4
 # Core 
 # ====
 # These are absolutely required
-torch >= 0.4.0
+torch >= 1.0.0
 numpy >= 1.14.5
 ubelt >= 0.5.0
 progiter >= 0.0.2
@@ -36,6 +36,12 @@ parse >= 1.8.4
 packaging >= 17.1
 pyflakes >= 1.6.0
 astunparse >= 1.6.1
+
+
+# Other libs from us
+# kwarray
+# kwimage
+# kwplot
 
 
 # Optional(ish)
@@ -53,12 +59,12 @@ h5py >= 2.8.0
 imgaug >= 0.2.6
 pygtrie >= 2.2
 protobuf >= 3.6.0
-tensorboard_logger >= 0.1.0  # actually optional
 scikit-learn >= 0.19.1
 
 
 # Actually Optional
 # =================
+tensorboard_logger >= 0.1.0  # actually optional
 tensorboard >= 1.8.0
 
 

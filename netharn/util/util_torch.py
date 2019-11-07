@@ -214,17 +214,20 @@ class IgnoreLayerContext(object):
 
 class BatchNormContext(object):
     """
-    Sets batch norm state of `model` to `enabled` within the context manager.
+    Sets batch norm training state of `model` to `training` within the context
+    manager.
 
     Args:
-        model (torch.nn.Module): model to modify
+        model (torch.nn.Module | Sequnce[Module]): model(s) to modify
 
         training (bool, default=False):
             if True training of batch norm layers is enabled otherwise it is
             disabled. This is useful for batches of size 1.
     """
-    def __init__(self, model, training=True, **kw):
-        self.model = model
+    def __init__(self, models, training=True, **kw):
+        if not isinstance(models, (tuple, list)):
+            models = [models]
+        self.models = models
         if kw:
             import warnings
             warnings.warn('the enabled kwarg is depricated')
@@ -235,18 +238,20 @@ class BatchNormContext(object):
         self.prev_train_state = None
 
     def __enter__(self):
-        self.prev_train_state = {}
-        for name, layer in trainable_layers(self.model, names=True):
-            if isinstance(layer, torch.nn.modules.batchnorm._BatchNorm):
-                self.prev_train_state[name] = layer.training
-                layer.training = self.training
+        self.prev_train_state = ub.ddict(dict)
+        for i, model in enumerate(self.models):
+            for name, layer in trainable_layers(model, names=True):
+                if isinstance(layer, torch.nn.modules.batchnorm._BatchNorm):
+                    self.prev_train_state[i][name] = layer.training
+                    layer.training = self.training
         return self
 
     def __exit__(self, *args):
         if self.prev_train_state:
-            for name, layer in trainable_layers(self.model, names=True):
-                if name in self.prev_train_state:
-                    layer.training = self.prev_train_state[name]
+            for i, model in enumerate(self.models):
+                for name, layer in trainable_layers(model, names=True):
+                    if name in self.prev_train_state[i]:
+                        layer.training = self.prev_train_state[i][name]
 
 
 DisableBatchNorm = BatchNormContext
@@ -254,6 +259,10 @@ DisableBatchNorm = BatchNormContext
 
 def trainable_layers(model, names=False):
     """
+    Note:
+        This was moved to netharn.initializers.functional.
+        Is this still needed in util?
+
     Example:
         >>> import torchvision
         >>> model = torchvision.models.AlexNet()
@@ -367,3 +376,114 @@ def one_hot_lookup(probs, labels):
         array([ 0,  4,  8, 10])
     """
     return probs[np.eye(probs.shape[1], dtype=np.bool)[labels]]
+
+
+def torch_ravel_multi_index(multi_index, dims=None, device=None, strides_=None):
+    """
+    Implementation of `numpy.ravel_multi_index` for torch Tensors
+
+    Args:
+        multi_index (List[Tensor] | Tensor) : either a list of indices for
+           each dimension, or a tensor containing the same information as
+           column vectors.
+        dims (Tuple): shape of the array to index into before flattening.
+        device (torch.device): default torch device
+        strides_ (Tensor, optional): prespecify strides for each dimension
+            instead of using dims to compute it.
+
+    Returns:
+        torch.LongTensor: flat indices
+
+    Example:
+        >>> import torch
+        >>> N = 10
+        >>> B, A, H, W = 2, 3, 3, 3
+        >>> dims = [B, A, 4, H, W]
+        >>> device = 'cpu'
+        >>> multi_index = [(torch.rand(N) * d).long().to(device) for d in dims]
+        >>> multi_index_np = [d.data.cpu().numpy() for d in multi_index]
+        >>> numpy_result = np.ravel_multi_index(multi_index_np, dims)
+        >>> torch_result = torch_ravel_multi_index(multi_index, dims, device)
+        >>> assert np.all(torch_result.data.cpu().numpy() == numpy_result)
+
+    Benchmark:
+        >>> import torch
+        >>> import ubelt as ub
+        >>> N = 10000
+        >>> B, A, H, W = 2, 3, 3, 3
+        >>> dims = [B, A, 4, H, W]
+        >>> device = torch.device('cuda')
+        >>> multi_index = [(torch.rand(N) * d).long().to(device) for d in dims]
+        >>> #
+        >>> ti = ub.Timerit(1000, bestof=10, label='time')
+        >>> #
+        >>> for timer in ti.reset('cuda'):
+        >>>     with timer:
+        >>>         torch_ravel_multi_index(multi_index, dims, device)
+        >>>         torch.cuda.synchronize()
+        >>> #
+        >>> for timer in ti.reset('numpy-for-gpu'):
+        >>>     with timer:
+        >>>         multi_index_np = [d.data.cpu().numpy() for d in multi_index]
+        >>>         np.ravel_multi_index(multi_index_np, dims)
+        >>>         torch.cuda.synchronize()
+        >>> #
+        >>> multi_index_np = [d.data.cpu().numpy() for d in multi_index]
+        >>> for timer in ti.reset('numpy-native'):
+        >>>     with timer:
+        >>>         np.ravel_multi_index(multi_index_np, dims)
+        >>>         torch.cuda.synchronize()
+        >>> #
+        >>> strides = np.cumprod(dims[::-1])[::-1][1:].tolist() + [1]
+        >>> strides_ = torch.LongTensor(strides).to(device)
+        >>> for timer in ti.reset('cuda-precomp-strides'):
+        >>>     with timer:
+        >>>         torch_ravel_multi_index(multi_index, dims, device, strides_)
+        >>>         torch.cuda.synchronize()
+    """
+    if strides_ is None:
+        if 1:
+            # this one is the fastest, my guess is because torch
+            # doesnt have to worry about managing numpy memory
+            nextdim = torch.LongTensor(list(dims[1:]) + [1])
+            strides_ = torch.flip(torch.flip(nextdim, (0,)).cumprod(dim=0), (0,))
+            strides_ = strides_.to(device)
+        elif 0:
+            strides = np.cumprod(dims[::-1])[::-1][1:].tolist() + [1]
+            strides_ = torch.LongTensor(strides).to(device)
+        elif 0:
+            strides = np.cumprod([1] + list(dims[::-1][0:-1]))[::-1]
+            strides = np.ascontiguousarray(strides)
+            strides_ = torch.LongTensor(strides).to(device)
+        else:
+            strides = np.cumprod([1] + list(dims[::-1][0:-1]))[::-1]
+            strides = np.ascontiguousarray(strides)
+            strides_ = torch.from_numpy(strides).to(device)
+            # strides_ = torch.LongTensor(strides.tolist()).to(device)
+    if isinstance(multi_index, (list, tuple)):
+        multi_index = torch.cat([x.view(-1, 1) for x in multi_index], dim=1)
+
+    # Could do a mm product if that gets implemented for LongTensors
+    result = (multi_index * strides_).sum(dim=1).contiguous()
+
+    # if 1:
+    #     if 1:
+    #         strides_ = torch.LongTensor(strides).to(device)
+    #         multi_index_ = torch.cat([x.view(-1, 1) for x in multi_index], dim=1)
+    #         result = (multi_index_ * strides_).sum(dim=1)
+    #         # [x * s for s, x in zip(strides_, multi_index)]
+    #     else:
+    #         strides_ = torch.FloatTensor(strides).view(-1, 1).to(device)
+    #         multi_index_ = torch.cat([x.view(-1, 1) for x in multi_index], dim=1).float()
+    #         result = torch.mm(multi_index_, strides_).view(-1).long()
+
+    #     # result = (multi_index_ * strides_.view(-1)).sum(dim=1)
+    # else:
+    #     flat_size = len(multi_index[0])
+    #     result = torch.zeros(flat_size, dtype=torch.long, device=device)
+    #     for stride, index in zip(strides, multi_index):
+    #         if len(index) == 1 and isinstance(index, list):
+    #             index = torch.LongTensor(index * flat_size).to(device)
+    #         result += stride * index
+
+    return result

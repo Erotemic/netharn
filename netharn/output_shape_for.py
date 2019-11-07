@@ -7,6 +7,7 @@ import torch.nn as nn
 import torchvision
 from collections import OrderedDict
 from six.moves import builtins
+from netharn import analytic_for
 try:
     from netharn.device import DataSerial
 except ImportError:
@@ -99,7 +100,7 @@ def _simplify(shape):
     return shape
 
 
-class HiddenShapes(OrderedDict, ub.NiceRepr):
+class HiddenShapes(analytic_for.Hidden):
     """
     Augments normal hidden shape dicts with a convinience setitem
 
@@ -114,39 +115,60 @@ class HiddenShapes(OrderedDict, ub.NiceRepr):
         >>> print(hidden)
         <HiddenShapes({'a': 1, 'b': 2, 'c': 'foo'})>
     """
-    def __nice__(self):
-        return ub.repr2(self, nl=0)
 
-    def __str__(self):
-        return ub.NiceRepr.__str__(self)
 
-    def __repr__(self):
-        return ub.NiceRepr.__repr__(self)
+# class HiddenShapes(OrderedDict, ub.NiceRepr):
+#     """
+#     Augments normal hidden shape dicts with a convinience setitem
 
-    def __setitem__(self, key, value):
-        if getattr(value, 'hidden', None) is not None:
-            # When setting a value to an OutputShape object, if that object has
-            # a hidden shape, then use that instead.
-            value = value.hidden
-        return OrderedDict.__setitem__(self, key, value)
+#     Doctest:
+#         >>> from netharn.output_shape_for import *
+#         >>> shape = OutputShape.coerce([None, 3, 32, 32], 'foo')
+#         >>> print(HiddenShapes({'e': shape}))
+#         <HiddenShapes({'e': 'foo'})>
+#         >>> hidden = HiddenShapes({'a': 1})
+#         >>> hidden['b'] = 2
+#         >>> hidden['c'] = shape
+#         >>> print(hidden)
+#         <HiddenShapes({'a': 1, 'b': 2, 'c': 'foo'})>
+#     """
+#     def __nice__(self):
+#         return ub.repr2(self, nl=0)
 
-    def shallow(self, n=1):
-        """
-        Grabs only the shallowest n layers of hidden shapes
-        """
-        if n == 0:
-            last = self
-            while isinstance(last, HiddenShapes):
-                last = list(last.values())[-1]
-            return last
-        else:
-            output = OrderedDict()
-            for key, value in self.items():
-                if isinstance(value, HiddenShapes):
-                    output[key] = value.shallow(n - 1)
-                else:
-                    output[key] = value
-            return output
+#     def __str__(self):
+#         return ub.NiceRepr.__str__(self)
+
+#     def __repr__(self):
+#         return ub.NiceRepr.__repr__(self)
+
+#     def __setitem__(self, key, value):
+#         if getattr(value, 'hidden', None) is not None:
+#             # When setting a value to an OutputShape object, if that object has
+#             # a hidden shape, then use that instead.
+#             value = value.hidden
+#         return OrderedDict.__setitem__(self, key, value)
+
+#     def shallow(self, n=1):
+#         """
+#         Grabs only the shallowest n layers of hidden shapes
+#         """
+#         if n == 0:
+#             last = self
+#             while isinstance(last, HiddenShapes):
+#                 values = list(last.values())
+#                 if len(values):
+#                     last = values[-1]
+#                 else:
+#                     break
+#             return last
+#         else:
+#             output = OrderedDict()
+#             for key, value in self.items():
+#                 # if isinstance(value, HiddenShapes):
+#                 if hasattr(value, 'shallow'):
+#                     value = value.shallow(n - 1)
+#                 output[key] = value
+#             return output
 
 
 class OutputShape(object):

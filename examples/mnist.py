@@ -143,50 +143,16 @@ class MnistHarn(nh.FitHarn):
 
         dset = harn.datasets[harn.current_tag]
 
-        pred_cxs = decoded['pred_cxs'].data.cpu().numpy()
-        pred_scores = decoded['pred_scores'].data.cpu().numpy()
-
         true_cxs = batch['label'].data.cpu().numpy()
-        true_scores = decoded['true_scores'].data.cpu().numpy()
+        pred_cxs = decoded['pred_cxs'].data.cpu().numpy()
+        class_probs = decoded['class_probs'].data.cpu().numpy()
 
         todraw = []
-        for im, pcx, tcx, pred_score, true_score in zip(inputs, pred_cxs, true_cxs, pred_scores, true_scores):
+        for im, pcx, tcx, probs in zip(inputs, pred_cxs, true_cxs, class_probs):
             im_ = im.transpose(1, 2, 0)
             im_ = nh.util.convert_colorspace(im_, 'gray', 'rgb')
             im_ = np.ascontiguousarray(im_)
-            h, w = im_.shape[0:2][::-1]
-
-            true_name = dset.classes[tcx]
-            pred_name = dset.classes[pcx]
-            org1 = np.array((2, h - 32))
-            org2 = np.array((2, 25))
-            pred_label = 'p:{pcx}@{pred_score:.2f}:\n{pred_name}'.format(**locals())
-            true_label = 't:{tcx}@{true_score:.2f}:\n{true_name}'.format(**locals())
-            if pcx == tcx:
-                true_label = 't:{tcx}:{true_name}'.format(**locals())
-
-            fontkw = {
-                'fontScale': 1.0,
-                'thickness': 2
-            }
-            color = 'dodgerblue' if pcx == tcx else 'orangered'
-
-            im_ = nh.util.draw_text_on_image(im_, pred_label, org=org1 - 2,
-                                             color='white', **fontkw)
-            im_ = nh.util.draw_text_on_image(im_, true_label, org=org2 - 2,
-                                             color='white', **fontkw)
-
-            for i in [-2, -1, 1, 2]:
-                for j in [-2, -1, 1, 2]:
-                    im_ = nh.util.draw_text_on_image(im_, pred_label, org=org1 + i,
-                                                     color='black', **fontkw)
-                    im_ = nh.util.draw_text_on_image(im_, true_label, org=org2 + j,
-                                                     color='black', **fontkw)
-
-            im_ = nh.util.draw_text_on_image(im_, pred_label, org=org1,
-                                             color=color, **fontkw)
-            im_ = nh.util.draw_text_on_image(im_, true_label, org=org2,
-                                             color='lawngreen', **fontkw)
+            im_ = nh.util.draw_clf_on_image(im_, dset.classes, tcx, probs)
             todraw.append(im_)
 
         stacked = nh.util.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)

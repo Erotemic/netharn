@@ -57,3 +57,12 @@ class Identity(Sequential):
     """
     def __init__(self):
         super(Identity, self).__init__()
+
+    def output_shape_for(self, input_shape):
+        return input_shape
+
+    def receptive_field_for(self, input_field=None):
+        if input_field is None:
+            from netharn.receptive_field_for import ReceptiveFieldFor
+            input_field = ReceptiveFieldFor.input()
+        return input_field

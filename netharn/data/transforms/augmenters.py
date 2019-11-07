@@ -4,8 +4,7 @@ import numpy as np
 import cv2
 from imgaug.parameters import (Uniform, Binomial)
 from netharn.data.transforms import augmenter_base
-from netharn.util import profiler  # NOQA
-from netharn import util
+import kwimage
 import imgaug
 
 
@@ -13,11 +12,12 @@ def demodata_hsv_image(w=200, h=200):
     """
     Example:
         >>> rgb255 = demodata_hsv_image()
-        >>> from netharn.util import mplutil
-        >>> mplutil.autompl()
-        >>> mplutil.figure(doclf=True, fnum=1)
-        >>> mplutil.imshow(rgb255, colorspace='rgb')
-        >>> mplutil.show_if_requested()
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> kwplot.figure(doclf=True, fnum=1)
+        >>> kwplot.imshow(rgb255, colorspace='rgb')
+        >>> kwplot.show_if_requested()
     """
 
     hsv = np.zeros((h, w, 3), dtype=np.float32)
@@ -51,10 +51,13 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
             The number is specified as a percentage of the available hue space
             (e.g. hue * 255 or hue * 360).
         saturation (Number): Random number between 1,saturation is used to
-            shift the saturation; 50% chance to get 1/dSaturation instead of
+            scale the saturation; 50% chance to get 1/dSaturation instead of
             dSaturation
-        value (Number): Random number between 1,value is used to shift the
+        value (Number): Random number between 1,value is used to scale the
             value; 50% chance to get 1/dValue in stead of dValue
+
+        shift_sat (Number, default=0): random shift applied to saturation
+        shift_val (Number, default=0): random shift applied to value
 
     CommandLine:
         python -m netharn.data.transforms.augmenters HSVShift --show
@@ -66,20 +69,21 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         >>> det = self.to_deterministic()
         >>> assert np.all(det.augment_image(img) == det.augment_image(img))
         >>> # xdoc: +REQUIRES(--show)
-        >>> from netharn.util import mplutil
+        >>> import kwplot
         >>> import ubelt as ub
-        >>> mplutil.autompl()
-        >>> mplutil.figure(doclf=True, fnum=3)
-        >>> self = HSVShift(0.5, 1.5, 1.5)
-        >>> pnums = mplutil.PlotNums(5, 5)
+        >>> kwplot.autompl()
+        >>> kwplot.figure(doclf=True, fnum=3)
+        >>> self = HSVShift(0.5, 1.5, 1.5, shift_sat=1.0, shift_val=1.0)
+        >>> pnums = kwplot.PlotNums(5, 5)
         >>> #random_state = self.random_state
-        >>> self.reseed(random.Random(0))
-        >>> mplutil.imshow(img, colorspace='rgb', pnum=pnums[0], title='orig')
+        >>> import kwarray
+        >>> self.reseed(kwarray.ensure_rng(0))
+        >>> kwplot.imshow(img, colorspace='rgb', pnum=pnums[0], title='orig')
         >>> for i in range(1, len(pnums)):
         >>>     aug = self.augment_image(img)
         >>>     title = 'aug: {}'.format(ub.repr2(self._prev_params, nl=0, precision=3))
-        >>>     mplutil.imshow(aug, colorspace='rgb', pnum=pnums[i], title=title)
-        >>> mplutil.show_if_requested()
+        >>>     kwplot.imshow(aug, colorspace='rgb', pnum=pnums[i], title=title)
+        >>> kwplot.show_if_requested()
 
     Ignore:
         >>> from netharn.data.transforms.augmenters import *
@@ -92,27 +96,31 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         >>> #from_ = np.array
         >>> aug = self(img)
         >>> # xdoc: +REQUIRES(--show)
-        >>> from netharn.util import mplutil
+        >>> import kwplot
         >>> import ubelt as ub
-        >>> mplutil.autompl()
-        >>> mplutil.figure(doclf=True, fnum=1)
+        >>> kwplot.autompl()
+        >>> kwplot.figure(doclf=True, fnum=1)
         >>> import random
         >>> random.seed(0)
-        >>> pnums = mplutil.PlotNums(5, 5)
-        >>> mplutil.imshow(from_(img), colorspace='rgb', pnum=pnums[0], title='orig')
+        >>> pnums = kwplot.PlotNums(5, 5)
+        >>> kwplot.imshow(from_(img), colorspace='rgb', pnum=pnums[0], title='orig')
         >>> for i in range(1, len(pnums)):
         >>>     aug = self(img)
         >>>     #title = 'aug: {}'.format(ub.repr2(self._prev_params, nl=0, precision=3))
         >>>     title = 'foo'
-        >>>     mplutil.imshow(from_(aug), colorspace='rgb', pnum=pnums[i], title=title)
-        >>> mplutil.show_if_requested()
+        >>>     kwplot.imshow(from_(aug), colorspace='rgb', pnum=pnums[i], title=title)
+        >>> kwplot.show_if_requested()
     """
-    def __init__(self, hue, sat, val, input_colorspace='rgb'):
+    def __init__(self, hue, sat, val, shift_sat=0, shift_val=0,
+                 input_colorspace='rgb'):
         super(HSVShift, self).__init__()
         self.input_colorspace = input_colorspace
         self.hue = Uniform(-hue, hue)
         self.sat = Uniform(1, sat)
         self.val = Uniform(1, val)
+
+        self.shift_sat = Uniform(-shift_sat, shift_sat)
+        self.shift_val = Uniform(-shift_val, shift_val)
 
         self.flip_val = Binomial(.5)
         self.flip_sat = Binomial(.5)
@@ -129,7 +137,6 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
                            hooks):
         return keypoints_on_images
 
-    @profiler.profile
     def forward(self, img, random_state=None):
         assert self.input_colorspace == 'rgb'
         assert img.dtype.kind == 'u' and img.dtype.itemsize == 1
@@ -137,6 +144,9 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         dh = self.hue.draw_sample(random_state)
         ds = self.sat.draw_sample(random_state)
         dv = self.val.draw_sample(random_state)
+
+        shift_s = self.shift_sat.draw_sample(random_state)
+        shift_v = self.shift_val.draw_sample(random_state)
 
         if self.flip_sat.draw_sample(random_state):
             ds = 1.0 / ds
@@ -163,6 +173,11 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
 
         # add to hue
         hsv[:, :, 0] = wrap_hue(hsv[:, :, 0] + (hue_bound * dh), hue_bound)
+        if shift_s != 0:
+            # shift saturation and value
+            hsv[:, :, 1] = np.clip(shift_s + hsv[:, :, 1], 0.0, sat_bound)
+        if shift_v != 0:
+            hsv[:, :, 2] = np.clip(shift_v + hsv[:, :, 2], 0.0, val_bound)
         # scale saturation and value
         hsv[:, :, 1] = np.clip(ds * hsv[:, :, 1], 0.0, sat_bound)
         hsv[:, :, 2] = np.clip(dv * hsv[:, :, 2], 0.0, val_bound)
@@ -182,7 +197,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
 
     Example:
         >>> img = demodata_hsv_image()
-        >>> box = util.Boxes([[.45, .05, .10, .05], [0., 0.0, .199, .199], [.24, .05, .01, .05]], format='tlwh').to_tlbr()
+        >>> box = kwimage.Boxes([[.45, .05, .10, .05], [0., 0.0, .199, .199], [.24, .05, .01, .05]], format='xywh').to_tlbr()
         >>> bboi = box.to_imgaug(shape=img.shape)
         >>> self = Resize((40, 30))
         >>> aug1  = self.augment_image(img)
@@ -190,7 +205,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
 
     Example:
         >>> img = demodata_hsv_image()
-        >>> box = util.Boxes([[450, 50, 100, 50], [0.0, 0, 199, 199], [240, 50, 10, 50]], format='tlwh').to_tlbr()
+        >>> box = kwimage.Boxes([[450, 50, 100, 50], [0.0, 0, 199, 199], [240, 50, 10, 50]], format='xywh').to_tlbr()
         >>> bboi = box.to_imgaug(shape=img.shape)
         >>> imgT = np.ascontiguousarray(img.transpose(1, 0, 2))
         >>> bboiT = box.transpose().to_imgaug(shape=imgT.shape)
@@ -207,37 +222,28 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         >>> bboi4 = self2.augment_bounding_boxes([bboiT])[0]
         >>> # ---------------------------
         >>> # xdoc: +REQUIRES(--show)
-        >>> from netharn import util
-        >>> from netharn.util import mplutil
-        >>> mplutil.autompl()
-        >>> #mplutil.figure(doclf=True, fnum=1)
-        >>> #pnum_ = mplutil.PlotNums(3, 2)
-        >>> #mplutil.imshow(util.draw_boxes_on_image(img, util.Boxes.from_imgaug(bboi)), pnum=pnum_(), title='orig')
-        >>> #mplutil.imshow(util.draw_boxes_on_image(imgT, util.Boxes.from_imgaug(bboiT)), pnum=pnum_(), title='origT')
-        >>> #mplutil.imshow(util.draw_boxes_on_image(aug1, util.Boxes.from_imgaug(bboi1)), pnum=pnum_())
-        >>> #mplutil.imshow(util.draw_boxes_on_image(aug2, util.Boxes.from_imgaug(bboi2)), pnum=pnum_())
-        >>> #mplutil.imshow(util.draw_boxes_on_image(aug3, util.Boxes.from_imgaug(bboi3)), pnum=pnum_())
-        >>> #mplutil.imshow(util.draw_boxes_on_image(aug4, util.Boxes.from_imgaug(bboi4)), pnum=pnum_())
-        >>> mplutil.figure(doclf=True, fnum=1)
-        >>> pnum_ = mplutil.PlotNums(3, 2)
-        >>> mplutil.imshow(img, colorspace='rgb', pnum=pnum_(), title='orig')
-        >>> mplutil.draw_boxes(util.Boxes.from_imgaug(bboi))
-        >>> mplutil.imshow(imgT, colorspace='rgb', pnum=pnum_(), title='origT')
-        >>> mplutil.draw_boxes(util.Boxes.from_imgaug(bboiT))
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> kwplot.figure(doclf=True, fnum=1)
+        >>> pnum_ = kwplot.PlotNums(3, 2)
+        >>> kwplot.imshow(img, colorspace='rgb', pnum=pnum_(), title='orig')
+        >>> kwplot.draw_boxes(kwimage.Boxes.from_imgaug(bboi))
+        >>> kwplot.imshow(imgT, colorspace='rgb', pnum=pnum_(), title='origT')
+        >>> kwplot.draw_boxes(kwimage.Boxes.from_imgaug(bboiT))
         >>> # ----
-        >>> mplutil.imshow(aug1, colorspace='rgb', pnum=pnum_())
-        >>> #mplutil.draw_boxes(util.Boxes.from_imgaug(bboi1))
-        >>> x = util.Boxes.from_imgaug(bboi1).shift((-0.5, -0.5))
-        >>> mplutil.draw_boxes(x)
-        >>> mplutil.imshow(aug2, colorspace='rgb', pnum=pnum_())
-        >>> x = util.Boxes.from_imgaug(bboi2).shift((-0.5, -0.5))
-        >>> mplutil.draw_boxes(x)
-        >>> #mplutil.draw_boxes(util.Boxes.from_imgaug(bboi2))
+        >>> kwplot.imshow(aug1, colorspace='rgb', pnum=pnum_())
+        >>> #kwplot.draw_boxes(kwimage.Boxes.from_imgaug(bboi1))
+        >>> x = kwimage.Boxes.from_imgaug(bboi1).translate((-0.5, -0.5))
+        >>> kwplot.draw_boxes(x)
+        >>> kwplot.imshow(aug2, colorspace='rgb', pnum=pnum_())
+        >>> x = kwimage.Boxes.from_imgaug(bboi2).translate((-0.5, -0.5))
+        >>> kwplot.draw_boxes(x)
+        >>> #kwplot.draw_boxes(kwimage.Boxes.from_imgaug(bboi2))
         >>> # ----
-        >>> mplutil.imshow(aug3, colorspace='rgb', pnum=pnum_())
-        >>> mplutil.draw_boxes(util.Boxes.from_imgaug(bboi3))
-        >>> mplutil.imshow(aug4, colorspace='rgb', pnum=pnum_())
-        >>> mplutil.draw_boxes(util.Boxes.from_imgaug(bboi4))
+        >>> kwplot.imshow(aug3, colorspace='rgb', pnum=pnum_())
+        >>> kwplot.draw_boxes(kwimage.Boxes.from_imgaug(bboi3))
+        >>> kwplot.imshow(aug4, colorspace='rgb', pnum=pnum_())
+        >>> kwplot.draw_boxes(kwimage.Boxes.from_imgaug(bboi4))
 
     Ignore:
         image = img
@@ -273,7 +279,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             >>> import imgaug
             >>> tlbr = [[0, 0, 10, 10], [1, 2, 8, 9]]
             >>> shape = (20, 40, 3)
-            >>> bboi = util.Boxes(tlbr, 'tlbr').to_imgaug(shape)
+            >>> bboi = kwimage.Boxes(tlbr, 'tlbr').to_imgaug(shape)
             >>> bounding_boxes_on_images = [bboi]
             >>> kps_ois = []
             >>> for bbs_oi in bounding_boxes_on_images:
@@ -325,9 +331,10 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             >>> inverted_img = self._img_letterbox_invert(img, orig_size, target_size)
             >>> assert inverted_img.shape == orig_img.shape
             >>> # xdoc: +REQUIRES(--show)
-            >>> util.imshow(orig_img, fnum=1, pnum=(1, 3, 1))
-            >>> util.imshow(img, fnum=1, pnum=(1, 3, 2))
-            >>> util.imshow(inverted_img, fnum=1, pnum=(1, 3, 3))
+            >>> import kwplot
+            >>> kwplot.imshow(orig_img, fnum=1, pnum=(1, 3, 1))
+            >>> kwplot.imshow(img, fnum=1, pnum=(1, 3, 2))
+            >>> kwplot.imshow(inverted_img, fnum=1, pnum=(1, 3, 3))
         """
         shift, scale, embed_size = self._letterbox_transform(orig_size, target_size)
         top, bot, left, right = self._padding(embed_size, shift, target_size)
@@ -359,14 +366,14 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         to `orig_size` coordinates (which are probably not square).
 
         Args:
-            boxes (util.Boxes) : boxes to rework in `target_size` coordinates
+            boxes (kwimage.Boxes) : boxes to rework in `target_size` coordinates
             orig_size : original wh of the image
             target_size : network input wh (i.e. inp_size)
 
         Example:
             >>> target_size = (416, 416)
             >>> orig_size = (1000, 400)
-            >>> cxywh_norm = util.Boxes(np.array([[.5, .5, .2, .2]]), 'cxywh')
+            >>> cxywh_norm = kwimage.Boxes(np.array([[.5, .5, .2, .2]]), 'cxywh')
             >>> self = Resize(target_size)
             >>> cxywh = self._boxes_letterbox_invert(cxywh_norm, orig_size, target_size)
             >>> cxywh_norm2 = self._boxes_letterbox_apply(cxywh, orig_size, target_size)
@@ -422,7 +429,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         top, bot, left, right = self._padding(embed_size, shift, target_size)
 
         orig_size = np.array(img.shape[0:2][::-1])
-        channels = util.get_num_channels(img)
+        channels = kwimage.num_channels(img)
 
         sf = embed_size / orig_size
         dsize = tuple(embed_size)

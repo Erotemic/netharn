@@ -1,0 +1,517 @@
+import numpy as np
+import ubelt as ub
+import networkx as nx
+from .assignment import _assign_confusion_vectors
+from .confusion_vectors import ConfusionVectors
+
+
+class DetectionMetrics(object):
+    """
+    Attributes:
+        gid_to_true_dets (Dict): maps image ids to truth
+        gid_to_pred_dets (Dict): maps image ids to predictions
+        classes (CategoryTree): category coder
+
+    Example:
+        >>> dmet = DetectionMetrics.demo(
+        >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1), nclasses=8, score_noise=0.9, hacked=False)
+        >>> print(dmet.score_netharn(bias=0, compat='mutex', prioritize='iou')['mAP'])
+        ...
+        >>> # NOTE: IN GENERAL NETHARN AND VOC ARE NOT THE SAME
+        >>> print(dmet.score_voc(bias=0)['mAP'])
+        0.8582...
+        >>> #print(dmet.score_coco()['mAP'])
+    """
+    def __init__(dmet, classes=None):
+        dmet.classes = classes
+        dmet.gid_to_true_dets = {}
+        dmet.gid_to_pred_dets = {}
+        dmet._imgname_to_gid = {}
+
+    def clear(dmet):
+        dmet.gid_to_true_dets = {}
+        dmet.gid_to_pred_dets = {}
+        dmet._imgname_to_gid = {}
+
+    def _register_imagename(dmet, imgname, gid=None):
+        if gid is not None:
+            dmet._imgname_to_gid[imgname] = gid
+        else:
+            try:
+                gid = dmet._imgname_to_gid[imgname]
+            except KeyError:
+                gid = len(dmet._imgname_to_gid) + 1
+                dmet._imgname_to_gid[imgname] = gid
+        return gid
+
+    def add_predictions(dmet, pred_dets, imgname=None, gid=None):
+        """
+        Register/Add predicted detections for an image
+
+        Args:
+            pred_dets (Detections): predicted detections
+            imgname (str): a unique string to identify the image
+            gid (int, optional): the integer image id if known
+        """
+        gid = dmet._register_imagename(imgname, gid)
+        dmet.gid_to_pred_dets[gid] = pred_dets
+
+    def add_truth(dmet, true_dets, imgname=None, gid=None):
+        """
+        Register/Add groundtruth detections for an image
+
+        Args:
+            true_dets (Detections): groundtruth
+            imgname (str): a unique string to identify the image
+            gid (int, optional): the integer image id if known
+        """
+        gid = dmet._register_imagename(imgname, gid)
+        dmet.gid_to_true_dets[gid] = true_dets
+
+    def true_detections(dmet, gid):
+        """ gets Detections representation for groundtruth in an image """
+        return dmet.gid_to_true_dets[gid]
+
+    def pred_detections(dmet, gid):
+        """ gets Detections representation for predictions in an image """
+        return dmet.gid_to_pred_dets[gid]
+
+    def confusion_vectors(dmet, ovthresh=0.5, bias=0, gids=None, compat='all',
+                          prioritize='iou'):
+        """
+        Assigns predicted boxes to the true boxes so we can transform the
+        detection problem into a classification problem for scoring.
+
+        Ignore:
+            globals().update(xdev.get_func_kwargs(dmet.confusion_vectors))
+        """
+        import netharn as nh
+        y_accum = ub.ddict(list)
+
+        TRACK_PROBS = True
+        if TRACK_PROBS:
+            prob_accum = []
+
+        if gids is None:
+            gids = sorted(dmet._imgname_to_gid.values())
+        for gid in gids:
+            true_dets = dmet.true_detections(gid)
+            pred_dets = dmet.pred_detections(gid)
+            y = _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1,
+                                          ovthresh=ovthresh, bg_cidx=-1,
+                                          bias=bias, classes=dmet.classes,
+                                          compat=compat, prioritize=prioritize)
+
+            if TRACK_PROBS:
+                # Keep track of per-class probs
+                try:
+                    pred_probs = pred_dets.probs
+                except KeyError:
+                    TRACK_PROBS = False
+                else:
+                    pxs = np.array(y['pxs'], dtype=np.int)
+                    flags = pxs > -1
+                    probs = np.zeros((len(pxs), pred_probs.shape[1]),
+                                     dtype=np.float32)
+                    bg_idx = dmet.classes.node_to_idx['background']
+                    probs[:, bg_idx] = 1
+                    probs[flags] = pred_probs[pxs[flags]]
+                    prob_accum.append(probs)
+
+            y['gid'] = [gid] * len(y['pred'])
+            for k, v in y.items():
+                y_accum[k].extend(v)
+
+        # Avoid pandas when possible
+        cfsn_data = nh.util.DataFrameArray(ub.map_vals(np.array, y_accum))
+        if TRACK_PROBS:
+            y_prob = np.vstack(prob_accum)
+        else:
+            y_prob = None
+        cfsn_vecs = ConfusionVectors(cfsn_data, classes=dmet.classes,
+                                     probs=y_prob)
+
+        return cfsn_vecs
+
+    def score_netharn(dmet, ovthresh=0.5, bias=0, gids=None,
+                      compat='all', prioritize='correct'):
+        """ our scoring method """
+        cfsn_vecs = dmet.confusion_vectors(ovthresh=ovthresh, bias=bias,
+                                           gids=gids,
+                                           compat=compat,
+                                           prioritize=prioritize)
+
+        cfsn_peritem = cfsn_vecs.binarize_peritem()
+        cfsn_perclass = cfsn_vecs.binarize_ovr(mode=1)
+
+        peritem = cfsn_peritem.precision_recall()
+        perclass = cfsn_perclass.precision_recall()
+        info = {
+            'mAP': perclass['mAP'],
+            'perclass': perclass['perclass'],
+            'peritem': peritem,
+        }
+        return info
+
+    def score_voc(dmet, ovthresh=0.5, bias=1, method='voc2012', gids=None):
+        """
+        score using voc method
+
+        Example:
+            >>> dmet = DetectionMetrics.demo(
+            >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1), nclasses=8, score_noise=.5)
+            >>> print(dmet.score_voc()['mAP'])
+            0.9399...
+        """
+        from . import voc_metrics
+        if gids is None:
+            gids = sorted(dmet._imgname_to_gid.values())
+        # Convert true/pred detections into VOC format
+        vmet = voc_metrics.VOC_Metrics()
+        for gid in gids:
+            true_dets = dmet.true_detections(gid)
+            pred_dets = dmet.pred_detections(gid)
+            vmet.add_truth(true_dets, gid=gid)
+            vmet.add_predictions(pred_dets, gid=gid)
+        voc_scores = vmet.score(ovthresh, bias=bias, method=method)
+        return voc_scores
+
+    def _to_coco(dmet):
+        # Convert to a coco representation
+        import ndsampler
+        true = ndsampler.CocoDataset()
+        pred = ndsampler.CocoDataset()
+
+        for node in dmet.classes:
+            # cid = dmet.classes.graph.node[node]['id']
+            cid = dmet.classes.index(node)
+            supercategory = list(dmet.classes.graph.pred[node])
+            if len(supercategory) == 0:
+                supercategory = None
+            else:
+                assert len(supercategory) == 1
+                supercategory = supercategory[0]
+            true.add_category(node, id=cid, supercategory=supercategory)
+            pred.add_category(node, id=cid, supercategory=supercategory)
+
+        for imgname, gid in dmet._imgname_to_gid.items():
+            true.add_image(imgname, id=gid)
+            pred.add_image(imgname, id=gid)
+
+        idx_to_id = {
+            idx: dmet.classes.index(node)
+            for idx, node in enumerate(dmet.classes.idx_to_node)
+        }
+
+        for gid, pred_dets in dmet.gid_to_pred_dets.items():
+            pred_boxes = pred_dets.boxes
+            pred_scores = pred_dets.scores
+            pred_cids = list(ub.take(idx_to_id, pred_dets.class_idxs))
+            pred_xywh = pred_boxes.to_xywh().data.tolist()
+            for bbox, cid, score in zip(pred_xywh, pred_cids, pred_scores):
+                pred.add_annotation(gid, cid, bbox=bbox, score=score)
+
+        for gid, true_dets in dmet.gid_to_true_dets.items():
+            true_boxes = true_dets.boxes
+            true_weights = true_dets.weights
+            true_cids = list(ub.take(idx_to_id, true_dets.class_idxs))
+            true_xywh = true_boxes.to_xywh().data.tolist()
+            for bbox, cid, weight in zip(true_xywh, true_cids, true_weights):
+                true.add_annotation(gid, cid, bbox=bbox, weight=weight)
+
+        return pred, true
+
+    def score_coco(dmet):
+        """
+        score using ms-coco method
+
+        Example:
+            >>> # xdoctest: +REQUIRES(--pycocotools)
+            >>> dmet = DetectionMetrics.demo(
+            >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1), nclasses=8)
+            >>> print(dmet.score_coco()['mAP'])
+            0.711016...
+        """
+        from pycocotools import coco
+        from pycocotools import cocoeval
+        # The original pycoco-api prints to much, supress it
+        import netharn as nh
+
+        pred, true = dmet._to_coco()
+
+        with nh.util.SupressPrint(coco, cocoeval):
+            cocoGt = true._aspycoco()
+            cocoDt = pred._aspycoco()
+
+            for ann in cocoGt.dataset['annotations']:
+                w, h = ann['bbox'][-2:]
+                ann['ignore'] = ann['weight'] < .5
+                ann['area'] = w * h
+                ann['iscrowd'] = False
+
+            for ann in cocoDt.dataset['annotations']:
+                w, h = ann['bbox'][-2:]
+                ann['area'] = w * h
+
+            evaler = cocoeval.COCOeval(cocoGt, cocoDt, iouType='bbox')
+            evaler.evaluate()
+            evaler.accumulate()
+            evaler.summarize()
+            coco_ap = evaler.stats[1]
+            coco_scores = {
+                'mAP': coco_ap,
+            }
+        return coco_scores
+
+    @classmethod
+    def demo(cls, **kwargs):
+        """
+        Creates random true boxes and predicted boxes that have some noisy
+        offset from the truth.
+
+        Kwargs:
+            nclasses (int, default=1): number of foreground classes.
+            nimgs (int, default=1): number of images in the coco datasts.
+            nboxes (int, default=1): boxes per image.
+            n_fp (int, default=0): number of false positives.
+            n_fn (int, default=0): number of false negatives.
+            box_noise (float, default=0): std of a normal distribution used to
+                perterb both box location and box size.
+            cls_noise (float, default=0): probability that a class label will
+                change. Must be within 0 and 1.
+            anchors (ndarray, default=None): used to create random boxes
+
+        Example:
+            >>> kwargs = {}
+            >>> # Seed the RNG
+            >>> kwargs['rng'] = 0
+            >>> # Size parameters determine how big the data is
+            >>> kwargs['nimgs'] = 5
+            >>> kwargs['nboxes'] = 7
+            >>> kwargs['nclasses'] = 11
+            >>> # Noise parameters perterb predictions further from the truth
+            >>> kwargs['n_fp'] = 3
+            >>> kwargs['box_noise'] = 0.1
+            >>> kwargs['cls_noise'] = 0.5
+            >>> dmet = DetectionMetrics.demo(**kwargs)
+            >>> print('dmet.classes = {}'.format(dmet.classes))
+            dmet.classes = <CategoryTree(nNodes=12, maxDepth=3, maxBreadth=4)>
+            >>> # Can grab nh.util.Detection object for any image
+            >>> print(dmet.true_detections(gid=0))
+            <Detections(4)>
+            >>> print(dmet.pred_detections(gid=0))
+            <Detections(7)>
+        """
+        import netharn as nh
+        import ndsampler
+        # Parse kwargs
+        rng = nh.util.ensure_rng(kwargs.get('rng', 0))
+        nclasses = kwargs.get('nclasses', 1)
+        nimgs = kwargs.get('nimgs', 1)
+        box_noise = kwargs.get('box_noise', 0)
+        cls_noise = kwargs.get('cls_noise', 0)
+
+        # specify an amount of overlap between true and false scores
+        score_noise = kwargs.get('score_noise', 0.2)
+
+        anchors = kwargs.get('anchors', None)
+        scale = 100.0
+
+        # Build random variables
+        from kwarray import distributions
+        DiscreteUniform = distributions.DiscreteUniform.seeded(rng=rng)
+        def _parse_arg(key, default):
+            value = kwargs.get(key, default)
+            try:
+                low, high = value
+                return (low, high + 1)
+            except Exception:
+                return (0, value + 1)
+        nboxes_RV = DiscreteUniform(*_parse_arg('nboxes', 1))
+        n_fp_RV = DiscreteUniform(*_parse_arg('n_fp', 0))
+        n_fn_RV = DiscreteUniform(*_parse_arg('n_fn', 0))
+
+        box_noise_RV = distributions.Normal(0, box_noise, rng=rng)
+        cls_noise_RV = distributions.Bernoulli(cls_noise, rng=rng)
+
+        # the values of true and false scores starts off with no overlap and
+        # the overlap increases as the score noise increases.
+        def _interp(v1, v2, alpha):
+            return v1 * alpha + (1 - alpha) * v2
+        mid = 0.5
+        # true_high = 2.0
+        true_high = 1.0
+        true_low   = _interp(0, mid, score_noise)
+        false_high = _interp(true_high, mid - 1e-3, score_noise)
+        true_mean  = _interp(0.5, .8, score_noise)
+        false_mean = _interp(0.5, .2, score_noise)
+
+        true_score_RV = distributions.TruncNormal(mean=true_mean, std=.5, low=true_low, high=true_high, rng=rng)
+        false_score_RV = distributions.TruncNormal(mean=false_mean, std=.5, low=0, high=false_high, rng=rng)
+
+        frgnd_cx_RV = distributions.DiscreteUniform(
+            1, nclasses + 1, rng=rng)
+
+        # Create the category heirarchy
+        graph = nx.DiGraph()
+        graph.add_node('background', id=0)
+        for cid in range(1, nclasses + 1):
+            # binary heap encoding of a tree
+            cx = cid - 1
+            parent_cx = (cx - 1) // 2
+            node = 'cat_{}'.format(cid)
+            graph.add_node(node, id=cid)
+            if parent_cx > 0:
+                supercategory = 'cat_{}'.format(parent_cx + 1)
+                graph.add_edge(supercategory, node)
+        classes = ndsampler.CategoryTree(graph)
+
+        dmet = cls()
+        dmet.classes = classes
+
+        for gid in range(nimgs):
+
+            # Sample random variables
+            nboxes_ = nboxes_RV()
+            n_fp_ = n_fp_RV()
+            n_fn_ = n_fn_RV()
+
+            imgname = 'img_{}'.format(gid)
+            dmet._register_imagename(imgname, gid)
+
+            # Generate random ground truth detections
+            true_boxes = nh.util.Boxes.random(num=nboxes_, scale=scale,
+                                              anchors=anchors, rng=rng,
+                                              format='cxywh')
+            # Prevent 0 sized boxes: increase w/h by 1
+            true_boxes.data[..., 2:4] += 1
+            true_cxs = frgnd_cx_RV(len(true_boxes))
+            true_weights = np.ones(len(true_boxes), dtype=np.int32)
+
+            # Initialize predicted detections as a copy of truth
+            pred_boxes = true_boxes.copy()
+            pred_cxs = true_cxs.copy()
+
+            # Perterb box coordinates
+            pred_boxes.data = np.abs(pred_boxes.data.astype(np.float) +
+                                     box_noise_RV())
+
+            # Perterb class predictions
+            change = cls_noise_RV(len(pred_cxs))
+            pred_cxs_swap = frgnd_cx_RV(len(pred_cxs))
+            pred_cxs[change] = pred_cxs_swap[change]
+
+            # Drop true positive boxes
+            if n_fn_:
+                pred_boxes.data = pred_boxes.data[n_fn_:]
+                pred_cxs = pred_cxs[n_fn_:]
+
+            # pred_scores = np.linspace(true_min, true_max, len(pred_boxes))[::-1]
+            n_tp_ = len(pred_boxes)
+            pred_scores = true_score_RV(n_tp_)
+
+            # Add false positive boxes
+            if n_fp_:
+                false_boxes = nh.util.Boxes.random(num=n_fp_, scale=scale,
+                                                   rng=rng, format='cxywh')
+                false_cxs = frgnd_cx_RV(n_fp_)
+                false_scores = false_score_RV(n_fp_)
+
+                pred_boxes.data = np.vstack([pred_boxes.data, false_boxes.data])
+                pred_cxs = np.hstack([pred_cxs, false_cxs])
+                pred_scores = np.hstack([pred_scores, false_scores])
+
+            # Transform the scores for the assigned class into a predicted
+            # probability for each class. (Currently a bit hacky).
+            class_probs = _construct_probs(pred_cxs, pred_scores, classes, rng,
+                                           hacked=kwargs.get('hacked', 0))
+
+            true_dets = nh.util.Detections(boxes=true_boxes,
+                                           class_idxs=true_cxs,
+                                           weights=true_weights)
+
+            pred_dets = nh.util.Detections(boxes=pred_boxes,
+                                           class_idxs=pred_cxs,
+                                           scores=pred_scores)
+
+            # Hack in the probs
+            pred_dets.data['probs'] = class_probs
+
+            dmet.add_truth(true_dets, imgname=imgname)
+            dmet.add_predictions(pred_dets, imgname=imgname)
+
+        return dmet
+
+
+def _construct_probs(pred_cxs, pred_scores, classes, rng, hacked=1):
+    # Setup probs such that the assigned class receives a probability
+    # equal-(ish) to the assigned score.
+    # Its a bit tricky to setup heirarchical probs such that we get the
+    # scores in the right place. We punt and just make probs
+    # conditional. The right thing to do would be to do this, and then
+    # perterb ancestor categories such that the probability evenetually
+    # converges on the right value at that specific classes depth.
+    import torch
+
+    # Ensure probs
+    pred_scores2 = pred_scores.clip(0, 1.0)
+
+    class_energy = rng.rand(len(pred_scores2), len(classes)).astype(np.float32)
+    for p, x, s in zip(class_energy, pred_cxs, pred_scores2):
+        p[x] = s
+
+    if hacked:
+        # HACK! All that nice work we did is too slow for doctests
+        return class_energy
+
+    class_energy = torch.Tensor(class_energy)
+    cond_logits = classes.conditional_log_softmax(class_energy, dim=1)
+    cond_probs = torch.exp(cond_logits).numpy()
+
+    # I was having a difficult time getting this right, so an
+    # inefficient per-item non-vectorized implementation it is.
+    # Note: that this implementation takes 70% of the time in this function
+    # and is a bottleneck for the doctests. A vectorized implementation would
+    # be nice.
+    idx_to_ancestor_idxs = classes.idx_to_ancestor_idxs()
+    idx_to_groups = {idx: group for group in classes.idx_groups for idx in group}
+
+    def set_conditional_score(row, cx, score, idx_to_groups):
+        group_cxs = np.array(idx_to_groups[cx])
+        flags = group_cxs == cx
+        group_row = row[group_cxs]
+        # Ensure that that heriarchical probs sum to 1
+        current = group_row[~flags]
+        other = current * (1 - score) / current.sum()
+        other = np.nan_to_num(other)
+        group_row[~flags] = other
+        group_row[flags] = score
+        row[group_cxs] = group_row
+
+    for row, cx, score in zip(cond_probs, pred_cxs, pred_scores2):
+        set_conditional_score(row, cx, score, idx_to_groups)
+        for ancestor_cx in idx_to_ancestor_idxs[cx]:
+            if ancestor_cx != cx:
+                # Hack all parent probs to 1.0 so conditional probs
+                # turn into real probs.
+                set_conditional_score(row, ancestor_cx, 1.0, idx_to_groups)
+                # TODO: could add a fudge factor here so the
+                # conditional prob is higher than score, but parent
+                # probs are less than 1.0
+
+                # TODO: could also maximize entropy of descendant nodes
+                # so classes.decision2 would stop at this node
+
+    # For each level the conditional probs must sum to 1
+    if cond_probs.size > 0:
+        for idxs in classes.idx_groups:
+            level = cond_probs[:, idxs]
+            totals = level.sum(axis=1)
+            assert level.shape[1] == 1 or np.allclose(totals, 1.0), str(level) + ' : ' + str(totals)
+
+    cond_logits = torch.Tensor(cond_probs).log()
+    class_probs = classes._apply_logit_chain_rule(cond_logits, dim=1).exp().numpy()
+    class_probs = class_probs.reshape(-1, len(classes))
+    # print([p[x] for p, x in zip(class_probs, pred_cxs)])
+    # print(pred_scores2)
+    return class_probs

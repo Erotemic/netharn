@@ -45,6 +45,7 @@ Example:
     >>>     'monitor'     : (nh.Monitor, {'max_epoch': 3,}),
     >>> })
     >>> harn = nh.FitHarn(hyper)
+    >>> harn.config['use_tensorboard'] = False
     >>> harn.initialize(reset='delete')
     >>> harn.run()
     --- STEP 1: TRAIN A MODEL ---
@@ -295,7 +296,7 @@ def _make_package_name2(info):
     return deploy_name
 
 
-def _package_deploy2(dpath, info):
+def _package_deploy2(dpath, info, name=None):
     """
     Combine the model, weights, and info files into a single deployable file
 
@@ -303,6 +304,8 @@ def _package_deploy2(dpath, info):
         dpath (PathLike): where to dump the deployment
         info (Dict): containing model_fpath and snap_fpath and optionally
             train_info_fpath and glance, which is a list of extra files.
+        name (str, default=None): the name of the zipfile to deploy to.
+            If not specified, one will be constructed.
 
     Ignore:
         dpath = '/home/joncrall/.cache/netharn/tests/_package_custom'
@@ -319,9 +322,14 @@ def _package_deploy2(dpath, info):
     if not snap_fpath:
         raise FileNotFoundError('No weights are associated with the model')
 
-    deploy_name = _make_package_name2(info)
-
-    deploy_fname = deploy_name + '.zip'
+    if name is None:
+        deploy_name = _make_package_name2(info)
+        deploy_fname = deploy_name + '.zip'
+    else:
+        if not name.endswith('.zip'):
+            raise ValueError('The deployed package name must end in .zip')
+        deploy_name = os.path.splitext(name)[0]
+        deploy_fname = name
 
     def zwrite(myzip, fpath, fname=None):
         if fname is None:
@@ -463,7 +471,7 @@ class DeployedModel(ub.NiceRepr):
         else:
             return self.path
 
-    def package(self, dpath=None):
+    def package(self, dpath=None, name=None):
         """
         If self.path is a directory, packages important info into a deployable
         zipfile.
@@ -471,6 +479,8 @@ class DeployedModel(ub.NiceRepr):
         Args:
             dpath (PathLike, optional): directory to dump your packaged model.
                 If not specified, it uses the netharn train_dpath if available.
+            name (str, default=None): the name of the zipfile to deploy to.
+                If not specified, one will be constructed.
 
         Returns:
             PathLike: path to single-file deployment
@@ -483,7 +493,7 @@ class DeployedModel(ub.NiceRepr):
                     raise Exception('Deployed model is already a package')
                 dpath = self.path
 
-        zip_fpath = _package_deploy2(dpath, self.info)
+        zip_fpath = _package_deploy2(dpath, self.info, name=name)
         return zip_fpath
 
     @property
@@ -585,6 +595,7 @@ def _demodata_toy_harn():
         'monitor'     : (nh.Monitor, {'max_epoch': 1}),
     })
     harn = nh.FitHarn(hyper)
+    harn.config['use_tensorboard'] = False
     return harn
 
 

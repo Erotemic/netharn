@@ -6,6 +6,7 @@ from collections import OrderedDict
 import numpy as np
 import torch
 import torch.nn as nn
+import ubelt as ub
 from netharn.models.yolo2 import light_postproc
 
 __all__ = ['Yolo']
@@ -134,14 +135,18 @@ class Yolo(nn.Module):
         >>> assert list(network_output.shape) == [2, 5, 25, 3, 3]
         >>> assert list(network_output.shape) == [B, A, (C + 5), Wout, Hout]
         >>> # The default postprocess function will construct the bounding boxes
-        >>> # Each item in `postout` is a list of detected boxes with columns:
-        >>> # x_center, y_center, width, height, confidence, class_id
-        >>> postout = self.postprocess(network_output)
-        >>> boxes = postout[0].numpy()
-        >>> print(boxes)  # xdoc: +IGNORE_WANT
-        [[ 0.8342051   0.4984206   5.5057874   3.8463938   0.05158421  5.        ]
-         [ 0.84211665  0.16787912  1.5673848   1.9569225   0.05154617 15.        ]
-         [ 0.48864678  0.50975     0.8462989   0.79987097  0.04938301 10.        ]]
+        >>> # Each item in `batch_dets` is a list of Detections objects.
+        >>> batch_dets = self.postprocess(network_output)
+        >>> boxes = batch_dets[0].numpy()
+        >>> print(ub.repr2(boxes.data, nl=1))  # xdoc: +IGNORE_WANT
+        {
+            'boxes': <Boxes(cxywh,
+                         array([[0.834205  , 0.49842083, 5.505774  , 3.8463774 ],
+                                [0.8421171 , 0.16787954, 1.5673765 , 1.9569172 ],
+                                [0.4886469 , 0.5097498 , 0.84630543, 0.79987913]], dtype=float32))>,
+            'class_idxs': np.array([ 5, 15, 10], dtype=np.int64),
+            'scores': np.array([0.05158454, 0.051546  , 0.04938344], dtype=np.float32),
+        }
     """
 
     def __init__(self, num_classes=20, conf_thresh=.25,
@@ -214,7 +219,8 @@ class Yolo(nn.Module):
             [nn.Sequential(layer_dict) for layer_dict in layer_list])
 
         self.postprocess = light_postproc.GetBoundingBoxes(
-            self.num_classes, self.anchors, conf_thresh, nms_thresh)
+            self.num_classes, self.anchors, conf_thresh, nms_thresh,
+        )
 
     def output_shape_for(self, input_shape):
         """
@@ -241,30 +247,22 @@ class Yolo(nn.Module):
             >>> output = self(im_data)
             >>> # Define remaining params
             >>> orig_sizes = torch.LongTensor([rgb255.shape[0:2][::-1]] * len(im_data))
-            >>> postout = self.postprocess(output)
-            >>> out_boxes = postout[0][:, 0:4]
-            >>> out_scores = postout[0][:, 4]
-            >>> out_cxs = postout[0][:, 5]
+            >>> batch_dets = self.postprocess(output)
+            >>> dets = batch_dets[0]
             >>> # xdoc: +REQUIRES(--show)
-            >>> from netharn.util import mplutil
-            >>> from netharn import util
-            >>> mplutil.qtensure()  # xdoc: +SKIP
-            >>> label_names = ('aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
+            >>> import netharn as nh
+            >>> nh.util.autompl()  # xdoc: +SKIP
+            >>> dets.meta['classes'] = ('aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
             >>>  'bus', 'car', 'cat', 'chair', 'cow', 'diningtable',
             >>>  'dog', 'horse', 'motorbike', 'person',
             >>>  'pottedplant', 'sheep', 'sofa', 'train',
             >>>  'tvmonitor')
-            >>> import pandas as pd
-            >>> cls_names = list(ub.take(label_names, out_cxs.numpy().astype(np.int).tolist()))
-            >>> print(pd.DataFrame({'name': cls_names, 'score': out_scores}))
-            >>> mplutil.figure(fnum=1, doclf=True)
-            >>> #sf = orig_sizes[0].numpy() / (np.array(inp_size) / 32)
-            >>> sf = orig_sizes[0].numpy()
-            >>> norm_cxywh = util.Boxes(out_boxes.numpy(), 'cxywh')
-            >>> tlwh = norm_cxywh.toformat('tlwh').scale(sf).data
-            >>> mplutil.imshow(rgb255, colorspace='rgb')
-            >>> mplutil.draw_boxes(tlwh)
-            >>> mplutil.show_if_requested()
+            >>> nh.util.figure(fnum=1, doclf=True)
+            >>> sf = orig_sizes[0]
+            >>> dets.boxes.scale(sf, inplace=True)
+            >>> nh.util.imshow(rgb255, colorspace='rgb')
+            >>> dets.draw()
+            >>> nh.util.show_if_requested()
         """
         outputs = []
 
@@ -294,16 +292,15 @@ def find_anchors(dset):
         >>> xy = -anchors / 2
         >>> wh = anchors
         >>> show_boxes = np.hstack([xy, wh])
-        >>> from netharn.util import mplutil
-        >>> mplutil.figure(doclf=True, fnum=1)
-        >>> mplutil.qtensure()  # xdoc: +SKIP
-        >>> mplutil.draw_boxes(show_boxes, box_format='tlwh')
+        >>> import netharn as nh
+        >>> nh.util.figure(doclf=True, fnum=1)
+        >>> nh.util.autompl()  # xdoc: +SKIP
+        >>> nh.util.draw_boxes(show_boxes, box_format='tlwh')
         >>> from matplotlib import pyplot as plt
         >>> plt.gca().set_xlim(xy.min() - 1, wh.max() / 2 + 1)
         >>> plt.gca().set_ylim(xy.min() - 1, wh.max() / 2 + 1)
         >>> plt.gca().set_aspect('equal')
     """
-    import ubelt as ub
     import numpy as np
     from PIL import Image
     from sklearn import cluster
@@ -330,7 +327,6 @@ def demo_voc_weights(key='lightnet'):
     """
     Demo weights for Pascal VOC dataset
     """
-    import ubelt as ub
 
     if key == 'lightnet':
         # url = 'https://gitlab.com/EAVISE/lightnet/raw/master/examples/yolo-voc/lightnet_weights.pt'
@@ -357,7 +353,6 @@ def demo_voc_weights(key='lightnet'):
 
 def initial_imagenet_weights():
     # import os
-    import ubelt as ub
     try:
         darknet_weight_fpath = ub.grabdata(
             'https://pjreddie.com/media/files/darknet19_448.conv.23',

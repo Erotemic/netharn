@@ -5,16 +5,16 @@ References:
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import os
-import itertools as it
 import torch
 import ubelt as ub
 import numpy as np
-import netharn as nh
-from netharn import util
-import imgaug.augmenters as iaa
 import torch.utils.data as torch_data
+import imgaug.augmenters as iaa
+import netharn as nh
 from netharn.models.yolo2 import multiscale_batch_sampler
 from netharn.models.yolo2 import light_yolo
+from netharn import util
+from netharn.data.transforms import HSVShift
 
 
 class YoloVOCDataset(nh.data.voc.VOCDataset):
@@ -67,13 +67,10 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         self.augmenter = None
 
         if 'train' in split:
-            import netharn.data.transforms  # NOQA
-            from netharn.data.transforms import HSVShift
             augmentors = [
                 # Order used in lightnet is hsv, rc, rf, lb
                 # lb is applied externally to augmenters
                 iaa.Sometimes(.9, HSVShift(hue=0.1, sat=1.5, val=1.5)),
-                # iaa.Crop(percent=(0, .2)),
                 iaa.Crop(percent=(0, .2), keep_size=False),
                 iaa.Fliplr(p=.5),
             ]
@@ -83,7 +80,6 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         # the aspect ratio.
         self.letterbox = nh.data.transforms.Resize(None, mode='letterbox')
 
-    @util.profiler.profile
     def __getitem__(self, index):
         """
         CommandLine:
@@ -102,13 +98,13 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> norm_boxes = label['targets'].numpy().reshape(-1, 5)[:, 1:5]
             >>> inp_size = hwc01.shape[-2::-1]
             >>> # xdoc: +REQUIRES(--show)
-            >>> from netharn.util import mplutil
-            >>> mplutil.figure(doclf=True, fnum=1)
-            >>> mplutil.qtensure()  # xdoc: +SKIP
-            >>> mplutil.imshow(hwc01, colorspace='rgb')
-            >>> inp_boxes = util.Boxes(norm_boxes, 'cxywh').scale(inp_size).data
-            >>> mplutil.draw_boxes(inp_boxes, box_format='cxywh')
-            >>> mplutil.show_if_requested()
+            >>> import netharn as nh
+            >>> nh.util.figure(doclf=True, fnum=1)
+            >>> nh.util.autompl()  # xdoc: +SKIP
+            >>> nh.util.imshow(hwc01, colorspace='rgb')
+            >>> inp_boxes = util.Boxes(norm_boxes, 'cxywh').scale(inp_size)
+            >>> inp_boxes.draw()
+            >>> nh.util.show_if_requested()
 
         Example:
             >>> # DISABLE_DOCTSET
@@ -123,13 +119,12 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> norm_boxes = label[0].numpy().reshape(-1, 5)[:, 1:5]
             >>> inp_size = hwc01.shape[-2::-1]
             >>> # xdoc: +REQUIRES(--show)
-            >>> from netharn.util import mplutil
-            >>> mplutil.figure(doclf=True, fnum=1)
-            >>> mplutil.qtensure()  # xdoc: +SKIP
-            >>> mplutil.imshow(hwc01, colorspace='rgb')
-            >>> inp_boxes = util.Boxes(norm_boxes, 'cxywh').scale(inp_size).data
-            >>> mplutil.draw_boxes(inp_boxes, box_format='cxywh')
-            >>> mplutil.show_if_requested()
+            >>> nh.util.figure(doclf=True, fnum=1)
+            >>> nh.util.autompl()  # xdoc: +SKIP
+            >>> nh.util.imshow(hwc01, colorspace='rgb')
+            >>> inp_boxes = util.Boxes(norm_boxes, 'cxywh').scale(inp_size)
+            >>> inp_boxes.draw()
+            >>> nh.util.show_if_requested()
         """
         if isinstance(index, tuple):
             # Get size index from the batch loader
@@ -284,35 +279,17 @@ class YoloHarn(nh.FitHarn):
     def __init__(harn, **kw):
         super(YoloHarn, harn).__init__(**kw)
         # Dictionary of detection metrics
-        harn.dmets = {}  # Dict[str, nh.metrics.detections.DetectionMetrics]
+        harn.dmets = {}  # Dict[str, nh.metrics.DetectionMetrics]
         harn.chosen_indices = {}
 
     def after_initialize(harn):
         # Prepare structures we will use to measure and quantify quality
         for tag, voc_dset in harn.datasets.items():
-            cacher = ub.Cacher('dmet2', cfgstr=tag, appname='netharn')
-            dmet = cacher.tryload()
-            if dmet is None:
-                dmet = nh.metrics.detections.DetectionMetrics()
-                dmet.true = voc_dset.to_coco()
-                # Truth and predictions share the same images and categories
-                dmet.pred.dataset['images'] = dmet.true.dataset['images']
-                dmet.pred.dataset['categories'] = dmet.true.dataset['categories']
-                dmet.pred.dataset['annotations'] = []  # start empty
-                dmet.true.dataset['annotations'] = []
-                dmet.pred._clear_index()
-                dmet.true._clear_index()
-                dmet.true._build_index()
-                dmet.pred._build_index()
-                dmet.true._ensure_imgsize()
-                dmet.pred._ensure_imgsize()
-                cacher.save(dmet)
-
-            dmet.true._build_index()
-            dmet.pred._build_index()
+            dmet = nh.metrics.DetectionMetrics()
+            dmet._pred_aidbase = getattr(dmet, '_pred_aidbase', 1)
+            dmet._true_aidbase = getattr(dmet, '_true_aidbase', 1)
             harn.dmets[tag] = dmet
 
-    @util.profiler.profile
     def prepare_batch(harn, raw_batch):
         """
         ensure batch is in a standardized structure
@@ -325,7 +302,7 @@ class YoloHarn(nh.FitHarn):
         batch = (inputs, labels)
         return batch
 
-    @util.profiler.profile
+    @util.profile
     def run_batch(harn, batch):
         """
         Connect data -> network -> loss
@@ -351,29 +328,28 @@ class YoloHarn(nh.FitHarn):
         nitems = (len(harn.datasets['train']) // bsize) * bsize
         bx = harn.bxs['train']
         n_seen = (bx * bsize) + (nitems * harn.epoch)
-        # n_seen = 10000
 
         inputs, labels = batch
+        if util.IS_PROFILING:
+            torch.cuda.synchronize()
+
         outputs = harn.model(inputs)
-        # if ub.argflag('--profile'):
-        #     torch.cuda.synchronize()
-        target = labels['targets']
-        gt_weights = labels['gt_weights']
 
         target2 = {
-            'target': target,
-            'gt_weights': gt_weights,
+            'target': labels['targets'],
+            'gt_weights': labels['gt_weights'],
         }
+        if util.IS_PROFILING:
+            torch.cuda.synchronize()
+
         loss = harn.criterion(outputs, target2, seen=n_seen)
 
-        # loss = harn.criterion(outputs, target, seen=n_seen,
-        #                       gt_weights=gt_weights)
+        if util.IS_PROFILING:
+            torch.cuda.synchronize()
 
-        # if ub.argflag('--profile'):
-        #     torch.cuda.synchronize()
         return outputs, loss
 
-    @util.profiler.profile
+    @util.profile
     def on_batch(harn, batch, outputs, loss):
         """
         custom callback
@@ -383,22 +359,59 @@ class YoloHarn(nh.FitHarn):
 
         Example:
             >>> # DISABLE_DOCTSET
-            >>> harn = setup_yolo_harness(bsize=1)
+            >>> harn = setup_yolo_harness(bsize=8)
             >>> harn.initialize()
-            >>> batch = harn._demo_batch(0, 'test')
+            >>> batch = harn._demo_batch(0, 'train')
             >>> weights_fpath = light_yolo.demo_voc_weights()
             >>> state_dict = harn.xpu.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn.run_batch(batch)
             >>> harn.on_batch(batch, outputs, loss)
             >>> # xdoc: +REQUIRES(--show)
-            >>> postout = harn.model.module.postprocess(outputs, nms_mode=4)
-            >>> from netharn.util import mplutil
-            >>> mplutil.qtensure()  # xdoc: +SKIP
-            >>> harn.visualize_prediction(batch, outputs, postout, idx=0, thresh=0.01)
-            >>> mplutil.show_if_requested()
+            >>> batch_dets = harn.model.module.postprocess(outputs)
+            >>> nh.util.autompl()  # xdoc: +SKIP
+            >>> stacked = harn.draw_batch(batch, outputs, batch_dets, thresh=0.01)
+            >>> nh.util.imshow(stacked)
+            >>> nh.util.show_if_requested()
         """
-        harn._record_predictions(batch, outputs)
+        dmet = harn.dmets[harn.current_tag]
+        inputs, labels = batch
+        inp_size = np.array(inputs.shape[-2:][::-1])
+
+        if util.IS_PROFILING:
+            torch.cuda.synchronize()
+
+        try:
+            batch_dets = harn.model.module.postprocess(outputs)
+
+            bx = harn.bxs[harn.current_tag]
+            if bx < 4:
+                stacked = harn.draw_batch(batch, outputs, batch_dets, thresh=0.1)
+                # img = nh.util.render_figure_to_image(fig)
+                dump_dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag, 'batch'))
+                dump_fname = 'pred_bx{:04d}_epoch{:08d}.png'.format(bx, harn.epoch)
+                fpath = os.path.join(dump_dpath, dump_fname)
+                harn.debug('dump viz fpath = {}'.format(fpath))
+                nh.util.imwrite(fpath, stacked)
+        except Exception as ex:
+            harn.error('\n\n\n')
+            harn.error('ERROR: FAILED TO POSTPROCESS OUTPUTS')
+            harn.error('DETAILS: {!r}'.format(ex))
+            raise
+
+        if util.IS_PROFILING:
+            torch.cuda.synchronize()
+
+        for gx, pred_dets in harn._postout_to_pred_dets(inp_size, labels, batch_dets, _aidbase=dmet._pred_aidbase):
+            dmet._pred_aidbase += (len(pred_dets) + 1)
+            dmet.add_predictions(pred_dets, gid=gx)
+
+        for gx, true_dets in harn._labels_to_true_dets(inp_size, labels, _aidbase=dmet._true_aidbase):
+            dmet._true_aidbase += (len(true_dets) + 1)
+            dmet.add_truth(true_dets, gid=gx)
+
+        if util.IS_PROFILING:
+            torch.cuda.synchronize()
 
         metrics_dict = ub.odict()
         metrics_dict['L_bbox'] = float(harn.criterion.loss_coord)
@@ -409,53 +422,46 @@ class YoloHarn(nh.FitHarn):
                 raise ValueError('{}={} is not finite'.format(k, v))
         return metrics_dict
 
-    def _postout_to_pred_ann(harn, inp_size, labels, postout, _aidbase=1,
-                             undo_lb=True):
+    @util.profile
+    def _postout_to_pred_dets(harn, inp_size, labels, batch_dets, _aidbase=1,
+                              undo_lb=True):
         """ Convert batch predictions to coco-style annotations for scoring """
         indices = labels['indices']
         orig_sizes = labels['orig_sizes']
         letterbox = harn.datasets[harn.current_tag].letterbox
-
         MAX_DETS = None
-
         bsize = len(indices)
 
-        _aids = it.count(_aidbase)
-        for bx in range(bsize):
-            postitem = postout[bx].data.cpu().numpy()
-            orig_size = orig_sizes[bx].data.cpu().numpy()
-            gx = int(indices[bx].data.cpu().numpy())
-
+        for ix in range(bsize):
+            pred_dets = batch_dets[ix]
             # Unpack postprocessed predictions
-            sboxes = postitem.reshape(-1, 6)
-            pred_boxes_ = util.Boxes(sboxes[:, 0:4], 'cxywh').scale(inp_size)
-            pred_scores = sboxes[:, 4]
-            pred_cxs = sboxes[:, 5].astype(np.int)
+            pred_dets = pred_dets.numpy()
+            pred_dets.boxes.scale(inp_size, inplace=True)
 
             if undo_lb:
-                pred_boxes = letterbox._boxes_letterbox_invert(
-                    pred_boxes_, orig_size, inp_size)
+                orig_size = orig_sizes[ix].data.cpu().numpy()
+                pred_dets.data['boxes'] = letterbox._boxes_letterbox_invert(
+                    pred_dets.boxes, orig_size, inp_size)
             else:
-                pred_boxes = pred_boxes_
+                pred_dets.data['boxes'] = pred_dets.boxes
 
             # sort predictions by descending score
 
             # Take at most MAX_DETS detections to evaulate
-            _pred_sortx = pred_scores.argsort()[::-1][:MAX_DETS]
+            _pred_sortx = pred_dets.argsort(reverse=True)[:MAX_DETS]
+            pred_dets = pred_dets.take(_pred_sortx)
 
-            _pred_boxes = pred_boxes.take(_pred_sortx, axis=0).to_xywh().data.tolist()
-            _pred_cxs = pred_cxs.take(_pred_sortx, axis=0).tolist()
-            _pred_scores = pred_scores.take(_pred_sortx, axis=0).tolist()
-            for box, cx, score, aid in zip(_pred_boxes, _pred_cxs, _pred_scores, _aids):
-                yield {
-                    'id': aid,
-                    'image_id': gx,
-                    'category_id': cx,
-                    'bbox': box,
-                    'score': score
-                }
+            pred_dets.data['aids'] = np.arange(_aidbase, _aidbase + len(pred_dets))
+            _aidbase += len(pred_dets)
+            gx = int(indices[ix].data)
 
-    def _labels_to_true_ann(harn, inp_size, labels, _aidbase=1, undo_lb=True):
+            if util.IS_PROFILING:
+                torch.cuda.synchronize()
+
+            yield gx, pred_dets
+
+    @util.profile
+    def _labels_to_true_dets(harn, inp_size, labels, _aidbase=1, undo_lb=True):
         """ Convert batch groundtruth to coco-style annotations for scoring """
         indices = labels['indices']
         orig_sizes = labels['orig_sizes']
@@ -465,75 +471,32 @@ class YoloHarn(nh.FitHarn):
         letterbox = harn.datasets[harn.current_tag].letterbox
         # On the training set, we need to add truth due to augmentation
         bsize = len(indices)
-        _aids = it.count(_aidbase)
-        for bx in range(bsize):
-            target = targets[bx].cpu().numpy().reshape(-1, 5)
-            true_weights = gt_weights[bx].cpu().numpy()
-            orig_size = orig_sizes[bx].cpu().numpy()
-            true_cxs = target[:, 0].astype(np.int)
-            true_cxywh = target[:, 1:5]
-            flags = true_cxs != -1
-            true_weights = true_weights[flags]
-            true_cxywh = true_cxywh[flags]
-            true_cxs = true_cxs[flags]
+        for ix in range(bsize):
+            target = targets[ix].view(-1, 5)
 
-            gx = int(indices[bx].data.cpu().numpy())
+            true_det = util.Detections(
+                boxes=util.Boxes(target[:, 1:5].float(), 'cxywh'),
+                class_idxs=target[:, 0].long(),
+                weights=gt_weights[ix],
+            )
+            true_det = true_det.numpy()
+            flags = true_det.class_idxs != -1
+            true_det = true_det.compress(flags)
 
-            true_boxes = nh.util.Boxes(true_cxywh, 'cxywh').scale(inp_size)
             if undo_lb:
-                true_boxes = letterbox._boxes_letterbox_invert(true_boxes, orig_size, inp_size)
+                orig_size = orig_sizes[ix].cpu().numpy()
+                true_det.data['boxes'] = letterbox._boxes_letterbox_invert(
+                    true_det.boxes, orig_size, inp_size)
 
-            _true_boxes = true_boxes.to_xywh().data.tolist()
-            _true_cxs = true_cxs.tolist()
-            _true_weights = true_weights.tolist()
-            for box, cx, weight, aid in zip(_true_boxes, _true_cxs, _true_weights, _aids):
-                yield {
-                    'id': aid,
-                    'image_id': gx,
-                    'category_id': cx,
-                    'bbox': box,
-                    'weight': weight
-                }
+            true_det.data['aids'] = np.arange(_aidbase, _aidbase + len(true_det))
+            gx = int(indices[ix].data.cpu().numpy())
 
-    @util.profiler.profile
-    def _record_predictions(harn, batch, outputs):
-        """
-        Transform batch predictions into coco-style detections for scoring
+            if util.IS_PROFILING:
+                torch.cuda.synchronize()
 
-        Ignore:
-            >>> harn = setup_yolo_harness(bsize=1)
-            >>> harn.initialize()
-            >>> harn.current_tag = tag = 'test'
-            >>> batch = harn._demo_batch(0, tag)
-            >>> weights_fpath = light_yolo.demo_voc_weights()
-            >>> state_dict = harn.xpu.load(weights_fpath)['weights']
-            >>> harn.model.module.load_state_dict(state_dict)
-            >>> outputs, loss = harn.run_batch(batch)
-            >>> harn._record_predictions(batch, outputs)
-        """
-        dmet = harn.dmets[harn.current_tag]
-        inputs, labels = batch
-        inp_size = np.array(inputs.shape[-2:][::-1])
+            yield gx, true_det
 
-        try:
-            postout = harn.model.module.postprocess(outputs, nms_mode=4)
-        except Exception as ex:
-            harn.error('\n\n\n')
-            harn.error('ERROR: FAILED TO POSTPROCESS OUTPUTS')
-            harn.error('DETAILS: {!r}'.format(ex))
-            raise
-
-        pred_anns = list(harn._postout_to_pred_ann(
-            inp_size, labels, postout, _aidbase=dmet.pred.n_annots + 1
-        ))
-        dmet.pred.add_annotations(pred_anns)
-
-        true_anns = list(harn._labels_to_true_ann(
-            inp_size, labels, _aidbase=dmet.true.n_annots + 1
-        ))
-        dmet.true.add_annotations(true_anns)
-
-    @util.profiler.profile
+    @util.profile
     def on_epoch(harn):
         """
         custom callback
@@ -562,188 +525,129 @@ class YoloHarn(nh.FitHarn):
         """
         metrics_dict = ub.odict()
 
-        # harn.log('Epoch evaluation: {}'.format(harn.current_tag))
-
         # Measure quality
         dmet = harn.dmets[harn.current_tag]
-        try:
-            coco_scores = dmet.score_coco()
-            metrics_dict['coco-mAP'] = coco_scores['mAP']
-        except ImportError:
-            pass
-        except Exception as ex:
-            print('ex = {!r}'.format(ex))
+        # try:
+        #     coco_scores = dmet.score_coco()
+        #     metrics_dict['coco-mAP'] = coco_scores['mAP']
+        # except ImportError:
+        #     pass
+        # except Exception as ex:
+        #     print('ex = {!r}'.format(ex))
 
-        try:
-            nh_scores = dmet.score_netharn()
-            metrics_dict['nh-mAP'] = nh_scores['mAP']
-            metrics_dict['nh-AP'] = nh_scores['peritem']['ap']
-        except Exception as ex:
-            print('ex = {!r}'.format(ex))
+        # try:
+        #     nh_scores = dmet.score_netharn()
+        #     metrics_dict['nh-mAP'] = nh_scores['mAP']
+        #     metrics_dict['nh-AP'] = nh_scores['peritem']['ap']
+        # except Exception as ex:
+        #     print('ex = {!r}'.format(ex))
 
         try:
             voc_scores = dmet.score_voc()
             metrics_dict['voc-mAP'] = voc_scores['mAP']
         except Exception as ex:
             print('ex = {!r}'.format(ex))
+            raise
 
         # Reset detections
-        dmet.pred.remove_all_annotations()
-        dmet.true.remove_all_annotations()
-
-        if harn.current_tag in {'test', 'vali'}:
-            if harn.epoch > 20:
-                # Dont bother testing the early iterations
-                if (harn.epoch % 10 == 5 or harn.epoch > 300):
-                    harn._dump_chosen_indices()
+        dmet.clear()
+        dmet._pred_aidbase = 1
+        dmet._true_aidbase = 1
         return metrics_dict
 
-    def visualize_prediction(harn, batch, outputs, postout, idx=0, thresh=None,
-                             orig_img=None):
+    @util.profile
+    def draw_batch(harn, batch, outputs, batch_dets, idx=None, thresh=None,
+                   orig_img=None):
         """
         Returns:
             np.ndarray: numpy image
+
+        Example:
+            >>> # DISABLE_DOCTSET
+            >>> harn = setup_yolo_harness(bsize=1)
+            >>> harn.initialize()
+            >>> batch = harn._demo_batch(0, 'train')
+            >>> weights_fpath = light_yolo.demo_voc_weights()
+            >>> state_dict = harn.xpu.load(weights_fpath)['weights']
+            >>> harn.model.module.load_state_dict(state_dict)
+            >>> outputs, loss = harn.run_batch(batch)
+            >>> harn.on_batch(batch, outputs, loss)
+            >>> # xdoc: +REQUIRES(--show)
+            >>> batch_dets = harn.model.module.postprocess(outputs)
+            >>> nh.util.autompl()  # xdoc: +SKIP
+            >>> stacked = harn.draw_batch(batch, outputs, batch_dets, thresh=0.01)
+            >>> nh.util.imshow(stacked)
+            >>> nh.util.show_if_requested()
         """
-        # xdoc: +REQUIRES(--show)
+        import cv2
         inputs, labels = batch
 
         targets = labels['targets']
         orig_sizes = labels['orig_sizes']
 
-        chw01 = inputs[idx]
-        target = targets[idx].cpu().numpy().reshape(-1, 5)
-        postitem = postout[idx].cpu().numpy().reshape(-1, 6)
-        orig_size = orig_sizes[idx].cpu().numpy()
-        # ---
-        hwc01 = chw01.cpu().numpy().transpose(1, 2, 0)
-        # TRUE
-        true_cxs = target[:, 0].astype(np.int)
-        true_cxywh = target[:, 1:5]
-        flags = true_cxs != -1
-        true_cxywh = true_cxywh[flags]
-        true_cxs = true_cxs[flags]
-        # PRED
-        pred_cxywh = postitem[:, 0:4]
-        pred_scores = postitem[:, 4]
-        pred_cxs = postitem[:, 5].astype(np.int)
+        if idx is None:
+            idxs = range(len(inputs))
+        else:
+            idxs = [idx]
 
-        if thresh is not None:
-            flags = pred_scores > thresh
-            pred_cxs = pred_cxs[flags]
-            pred_cxywh = pred_cxywh[flags]
-            pred_scores = pred_scores[flags]
+        imgs = []
+        for idx in idxs:
+            chw01 = inputs[idx]
+            target = targets[idx].view(-1, 5)
 
-        label_names = harn.datasets[harn.current_tag].label_names
+            pred_dets = batch_dets[idx]
+            label_names = harn.datasets[harn.current_tag].label_names
+            pred_dets.meta['classes'] = label_names
 
-        true_clsnms = list(ub.take(label_names, true_cxs))
-        pred_clsnms = list(ub.take(label_names, pred_cxs))
-        pred_labels = ['{}@{:.2f}'.format(n, s)
-                       for n, s in zip(pred_clsnms, pred_scores)]
-        # ---
-        inp_size = np.array(hwc01.shape[0:2][::-1])
-        target_size = inp_size
+            true_dets = util.Detections(
+                boxes=util.Boxes(target[:, 1:5], 'cxywh'),
+                class_idxs=target[:, 0].int(),
+                classes=label_names
+            )
 
-        true_boxes_ = nh.util.Boxes(true_cxywh, 'cxywh').scale(inp_size)
-        pred_boxes_ = nh.util.Boxes(pred_cxywh, 'cxywh').scale(inp_size)
+            pred_dets = pred_dets.numpy()
+            true_dets = true_dets.numpy()
 
-        letterbox = harn.datasets[harn.current_tag].letterbox
-        img = letterbox._img_letterbox_invert(hwc01, orig_size, target_size)
-        img = np.clip(img, 0, 1)
-        if orig_img is not None:
+            true_dets = true_dets.compress(true_dets.class_idxs != -1)
+
+            if thresh is not None:
+                pred_dets = pred_dets.compress(pred_dets.scores > thresh)
+
+            hwc01 = chw01.cpu().numpy().transpose(1, 2, 0)
+            inp_size = np.array(hwc01.shape[0:2][::-1])
+
+            true_dets.boxes.scale(inp_size, inplace=True)
+            pred_dets.boxes.scale(inp_size, inplace=True)
+
+            letterbox = harn.datasets[harn.current_tag].letterbox
+            orig_size = orig_sizes[idx].cpu().numpy()
+            target_size = inp_size
+            img = letterbox._img_letterbox_invert(hwc01, orig_size, target_size)
+            img = np.clip(img, 0, 1)
             # we are given the original image, to avoid artifacts from
             # inverting a downscale
-            assert orig_img.shape == img.shape
+            assert orig_img is None or orig_img.shape == img.shape
 
-        true_cxywh_ = letterbox._boxes_letterbox_invert(true_boxes_, orig_size, target_size)
-        pred_cxywh_ = letterbox._boxes_letterbox_invert(pred_boxes_, orig_size, target_size)
+            true_dets.data['boxes'] = letterbox._boxes_letterbox_invert(
+                true_dets.boxes, orig_size, target_size)
+            pred_dets.data['boxes'] = letterbox._boxes_letterbox_invert(
+                pred_dets.boxes, orig_size, target_size)
 
-        # shift, scale, embed_size = letterbox._letterbox_transform(orig_size, target_size)
+            # shift, scale, embed_size = letterbox._letterbox_transform(orig_size, target_size)
+            # fig = nh.util.figure(doclf=True, fnum=1)
+            # nh.util.imshow(img, colorspace='rgb')
+            canvas = (img * 255).astype(np.uint8)
+            canvas = true_dets.draw_on(canvas, color='green')
+            canvas = pred_dets.draw_on(canvas, color='blue')
 
-        fig = nh.util.figure(doclf=True, fnum=1)
-        nh.util.imshow(img, colorspace='rgb')
-        nh.util.draw_boxes(true_cxywh_.data, color='green', box_format='cxywh', labels=true_clsnms)
-        nh.util.draw_boxes(pred_cxywh_.data, color='blue', box_format='cxywh', labels=pred_labels)
-        return fig
+            canvas = cv2.resize(canvas, (300, 300))
+            imgs.append(canvas)
 
-    def _choose_indices(harn):
-        """
-        Hack to pick several images from the validation set to monitor each
-        epoch.
-        """
-        tag = harn.current_tag
-        dset = harn.loaders[tag].dataset
+        if util.IS_PROFILING:
+            torch.cuda.synchronize()
 
-        cid_to_gids = ub.ddict(set)
-        empty_gids = []
-        for gid in range(len(dset)):
-            annots = dset._load_annotation(gid)
-            if len(annots['gt_classes']) == 0:
-                empty_gids.append(gid)
-            for cid, ishard in zip(annots['gt_classes'], annots['gt_ishard']):
-                if not ishard:
-                    cid_to_gids[cid].add(gid)
-
-        # Choose an image with each category
-        chosen_gids = set()
-        for cid, gids in cid_to_gids.items():
-            for gid in gids:
-                if gid not in chosen_gids:
-                    chosen_gids.add(gid)
-                    break
-
-        # Choose an image with nothing in it (if it exists)
-        if empty_gids:
-            chosen_gids.add(empty_gids[0])
-
-        chosen_indices = chosen_gids
-        harn.chosen_indices[tag] = sorted(chosen_indices)
-
-    def _dump_chosen_indices(harn):
-        """
-        Dump a visualization of the validation images to disk
-        """
-        tag = harn.current_tag
-        harn.debug('DUMP CHOSEN INDICES')
-
-        if tag not in harn.chosen_indices:
-            harn._choose_indices()
-
-        nh.util.mplutil.aggensure()
-
-        dset = harn.loaders[tag].dataset
-        for indices in ub.chunks(harn.chosen_indices[tag], 16):
-            harn.debug('PREDICTING CHUNK')
-            inbatch = [dset[index] for index in indices]
-            raw_batch = nh.data.collate.padded_collate(inbatch)
-            batch = harn.prepare_batch(raw_batch)
-            outputs, loss = harn.run_batch(batch)
-            postout = harn.model.module.postprocess(outputs, nms_mode=4)
-
-            for idx, index in enumerate(indices):
-                orig_img = dset._load_image(index)
-                fig = harn.visualize_prediction(batch, outputs, postout, idx=idx,
-                                                thresh=0.1, orig_img=orig_img)
-                img = nh.util.mplutil.render_figure_to_image(fig)
-                dump_dpath = ub.ensuredir((harn.train_dpath, 'dump', tag))
-                dump_fname = 'pred_{:04d}_{:08d}.png'.format(index, harn.epoch)
-                fpath = os.path.join(dump_dpath, dump_fname)
-                harn.debug('dump viz fpath = {}'.format(fpath))
-                nh.util.imwrite(fpath, img)
-
-    def dump_batch_item(harn, batch, outputs, postout):
-        fig = harn.visualize_prediction(batch, outputs, postout, idx=0,
-                                        thresh=0.2)
-        img = nh.util.mplutil.render_figure_to_image(fig)
-        dump_dpath = ub.ensuredir((harn.train_dpath, 'dump'))
-        dump_fname = 'pred_{:08d}.png'.format(harn.epoch)
-        fpath = os.path.join(dump_dpath, dump_fname)
-        nh.util.imwrite(fpath, img)
-
-    def deploy(harn):
-        """
-        Experimental function that will deploy a standalone predictor
-        """
-        pass
+        stacked = imgs[0] if len(imgs) == 1 else nh.util.stack_images_grid(imgs)
+        return stacked
 
 
 def setup_yolo_harness(bsize=16, workers=0):
@@ -768,10 +672,12 @@ def setup_yolo_harness(bsize=16, workers=0):
     ovthresh = 0.5
     simulated_bsize = bstep * batch_size
 
+    nh.configure_hacks(workers=workers)
+
     # We will divide the learning rate by the simulated batch size
     datasets = {
         'train': YoloVOCDataset(years=[2007, 2012], split='trainval'),
-        'test': YoloVOCDataset(years=[2007], split='test'),
+        # 'test': YoloVOCDataset(years=[2007], split='test'),
     }
     loaders = {
         key: dset.make_loader(batch_size=batch_size, num_workers=workers,
@@ -780,45 +686,10 @@ def setup_yolo_harness(bsize=16, workers=0):
         for key, dset in datasets.items()
     }
 
-    if workers > 0:
-        import cv2
-        cv2.setNumThreads(0)
+    anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
+                        (5.05587, 8.09892), (9.47112, 4.84053),
+                        (11.2364, 10.0071)])
 
-    # assert simulated_bsize == 64, 'must be 64'
-
-    # Pascal 2007 + 2012 trainval has 16551 images
-    # Pascal 2007 test has 4952 images
-    # In the original YOLO, one batch is 64 images, therefore:
-    #
-    # ONE EPOCH is 16551 / 64 = 258.609375 = 259 iterations.
-    #
-    # From the original YOLO VOC v2 config
-    # https://github.com/pjreddie/darknet/blob/master/cfg/yolov2-voc.cfg
-    #     learning_rate=0.001
-    #     burn_in=1000
-    #     max_batches = 80200
-    #     policy=steps
-    #     steps=40000,60000
-    #     scales=.1,.1
-    #
-    # However, the LIGHTNET values are
-    #   LR_STEPS = [250, 25000, 35000]
-    #
-    # The DARNKET STEPS ARE:
-    #   DN_STEPS = 1000, 40000, 60000, 80200
-    #
-    # Based in this, the iter to batch conversion is
-    #
-    # Key lightnet batch numbers
-    # >>> np.array([250, 25000, 30000, 35000, 45000]) / (16512 / 64)
-    # array([0.9689,  96.899, 116.2790, 135.658, 174.4186])
-    # -> Round
-    # array([  1.,  97., 135.])
-    # >>> np.array([1000, 40000, 60000, 80200]) / 258
-    # array([  3.86683584, 154.67343363, 232.01015044, 310.12023443])
-    # -> Round
-    # array(4, 157, 232, 310])
-    # array([  3.87596899, 155.03875969, 232.55813953, 310.85271318])
     if not ub.argflag('--eav'):
         lr_step_points = {
             # 0:   lr * 0.1 / simulated_bsize,  # burnin
@@ -839,6 +710,24 @@ def setup_yolo_harness(bsize=16, workers=0):
             # 'dset_size': (len(datasets['train']) // simulated_bsize) * simulated_bsize,  # make a multiple of batch_size because drop_last=True
             'batch_size': batch_size,
         })
+        from netharn.models.yolo2 import light_region_loss
+        criterion_ = (light_region_loss.RegionLoss, {
+            'num_classes': datasets['train'].num_classes,
+            'anchors': anchors,
+            'object_scale': 5.0,
+            'noobject_scale': 1.0,
+
+            # eav version originally had a random *2 in cls loss,
+            # we removed, that but we can replicate it here.
+            'class_scale': 1.0 if not ub.argflag('--eav') else 2.0,
+            'coord_scale': 1.0,
+
+            'thresh': 0.6,  # iou_thresh
+            'seen_thresh': 12800,
+            # 'small_boxes': not ub.argflag('--eav'),
+            'small_boxes': True,
+            'mse_factor': 0.5 if not ub.argflag('--eav') else 1.0,
+        })
     else:
         lr_step_points = {
             # dividing by batch size was one of those unpublished details
@@ -856,45 +745,8 @@ def setup_yolo_harness(bsize=16, workers=0):
             'points': lr_step_points,
             'interpolate': False,
         })
-
-    weights = ub.argval('--weights', default=None)
-    if weights is None or weights == 'imagenet':
-        weights = light_yolo.initial_imagenet_weights()
-    elif weights == 'lightnet':
-        weights = light_yolo.demo_voc_weights()
-    else:
-        print('weights = {!r}'.format(weights))
-
-    # Anchors
-    anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944),
-                        (5.05587, 8.09892), (9.47112, 4.84053),
-                        (11.2364, 10.0071)])
-
-    from netharn.models.yolo2 import region_loss2
-    # from netharn.models.yolo2 import light_region_loss
-
-    hyper = nh.HyperParams(**{
-        'nice': nice,
-        'workdir': ub.truepath('~/work/voc_yolo2'),
-        'datasets': datasets,
-
-        # 'xpu': 'distributed(todo: fancy network stuff)',
-        # 'xpu': 'cpu',
-        # 'xpu': 'gpu:0,1,2,3',
-        'xpu': xpu,
-
-        # a single dict is applied to all datset loaders
-        'loaders': loaders,
-
-        'model': (light_yolo.Yolo, {
-            'num_classes': datasets['train'].num_classes,
-            'anchors': anchors,
-            'conf_thresh': 0.001,
-            # 'conf_thresh': 0.1,  # make training a bit faster
-            'nms_thresh': 0.5 if not ub.argflag('--eav') else 0.4
-        }),
-
-        'criterion': (region_loss2.RegionLoss, {
+        from netharn.models.yolo2 import region_loss2
+        criterion_ = (region_loss2.RegionLoss, {
             'num_classes': datasets['train'].num_classes,
             'anchors': anchors,
             'reduction': 32,
@@ -905,25 +757,34 @@ def setup_yolo_harness(bsize=16, workers=0):
             'class_scale'    : 1.0,
             'thresh'         : 0.6,  # iou_thresh
             # 'seen_thresh': 12800,
+        })
+
+    weights = ub.argval('--weights', default=None)
+    if weights is None or weights == 'imagenet':
+        weights = light_yolo.initial_imagenet_weights()
+    elif weights == 'lightnet':
+        weights = light_yolo.demo_voc_weights()
+    else:
+        print('weights = {!r}'.format(weights))
+
+    hyper = nh.HyperParams(**{
+        'nice': nice,
+        'workdir': ub.truepath('~/work/voc_yolo2'),
+
+        'datasets': datasets,
+        'loaders': loaders,
+
+        'xpu': xpu,
+
+        'model': (light_yolo.Yolo, {
+            'num_classes': datasets['train'].num_classes,
+            'anchors': anchors,
+            'conf_thresh': 0.001,
+            # 'conf_thresh': 0.1,  # make training a bit faster
+            'nms_thresh': 0.5 if not ub.argflag('--eav') else 0.4
         }),
 
-        # 'criterion': (light_region_loss.RegionLoss, {
-        #     'num_classes': datasets['train'].num_classes,
-        #     'anchors': anchors,
-        #     'object_scale': 5.0,
-        #     'noobject_scale': 1.0,
-
-        #     # eav version originally had a random *2 in cls loss,
-        #     # we removed, that but we can replicate it here.
-        #     'class_scale': 1.0 if not ub.argflag('--eav') else 2.0,
-        #     'coord_scale': 1.0,
-
-        #     'thresh': 0.6,  # iou_thresh
-        #     'seen_thresh': 12800,
-        #     # 'small_boxes': not ub.argflag('--eav'),
-        #     'small_boxes': True,
-        #     'mse_factor': 0.5 if not ub.argflag('--eav') else 1.0,
-        # }),
+        'criterion': criterion_,
 
         'initializer': (nh.initializers.Pretrained, {
             'fpath': weights,
@@ -977,7 +838,7 @@ def setup_yolo_harness(bsize=16, workers=0):
 
 def train():
     harn = setup_yolo_harness()
-    # util.ensure_ulimit()
+    harn.initialize()
     harn.run()
 
 
@@ -996,8 +857,6 @@ if __name__ == '__main__':
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=1 --batch_size=16 --nice=fixed_lrs --lr=0.001 --bstep=4 --workers=6
 
-        # python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
-        # python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=test --lr=0.001 --bstep=4 --workers=0 --profile
 
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=eav_run2 --lr=0.001 --bstep=4 --workers=8 --eav
         python ~/code/netharn/examples/yolo_voc.py train --gpu=0 --batch_size=8 --nice=pjr_run2 --lr=0.001 --bstep=4 --workers=4

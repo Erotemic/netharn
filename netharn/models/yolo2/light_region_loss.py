@@ -12,7 +12,6 @@ Speedups
 import torch
 import torch.nn as nn
 import numpy as np  # NOQA
-# from torch.autograd import Variable
 from netharn import util
 
 __all__ = ['RegionLoss']
@@ -26,6 +25,7 @@ class BaseLossWithCudaState(torch.nn.modules.loss._Loss):
         super(BaseLossWithCudaState, self).__init__()
         self._iscuda = False
         self._device_num = None
+        self._device = None
 
     def cuda(self, device_num=None, **kwargs):
         self._iscuda = True
@@ -37,11 +37,32 @@ class BaseLossWithCudaState(torch.nn.modules.loss._Loss):
         self._device_num = None
         return super(BaseLossWithCudaState, self).cpu()
 
+    def to(self, device):
+        if isinstance(device, int):
+            device = torch.device('cuda', device)
+        elif device == 'cuda':
+            device = torch.device('cuda')
+        elif device == 'cpu':
+            device = torch.device('cpu')
+        elif device is None:
+            device = torch.device('cpu')
+        self._iscuda = device.type != 'cpu'
+        self._device_num = device.index
+        self._device = device
+        return super(BaseLossWithCudaState, self).to(device)
+
+    @property
+    def device(self):
+        return self._device
+
     @property
     def is_cuda(self):
         return self._iscuda
 
     def get_device(self):
+        if self._device is not None:
+            return self._device
+
         if self._device_num is None:
             return torch.device('cpu')
         return self._device_num
@@ -145,9 +166,9 @@ class RegionLoss(BaseLossWithCudaState):
         self.loss_cls = None
         self.loss_tot = None
 
-        self.coord_mse = nn.MSELoss(size_average=False)
-        self.conf_mse = nn.MSELoss(size_average=False)
-        self.cls_critrion = nn.CrossEntropyLoss(size_average=False)
+        self.coord_mse = nn.MSELoss(reduction='sum')
+        self.conf_mse = nn.MSELoss(reduction='sum')
+        self.cls_critrion = nn.CrossEntropyLoss(reduction='sum')
 
         # Precompute relative anchors in tlbr format for iou computation
         rel_anchors_cxywh = torch.cat([torch.zeros_like(self.anchors), self.anchors], 1)
@@ -156,6 +177,7 @@ class RegionLoss(BaseLossWithCudaState):
         self.small_boxes = small_boxes
         self.mse_factor = mse_factor
 
+    @util.profile
     def forward(self, output, target, seen=0, gt_weights=None):
         """ Compute Region loss.
 
@@ -173,21 +195,30 @@ class RegionLoss(BaseLossWithCudaState):
 
         Example:
             >>> # DISABLE_DOCTEST
+            >>> import netharn as nh
             >>> nC = 2
             >>> self = RegionLoss(num_classes=nC, anchors=np.array([[1, 1]]))
             >>> nA = len(self.anchors)
             >>> # one batch, with one anchor, with 2 classes and 3x3 grid cells
-            >>> output = torch.rand(1, nA, 5 + nC, 3, 3)
+            >>> rng = nh.util.ensure_rng(0)
+            >>> output = torch.Tensor(rng.rand(1, nA, 5 + nC, 3, 3))
             >>> # one batch, with one true box
-            >>> target = torch.rand(1, 1, 5)
+            >>> target = torch.Tensor(rng.rand(1, 1, 5))
             >>> target[..., 0] = 0
             >>> seen = 0
             >>> gt_weights = None
             >>> self.forward(output, target, seen).item()
+            7.491...
+
+
             2.374...
 
             4.528...
         """
+        if isinstance(target, dict):
+            gt_weights = target.get('gt_weights', gt_weights)
+            target = target['target']
+
         # Parameters
         nB, nA, nC5, nH, nW = output.data.shape
         nC = self.num_classes
@@ -195,16 +226,14 @@ class RegionLoss(BaseLossWithCudaState):
         assert nC5 == self.num_classes + 5
 
         device = self.get_device()
-        self.rel_anchors_boxes.data = self.rel_anchors_boxes.data.to(device)
-        self.anchors = self.anchors.to(device)
-
-        # if isinstance(target, Variable):
-        #     target = target.data
+        if self.rel_anchors_boxes.device != device:
+            self.rel_anchors_boxes.data = self.rel_anchors_boxes.data.to(device)
+            self.anchors = self.anchors.to(device)
 
         # Get x,y,w,h,conf,*cls_probs from the third dimension
         # output_ = output.view(nB, nA, 5 + nC, nH, nW)
 
-        coord = torch.zeros_like(output[:, :, 0:4, :, :])
+        coord = torch.zeros_like(output[:, :, 0:4, :, :], device=device)
         coord[:, :, 0:2, :, :] = output[:, :, 0:2, :, :].sigmoid()  # tx,ty
         coord[:, :, 2:4, :, :] = output[:, :, 2:4, :, :]            # tw,th
 
@@ -221,8 +250,8 @@ class RegionLoss(BaseLossWithCudaState):
                                      dtype=torch.float32, device=device)
 
             # Grid cell center offsets
-            lin_x = torch.linspace(0, nW - 1, nW).repeat(nH, 1).to(device)
-            lin_y = torch.linspace(0, nH - 1, nH).repeat(nW, 1).t().contiguous().to(device)
+            lin_x = torch.linspace(0, nW - 1, nW, device=device).repeat(nH, 1)
+            lin_y = torch.linspace(0, nH - 1, nH, device=device).repeat(nW, 1).t().contiguous()
             anchor_w = self.anchors[:, 0].contiguous().view(nA, 1).view(1, nA, 1, 1, 1)
             anchor_h = self.anchors[:, 1].contiguous().view(nA, 1).view(1, nA, 1, 1, 1)
 
@@ -245,7 +274,6 @@ class RegionLoss(BaseLossWithCudaState):
             # (Allowed because 3rd dimension is guarneteed to be 1 here)
             cls_probs_mask = cls_mask.reshape(nB, nA, nH, nW, 1).repeat(1, 1, 1, 1, nC)
             cls_probs_mask.requires_grad = False
-            # cls_probs_mask = Variable(cls_probs_mask, requires_grad=False)
             masked_cls_probs = cls_probs[cls_probs_mask].view(-1, nC)
 
         # Compute losses
@@ -264,19 +292,20 @@ class RegionLoss(BaseLossWithCudaState):
         # Class Loss
         if nC > 1 and masked_cls_probs.numel():
             loss_cls = self.class_scale * self.cls_critrion(masked_cls_probs, masked_tcls) / nB
-            self.loss_cls = float(loss_cls.data.cpu().numpy())
+            self.loss_cls = float(loss_cls.data.cpu().item())
         else:
             self.loss_cls = loss_cls = 0
 
         loss_tot = loss_coord + loss_conf + loss_cls
 
         # Record loss components as module members
-        self.loss_tot = float(loss_tot.data.cpu().numpy())
-        self.loss_coord = float(loss_coord.data.cpu().numpy())
-        self.loss_conf = float(loss_conf.data.cpu().numpy())
+        self.loss_tot = float(loss_tot.data.cpu().item())
+        self.loss_coord = float(loss_coord.data.cpu().item())
+        self.loss_conf = float(loss_conf.data.cpu().item())
 
         return loss_tot
 
+    @util.profile
     def build_targets(self, pred_cxywh, target, nH, nW, seen=0, gt_weights=None):
         """
         Compare prediction boxes and targets, convert targets to network output tensors
@@ -290,7 +319,6 @@ class RegionLoss(BaseLossWithCudaState):
 
         Example:
             >>> from netharn.models.yolo2.light_yolo import Yolo
-            >>> from netharn.models.yolo2.light_region_loss import RegionLoss
             >>> torch.random.manual_seed(0)
             >>> network = Yolo(num_classes=2, conf_thresh=4e-2)
             >>> self = RegionLoss(num_classes=network.num_classes, anchors=network.anchors)
@@ -305,7 +333,6 @@ class RegionLoss(BaseLossWithCudaState):
             >>> self.build_targets(pred_cxywh, target, nH, nW, seen, gt_weights)
 
         Example:
-            >>> from netharn.models.yolo2.light_region_loss import RegionLoss
             >>> torch.random.manual_seed(0)
             >>> anchors = np.array([[.75, .75], [1.0, .3], [.3, 1.0]])
             >>> self = RegionLoss(num_classes=2, anchors=anchors)
@@ -349,7 +376,7 @@ class RegionLoss(BaseLossWithCudaState):
         seen = seen + nB
 
         # Tensors
-        device = self.get_device()
+        device = target.device
 
         # Put the groundtruth in a format comparable to output
         tcoord = torch.zeros(nB, nA, 4, nH, nW, device=device)
@@ -364,7 +391,7 @@ class RegionLoss(BaseLossWithCudaState):
         # defaults for select grid cells and anchors)
         coord_mask = torch.zeros(nB, nA, 1, nH, nW, device=device)
         conf_mask = torch.ones(nB, nA, 1, nH, nW, device=device)
-        cls_mask = torch.zeros(nB, nA, 1, nH, nW, device=device).byte()
+        cls_mask = torch.zeros(nB, nA, 1, nH, nW, device=device, dtype=torch.uint8)
 
         # Default conf_mask to the noobject_scale
         conf_mask.fill_(self.noobject_scale)
@@ -494,25 +521,53 @@ class RegionLoss(BaseLossWithCudaState):
             cur_tcoord_w = (cur_gw / cur_true_anchor_w).log()
             cur_tcoord_h = (cur_gh / cur_true_anchor_h).log()
 
-            iou_raveled_idxs = np.ravel_multi_index([
-                cur_true_anchor_axs, cur_true_js, cur_true_is, np.arange(nT)
-            ], cur_pred_true_ious.shape)
-            # Get the ious with the assigned boxes for each truth
-            cur_true_ious = cur_pred_true_ious.view(-1)[iou_raveled_idxs]
+            if 0:
+                cur_true_anchor_axs_ = cur_true_anchor_axs.cpu().numpy()
+                cur_true_js_ = cur_true_js.cpu().numpy()
+                cur_true_is_ = cur_true_is.cpu().numpy()
 
-            raveled_idxs = np.ravel_multi_index([
-                [bx], cur_true_anchor_axs, [0], cur_true_js, cur_true_is
-            ], coord_mask.shape)
+                iou_raveled_idxs = np.ravel_multi_index([
+                    cur_true_anchor_axs_, cur_true_js_, cur_true_is_, np.arange(nT)
+                ], cur_pred_true_ious.shape)
+                # Get the ious with the assigned boxes for each truth
+                cur_true_ious = cur_pred_true_ious.view(-1)[iou_raveled_idxs]
 
-            # --------------------------------------------
-            raveled_idxs_b0 = np.ravel_multi_index([
-                [bx], cur_true_anchor_axs, [0], cur_true_js, cur_true_is
-            ], tcoord.shape)
-            # A bit faster than ravel_multi_indexes with [1], [2], and [3]
-            raveled_idxs_b1 = raveled_idxs_b0 + nPixels
-            raveled_idxs_b2 = raveled_idxs_b0 + nPixels * 2
-            raveled_idxs_b3 = raveled_idxs_b0 + nPixels * 3
-            # --------------------------------------------
+                raveled_idxs = np.ravel_multi_index([
+                    [bx], cur_true_anchor_axs_, [0], cur_true_js_, cur_true_is_
+                ], coord_mask.shape)
+
+                # --------------------------------------------
+                multi_index = ([bx], cur_true_anchor_axs_, [0], cur_true_js_, cur_true_is_)
+                # multi_index_ = multi_index
+                raveled_idxs_b0 = np.ravel_multi_index(multi_index, tcoord.shape)
+                # A bit faster than ravel_multi_indexes with [1], [2], and [3]
+                raveled_idxs_b1 = raveled_idxs_b0 + nPixels
+                raveled_idxs_b2 = raveled_idxs_b0 + nPixels * 2
+                raveled_idxs_b3 = raveled_idxs_b0 + nPixels * 3
+            else:
+                iou_raveled_idxs = util.torch_ravel_multi_index([
+                    cur_true_anchor_axs, cur_true_js, cur_true_is,
+                    torch.arange(nT, device=device, dtype=torch.long)
+                ], cur_pred_true_ious.shape, device)
+                # Get the ious with the assigned boxes for each truth
+                cur_true_ious = cur_pred_true_ious.view(-1)[iou_raveled_idxs]
+
+                Bxs = torch.full_like(cur_true_anchor_axs, bx)
+                Zxs = torch.full_like(cur_true_anchor_axs, 0)
+
+                multi_index = [Bxs, cur_true_anchor_axs, Zxs, cur_true_js, cur_true_is]
+                multi_index = torch.cat([x.view(-1, 1) for x in multi_index], dim=1)
+                raveled_idxs = util.torch_ravel_multi_index(multi_index, coord_mask.shape, device)
+
+                # --------------------------------------------
+                # We reuse the previous multi-index because the dims are
+                # broadcastable at [:, :, [0], :, :]
+                raveled_idxs_b0 = util.torch_ravel_multi_index(multi_index, tcoord.shape, device)
+                # A bit faster than ravel_multi_indexes with [1], [2], and [3]
+                raveled_idxs_b1 = raveled_idxs_b0 + nPixels
+                raveled_idxs_b2 = raveled_idxs_b0 + nPixels * 2
+                raveled_idxs_b3 = raveled_idxs_b0 + nPixels * 3
+                # --------------------------------------------
 
             coord_mask.view(-1)[raveled_idxs] = cur_true_coord_weights
             cls_mask.view(-1)[raveled_idxs]   = cur_true_cls_weights

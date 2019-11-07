@@ -3,7 +3,8 @@
 pip install -r requirements.txt
 
 # Install netharn in developer mode
-pip install -e .
+#pip install -e .
+python setup.py clean && python setup.py develop
 
 #python setup.py clean
 #GCC_VERSION=6

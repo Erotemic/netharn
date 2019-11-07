@@ -1,13 +1,12 @@
-import itertools as it
-import torch.nn.functional as F
+import cv2
 from os.path import join
 import netharn as nh
 import numpy as np
 import torch
 import torchvision
 import ubelt as ub
-import torch.utils.data.sampler as torch_sampler
 from torch import nn
+from sklearn import metrics
 
 
 class MNISTEmbeddingNet(nh.layers.Module):
@@ -16,34 +15,16 @@ class MNISTEmbeddingNet(nh.layers.Module):
         https://github.com/adambielski/siamese-triplet/blob/master/networks.py
 
     Example:
-        >>> import sys
-        >>> sys.path.append('/home/joncrall/code/netharn/examples')
-        >>> from mnist_matching import *
         >>> input_shape = (None, 1, 28, 28)
         >>> self = MNISTEmbeddingNet(input_shape)
         >>> print('self = {!r}'.format(self))
         >>> print('flat_shape = {!r}'.format(self._flat_shape))
-        >>> print(ub.repr2(self.output_shape_for(input_shape).hidden.shallow(2), nl=2))
+        >>> output_shape = self.output_shape_for(input_shape)
+        >>> print(ub.repr2(output_shape.hidden.shallow(1), nl=-1))
         {
-            'convnet': {
-                '0': (None, 32, 24, 24),
-                '1': (None, 32, 24, 24),
-                '2': (None, 32, 12, 12),
-                '3': (None, 64, 8, 8),
-                '4': (None, 64, 8, 8),
-                '5': (None, 64, 4, 4),
-            },
-            'reshape': (
-                None,
-                1024,
-            ),
-            'fc': {
-                '0': (None, 256),
-                '1': (None, 256),
-                '2': (None, 256),
-                '3': (None, 256),
-                '4': (None, 256),
-            },
+            'convnet': (None, 64, 4, 4),
+            'reshape': (None, 1024),
+            'fc': (None, 256),
         }
         >>> nh.OutputShapeFor(self)(self.input_shape)
         ...dvecs...(None, 256)...
@@ -62,7 +43,6 @@ class MNISTEmbeddingNet(nh.layers.Module):
     def __init__(self, input_shape=None, desc_size=256):
         super(MNISTEmbeddingNet, self).__init__()
         self.input_shape = input_shape
-        print('input_shape = {!r}'.format(input_shape))
         self.in_channels = self.input_shape[1]
         self.out_channels = desc_size
 
@@ -74,11 +54,10 @@ class MNISTEmbeddingNet(nh.layers.Module):
         self._num_flat = np.prod(self._conv_output_shape[1:])
         self.reshape = nh.layers.Reshape(-1, self._num_flat)
         self._flat_shape = self.reshape.output_shape_for(self._conv_output_shape)
-        # print('self._conv_output_shape = {!r}'.format(self._conv_output_shape))
-        # print('self._num_flat = {!r}'.format(self._num_flat))
-        # print('self._flat_shape = {!r}'.format(self._flat_shape))
-        self.fc = nh.layers.Sequential(nn.Linear(self._num_flat, 256), nn.PReLU(),
-                                       nn.Linear(256, 256), nn.PReLU(),
+        self.fc = nh.layers.Sequential(nn.Linear(self._num_flat, 256),
+                                       nn.PReLU(),
+                                       nn.Linear(256, 256),
+                                       nn.PReLU(),
                                        nn.Linear(256, desc_size))
 
     def forward(self, inputs):
@@ -97,10 +76,10 @@ class MNISTEmbeddingNet(nh.layers.Module):
     #     _Output = _ForwardOutput
     #     return self._output_for(inputs, _Hidden, _OutputFor, _Output)
 
-    def _output_for(self, inputs, _Hidden, _OutputFor, _Output):
+    def _analytic_forward(self, inputs, _Hidden, _OutputFor, _Output):
         hidden = _Hidden()
         hidden['convnet'] = output = _OutputFor(self.convnet)(inputs)
-        hidden['reshape'] = output = _OutputFor(self.reshape)(output)  # .view(output.size()[0], -1)
+        hidden['reshape'] = output = _OutputFor(self.reshape)(output)
         hidden['fc'] = output = _OutputFor(self.fc)(output)
         return _Output.coerce({'dvecs': output}, hidden)
 
@@ -110,9 +89,6 @@ class MNISTEmbeddingNet(nh.layers.Module):
         _Hidden = nh.HiddenShapes
         _Output = nh.OutputShape
         return self._output_for(inputs, _Hidden, _OutputFor, _Output)
-
-    def get_embedding(self, x):
-        return self.forward(x)
 
 
 class MNIST_MatchingHarness(nh.FitHarn):
@@ -126,91 +102,14 @@ class MNIST_MatchingHarness(nh.FitHarn):
         >>> batch = harn._demo_batch(0, 'vali')
     """
 
-    def prepare_batch(harn, raw_batch):
-        """
-        One - prepare the batch
-
-        Args:
-            raw_batch (object): raw collated items returned by the loader
-
-        Returns:
-            Dict: a standardized variant of the raw batch on the XPU
-
-        Example:
-            >>> harn = setup_harn().initialize()
-            >>> raw_batch = harn._demo_batch(raw=1)
-            >>> batch = harn.prepare_batch(raw_batch)
-        """
-        image, label = raw_batch
-        batch = {
-            'chip': image,
-            'nx': label,
-        }
-        batch = harn.xpu.move(batch)
-        return batch
-
-    def run_batch(harn, batch):
-        """
-        Two - run the batch
-
-        Args:
-            batch (object):
-                XPU-mounted, standarized, collated, and prepared items
-
-        Returns:
-            Tuple: outputs, loss
-
-
-        SeeAlso:
-            ~/code/netharn/netharn/criterions/triplet.py
-
-
-        Example:
-            >>> harn = setup_harn().initialize()
-            >>> raw_batch = harn._demo_batch(raw=1)
-            >>> batch = harn.prepare_batch(raw_batch)
-            >>> harn, outputs = harn.run_batch(batch)
-        """
-        inputs = batch['chip']
-        outputs = harn.model(inputs)
-
-        dvecs = outputs['dvecs']
-
-        def pos_cand_idxs(groupxs):
-            for g in groupxs:
-                for p in it.product(g, g):
-                    yield p
-        try:
-            labels = batch['nx']
-            pos_dists, neg_dists, triples = harn.criterion._get_pairs(dvecs, labels)
-            # num = 1 if harn.current_tag == 'train' else 4
-            # unique_nxs, groupxs = nh.util.group_indices(batch['nx'].data.cpu().numpy())
-            # pos_idxs = list(pos_cand_idxs(groupxs))
-            # pos_dists, neg_dists, triples = harn.criterion.mine_negatives(
-            #     dvecs, pos_idxs, num=num, nxs=batch['nx'])
-        except RuntimeError:
-            # try:
-            #     pos_dists, neg_dists, triples = harn.criterion.mine_negatives(
-            #         dvecs, pos_idxs, num=num, nxs=batch['nx'], eps=0)
-            # except RuntimeError:
-            raise nh.exceptions.SkipBatch
-
-        loss = harn.criterion(pos_dists, neg_dists)
-        # loss = harn.criterion(neg_dists, pos_dists)
-        outputs['triples'] = triples
-        outputs['chip'] = batch['chip']
-        outputs['nx'] = batch['nx']
-        return outputs, loss
-
-    # --- EVERYTHING AFER THIS POINT IS SIMPLY MONITORING AND VISUALIZING
-    # Note that these are still netharn callbacks
-
     def after_initialize(harn, **kw):
         """ custom netharn callback """
-        harn.confusion_vectors = []
         harn._has_preselected = False
         harn.POS_LABEL = 1
         harn.NEG_LABEL = 0
+        harn.confusion_vectors = nh.util.DataFrameLight(
+            columns=['y_true', 'y_dist']
+        )
 
     def before_epochs(harn):
         """ custom netharn callback """
@@ -234,6 +133,115 @@ class MNIST_MatchingHarness(nh.FitHarn):
                     dset.preselect(verbose=verbose)
         harn._has_preselected = True
 
+    def prepare_batch(harn, raw_batch):
+        """
+        One - prepare the batch
+
+        Args:
+            raw_batch (object): raw collated items returned by the loader
+
+        Returns:
+            Dict: a standardized variant of the raw batch on the XPU
+
+        Example:
+            >>> harn = setup_harn().initialize()
+            >>> raw_batch = harn._demo_batch(raw=True, tag='train')
+            >>> batch = harn.prepare_batch(raw_batch)
+        """
+        image, label = raw_batch
+        batch = {
+            'chip': image,
+            'nx': label,
+        }
+        batch = harn.xpu.move(batch)
+        batch['cpu_nx'] = label
+        batch['cpu_chips'] = image
+        return batch
+
+    @nh.util.profile
+    def run_batch(harn, batch):
+        """
+        Two - run the batch
+
+        Args:
+            batch (object):
+                XPU-mounted, standarized, collated, and prepared items
+
+        Returns:
+            Tuple: outputs, loss
+
+        SeeAlso:
+            ~/code/netharn/netharn/criterions/triplet.py
+
+        Example:
+            >>> harn = setup_harn().initialize()
+            >>> raw_batch = harn._demo_batch(raw=1)
+            >>> batch = harn.prepare_batch(raw_batch)
+            >>> harn, outputs = harn.run_batch(batch)
+        """
+        inputs = batch['chip']
+        outputs = harn.model(inputs)
+
+        dvecs = outputs['dvecs']
+
+        try:
+            # Takes roughly 30% of the time for batch sizes of 128
+            labels = batch['cpu_nx']
+            if harn.current_tag == 'train':
+                info = harn.criterion.mine_negatives(
+                    dvecs, labels,
+                    mode='hardest',
+                    # mode='moderate'
+                )
+            else:
+                info = harn.criterion.mine_negatives(dvecs, labels,
+                                                     mode='consistent')
+            pos_dists = info['pos_dists']
+            neg_dists = info['neg_dists']
+            triples = info['triples']
+        except RuntimeError:
+            raise nh.exceptions.SkipBatch
+
+        _loss_parts = {}
+        _loss_parts['triplet'] = harn.criterion(pos_dists, neg_dists)
+
+        if True and harn.epoch > 0:
+            # Experimental extra loss term:
+            y_dist = torch.cat([pos_dists, neg_dists], dim=0)
+            margin = harn.criterion.margin
+            y_probs = (-(y_dist - margin)).sigmoid()
+
+            # Use MSE to encourage the average batch-hard-case prob to be 0.5
+            # Note this relies heavilly on the assumption that there are an
+            # equal number of pos / neg cases (which is true in triplet loss)
+            prob_mean = y_probs.mean()
+            prob_std = y_probs.std()
+
+            target_mean = torch.FloatTensor([0.5]).to(prob_mean.device)
+            target_std = torch.FloatTensor([0.1]).to(prob_mean.device)
+
+            _loss_parts['pmean'] = 0.1 * torch.nn.functional.mse_loss(prob_mean, target_mean)
+            _loss_parts['pstd'] = 0.1 * torch.nn.functional.mse_loss(prob_std.clamp(0, 0.1), target_std)
+
+            # Encourage descriptor vecstors to have a small squared-gradient-magnitude (ref girshik)
+            _loss_parts['sgm'] = 0.0003 * (dvecs ** 2).sum(dim=0).mean()
+
+        loss = sum(_loss_parts.values())
+
+        if 0:
+            all_grads = harn._check_gradients()
+            print(ub.map_vals(torch.norm, all_grads))
+
+        harn._loss_parts = _loss_parts
+
+        outputs['triples'] = triples
+        outputs['chip'] = batch['chip']
+        outputs['nx'] = batch['nx']
+        outputs['distAP'] = pos_dists
+        outputs['distAN'] = neg_dists
+        return outputs, loss
+
+    @nh.util.profile
     def on_batch(harn, batch, outputs, loss):
         """
         custom netharn callback
@@ -243,98 +251,130 @@ class MNIST_MatchingHarness(nh.FitHarn):
             >>> batch = harn._demo_batch(0, tag='vali')
             >>> outputs, loss = harn.run_batch(batch)
             >>> decoded = harn._decode(outputs)
-            >>> stacked = harn._draw_batch(batch, decoded, limit=42)
+            >>> stacked = harn._draw_batch(decoded, limit=42)
             >>> # xdoctest: +REQUIRES(--show)
+            >>> nh.util.autompl()
             >>> nh.util.imshow(stacked)
             >>> nh.util.show_if_requested()
         """
+        batch_metrics = ub.odict()
+        for key, value in harn._loss_parts.items():
+            if value is not None and torch.is_tensor(value):
+                batch_metrics[key + '_loss'] = float(
+                    value.data.cpu().numpy().item())
 
         bx = harn.bxs[harn.current_tag]
-        decoded = harn._decode(outputs)
 
         if bx < 8:
-            stacked = harn._draw_batch(batch, decoded)
+            decoded = harn._decode(outputs)
+            stacked = harn._draw_batch(decoded)
             dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
             fpath = join(dpath, 'batch_{}_epoch_{}.jpg'.format(bx, harn.epoch))
             nh.util.imwrite(fpath, stacked)
 
         # Record metrics for epoch scores
-        n = len(decoded['distAP'])
-        harn.confusion_vectors.append(([harn.POS_LABEL] * n, decoded['distAP']))
-        harn.confusion_vectors.append(([harn.NEG_LABEL] * n, decoded['distAN']))
+        n = len(outputs['distAP'])
 
+        harn.confusion_vectors._data['y_true'].extend([harn.POS_LABEL] * n)
+        harn.confusion_vectors._data['y_dist'].extend(outputs['distAP'].data.cpu().numpy().tolist())
+
+        harn.confusion_vectors._data['y_true'].extend([harn.NEG_LABEL] * n)
+        harn.confusion_vectors._data['y_dist'].extend(outputs['distAN'].data.cpu().numpy().tolist())
+        return batch_metrics
+
+    @nh.util.profile
     def on_epoch(harn):
-        """ custom netharn callback """
-        from sklearn import metrics
+        """
+        custom netharn callback
+
+        Example:
+            >>> harn = setup_harn().initialize()
+            >>> harn.before_epochs()
+            >>> epoch_metrics = harn._demo_epoch(tag='vali', max_iter=10)
+            >>> print('epoch_metrics = {}'.format(ub.repr2(epoch_metrics, precision=4)))
+            >>> print('harn.confusion_vectors = {!r}'.format(harn.confusion_vectors._pandas()))
+        """
         margin = harn.hyper.criterion_params['margin']
+        assert margin == harn.criterion.margin
         epoch_metrics = {}
 
-        if harn.confusion_vectors:
-            y_true = np.hstack([r for r, p in harn.confusion_vectors])
-            y_dist = np.hstack([p for r, p in harn.confusion_vectors])
-
-            pos_dist = np.nanmean(y_dist[y_true == harn.POS_LABEL])
-            neg_dist = np.nanmean(y_dist[y_true == harn.NEG_LABEL])
+        if len(harn.confusion_vectors):
+            margin = harn.criterion.margin
+            y_true = np.array(harn.confusion_vectors['y_true'], dtype=np.uint8)
+            y_dist = np.array(harn.confusion_vectors['y_dist'], dtype=np.float32)
 
             # Transform distance into a probability-like space
             y_probs = torch.Tensor(-(y_dist - margin)).sigmoid().numpy()
 
-            y_pred = (y_dist <= margin).astype(y_true.dtype)
-            accuracy = (y_true == y_pred).mean()
-            brier = ((y_probs - y_true) ** 2).mean()
-            mcc = metrics.matthews_corrcoef(y_true, y_pred)
+            pos_flags = np.where(y_true == harn.POS_LABEL)[0]
+            neg_flags = np.where(y_true == harn.NEG_LABEL)[0]
 
-            alt_margin = np.median(y_dist)
-            alt_y_pred = (y_dist < alt_margin).astype(y_true.dtype)
-            triple_mcc = metrics.matthews_corrcoef(y_true, alt_y_pred)
-            triple_acc = (y_true == alt_y_pred).mean()
+            pos_dists = y_dist[pos_flags]
+            neg_dists = y_dist[neg_flags]
+
+            pos_probs = y_probs[pos_flags]
+            neg_probs = y_probs[neg_flags]
+
+            y_pred = (pos_probs < neg_probs).astype(np.uint8)
+
+            # How should be choose a threshold here?
+            thresh = median_prob = np.median(y_probs)
+            # thresh = 0.5
+            y_pred = (y_probs > thresh).astype(np.uint8)
+
+            accuracy = (y_true == y_pred).astype(np.uint8).mean()
+            brier = ((y_probs - y_true) ** 2).mean()
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', 'invalid value')
+                mcc = metrics.matthews_corrcoef(y_true, y_pred)
 
             epoch_metrics = {
                 'mcc': mcc,
                 'brier': brier,
                 'accuracy': accuracy,
-                'pos_dist': pos_dist,
-                'neg_dist': neg_dist,
-                'triple_acc': triple_acc,
-                'triple_mcc': triple_mcc,
+                'dist_pos': np.nanmean(pos_dists),
+                'dist_neg': np.nanmean(neg_dists),
+
+                'prob_pos': np.nanmean(pos_probs),
+                'prob_neg': np.nanmean(neg_probs),
+                'prob_median': median_prob,
             }
 
-        # Clear scores for next epoch
+        # Clear scores for the next epoch
         harn.confusion_vectors.clear()
         return epoch_metrics
 
-    # --- Non-netharn helper functions
-
+    @nh.util.profile
     def _decode(harn, outputs):
         """
         Convert raw network outputs to something interpretable
         """
         decoded = {}
 
-        A, P, N = np.array(outputs['triples']).T
+        triple_idxs = outputs['triples'].T
+        A, P, N = triple_idxs
+
         chips_ = outputs['chip'].data.cpu().numpy()
         nxs_ = outputs['nx'].data.cpu().numpy()
-        decoded['imgs'] = [chips_[A], chips_[P], chips_[N]]
-        decoded['nxs'] = [nxs_[A], nxs_[P], nxs_[N]]
 
-        dvecs_ = outputs['dvecs']
-        dvecs = [dvecs_[A], dvecs_[P], dvecs_[N]]
-        # decoded['dvecs'] = [d.data.cpu().numpy() for d in dvecs]
+        decoded['triple_idxs'] = triple_idxs
+        decoded['triple_imgs'] = [chips_[A], chips_[P], chips_[N]]
+        decoded['triple_nxs'] = [nxs_[A], nxs_[P], nxs_[N]]
 
-        distAP = F.pairwise_distance(dvecs[0], dvecs[1], p=2)
-        distAN = F.pairwise_distance(dvecs[0], dvecs[2], p=2)
-        decoded['distAP'] = distAP.data.cpu().numpy()
-        decoded['distAN'] = distAN.data.cpu().numpy()
+        decoded['distAP'] = outputs['distAP'].data.cpu().numpy()
+        decoded['distAN'] = outputs['distAN'].data.cpu().numpy()
         return decoded
 
-    def _draw_batch(harn, batch, decoded, limit=12):
+    @nh.util.profile
+    def _draw_batch(harn, decoded, limit=12):
         """
         Example:
             >>> harn = setup_harn().initialize()
             >>> batch = harn._demo_batch(0, tag='vali')
             >>> outputs, loss = harn.run_batch(batch)
             >>> decoded = harn._decode(outputs)
-            >>> stacked = harn._draw_batch(batch, decoded)
+            >>> stacked = harn._draw_batch(decoded)
             >>> # xdoctest: +REQUIRES(--show)
             >>> import netharn as nh
             >>> nh.util.autompl()
@@ -346,32 +386,22 @@ class MNIST_MatchingHarness(nh.FitHarn):
             'fontScale': 1.0,
             'thickness': 2
         }
-        n = min(limit, len(decoded['imgs'][0]))
+        n = min(limit, len(decoded['triple_idxs'][0]))
         dsize = (254, 254)
-        import cv2
         for i in range(n):
-            ims = [g[i].transpose(1, 2, 0) for g in decoded['imgs']]
+            ims = [g[i].transpose(1, 2, 0) for g in decoded['triple_imgs']]
             ims = [cv2.resize(g, dsize) for g in ims]
             ims = [nh.util.atleast_3channels(g) for g in ims]
-            triple_nxs = [n[i] for n in decoded['nxs']]
-            if False:
-                triple_dvecs = [d[i] for d in decoded['dvecs']]
-                da, dp, dn = triple_dvecs
-                distAP = np.sqrt(((da - dp) ** 2).sum())
-                distAN = np.sqrt(((da - dn) ** 2).sum())
-                print('distAP = {!r}'.format(distAP))
-                print('distAN = {!r}'.format(distAN))
-                print('----')
+            triple_nxs = [n[i] for n in decoded['triple_nxs']]
 
-            text = 'distAP={:.3g} -- distAN={:.3g} -- {}'.format(
+            text = 'dAP={:.3g} -- dAN={:.3g} -- {}'.format(
                 decoded['distAP'][i],
                 decoded['distAN'][i],
                 str(triple_nxs),
             )
-            if decoded['distAP'][i] < decoded['distAN'][i]:
-                color = 'dodgerblue'
-            else:
-                color = 'orangered'
+            color = (
+                'dodgerblue' if decoded['distAP'][i] < decoded['distAN'][i]
+                else 'orangered')
 
             img = nh.util.stack_images(
                 ims, overlap=-2, axis=1,
@@ -386,131 +416,6 @@ class MNIST_MatchingHarness(nh.FitHarn):
                                             bg_value=(30, 10, 40),
                                             axis=1, chunksize=3)
         return stacked
-
-
-class MatchingSamplerPK(ub.NiceRepr, torch_sampler.BatchSampler):
-    """
-    Samples random triples from a PCC-complient dataset
-
-    Args:
-        torch_dset (Dataset): something that can sample PCC-based annots
-        p (int): number of individuals sampled per batch
-        k (int): number of annots sampled per individual within a batch
-        batch_size (int): if specified, k is adjusted to an appropriate length
-        drop_last (bool): ignored
-        num_batches (int): length of the loader
-        rng (int | Random, default=None): random seed
-        shuffle (bool): if False rng is ignored and getitem is deterministic
-
-    Example:
-        >>> datasets, workdir = setup_datasets()
-        >>> torch_dset = datasets['vali']
-        >>> batch_sampler = self = MatchingSamplerPK(torch_dset, shuffle=True)
-        >>> for indices in batch_sampler:
-        >>>     print('indices = {!r}'.format(indices))
-    """
-    def __init__(self, torch_dset, p=21, k=4, batch_size=None, drop_last=False,
-                 rng=None, shuffle=False, num_batches=None, replace=True):
-        self.torch_dset = torch_dset
-        self.drop_last = drop_last
-        self.replace = replace
-
-        if replace is False:
-            raise NotImplementedError(
-                'We currently cant sample without replacement')
-
-        try:
-            self.pccs = torch_dset.pccs
-        except AttributeError:
-            raise AttributeError('The `torch_dset` must have the `pcc` attribute')
-
-        self.shuffle = shuffle
-        self.multitons = [pcc for pcc in self.pccs if len(pcc) > 1]
-
-        if getattr(self.torch_dset, '__hasgraphid__', False):
-            raise NotImplementedError('TODO: graphid API sampling')
-        else:
-            # Compute the total possible number of triplets
-            # Its probably a huge number, but lets do it anyway.
-            # --------
-            # In the language of graphid (See Jon Crall's 2017 thesis)
-            # The matching graph for MNIST is fully connected graph.  All
-            # pairs of annotations with the same label have a positive edge
-            # between them. All pairs of annotations with a different label
-            # have a negative edge between them. There are no incomparable
-            # edges. Therefore for each PCC, A the number of triples it can
-            # contribute is the number of internal positive edges
-            # ({len(A) choose 2}) times the number of outgoing negative edges.
-            # ----
-            # Each pair of positive examples could be a distinct triplet
-            # For each of these any negative could be chosen
-            # The number of distinct triples contributed by this PCC is the
-            # product of num_pos_edges and num_neg_edges.
-            import scipy
-            self.num_triples = 0
-            self.num_pos_edges = 0
-            default_num_items = 0
-            for pcc in self.pccs:
-                num_pos_edges = scipy.special.comb(len(pcc), 2)
-                if num_pos_edges > 0:
-                    default_num_items += len(pcc)
-                other_pccs = [c for c in self.pccs if c is not pcc]
-                num_neg_edges = sum(len(c) for c in other_pccs)
-                self.num_triples += num_pos_edges * num_neg_edges
-                self.num_pos_edges += num_pos_edges
-
-        p = min(len(self.multitons), p)
-        k = min(max(len(p) for p in self.pccs), k)
-
-        if batch_size is None:
-            batch_size = p * k
-        else:
-            k = batch_size // p
-
-        if num_batches is None:
-            num_batches = default_num_items // batch_size
-
-        self.batch_size = batch_size
-        self.num_batches = num_batches
-        self.p = p  # PCCs per batch
-        self.k = k  # Items per PCC per batch
-        self.rng = nh.util.ensure_rng(rng, api='python')
-
-    def __nice__(self):
-        return ('p={p}, k={k}, batch_size={batch_size}, '
-                'len={num_batches}').format(**self.__dict__)
-
-    def __iter__(self):
-        for index in range(len(self)):
-            indices = self[index]
-            yield indices
-
-    def __getitem__(self, index):
-        if not self.shuffle:
-            self.rng = nh.util.ensure_rng(index, api='python')
-
-        sub_pccs = self.rng.sample(self.multitons, self.p)
-
-        groups = []
-        for sub_pcc in sub_pccs:
-            aids = self.rng.sample(sub_pcc, min(self.k, len(sub_pcc)))
-            groups.append(aids)
-
-        nhave = sum(map(len, groups))
-        while nhave < self.batch_size:
-            sub_pcc = self.rng.choice(self.pccs)
-            aids = self.rng.sample(sub_pcc, min(self.k, len(sub_pcc)))
-            groups.append(aids)
-            nhave = sum(map(len, groups))
-            overshoot = nhave - self.batch_size
-            if overshoot:
-                groups[-1] = groups[-1][:-overshoot]
-
-        indices = sorted(ub.flatten(groups))
-        return indices
-
-    def __len__(self):
-        return self.num_batches
 
 
 def setup_datasets(workdir=None):
@@ -593,11 +498,18 @@ def setup_harn(**kwargs):
         margin (float): margin for loss criterion
         soft (bool): use soft margin
     """
+    import ast
+    def trycast(x, type):
+        try:
+            return type(x)
+        except Exception:
+            return x
+
     config = {}
     config['init'] = kwargs.get('init', 'kaiming_normal')
     config['pretrained'] = config.get('pretrained',
                                       ub.argval('--pretrained', default=None))
-    config['margin'] = kwargs.get('margin', 1.0)
+    config['margin'] = kwargs.get('margin', 3.0)
     config['soft'] = kwargs.get('soft', False)
     config['xpu'] = kwargs.get('xpu', 'argv')
     config['nice'] = kwargs.get('nice', 'untitled')
@@ -606,30 +518,21 @@ def setup_harn(**kwargs):
     config['bstep'] = int(kwargs.get('bstep', 1))
     config['optim'] = kwargs.get('optim', 'sgd')
     config['scheduler'] = kwargs.get('scheduler', 'onecycle70')
-    config['lr'] = kwargs.get('lr', 0.00011)
+    config['lr'] = trycast(kwargs.get('lr', 0.0001), float)
     config['decay'] = float(kwargs.get('decay', 1e-5))
 
-    config['batch_size'] = int(kwargs.get('batch_size', 120))
+    config['max_epoch'] = int(kwargs.get('max_epoch', 100))
+
+    config['num_batches'] = trycast(kwargs.get('num_batches', 1000), int)
+    config['batch_size'] = int(kwargs.get('batch_size', 128))
     config['p'] = float(kwargs.get('p', 10))
-    config['k'] = float(kwargs.get('k', 12))
+    config['k'] = float(kwargs.get('k', 25))
 
-    config['arch'] = kwargs.get('arch', 'simple')
-    config['hidden'] = kwargs.get('hidden', [256])
-    config['desc_size'] = kwargs.get('desc_size', 128)
-
-    try:
-        import ast
-        config['hidden'] = ast.literal_eval(config['hidden'])
-    except Exception:
-        pass
-
-    try:
-        config['lr'] = float(config['lr'])
-    except Exception:
-        pass
+    config['arch'] = kwargs.get('arch', 'resnet')
+    config['hidden'] = trycast(kwargs.get('hidden', [128]), ast.literal_eval)
+    config['desc_size'] = kwargs.get('desc_size', 256)
 
     config['norm_desc'] = kwargs.get('norm_desc', False)
-
     config['dim'] = 28
 
     xpu = nh.XPU.coerce(config['xpu'])
@@ -639,10 +542,11 @@ def setup_harn(**kwargs):
     loaders = {
         tag: torch.utils.data.DataLoader(
             dset,
-            batch_sampler=MatchingSamplerPK(
-                dset,
+            batch_sampler=nh.data.batch_samplers.MatchingSamplerPK(
+                dset.pccs,
                 shuffle=(tag == 'train'),
                 batch_size=config['batch_size'],
+                num_batches=config['num_batches'],
                 k=config['k'],
                 p=config['p'],
             ),
@@ -656,7 +560,7 @@ def setup_harn(**kwargs):
             'input_shape': (1, 1, config['dim'], config['dim']),
             'desc_size': config['desc_size'],
         })
-    elif config['arch'] == 'resnet50':
+    elif config['arch'] == 'resnet':
         model_ = (nh.models.DescriptorNetwork, {
             'input_shape': (1, 1, config['dim'], config['dim']),
             'norm_desc': config['norm_desc'],
@@ -666,11 +570,18 @@ def setup_harn(**kwargs):
     else:
         raise KeyError(config['arch'])
 
+    if config['scheduler'] == 'steplr':
+        from torch.optim import lr_scheduler
+        scheduler_ = (lr_scheduler.StepLR,
+                      dict(step_size=8, gamma=0.1, last_epoch=-1))
+    else:
+        scheduler_ = nh.Scheduler.coerce(config, scheduler='onecycle70')
+
     # Here is the FitHarn magic.
     # They nh.HyperParams object keeps track of and helps log all declarative
     # info related to training a model.
     hyper = nh.hyperparams.HyperParams(
-        nice='mnist',
+        nice=config['nice'],
         xpu=xpu,
         workdir=workdir,
         datasets=datasets,
@@ -678,7 +589,7 @@ def setup_harn(**kwargs):
         model=model_,
         initializer=nh.Initializer.coerce(config),
         optimizer=nh.Optimizer.coerce(config),
-        scheduler=nh.Scheduler.coerce(config, scheduler='onecycle70'),
+        scheduler=scheduler_,
         criterion=(nh.criterions.TripletLoss, {
             'margin': config['margin'],
             'soft': config['soft'],
@@ -687,10 +598,14 @@ def setup_harn(**kwargs):
             config,
             minimize=['loss', 'pos_dist', 'brier'],
             maximize=['accuracy', 'neg_dist', 'mcc'],
-            patience=300,
-            max_epoch=300,
+            patience=100,
+            max_epoch=config['max_epoch'],
             smoothing=0.4,
         ),
+        other={
+            'batch_size': config['batch_size'],
+            'num_batches': config['num_batches'],
+        }
     )
 
     harn = MNIST_MatchingHarness(hyper=hyper)
@@ -754,55 +669,35 @@ if __name__ == '__main__':
         python ~/code/netharn/examples/mnist_matching.py --help
 
         # Run with default values
-        python ~/code/netharn/examples/mnist_matching.py
+        python ~/code/netharn/examples/mnist_matching.py --verbose
 
         # Try new hyperparam values and run the LR-range-test
         python ~/code/netharn/examples/mnist_matching.py \
                 --batch_size=128 \
-                --scheduler=step50 \
-                --optim=sgd \
-                --soft=True \
-                --margin=2 \
-                --lr=0.0007
-
-        python ~/code/netharn/examples/mnist_matching.py \
-                --batch_size=128 \
-                --scheduler=step50 \
-                --optim=sgd \
-                --soft=True \
-                --margin=2 \
-                --lr=0.0007
-                --arch=resnet
-
-        python ~/code/netharn/examples/mnist_matching.py \
-                --batch_size=256 \
-                --scheduler=step50 \
+                --num_batches=1000 \
+                --scheduler=onecycle70 \
                 --optim=sgd \
                 --soft=False \
                 --margin=1 \
-                --lr=0.001 \
-                --arch=simple
+                --lr=0.0001 \
+                --arch=simple \
+                --nice=test_bugfix --verbose
 
-        # Reproduce state-of-the-art experiment
+        # Train with the simple architecture (to show the harness works)
         python ~/code/netharn/examples/mnist_matching.py \
-                --scheduler=ReduceLROnPlateau \
-                --batch_size=128 \
-                --optim=adamw \
-                --lr=0.000177
+                --arch=simple --optim=adam \
+                --decay=1e-4 \
+                --lr=1e-3 --scheduler=steplr --max_epoch=20 \
+                --batch_size=250  --num_batches=240 \
+                --margin=1 --soft=False \
+                --nice=demo_matching_harness_v6
 
+        # Train with netharn's Resnet DescriptorNetwork (to show the model works)
         python ~/code/netharn/examples/mnist_matching.py \
-                --scheduler=ReduceLROnPlateau \
-                --batch_size=2048 \
-                --optim=adamw \
-                --pretrained=/home/joncrall/data/mnist/fit/runs/mnist/ljqpwgzr/torch_snapshots/_epoch_00000020.pt \
-                --lr=interact
-
-                --lr=0.0001778
-
-        python ~/code/netharn/examples/mnist_matching.py         --batch_size=256         --scheduler=step10         --optim=sgd         --lr=0.003 --workers=1 --pretrained=/home/joncrall/data/mnist/fit/runs/mnist/sjmldjdl/torch_snapshots/_epoch_00000001.pt
-
-        python ~/code/netharn/examples/mnist_matching.py         --batch_size=2048         --scheduler=step10         --optim=sgd         --lr=0.003 --workers=1 --pretrained=/home/joncrall/data/mnist/fit/runs/mnist/jefmqvid/torch_snapshots/_epoch_00000005.pt
-
-        python ~/code/netharn/examples/mnist_matching.py --batch_size=2048 --scheduler=step10 --optim=adamw --lr=0.001 --workers=1 --pretrained=/home/joncrall/data/mnist/fit/runs/mnist/jefmqvid/torch_snapshots/_epoch_00000005.pt --decay=0
+                --arch=resnet --optim=sgd \
+                --lr=0.00007 --scheduler=onecycle70 --max_epoch=100 \
+                --batch_size=250  --num_batches=250 \
+                --margin=1 --soft=True \
+                --nice=demo_resnet_descriptor_network_v1
     """
     main()

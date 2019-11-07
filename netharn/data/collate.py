@@ -84,6 +84,8 @@ def _collate_else(batch, collate_func):
 
 def list_collate(inbatch):
     """
+    Collates batches containing items with non-uniform data sizes
+
     Used for detection datasets with boxes.
 
     Args:
@@ -91,19 +93,21 @@ def list_collate(inbatch):
             batch
 
     Example:
+        >>> from netharn.data.collate import *
         >>> import torch
         >>> rng = np.random.RandomState(0)
         >>> inbatch = []
         >>> bsize = 4
-        >>> for _ in range(bsize):
+        >>> for i in range(bsize):
         >>>     # add an image and some dummy bboxes to the batch
-        >>>     img = torch.rand(3, 8, 8)  # dummy 8x8 image
-        >>>     boxes = torch.FloatTensor()
-        >>>     item = (img, [boxes])
+        >>>     img = torch.rand(3, 4, 4)  # dummy 4x4 image
+        >>>     boxes = torch.LongTensor([[0, 0, 1, 1]] * i)
+        >>>     item = (img, boxes)
         >>>     inbatch.append(item)
         >>> out_batch = list_collate(inbatch)
         >>> assert len(out_batch) == 2
-        >>> assert list(out_batch[0].shape) == [bsize, 3, 8, 8]
+        >>> batch_img, batch_boxes = out_batch
+        >>> assert list(out_batch[0].shape) == [bsize, 3, 4, 4]
         >>> assert len(out_batch[1][0]) == bsize
 
     Example:
