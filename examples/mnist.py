@@ -9,7 +9,6 @@ We do our best not to get in the way, just performing a jumping off
 point.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
-import os
 import ubelt as ub
 import torch
 import torch.nn
@@ -22,14 +21,14 @@ import numpy as np
 
 
 class MnistNet(nn.Module):
-    def __init__(self, n_channels=1, n_classes=10):
+    def __init__(self, classes, num_channels=1):
         super(MnistNet, self).__init__()
-        self.n_classes = n_classes
-        self.conv1 = nn.Conv2d(n_channels, 10, kernel_size=5)
+        self.classes = classes
+        self.conv1 = nn.Conv2d(num_channels, 10, kernel_size=5)
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
         self.conv2_drop = nn.Dropout2d()
         self.fc1 = nn.Linear(320, 50)
-        self.fc2 = nn.Linear(50, n_classes)
+        self.fc2 = nn.Linear(50, len(self.classes))
 
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
@@ -52,8 +51,8 @@ class MnistHarn(nh.FitHarn):
         """
         # Simply move the data from the datasets on the the GPU(s)
         inputs, labels = raw_batch
-        inputs = harn.xpu.variable(inputs)
-        labels = harn.xpu.variable(labels)
+        inputs = harn.xpu.move(inputs)
+        labels = harn.xpu.move(labels)
         batch = {
             'input': inputs,
             'label': labels,
@@ -143,7 +142,6 @@ class MnistHarn(nh.FitHarn):
         inputs = inputs.data.cpu().numpy()
 
         dset = harn.datasets[harn.current_tag]
-        catgraph = dset.categories
 
         pred_cxs = decoded['pred_cxs'].data.cpu().numpy()
         pred_scores = decoded['pred_scores'].data.cpu().numpy()
@@ -158,8 +156,8 @@ class MnistHarn(nh.FitHarn):
             im_ = np.ascontiguousarray(im_)
             h, w = im_.shape[0:2][::-1]
 
-            true_name = catgraph[tcx]
-            pred_name = catgraph[pcx]
+            true_name = dset.classes[tcx]
+            pred_name = dset.classes[pcx]
             org1 = np.array((2, h - 32))
             org2 = np.array((2, 25))
             pred_label = 'p:{pcx}@{pred_score:.2f}:\n{pred_name}'.format(**locals())
@@ -195,18 +193,9 @@ class MnistHarn(nh.FitHarn):
         return stacked
 
 
-def setup_harn(**kw):
-    """
-    CommandLine:
-        python examples/mnist.py
-
-        python ~/code/netharn/examples/mnist.py --gpu=2
-        python ~/code/netharn/examples/mnist.py
-    """
-    config = {
-        'batch_size': kw.get('batch_size', 128),
-    }
-    root = os.path.expanduser('~/data/mnist/')
+def setup_datasets(workdir=None):
+    if workdir is None:
+        workdir = ub.expandpath('~/data/mnist/')
 
     # Define your dataset
     transform = torchvision.transforms.Compose([
@@ -214,11 +203,11 @@ def setup_harn(**kw):
         torchvision.transforms.Normalize((0.1307,), (0.3081,))
     ])
 
-    learn_dset = torchvision.datasets.MNIST(root, transform=transform,
+    learn_dset = torchvision.datasets.MNIST(workdir, transform=transform,
                                             train=True, download=True)
 
-    test_dset = torchvision.datasets.MNIST(root, transform=transform,
-                                           train=True, download=True)
+    test_dset = torchvision.datasets.MNIST(workdir, transform=transform,
+                                           train=False, download=True)
 
     # split the learning dataset into training and validation
     # take a subset of data
@@ -236,8 +225,8 @@ def setup_harn(**kw):
     train_dset = torch.utils.data.Subset(learn_dset, train_idx)
     vali_dset = torch.utils.data.Subset(learn_dset, vali_idx)
 
-    categories = ['zero', 'one', 'two', 'three', 'four', 'five', 'six',
-                  'seven', 'eight', 'nine']
+    classes = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven',
+               'eight', 'nine']
 
     datasets = {
         'train': train_dset,
@@ -245,13 +234,43 @@ def setup_harn(**kw):
         'test': test_dset,
     }
     for tag, dset in datasets.items():
-        dset.categories = categories
+        dset.classes = classes
+        dset.num_classes = len(classes)
 
     # Give the training dataset an input_id
     datasets['train'].input_id = 'mnist_' + ub.hash_data(train_idx.numpy())[0:8]
+    return datasets, workdir
 
-    n_classes = 10
+
+def setup_harn(**kw):
+    """
+    CommandLine:
+        python examples/mnist.py
+
+        python ~/code/netharn/examples/mnist.py --gpu=2
+        python ~/code/netharn/examples/mnist.py
+    """
     xpu = nh.XPU.from_argv(min_memory=300)
+
+    config = {
+        'batch_size': kw.get('batch_size', 128),
+        'workers': kw.get('workers', 6 if xpu.is_gpu() else 0)
+    }
+
+    if config['workers'] > 0:
+        # Workaround deadlocks with DataLoader
+        import cv2
+        cv2.setNumThreads(0)
+
+    datasets, workdir = setup_datasets()
+
+    loaders = {
+        tag: torch.utils.data.DataLoader(
+            dset, batch_size=config['batch_size'],
+            num_workers=config['workers'],
+            shuffle=(tag == 'train'))
+        for tag, dset in datasets.items()
+    }
 
     if False:
         initializer = (nh.initializers.Pretrained, {
@@ -260,33 +279,16 @@ def setup_harn(**kw):
     else:
         initializer = (nh.initializers.KaimingNormal, {})
 
-    loaders = ub.odict()
-    data_kw = {'batch_size': config['batch_size']}
-    if xpu.is_gpu():
-        data_kw.update({'num_workers': 6, 'pin_memory': True})
-    for tag in ['train', 'vali', 'test']:
-        if tag not in datasets:
-            continue
-        dset = datasets[tag]
-        shuffle = tag == 'train'
-        data_kw_ = data_kw.copy()
-        loader = torch.utils.data.DataLoader(dset, shuffle=shuffle, **data_kw_)
-        loaders[tag] = loader
-
-    # Workaround deadlocks with DataLoader
-    import cv2
-    cv2.setNumThreads(0)
-
     # Here is the FitHarn magic.
     # They nh.HyperParams object keeps track of and helps log all declarative
     # info related to training a model.
     hyper = nh.hyperparams.HyperParams(
         nice='mnist',
         xpu=xpu,
-        workdir=ub.truepath('~//work/mnist/'),
+        workdir=workdir,
         datasets=datasets,
         loaders=loaders,
-        model=(MnistNet, dict(n_channels=1, n_classes=n_classes)),
+        model=(MnistNet, dict(num_channels=1, classes=datasets['train'].classes)),
         # optimizer=torch.optim.Adam,
         optimizer=(torch.optim.SGD, {'lr': 0.01, 'weight_decay': 3e-6}),
         # scheduler='ReduceLROnPlateau',
@@ -318,11 +320,6 @@ def setup_harn(**kw):
             'max_epoch': 300,
             'smoothing': .4,
         }),
-        other={
-            # record any other information that will be used to compare
-            # different training runs here
-            'n_classes': n_classes,
-        }
     )
 
     harn = MnistHarn(hyper=hyper)
@@ -330,7 +327,6 @@ def setup_harn(**kw):
     # Set how often vali / test will be run
     harn.intervals.update({
         # 'vali': slice(5, None, 1),
-
         # Start testing after the 5th epoch and then test every 4 epochs
         'test': slice(5, None, 4),
     })

@@ -107,8 +107,8 @@ class MatchHarness(nh.FitHarn):
         ensure batch is in a standardized structure
         """
         img1, img2, label = raw_batch
-        inputs = harn.xpu.variables(img1, img2)
-        label = harn.xpu.variable(label)
+        inputs = harn.xpu.move([img1, img2])
+        label = harn.xpu.move(label)
         batch = (inputs, label)
         return batch
 

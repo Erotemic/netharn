@@ -729,7 +729,7 @@ class Stitcher(ub.NiceRepr):
             >>> #weight_np = weight.cpu().numpy()
             >>> weight = weight_np = None
             >>> # do dummy computation to warm up gpu
-            >>> conv(xpu.variable(dset[0][1][None, :]))
+            >>> conv(xpu.move(dset[0][1][None, :]))
             >>> torch.set_grad_enabled(False)
             >>> conv.train(False)
             >>> base_shape = slider.basis_shape[1:]
@@ -742,7 +742,7 @@ class Stitcher(ub.NiceRepr):
             >>>         stitcher = Stitcher(base_shape + [n_classes], xpu=xpu)
             >>>         for batch in loader:
             >>>             batch_idxs_tensors_, chips = batch
-            >>>             invar = xpu.variable(chips, async=True)
+            >>>             invar = xpu.move(chips)
             >>>             values = conv(invar).data
             >>>             batch_idxs = batch_idxs_tensors_[:, 1:].numpy()
             >>>             stitcher.add_fast(batch_idxs, values, weight,
@@ -755,7 +755,7 @@ class Stitcher(ub.NiceRepr):
             >>>         stitcher = Stitcher(base_shape + [n_classes], xpu='numpy')
             >>>         for batch in iter(loader):
             >>>             batch_idxs_tensors_, chips = batch
-            >>>             invar = xpu.variable(chips, async=True)
+            >>>             invar = xpu.move(chips)
             >>>             values_np = conv(invar).data.cpu().numpy()
             >>>             batch_idxs_np = batch_idxs_tensors_[:, 1:].numpy()
             >>>             stitcher.add_fast(batch_idxs_np, values_np,

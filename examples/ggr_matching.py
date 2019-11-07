@@ -17,9 +17,137 @@ import ubelt as ub
 import numpy as np
 import netharn as nh
 import torch
-import torchvision
+import torchvision  # NOQA
 import ndsampler
 import itertools as it
+import torch.nn.functional as F
+import torch.utils.data.sampler as torch_sampler
+
+
+def setup_sampler(config):
+    workdir = nh.configure_workdir(config,
+                                   workdir=join('~/work/siam-ibeis2', config['dbname']))
+
+    # TODO: cleanup and hook into ibeis AI
+    if config['dbname'] == 'ggr2':
+        print('Creating torch CocoDataset')
+
+        root = ub.truepath('~/data/')
+        print('root = {!r}'.format(root))
+
+        train_dset = ndsampler.CocoDataset(
+            data=join(root, 'ggr2-coco/annotations/instances_train2018.json'),
+            img_root=join(root, 'ggr2-coco/images/train2018'),
+        )
+        train_dset.hashid = 'ggr2-coco-train2018'
+
+        vali_dset = ndsampler.CocoDataset(
+            data=join(root, 'ggr2-coco/annotations/instances_val2018.json'),
+            img_root=join(root, 'ggr2-coco/images/val2018'),
+        )
+        vali_dset.hashid = 'ggr2-coco-val2018'
+
+        print('Creating samplers')
+        samplers = {
+            'train': ndsampler.CocoSampler(train_dset, workdir=workdir),
+            'vali': ndsampler.CocoSampler(vali_dset, workdir=workdir),
+        }
+    else:
+        raise KeyError(config['dbname'])
+
+    return samplers, workdir
+
+
+def setup_datasets(config):
+    """
+    config = parse_config(dbname='ggr2')
+    datasets, workdir = setup_datasets(config)
+    """
+
+    workdir = nh.configure_workdir(config,
+                                   workdir=join('~/work/siam-ibeis2', config['dbname']))
+    # TODO: cleanup and hook into ibeis AI
+    dim = config['dim']
+    if config['dbname'] == 'ggr2':
+        samplers, workdir = setup_sampler(config)
+        datasets = {
+            'train': AnnotCocoDataset(samplers['train'], workdir, dim=dim,
+                                      augment=True),
+            'vali': AnnotCocoDataset(samplers['vali'], workdir, dim=dim,
+                                     augment=False),
+        }
+    else:
+        from ibeis_utils import randomized_ibeis_dset
+        # TODO: triple
+        datasets = randomized_ibeis_dset(config['dbname'], dim=dim)
+
+    for k, v in datasets.items():
+        print('* len({}) = {}'.format(k, len(v)))
+
+    return datasets, workdir
+
+
+def parse_config(**kwargs):
+    """
+    Ignore:
+        I think xdoctest.auto_argparse is pretty cool. It can pick up what the
+        kwargs are even though they are passed between functions.
+
+        print('PARSE')
+        import xinspect
+        parser = xinspect.auto_argparse(setup_harn)
+        args, unknown = parser.parse_known_args()
+        ns = args.__dict__.copy()
+        print(parser.format_help())
+        print(ub.repr2(ns))
+    """
+    config = {}
+    config['norm_desc'] = kwargs.get('norm_desc', False)
+
+    config['init'] = kwargs.get('init', 'kaiming_normal')
+    config['pretrained'] = config.get('pretrained', ub.argval('--pretrained', default=None))
+
+    config['margin'] = kwargs.get('margin', 1.0)
+    config['soft'] = kwargs.get('soft', True)
+    config['xpu'] = kwargs.get('xpu', 'argv')
+    config['nice'] = kwargs.get('nice', 'untitled')
+    config['workdir'] = kwargs.get('workdir', None)
+    config['workers'] = int(kwargs.get('workers', 0))
+    config['dbname'] = kwargs.get('dbname', 'ggr2')
+    config['bstep'] = int(kwargs.get('bstep', 1))
+
+    # config['dim'] = int(kwargs.get('dim', 416))
+    # config['batch_size'] = int(kwargs.get('batch_size', 6))
+    config['optim'] = kwargs.get('optim', 'sgd')
+    config['scheduler'] = kwargs.get('scheduler', 'onecycle70')
+    config['lr'] = float(kwargs.get('lr', 0.001))
+    config['decay'] = float(kwargs.get('decay', 1e-5))
+
+    config['dim'] = int(kwargs.get('dim', 300))
+    config['batch_size'] = kwargs.get('batch_size', None)
+    config['p'] = int(kwargs.get('p', 10))
+    config['k'] = int(kwargs.get('k', 4))
+    # config['scheduler'] = kwargs.get('scheduler', 'dolphin')
+    # config['optim'] = kwargs.get('optim', 'adamw')
+    # config['lr'] = float(kwargs.get('lr', 3e-4))
+    # config['decay'] = float(kwargs.get('decay', 0))
+
+    try:
+        config['batch_size'] = int(config['batch_size'])
+    except Exception:
+        pass
+
+    try:
+        config['lr'] = float(config['lr'])
+    except Exception:
+        pass
+
+    try:
+        config['margin'] = float(config['margin'])
+    except ValueError:
+        pass
+
+    return config
 
 
 def setup_harn(**kwargs):
@@ -41,104 +169,70 @@ def setup_harn(**kwargs):
             indicating a GPU (e.g. `0`), or a list of numbers (e.g. `[0,1,2]`)
             indicating multiple GPUs
         triple (bool): if True uses triplet loss, otherwise contrastive loss
-        margin (float): margin for loss criterion
         norm_desc (bool): if True normalizes the descriptors
         pretrained (PathLike): path to a compatible pretrained model
+        margin (float): margin for loss criterion
+        soft (bool): use soft margin
 
     Example:
         >>> harn = setup_harn(dbname='PZ_MTEST')
         >>> harn.initialize()
     """
-    config = {}
-    config['dim'] = int(kwargs.get('dim', 416))
-    config['triple'] = kwargs.get('triple', False)
-    config['norm_desc'] = kwargs.get('norm_desc', False)
-
-    config['init'] = kwargs.get('init', 'kaiming_normal')
-    config['pretrained'] = config.get('pretrained', ub.argval('--pretrained', default=None))
-
-    config['scheduler'] = kwargs.get('scheduler', 'onecycle71')
-    config['margin'] = float(kwargs.get('margin', 4.0))
-    config['xpu'] = kwargs.get('xpu', 'argv')
-    config['nice'] = kwargs.get('nice', 'untitled')
-    config['workdir'] = kwargs.get('workdir', None)
-    config['batch_size'] = int(kwargs.get('batch_size', 6))
-    config['workers'] = int(kwargs.get('workers', 0))
-    config['dbname'] = kwargs.get('dbname', 'ggr2')
-    config['bstep'] = int(kwargs.get('bstep', 1))
-    config['decay'] = float(kwargs.get('decay', 1e-5))
-    config['lr'] = float(kwargs.get('lr', 0.019))
+    config = parse_config(**kwargs)
 
     nh.configure_hacks(config)
+    datasets, workdir = setup_datasets(config)
 
-    workdir = nh.configure_workdir(config,
-                                   workdir=join('~/work/siam-ibeis2', config['dbname']))
-
-    dim = config['dim']
-    triple = config['triple']
-    if config['dbname'] == 'ggr2':
-        print('Creating torch CocoDataset')
-        train_dset = ndsampler.CocoDataset(
-            data='/media/joncrall/raid/data/ggr2-coco/annotations/instances_train2018.json',
-            img_root='/media/joncrall/raid/data/ggr2-coco/images/train2018',
-        )
-        train_dset.hashid = 'ggr2-coco-train2018'
-        vali_dset = ndsampler.CocoDataset(
-            data='/media/joncrall/raid/data/ggr2-coco/annotations/instances_val2018.json',
-            img_root='/media/joncrall/raid/data/ggr2-coco/images/val2018',
-        )
-        vali_dset.hashid = 'ggr2-coco-val2018'
-
-        print('Creating samplers')
-        train_sampler = ndsampler.CocoSampler(train_dset, workdir=workdir)
-        vali_sampler = ndsampler.CocoSampler(vali_dset, workdir=workdir)
-
-        print('Creating torch Datasets')
-        datasets = {
-            'train': MatchingCocoDataset(train_sampler, train_dset, workdir,
-                                         dim=dim, augment=True, triple=triple),
-            'vali': MatchingCocoDataset(vali_sampler, vali_dset, workdir,
-                                        dim=dim, triple=triple),
-        }
-    else:
-        from ibeis_utils import randomized_ibeis_dset
-        # TODO: triple
-        datasets = randomized_ibeis_dset(config['dbname'], dim=dim)
-
-    for k, v in datasets.items():
-        print('* len({}) = {}'.format(k, len(v)))
-
-    if config['triple']:
-        criterion_ = (torch.nn.TripletMarginLoss, {
-            'margin': config['margin'],
-        })
-    else:
-        criterion_ = (nh.criterions.ContrastiveLoss, {
-            'margin': config['margin'],
-            'weight': None,
-        })
+    # if config['scheduler'] == 'dolphin':
+    #     scheduler_ = (nh.schedulers.ListedScheduler, { 'points': {
+    #             'lr': {
+    #                 0  : config['lr'] * 1.0,
+    #                 10  : config['lr'] / 2,
+    #                 20  : config['lr'] / 4,
+    #                 30  : config['lr'] / 8,
+    #             },
+    #             # 'momentum': {
+    #             #     0  : 0.95,
+    #             #     1  : 0.85,
+    #             #     2  : 0.95,
+    #             # },
+    #         },
+    #         'interpolation': 'left',
+    #     })
+    # else:
+    # scheduler_ = nh.Scheduler.coerce(config, scheduler='onecycle70')
 
     hyper = nh.HyperParams(**{
         'nice': config['nice'],
         'workdir': config['workdir'],
         'datasets': datasets,
-
-        'model': (MatchingNetworkLP, {
-            'p': 2,
-            'input_shape': (1, 3, dim, dim),
-            'norm_desc': config['norm_desc'],
-        }),
-
-        'criterion': criterion_,
-
-        'loaders': nh.Loaders.coerce(datasets, config),
+        'loaders': {
+            # nh.Loaders.coerce(datasets, config),
+            tag: dset.make_loader(
+                shuffle=(tag == 'train'),
+                batch_size=config['batch_size'],
+                k=config['k'],
+                p=config['p'],
+                num_workers=config['workers'],
+            )
+            for tag, dset in datasets.items()
+        },
         'xpu': nh.XPU.cast(config['xpu']),
 
+        'model': (nh.models.DescriptorNetwork, {
+            'input_shape': (1, 3, config['dim'], config['dim']),
+            'norm_desc': config['norm_desc'],
+            'hidden_channels': [512, 256]
+        }),
         'initializer': nh.Initializer.coerce(config),
-
         'optimizer': nh.Optimizer.coerce(config),
         'scheduler': nh.Scheduler.coerce(config, scheduler='onecycle70'),
-
+        'criterion': (nh.criterions.TripletLoss, {
+            'margin': config['margin'],
+            'soft': config['soft'],
+        }),
+        # 'scheduler': scheduler_,
+        # 'criterion': criterion_,
         'monitor': nh.Monitor.coerce(
             config,
             minimize=['loss', 'pos_dist', 'brier'],
@@ -175,12 +269,11 @@ class MatchingHarness(nh.FitHarn):
         >>> batch = harn._demo_batch(0, 'vali')
     """
 
-    def __init__(harn, *args, **kw):
-        super(MatchingHarness, harn).__init__(*args, **kw)
-
     def after_initialize(harn, **kw):
         harn.confusion_vectors = []
         harn._has_preselected = False
+        harn.POS_LABEL = 1
+        harn.NEG_LABEL = 0
 
     def before_epochs(harn):
         verbose = 0
@@ -188,12 +281,15 @@ class MatchingHarness(nh.FitHarn):
             if isinstance(dset, torch.utils.data.Subset):
                 dset = dset.dataset
 
+            if not hasattr(dset, 'preselect'):
+                continue
+
             # Presample negatives before each epoch.
             if tag == 'train':
                 if not harn._has_preselected:
                     harn.log('Presample {} dataset'.format(tag))
                 # Randomly resample training negatives every epoch
-                harn.datasets['train'].preselect(verbose=verbose)
+                dset.preselect(verbose=verbose)
             else:
                 if not harn._has_preselected:
                     harn.log('Presample {} dataset'.format(tag))
@@ -203,19 +299,18 @@ class MatchingHarness(nh.FitHarn):
     def prepare_batch(harn, raw_batch):
         """
         ensure batch is in a standardized structure
+
+        Ignore:
+            from ggr_matching import *
+            harn = setup_harn(dbname='ggr2', batch_size=21).initialize()
+            raw_batch = harn._demo_batch(raw=1)
+            raw_batch['chip'].shape
+            raw_batch['nx'].shape
         """
-        if harn.datasets['train'].triple:
-            batch = {
-                'img1': harn.xpu.move(raw_batch['img1']),
-                'img2': harn.xpu.move(raw_batch['img2']),
-                'img3': harn.xpu.move(raw_batch['img3']),
-            }
-        else:
-            batch = {
-                'img1': harn.xpu.move(raw_batch['img1']),
-                'img2': harn.xpu.move(raw_batch['img2']),
-                'label': harn.xpu.move(raw_batch['label'])
-            }
+        batch = {
+            'chip': harn.xpu.move(raw_batch['chip']),
+            'nx': harn.xpu.move(raw_batch['nx']),
+        }
         return batch
 
     def run_batch(harn, batch):
@@ -225,35 +320,36 @@ class MatchingHarness(nh.FitHarn):
         Args:
             batch: item returned by the loader
         """
-        if harn.datasets['train'].triple:
-            inputs = [batch['img1'], batch['img2'], batch['img3']]
-            outputs = harn.model(*inputs)
-            d1, d2, d3 = outputs['dvecs']
-            loss = harn.criterion(d1, d2, d3).sum()
-        else:
-            inputs = [batch['img1'], batch['img2']]
-            label = batch['label']
-            outputs = harn.model(*inputs)
-            d1, d2 = outputs['dvecs']
-            dist12 = harn.xpu.raw(harn.model).pdist(d1, d2)
-            loss = harn.criterion(dist12, label).sum()
+        inputs = batch['chip']
+        outputs = harn.model(inputs)
+        dvecs = outputs['dvecs']
+
+        pos_dists, neg_dists, triples = harn.criterion.hard_triples(
+            dvecs, batch['nx'])
+
+        loss = harn.criterion(pos_dists, neg_dists)
+        outputs['triples'] = triples
+        outputs['chip'] = batch['chip']
+        outputs['nx'] = batch['nx']
         return outputs, loss
 
     def _decode(harn, outputs):
-        dvecs = [d for d in outputs['dvecs']]
+        decoded = {}
 
-        decoded = {
-            'dvecs': [d.data.cpu().numpy() for d in dvecs],
-        }
-        if len(dvecs) > 1:
-            dist12 = harn.xpu.raw(harn.model).pdist(dvecs[0], dvecs[1])
-            decoded['dist12'] = dist12.data.cpu().numpy()
-        if len(dvecs) > 2:
-            dist13 = harn.xpu.raw(harn.model).pdist(dvecs[0], dvecs[2])
-            decoded['dist13'] = dist13.data.cpu().numpy()
-            dist23 = harn.xpu.raw(harn.model).pdist(dvecs[1], dvecs[2])
-            decoded['dist23'] = dist23.data.cpu().numpy()
+        A, P, N = np.array(outputs['triples']).T
+        chips_ = outputs['chip'].data.cpu().numpy()
+        nxs_ = outputs['nx'].data.cpu().numpy()
+        decoded['imgs'] = [chips_[A], chips_[P], chips_[N]]
+        decoded['nxs'] = [nxs_[A], nxs_[P], nxs_[N]]
 
+        dvecs_ = outputs['dvecs']
+        dvecs = [dvecs_[A], dvecs_[P], dvecs_[N]]
+        # decoded['dvecs'] = [d.data.cpu().numpy() for d in dvecs]
+
+        distAP = F.pairwise_distance(dvecs[0], dvecs[1], p=2)
+        distAN = F.pairwise_distance(dvecs[0], dvecs[2], p=2)
+        decoded['distAP'] = distAP.data.cpu().numpy()
+        decoded['distAN'] = distAN.data.cpu().numpy()
         return decoded
 
     def on_batch(harn, batch, outputs, loss):
@@ -270,54 +366,17 @@ class MatchingHarness(nh.FitHarn):
 
         bx = harn.bxs[harn.current_tag]
         decoded = harn._decode(outputs)
+
         if bx < 8:
             stacked = harn._draw_batch(batch, decoded)
             dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
             fpath = join(dpath, 'batch_{}_epoch_{}.jpg'.format(bx, harn.epoch))
             nh.util.imwrite(fpath, stacked)
 
-        POS_LABEL = 1
-        NEG_LABEL = 0
-
-        if harn.datasets['train'].triple:
-            n = len(decoded['dist12'])
-            harn.confusion_vectors.append(([POS_LABEL] * n, decoded['dist12']))
-            harn.confusion_vectors.append(([NEG_LABEL] * n, decoded['dist13']))
-            harn.confusion_vectors.append(([NEG_LABEL] * n, decoded['dist23']))
-        else:
-            label = batch['label']
-            l2_dist_tensor = decoded['dist12']
-            label_tensor = torch.squeeze(label).data.cpu()
-
-            # Record metrics for epoch scores
-            y_true = label_tensor
-            y_dist = l2_dist_tensor
-            harn.confusion_vectors.append((y_true, y_dist))
-            if False:
-                # Distance
-                is_pos = (y_true == POS_LABEL)
-
-                pos_dists = y_dist[is_pos]
-                neg_dists = y_dist[~is_pos]
-
-                # Average positive / negative distances
-                pos_dist = pos_dists.sum() / max(1, len(pos_dists))
-                neg_dist = neg_dists.sum() / max(1, len(neg_dists))
-
-                # accuracy
-                margin = harn.hyper.criterion_params['margin']
-                pred_pos_flags = (y_dist <= margin).long()
-
-                pred = pred_pos_flags
-                n_correct = (pred == y_true).sum()
-                fraction_correct = n_correct / len(y_true)
-
-                metrics = {
-                    'accuracy': float(fraction_correct),
-                    'pos_dist': float(pos_dist),
-                    'neg_dist': float(neg_dist),
-                }
-                return metrics
+        # Record metrics for epoch scores
+        n = len(decoded['distAP'])
+        harn.confusion_vectors.append(([harn.POS_LABEL] * n, decoded['distAP']))
+        harn.confusion_vectors.append(([harn.NEG_LABEL] * n, decoded['distAN']))
 
     def on_epoch(harn):
         """ custom callback """
@@ -329,28 +388,33 @@ class MatchingHarness(nh.FitHarn):
             y_true = np.hstack([r for r, p in harn.confusion_vectors])
             y_dist = np.hstack([p for r, p in harn.confusion_vectors])
 
-            POS_LABEL = 1  # NOQA
-            NEG_LABEL = 0  # NOQA
-            pos_dist = np.nanmean(y_dist[y_true == POS_LABEL])
-            neg_dist = np.nanmean(y_dist[y_true == NEG_LABEL])
+            pos_dist = np.nanmean(y_dist[y_true == harn.POS_LABEL])
+            neg_dist = np.nanmean(y_dist[y_true == harn.NEG_LABEL])
 
             # Transform distance into a probability-like space
             y_probs = torch.sigmoid(torch.Tensor(-(y_dist - margin))).numpy()
 
             brier = y_probs - y_true
 
-            y_pred = (y_dist <= margin).astype(y_true.dtype)
-            accuracy = (y_true == y_pred).mean()
-            mcc = metrics.matthews_corrcoef(y_true, y_pred)
-            brier = ((y_probs - y_true) ** 2).mean()
+            y_pred1 = (y_dist <= margin).astype(y_true.dtype)
+            y_pred2 = (y_dist > neg_dist).astype(y_true.dtype)
 
-            epoch_metrics = {
-                'mcc': mcc,
-                'brier': brier,
-                'accuracy': accuracy,
-                'pos_dist': pos_dist,
-                'neg_dist': neg_dist,
-            }
+            import xdev
+            with xdev.embed_on_exception_context:
+
+                accuracy = (y_true == y_pred1).mean()
+                mcc = metrics.matthews_corrcoef(y_true, y_pred1)
+                brier = ((y_probs - y_true) ** 2).mean()
+
+                epoch_metrics = {
+                    'mcc': mcc,
+                    'brier': brier,
+                    'accuracy': accuracy,
+                    'pos_dist': pos_dist,
+                    'neg_dist': neg_dist,
+                    'triple_acc': (y_true == y_pred2).mean(),
+                    'triple_mcc': metrics.matthews_corrcoef(y_true, y_pred2),
+                }
 
         # Clear scores for next epoch
         harn.confusion_vectors.clear()
@@ -371,31 +435,35 @@ class MatchingHarness(nh.FitHarn):
             >>> nh.util.imshow(stacked, colorspace='rgb', doclf=True)
             >>> nh.util.show_if_requested()
         """
-        if 'img3' in batch:
-            imgs = [batch[k].data.cpu().numpy() for k in ['img1', 'img2', 'img3']]
-        else:
-            imgs = [batch[k].data.cpu().numpy() for k in ['img1', 'img2']]
-            labels = batch['label'].data.cpu().numpy()
-
         tostack = []
         fontkw = {
             'fontScale': 1.0,
             'thickness': 2
         }
-        n = min(limit, len(imgs[0]))
+        n = min(limit, len(decoded['imgs'][0]))
+        dsize = (300, 300)
+        import cv2
         for i in range(n):
-            ims = [g[i].transpose(1, 2, 0) for g in imgs]
+            ims = [g[i].transpose(1, 2, 0) for g in decoded['imgs']]
+            ims = [cv2.resize(g, dsize) for g in ims]
             img = nh.util.stack_images(ims, overlap=-2, axis=1)
-            if 'dist13' in decoded:
-                text = 'dist12={:.2f} --- dist13={:.2f} --- dist23={:.2f}'.format(
-                    decoded['dist12'][i],
-                    decoded['dist13'][i],
-                    decoded['dist23'][i],
-                )
-            else:
-                dist = decoded['dist12'][i]
-                label = labels[i]
-                text = 'dist={:.2f}, label={}'.format(dist, label)
+            img = nh.util.atleast_3channels(img)
+            triple_nxs = [n[i] for n in decoded['nxs']]
+
+            if False:
+                triple_dvecs = [d[i] for d in decoded['dvecs']]
+                da, dp, dn = triple_dvecs
+                distAP = np.sqrt(((da - dp) ** 2).sum())
+                distAN = np.sqrt(((da - dn) ** 2).sum())
+                print('distAP = {!r}'.format(distAP))
+                print('distAN = {!r}'.format(distAN))
+                print('----')
+
+            text = 'distAP={:.3f} -- distAN={:.3f} -- {}'.format(
+                decoded['distAP'][i],
+                decoded['distAN'][i],
+                str(triple_nxs),
+            )
             img = (img * 255).astype(np.uint8)
             img = nh.util.draw_text_on_image(img, text,
                                              org=(2, img.shape[0] - 2),
@@ -405,93 +473,6 @@ class MatchingHarness(nh.FitHarn):
                                             bg_value=(10, 40, 30),
                                             axis=1, chunksize=3)
         return stacked
-
-
-class MatchingNetworkLP(torch.nn.Module):
-    """
-    L2 pairwise distance matching network
-
-    Example:
-        >>> self = MatchingNetworkLP()
-        >>> input_shapes = [(4, 3, 244, 244), (4, 3, 244, 244)]
-        >>> self.output_shape_for(*input_shapes)  # todo pdist module
-    """
-
-    def __init__(self, p=2, branch=None, input_shape=(1, 3, 416, 416),
-                 norm_desc=False):
-        super(MatchingNetworkLP, self).__init__()
-        if branch is None:
-            self.branch = torchvision.models.resnet50(pretrained=True)
-        else:
-            self.branch = branch
-        assert isinstance(self.branch, torchvision.models.ResNet)
-
-        # Note the advanced usage of output-shape-for
-        branch_shape = nh.OutputShapeFor(self.branch)(input_shape)
-        prepool_shape = branch_shape.hidden.shallow(1)['layer4']
-        # replace the last layer of resnet with a linear embedding to learn the
-        # LP distance between pairs of images.
-        # Also need to replace the pooling layer in case the input has a
-        # different size.
-        self.prepool_shape = prepool_shape
-        pool_channels = prepool_shape[1]
-        pool_dims = prepool_shape[2:]
-        self.branch.avgpool = torch.nn.AvgPool2d(pool_dims, stride=1)
-        self.branch.fc = torch.nn.Linear(pool_channels, 1024)
-
-        self.norm_desc = norm_desc
-
-        self.p = p
-        self.pdist = torch.nn.PairwiseDistance(p=p)
-
-    def forward(self, *inputs):
-        """
-        Compute a resnet50 vector for each input and look at the LP-distance
-        between the vectors.
-
-        Example:
-            >>> input1 = nh.XPU(None).variable(torch.rand(4, 3, 224, 224))
-            >>> input2 = nh.XPU(None).variable(torch.rand(4, 3, 224, 224))
-            >>> self = MatchingNetworkLP(input_shape=input2.shape[1:])
-            >>> output = self(input1, input2)
-
-        Ignore:
-            >>> input1 = nh.XPU(None).variable(torch.rand(1, 3, 416, 416))
-            >>> input2 = nh.XPU(None).variable(torch.rand(1, 3, 416, 416))
-            >>> input_shape1 = input1.shape
-            >>> self = MatchingNetworkLP(input_shape=input2.shape[1:])
-            >>> self(input1, input2)
-        """
-        dvecs = [self.branch(i) for i in inputs]
-        if self.norm_desc:
-            # LP normalize the vectors
-            dvecs = [torch.nn.functional.normalize(d, p=self.p) for d in dvecs]
-        if len(inputs) == 2:
-            # dist = self.pdist(*dvecs)
-            output = {
-                'dvecs': dvecs,
-                # 'dist12': dist,
-            }
-        else:
-            output = {
-                'dvecs': dvecs,
-            }
-        return output
-
-    def output_shape_for(self, *input_shapes):
-        inputs = input_shapes
-        dvecs = [nh.OutputShapeFor(self.branch)(i) for i in inputs]
-        if len(inputs) == 2:
-            dist = nh.OutputShapeFor(self.pdist)(*dvecs)
-            output = {
-                'dvecs': dvecs,
-                'dist': dist,
-            }
-        else:
-            output = {
-                'dvecs': dvecs,
-            }
-        return output
 
 
 def extract_ggr_pccs(coco_dset):
@@ -529,53 +510,200 @@ def extract_ggr_pccs(coco_dset):
     return pccs
 
 
-class MatchingCocoDataset(torch.utils.data.Dataset):
+class MatchingSamplerPK(ub.NiceRepr, torch_sampler.BatchSampler):
     """
+
+    Samples random triples from a PCC-complient dataset
+
+    Args:
+        torch_dset (Dataset): something that can sample PCC-based annots
+        p (int): number of individuals sampled per batch
+        k (int): number of annots sampled per individual within a batch
+        batch_size (int): if specified, k is adjusted to an appropriate length
+        drop_last (bool): ignored
+        num_batches (int): length of the loader
+        rng (int | Random, default=None): random seed
+        shuffle (bool): if False rng is ignored and getitem is deterministic
+
     Example:
-        >>> harn = setup_harn(dbname='ggr2', xpu='cpu').initialize()
-        >>> self = harn.datasets['train']
+        >>> datasets, workdir = setup_datasets()
+        >>> torch_dset = datasets['vali']
+        >>> batch_sampler = self = MatchingSamplerPK(torch_dset, shuffle=True)
+        >>> for indices in batch_sampler:
+        >>>     print('indices = {!r}'.format(indices))
+
+    Ignore:
+        import sys
+        sys.path.append('/home/joncrall/code/netharn/examples')
+        from ggr_matching import *
+        config = parse_config(dbname='ggr2')
+        datasets, workdir = setup_datasets(config)
+
+        torch_dset = datasets['vali']
+        batch_sampler = self = MatchingSamplerPK(torch_dset, shuffle=True)
+
+        for indices in batch_sampler:
+            print('indices = {!r}'.format(indices))
     """
-    def __init__(self, sampler, coco_dset, workdir=None, augment=False,
-                 dim=416, triple=True):
+    def __init__(self, torch_dset, p=21, k=4, batch_size=None, drop_last=False,
+                 rng=None, shuffle=False, num_batches=None, replace=True):
+        self.torch_dset = torch_dset
+        self.drop_last = drop_last
+
+        self.shuffle = shuffle
+
+        if replace is False:
+            raise NotImplementedError(
+                'We currently cant sample without replacement')
+
+        self.pccs = torch_dset.pccs
+
+        self.multitons = [pcc for pcc in self.pccs if len(pcc) > 1]
+
+        self.aid_to_index = self.torch_dset.aid_to_index
+
+        if getattr(self.torch_dset, '__hasgraphid__', False):
+            raise NotImplementedError('TODO: graphid API sampling')
+        else:
+            # Compute the total possible number of triplets
+            # Its probably a huge number, but lets do it anyway.
+            # --------
+            # In the language of graphid (See Jon Crall's 2017 thesis)
+            # The matching graph for MNIST is fully connected graph.  All
+            # pairs of annotations with the same label have a positive edge
+            # between them. All pairs of annotations with a different label
+            # have a negative edge between them. There are no incomparable
+            # edges. Therefore for each PCC, A the number of triples it can
+            # contribute is the number of internal positive edges
+            # ({len(A) choose 2}) times the number of outgoing negative edges.
+            # ----
+            # Each pair of positive examples could be a distinct triplet
+            # For each of these any negative could be chosen
+            # The number of distinct triples contributed by this PCC is the
+            # product of num_pos_edges and num_neg_edges.
+            import scipy
+            self.num_triples = 0
+            self.num_pos_edges = 0
+            default_num_items = 0
+            for pcc in self.pccs:
+                num_pos_edges = scipy.special.comb(len(pcc), 2)
+                if num_pos_edges > 0:
+                    default_num_items += len(pcc)
+                other_pccs = [c for c in self.pccs if c is not pcc]
+                num_neg_edges = sum(len(c) for c in other_pccs)
+                self.num_triples += num_pos_edges * num_neg_edges
+                self.num_pos_edges += num_pos_edges
+
+        # self.p = batch_size // k
+        # self.k = k
+        p = min(len(self.multitons), p)
+        k = min(max(len(p) for p in self.pccs), k)
+
+        if batch_size is None:
+            batch_size = p * k
+        else:
+            k = batch_size // p
+
+        if num_batches is None:
+            num_batches = default_num_items // batch_size
+
+        self.batch_size = batch_size
+        self.num_batches = num_batches
+        self.p = p  # PCCs per batch
+        self.k = k  # Items per PCC per batch
+        assert self.k > 1
+        assert self.p > 1
+        print('self.p = {!r}'.format(self.p))
+        print('self.k = {!r}'.format(self.k))
+
+        self.rng = nh.util.ensure_rng(rng, api='python')
+
+    def __iter__(self):
+        for index in range(len(self)):
+            indices = self[index]
+            yield indices
+
+    def __getitem__(self, index):
+        if not self.shuffle:
+            self.rng = nh.util.ensure_rng(index, api='python')
+
+        sub_pccs = self.rng.sample(self.multitons, self.p)
+
+        groups = []
+        for sub_pcc in sub_pccs:
+            aids = self.rng.sample(sub_pcc, min(self.k, len(sub_pcc)))
+            groups.append(aids)
+
+        nhave = sum(map(len, groups))
+        while nhave < self.batch_size:
+            sub_pcc = self.rng.choice(self.pccs)
+            aids = self.rng.sample(sub_pcc, min(self.k, len(sub_pcc)))
+            groups.append(aids)
+            nhave = sum(map(len, groups))
+            overshoot = nhave - self.batch_size
+            if overshoot:
+                groups[-1] = groups[-1][:-overshoot]
+
+        batch_aids = sorted(ub.flatten(groups))
+        indices = [self.aid_to_index[aid] for aid in batch_aids]
+        return indices
+
+    def __len__(self):
+        return self.num_batches
+
+
+class AnnotCocoDataset(torch.utils.data.Dataset, ub.NiceRepr):
+    """
+    Generates annotations with name labels. This is essentially a dataset for
+    graphid AnnotInfr nodes.
+
+    Example:
+        >>> import sys
+        >>> sys.path.append('/home/joncrall/code/netharn/examples')
+        >>> from ggr_matching import *
+        >>> config = parse_config(dbname='ggr2')
+        >>> samplers, workdir = setup_sampler(config)
+        >>> torch_dset = self = AnnotCocoDataset(samplers['vali'], workdir, augment=True)
+        >>> assert len(torch_dset) == 454
+        >>> index = 0
+        >>> item = torch_dset[index]
+        >>> import netharn as nh
+        >>> nh.util.autompl()
+        >>> nh.util.imshow(item['chip'])
+        >>> torch_loader = torch_dset.make_loader()
+        >>> raw_batch = ub.peek(torch_loader)
+        >>> stacked = nh.util.stack_images_grid(raw_batch['chip'].numpy().transpose(0, 2, 3, 1), overlap=-1)
+        >>> nh.util.imshow(stacked)
+
+        for batch_idxs in torch_loader.batch_sampler:
+            print('batch_idxs = {!r}'.format(batch_idxs))
+    """
+    def __init__(self, sampler, workdir=None, augment=False, dim=416):
         print('make MatchingCocoDataset')
 
-        cacher = ub.Cacher('pccs', cfgstr=coco_dset.tag, verbose=True)
+        cacher = ub.Cacher('pccs_v1', cfgstr=sampler.dset.tag, verbose=True)
         pccs = cacher.tryload()
         if pccs is None:
-            pccs = extract_ggr_pccs(coco_dset)
+            pccs = extract_ggr_pccs(sampler.dset)
             cacher.save(pccs)
-
         self.pccs = pccs
 
         self.sampler = sampler
 
-        print('target index')
+        self.aids = sorted(ub.flatten(self.pccs))
+        self.index_to_aid = {index: aid for index, aid in enumerate(self.aids)}
+        self.nx_to_pcc = {nx: pcc for nx, pcc in enumerate(self.pccs)}
+
+        self.aid_to_index = {aid: index for index, aid in self.index_to_aid.items()}
+        self.aid_to_nx = {aid: nx for nx, pcc in self.nx_to_pcc.items() for aid in pcc}
         self.aid_to_tx = {aid: tx for tx, aid in
                           enumerate(sampler.regions.targets['aid'])}
-
-        self.coco_dset = coco_dset
-
-        self.triple = triple
-
-        self.max_num = int(1e5)
-        self.pos_ceil = sum((n * (n - 1)) // 2 for n in map(len, self.pccs))
-        self.max_num = min(self.pos_ceil, self.max_num)
-
-        if self.triple:
-            self.sample_gen = sample_triples(pccs, rng=0)
-            self.samples = [next(self.sample_gen) for _ in range(self.max_num)]
-            nh.util.shuffle(self.samples, rng=0)
-        else:
-            print('Find Samples')
-            self.sample_gen = sample_edges_inf(self.pccs)
-            self.samples = sample_edges_finite(self.pccs, max_num=self.max_num,
-                                               pos_neg_ratio=1.0)
-            nh.util.shuffle(self.samples, rng=0)
 
         print('Finished sampling')
         window_dim = dim
         self.dim = window_dim
         self.window_dim = window_dim
+        self.dims = (window_dim, window_dim)
 
         self.rng = nh.util.ensure_rng(0)
         if augment:
@@ -600,38 +728,45 @@ class MatchingCocoDataset(torch.utils.data.Dataset):
             ])
         else:
             self.augmenter = None
-        target_size = (window_dim, window_dim)
-        self.letterbox = nh.data.transforms.Resize(target_size=target_size,
+        self.letterbox = nh.data.transforms.Resize(target_size=self.dims,
                                                    mode='letterbox')
 
-        self.preselect()
+    def make_loader(self, batch_size=None, num_workers=0, shuffle=False,
+                    pin_memory=False, k=4, p=21, drop_last=False):
+        """
+        Example:
+            >>> config = parse_config(dbname='ggr2')
+            >>> samplers, workdir = setup_sampler(config)
+            >>> torch_dset = self = AnnotCocoDataset(samplers['vali'], workdir, augment=True)
+            >>> torch_loader = torch_dset.make_loader()
+            >>> raw_batch = ub.peek(torch_loader)
+            >>> for batch_idxs in torch_loader.batch_sampler:
+            >>>     print('batch_idxs = {!r}'.format(batch_idxs))
+        """
+        torch_dset = self
+        batch_sampler = MatchingSamplerPK(self, batch_size=batch_size, k=k,
+                                          p=p, shuffle=shuffle)
+        torch_loader = torch.utils.data.DataLoader(torch_dset,
+                                                   num_workers=num_workers,
+                                                   # batch_size=batch_size,
+                                                   # shuffle=shuffle,
+                                                   batch_sampler=batch_sampler,
+                                                   pin_memory=pin_memory)
+        return torch_loader
 
-    def preselect(self, verbose=0):
-        if self.augmenter:
-            n = len(self)
-            self.samples = [next(self.sample_gen) for _ in it.repeat(None, n)]
+    def __nice__(self):
+        return str(len(self))
 
     def __len__(self):
-        return len(self.samples)
+        return len(self.pccs)
 
     def __getitem__(self, index):
-        import graphid
-
-        if self.triple:
-            aids = self.samples[index]
-        else:
-            aid1, aid2, label = self.samples[index]
-            aids = [aid1, aid2]
-            if label == graphid.core.POSTV:
-                label = 1
-            elif label == graphid.core.NEGTV:
-                label = 0
-            else:
-                raise KeyError(label)
-        txs = [self.aid_to_tx[aid] for aid in aids]
-
-        samples = [self.sampler.load_positive(index=tx) for tx in txs]
-        chips = [s['im'] for s in samples]
+        # import graphid
+        aid = self.aids[index]
+        tx = self.aid_to_tx[aid]
+        nx = self.aid_to_nx[aid]
+        sample = self.sampler.load_positive(index=tx)
+        chip = sample['im']
 
         if self.augmenter:
             # Ensure the same augmentor is used for bboxes and iamges
@@ -639,155 +774,21 @@ class MatchingCocoDataset(torch.utils.data.Dataset):
             #     deps = [self.dependent.to_deterministic() for _ in chips]
             #     chips = [d(c) for d, c in zip(deps, chips)]
             # dependent2 = self.dependent.to_deterministic()
-            if self.rng.rand() > .5:
-                chips = [np.fliplr(c) for c in chips]
-            chips = self.independent.augment_images(chips)
+            # if self.rng.rand() > .5:
+            #     chips = [np.fliplr(c) for c in chips]
+            chip = self.independent.augment_image(chip)
 
-        chips = self.letterbox.augment_images(chips)
+        chip = self.letterbox.augment_image(chip)
+        chip_chw = chip.transpose(2, 0, 1).astype(np.float32)
+        chip_chw = torch.FloatTensor(chip_chw / 255.0)
 
-        chips = [
-            torch.FloatTensor(c.transpose(2, 0, 1).astype(np.float32) / 255)
-            for c in chips
-        ]
-
-        if self.triple:
-            item = {
-                'img1': chips[0],
-                'img2': chips[1],
-                'img3': chips[2],
-            }
-        else:
-            item = {
-                'img1': chips[0],
-                'img2': chips[1],
-                'label': label,
-            }
-
+        item = {
+            'chip': chip_chw,
+            'aid': aid,
+            'nx': nx,
+            # TODO: note if flipped left/right
+        }
         return item
-
-
-def e_(e):
-    u, v = e
-    return (u, v) if u < v else (v, u)
-
-
-def generate_positives(pccs, rng=None):
-    rng = nh.util.ensure_rng(rng)
-    generators = {i: nh.util.random_combinations(pcc, 2, rng=rng)
-                  for i, pcc in enumerate(pccs)}
-    while generators:
-        to_remove = set()
-        for i, gen in generators.items():
-            try:
-                yield e_(next(gen))
-            except StopIteration:
-                to_remove.add(i)
-        for i in to_remove:
-            generators.pop(i)
-
-
-def generate_negatives(pccs, rng=None):
-    rng = nh.util.ensure_rng(rng, api='python')
-    generators = None
-    unfinished = True
-    generators = {}
-
-    while unfinished:
-        finished = set()
-        if unfinished is True:
-            combos = nh.util.random_combinations(pccs, 2, rng=rng)
-        else:
-            combos = unfinished
-
-        for pcc1, pcc2 in combos:
-            key = (pcc1, pcc2)
-
-            if key not in generators:
-                generators[key] = nh.util.random_product([pcc1, pcc2], rng=rng)
-            gen = generators[key]
-            try:
-                edge = e_(next(gen))
-                yield edge
-            except StopIteration:
-                finished.add(key)
-
-        if unfinished is True:
-            unfinished = set(generators.keys())
-
-        unfinished.difference_update(finished)
-
-
-def sample_triples(pccs, rng=None):
-    """
-    Note: does not take into account incomparable
-
-    Example:
-        >>> pccs = list(map(frozenset, [{1, 2, 3}, {4, 5}, {6}]))
-        >>> gen = (sample_triples(pccs))
-        >>> next(gen)
-    """
-    assert len(pccs) > 1
-    rng = nh.util.ensure_rng(rng, api='python')
-    aid_to_pcc = {aid: pcc for pcc in pccs for aid in pcc}
-    all_aids = sorted(aid_to_pcc.keys())
-    pos_gen = generate_positives(pccs, rng=rng)
-    pos_inf = it.cycle(pos_gen)
-    for u, v in pos_inf:
-        this_pcc = aid_to_pcc[u]
-        aid3 = rng.choice(all_aids)
-        while aid3 in this_pcc:
-            aid3 = rng.choice(all_aids)
-        yield u, v, aid3
-
-
-def sample_edges_inf(pccs, rng=None):
-    """
-    Note: does not take into account incomparable
-
-    Example:
-        >>> pccs = list(map(frozenset, [{1, 2, 3}, {4, 5}, {6}]))
-        >>> gen = (sample_edges_inf(pccs))
-        >>> next(gen)
-    """
-    import graphid
-    rng = nh.util.ensure_rng(rng, api='python')
-    pos_gen = generate_positives(pccs, rng=rng)
-    neg_gen = generate_negatives(pccs, rng=rng)
-    pos_inf = it.cycle((u, v, graphid.core.POSTV) for u, v in pos_gen)
-    neg_inf = it.cycle((u, v, graphid.core.NEGTV) for u, v in neg_gen)
-    for u, v, label in it.chain.from_iterable(zip(pos_inf, neg_inf)):
-        yield u, v, label
-
-
-def sample_edges_finite(pccs, max_num=1000, pos_neg_ratio=None, rng=None):
-    """
-    Note: does not take into account incomparable
-
-    >>> pccs = list(map(frozenset, [{1, 2, 3}, {4, 5}, {6}]))
-    >>> list(sample_edges_finite(pccs))
-    """
-    import graphid
-    rng = nh.util.ensure_rng(rng, api='python')
-    # Simpler very randomized sample strategy
-    max_pos = int(max_num) // 2
-    max_neg = int(max_num) - max_pos
-
-    pos_pairs = [edge for i, edge in zip(range(max_pos), generate_positives(pccs, rng=rng))]
-
-    if pos_neg_ratio is not None:
-        max_neg = min(int(pos_neg_ratio * len(pos_pairs)), max_neg)
-
-    neg_pairs = [edge for i, edge in zip(range(max_neg), generate_negatives(pccs, rng=rng))]
-
-    labeled_pairs = [
-        (graphid.core.POSTV, pos_pairs),
-        (graphid.core.NEGTV, neg_pairs),
-    ]
-
-    samples = [(aid1, aid2, label)
-                    for label, pairs in labeled_pairs
-                    for aid1, aid2 in pairs]
-    return samples
 
 
 def main():
@@ -819,14 +820,48 @@ def main():
     print('PARSE')
     import xinspect
     parser = xinspect.auto_argparse(setup_harn)
+
+    parser.add_argument(
+        '--lrtest', action='store_true',
+        help='Run Leslie Smith\'s LR range test')
+    parser.add_argument(
+        '--interact', action='store_true',
+        help='Interact with the range test')
     args, unknown = parser.parse_known_args()
     ns = args.__dict__.copy()
-    print('SETUP')
-    print('ns = {!r}'.format(ns))
-    harn = setup_harn(**ns)
-    print('INIT')
+
+    args.interact |= args.lr == 'interact'
+    args.lrtest |= (args.lr == 'test' or args.interact)
+
+    if args.lrtest or args.interact:
+        # TODO:
+        # - [ ] tweak setup_harn so running the lr-range-test isn't awkward
+        from netharn.prefit.lr_tests import lr_range_test
+        ns['lr'] = 1e-99
+
+        if args.interact:
+            nh.util.autompl()
+            import matplotlib.pyplot as plt
+
+        harn = setup_harn(**ns)
+        harn.initialize()
+        # TODO: We could cache the result based on the netharn
+        # hyperparameters. This would let us integrate with the
+        # default fit harness.
+        result = lr_range_test(harn)
+        print('result.recommended_lr = {!r}'.format(result.recommended_lr))
+
+        if args.interact:
+            result.draw()
+            plt.show()
+
+        # Seed value with test result
+        ns['lr'] = result.recommended_lr
+        harn = setup_harn(**ns).initialize()
+    else:
+        harn = setup_harn(**ns)
+
     harn.initialize()
-    print('RUN')
     harn.run()
 
 
@@ -835,6 +870,16 @@ if __name__ == '__main__':
     CommandLine:
         python ~/code/netharn/examples/ggr_matching.py --help
         python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0 --dbname=ggr2 --batch_size=8 --nice=ggr2-test
+
+        python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0 --dbname=ggr2 --batch_size=64 --nice=TEST_JAN21 --lrtest --interact
+
         python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0 --dbname=ggr2 --batch_size=8 --nice=ggr2-test-v2
+        python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0 --dbname=ggr2 --batch_size=8 --nice=ggr2-test-v3
+        python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0 --dbname=ggr2 --batch_size=8 --nice=ggr2-triple-test-v4
+
+        python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0 --dbname=ggr2 --batch_size=26 --dims=416 --nice=ggr2-test-bugfix
+        python ~/code/netharn/examples/ggr_matching.py --workers=6 --xpu=0 --dbname=ggr2 --batch_size=32 --dims=416 --nice=ggr2-test-bugfix-v2 --lr=0.003
+
+
     """
     main()

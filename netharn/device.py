@@ -11,6 +11,7 @@ import torch
 import six
 import os
 from netharn import util
+from torch._six import container_abcs
 
 
 __all__ = ['XPU']
@@ -170,6 +171,11 @@ class XPU(ub.NiceRepr):
                     for index in xpu._device_ids]
         else:
             return [torch.device(type='cpu')]
+
+    @property
+    def device(xpu):
+        """ alias for main_device """
+        return xpu.main_device
 
     @property
     def main_device(xpu):
@@ -497,10 +503,17 @@ class XPU(ub.NiceRepr):
     def move(xpu, data, **kwargs):
         """
         Moves the model onto the primary GPU or CPU.
-        Note that this works inplace for non-Tensor objects.
+
+        If the data is nested in a container (e.g. a dict or list) then this
+        funciton is applied recursively to all values in the container.
+
+        Note:
+            This works by calling the `.to` method, which works inplace for
+            torch Modules, but is not implace for raw Tensors.
 
         Args:
-            data (torch.Tensor): raw data
+            data (torch.Module | torch.Tensor | Collection):
+                raw data or a collection containing raw data.
             **kwargs : forwarded to `data.cuda`
 
         Returns:
@@ -513,56 +526,25 @@ class XPU(ub.NiceRepr):
             >>>     assert isinstance(xpu.move(data), torch.cuda.FloatTensor)
             >>> xpu = XPU.coerce('cpu')
             >>> assert isinstance(xpu.move(data), torch.FloatTensor)
+            >>> assert isinstance(xpu.move([data])[0], torch.FloatTensor)
+            >>> assert isinstance(xpu.move({0: data})[0], torch.FloatTensor)
+            >>> assert isinstance(xpu.move({data}), set)
         """
-        if xpu.is_gpu():
-            return data.to(xpu._main_device_id, **kwargs)
-        else:
-            return data.to('cpu')
-
-    def variable(xpu, item, **kw):
-        """
-        Moves data to this XPU and wraps it inside a `torch.autograd.Variable`
-
-        DEPRICATE
-
-        Args:
-            item (Tensor): a of tensors
-            **kwargs: forwarded to `xpu.move` and `torch.autograd.Variable`
-
-        Returns:
-            torch.autograd.Variable: variable on the xpu
-
-        Example:
-            >>> from netharn.device import *
-            >>> xpu = XPU(None)
-            >>> data = torch.FloatTensor([0])
-            >>> vari = xpu.variable(data)
-            >>> assert isinstance(vari, torch.autograd.Variable)
-            >>> # Ensure this function is idempotent
-            >>> vari2 = xpu.variable(vari)
-        """
-        assert 'volatile' not in kw, 'volatile is removed'
-        cukw = {}
-        if 'async' in kw:
-            cukw['non_blocking'] = kw.pop('async')
-        if 'non_blocking' in kw:
-            cukw['non_blocking'] = kw.pop('non_blocking')
-        if torch.__version__.startswith('0.3'):
-            # Unwrap the data and make a new variable
-            if isinstance(item, torch.autograd.Variable):
-                item = item.data
-        item = xpu.move(item, **cukw)
-        item = torch.autograd.Variable(item, **kw)
-        return item
-
-    def variables(xpu, *args, **kw):
-        """
-        Convinience function to wrap multiple Tensors in Variables at once
-
-        DEPRICATE
-        """
-        for item in args:
-            yield xpu.variable(item, **kw)
+        try:
+            if xpu.is_gpu():
+                return data.to(xpu._main_device_id, **kwargs)
+            else:
+                return data.to('cpu')
+        except AttributeError:
+            # Recursive move
+            if isinstance(data, container_abcs.Mapping):
+                cls = data.__class__
+                return cls((k, xpu.move(v)) for k, v in data.items())
+            elif isinstance(data, (container_abcs.Sequence, container_abcs.Set)):
+                cls = data.__class__
+                return cls(xpu.move(v) for v in data)
+            else:
+                raise TypeError('Unknown type {}'.format(type(data)))
 
     @classmethod
     def default_gpu(XPU):

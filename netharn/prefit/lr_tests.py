@@ -42,7 +42,7 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
         >>> result.draw()
         >>> nh.util.show_if_requested()
 
-    Example:
+    Ignore:
         >>> import sys
         >>> sys.path.append('/home/joncrall/code/netharn/examples')
         >>> from mnist import setup_harn
@@ -136,7 +136,7 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
 
             # Compute the smoothed loss
             metrics.update({'loss': raw_loss})
-            curr_loss = metrics.average()['loss']
+            curr_loss = metrics.mean()['loss']
 
             # Record the best loss
             if curr_loss < best_loss:
@@ -149,6 +149,7 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
                 # This loss was achived by a step with the previous lr, so ensure
                 # we are associating the correct lr with the loss that corresponds
                 # to it.
+                records['loss_std'].append(metrics.std()['loss'])
                 records['loss'].append(curr_loss)
                 records['raw_loss'].append(raw_loss)
                 records['lr'].append(curr_lr)
@@ -178,6 +179,7 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
         print('best_lr = {!r}'.format(best_lr))
 
         recommended_lr = best_lr / 10
+        # recommended_lr = best_lr
         print('recommended_lr = {!r}'.format(recommended_lr))
     except Exception:
         raise
@@ -190,11 +192,12 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
 
     def draw():
         nh.util.autompl()
-
-        ymax = np.percentile(records['loss'], 90) / .9
+        ylimits = records['loss'] + (6 * records['loss_std'])
+        ymax = np.percentile(ylimits, 96.9) / .9
         nh.util.multi_plot(
             xdata=records['lr'],
             ydata=records['loss'],
+            spread=records['loss_std'],
             xlabel='learning-rate',
             ylabel='smoothed-loss',
             xscale='log',

@@ -258,10 +258,10 @@ def evaluate_model():
 
     for raw_batch in ub.ProgIter(loader, desc='predict'):
         batch_inputs, batch_labels = raw_batch
-        inputs = xpu.variable(batch_inputs)
+        inputs = xpu.move(batch_inputs)
 
         # Run data through the model
-        labels = {k: xpu.variable(d) for k, d in batch_labels.items()}
+        labels = {k: xpu.move(d) for k, d in batch_labels.items()}
         outputs = model(inputs)
 
         # Postprocess outputs into box predictions in 01 space
@@ -466,7 +466,7 @@ def evaluate_lightnet_model():
             ln_raw_inputs, ln_bramboxes = ln_raw_batch
 
             # Convert brambox into components understood by netharn
-            ln_inputs = xpu.variable(ln_raw_inputs)
+            ln_inputs = xpu.move(ln_raw_inputs)
 
             ln_model.loss.seen = 1000000
             ln_outputs = ln_model._forward(ln_inputs)

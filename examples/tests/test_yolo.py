@@ -57,10 +57,10 @@ def evaluate_model():
 
     for raw_batch in ub.ProgIter(loader, desc='predict'):
         batch_inputs, batch_labels = raw_batch
-        inputs = xpu.variable(batch_inputs)
+        inputs = xpu.move(batch_inputs)
 
         # Run data through the model
-        labels = {k: xpu.variable(d) for k, d in batch_labels.items()}
+        labels = {k: xpu.move(d) for k, d in batch_labels.items()}
         outputs = model(inputs)
 
         # Postprocess outputs into box predictions in 01 space
@@ -564,7 +564,7 @@ def _ln_data_ln_map(ln_model, xpu, num=None):
             ln_inputs, ln_bramboxes = ln_batch
 
             # Convert brambox into components understood by netharn
-            ln_inputs = xpu.variable(ln_inputs)
+            ln_inputs = xpu.move(ln_inputs)
 
             ln_model.loss.seen = 1000000
             ln_outputs = ln_model._forward(ln_inputs)
@@ -633,7 +633,7 @@ def _ln_data_nh_map(ln_model, xpu, harn, num=None):
             ln_inputs, ln_bramboxes = ln_batch
 
             # Convert brambox into components understood by netharn
-            ln_inputs = xpu.variable(ln_inputs)
+            ln_inputs = xpu.move(ln_inputs)
 
             inp_size = tuple(ln_inputs.shape[-2:][::-1])
             ln_labels = brambox_to_labels(ln_bramboxes, inp_size, ln_test.LABELS)
@@ -1100,9 +1100,9 @@ def _test_with_lnstyle_data():
 
             # Convert brambox into components understood by netharn
             ln_labels = brambox_to_labels(ln_bramboxes, inp_size, ln_test.LABELS)
-            ln_inputs = harn.xpu.variable(ln_inputs)
-            ln_targets = harn.xpu.variable(ln_labels['targets'])
-            ln_gt_weights = harn.xpu.variable(ln_labels['gt_weights'])  # NOQA
+            ln_inputs = harn.xpu.move(ln_inputs)
+            ln_targets = harn.xpu.move(ln_labels['targets'])
+            ln_gt_weights = harn.xpu.move(ln_labels['gt_weights'])  # NOQA
 
             ln_net.loss.seen = 1000000
             ln_outputs = ln_net._forward(ln_inputs)

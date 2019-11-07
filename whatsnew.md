@@ -1,40 +1,57 @@
+Version 0.1.7
+==============
+* Modified batch outputs to all use `:g` format (PF)
+* Add `plot_surface3d` (PF)
+* Use `progiter` by default instead of `tqdm` (PF)
+* Add `models.DescriptorNetwork` (PF)
+* `MLP` can now accept `dim=0` (PF)
+* `nh.XPU.variable` is deprecated and removed. (IF)
+* `nh.XPU.move` is now applied recursively to containers (e.g. dict list) (IF)
+* All `MovingAve` objects can now track variance  (PF)
+* `CumMovingAve` can now track variance (PF)
+* `ExpMovingAve` can now track variance  (PF)
+* `WindowedMovingAve` can now track variance  (PF)
+* `lr_range_test` now shows std-dev error bars (IF)
+* Improve API coerce methods (PF / IF)
+* `imread` now attempts to return RGB or gray-scale by default. (IF)
+
+
 Version 0.1.6
 ==============
-* Fix Python2 compatibility issues
-* Add `api.py` containing code to help reduce netharn boilerplate by parsing a config dictionary.
-* Fixed bug in `IgnoreLayerContext` preventing it from being used with `DataParallel`
-* Add `api.py` containing code to help reduce netharn boilerplate by parsing a config dictionary.
-* Remove deprecated `_to_var`
-* Add new `ListedScheduler` which is able to modify multiple optimizer attributes including learning rate and momentum. 
-* FitHarn now logs momentum by default in addition to learning rate
-* Add variant of Leslie Smith's learning rate test
-* `nh.util.ExpMovingAve` now has a bias-correction option.
+* Fix Python2 compatibility issues. (IF)
+* Fixed bug in `IgnoreLayerContext` preventing it from being used with `DataParallel`. (IF)
+* Add `api.py` containing code to help reduce netharn boilerplate by parsing a config dictionary. (PF)
+* Remove deprecated `_to_var`. (PF)
+* Add new `ListedScheduler` which is able to modify multiple optimizer attributes including learning rate and momentum. (PF)
+* FitHarn now logs momentum by default in addition to learning rate  (PF)
+* Add variant of Leslie Smith's learning rate test (IF)
+* `nh.util.ExpMovingAve` now has a bias-correction option. (IF)
 
 
 Version 0.1.5
 ==============
-* Switched to skbuild
-* Bug fixes
+* Switched to `skbuild` (PF)
+* Bug fixes (IF)
 
 Version 0.1.4
 ==============
-* Ported `multi_plot` from KWIL 
-* Scheduler states are now saved by default
-* Netharn now dumps tensorboard plots every epoch by default
-* The default `prepare_batch` now returns a dictionary with keys `input` and `label`.
+* Ported `multi_plot` from `KWIL` (IF)
+* Scheduler states are now saved by default (IF)
+* Netharn now dumps tensorboard plots every epoch by default (IF)
+* The default `prepare_batch` now returns a dictionary with keys `input` and `label`. (IF)
 * `FitHarn.config` can now specify `export_modules`, which will be modules to
-  expand when running the pytorch exporter.
-* Ported modifications from KWIL to `imwrite`, `stack_imges`, etc...
-* Fix issue with relative imports in netharn exporter
-* Refactored the exporter closure-extractor into its own file.
-* Add `devices` to `nh.layers.Module`
-* Deprecate `HiddenShapesFor`
-* Move `HiddenShapesFor` functionality to `OutputShapeFor`
-* Improve CIFAR example.
-* Improve MNIST example.
-* Rename internal variables of `nh.Monitor`
+  expand when running the pytorch exporter. (IF)
+* Ported modifications from KWIL to `imwrite`, `stack_imges`, etc... (IF)
+* Fix issue with relative imports in netharn exporter (IF)
+* Refactored the exporter closure-extractor into its own file. (IF)
+* Add `devices` to `nh.layers.Module` (IF)
+* Deprecate `HiddenShapesFor` (IF)
+* Move `HiddenShapesFor` functionality to `OutputShapeFor` (IF)
+* Improve CIFAR example. (PF)
+* Improve MNIST example. (PF)
+* Rename internal variables of `nh.Monitor` (IF)
 * Improve doc-strings for `nh.Monitor`
-* Move folder functionality into `hyperparams`.
+* Move folder functionality into `hyperparams`. (IF)
 
 Version 0.1.3
 ==============
@@ -176,3 +193,9 @@ Version 0.0.13
 Version 0.0.12
 ==============
 * Early and undocumented commits
+
+
+NOTE
+====
+PF = public funding (does not require public release)
+IF = internal funding (requires public release)

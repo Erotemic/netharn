@@ -141,7 +141,8 @@ import numpy as np
 import ubelt as ub
 
 from netharn import hyperparams
-from netharn.exceptions import StopTraining, CannotResume, TrainingDiverged
+from netharn.exceptions import (StopTraining, CannotResume, TrainingDiverged,
+                                SkipBatch)
 
 from netharn import util
 from netharn.util import profiler
@@ -474,7 +475,7 @@ class InitializeMixin:
                 with util.grad_context(False):
                     loader = harn.loaders['train']
                     input, labels = next(iter(loader))
-                    data = harn.xpu.variable(input)
+                    data = harn.xpu.move(input)
                     harn.initializer(harn.model, data)
             else:
                 harn.debug('calling harn.initializer={!r}'.format(
@@ -538,7 +539,7 @@ class ProgMixin:
         return Prog(*args, **kw)
 
     def _batch_msg(harn, metric_dict, batch_size, learn=False):
-        parts = ['{}:{:.3f}'.format(k, v) for k, v in metric_dict.items()]
+        parts = ['{}:{:.4g}'.format(k, v) for k, v in metric_dict.items()]
 
         if harn.config['prog_backend'] == 'progiter':
             if learn and harn.scheduler and getattr(harn.scheduler, '__batchaware__', False):
@@ -1311,54 +1312,57 @@ class CoreMixin:
                 if DUMMY and bx > 2:
                     break
 
-                raw_batch = next(batch_iter)
+                try:
+                    raw_batch = next(batch_iter)
 
-                harn.bxs[tag] = bx
-                # harn.debug('{} batch iteration {}'.format(tag, bx))
+                    harn.bxs[tag] = bx
+                    # harn.debug('{} batch iteration {}'.format(tag, bx))
 
-                batch = harn.prepare_batch(raw_batch)
+                    batch = harn.prepare_batch(raw_batch)
 
-                # core learning / backprop
-                # outputs, loss = harn._run_batch(bx, batch, learn=learn)
-                # if profiler.IS_PROFILING:
-                #     torch.cuda.synchronize()
+                    # core learning / backprop
+                    # outputs, loss = harn._run_batch(bx, batch, learn=learn)
+                    # if profiler.IS_PROFILING:
+                    #     torch.cuda.synchronize()
 
-                # Run the forward pass to compute outputs and loss
-                outputs, loss = harn.run_batch(batch)
+                    # Run the forward pass to compute outputs and loss
+                    outputs, loss = harn.run_batch(batch)
 
-                # if profiler.IS_PROFILING:
-                #     torch.cuda.synchronize()
+                    # if profiler.IS_PROFILING:
+                    #     torch.cuda.synchronize()
 
-                # Backpropogate to accumulate gradients and step the optimizer
-                if learn:
-                    harn.backpropogate(bx, batch, loss)
+                    # Backpropogate to accumulate gradients and step the optimizer
+                    if learn:
+                        harn.backpropogate(bx, batch, loss)
 
-                # measure train accuracy and other informative metrics
-                cur_metrics = harn._on_batch(bx, batch, outputs, loss)
+                    # measure train accuracy and other informative metrics
+                    cur_metrics = harn._on_batch(bx, batch, outputs, loss)
 
-                # accumulate measures
-                epoch_moving_metrics.update(cur_metrics)
-                iter_moving_metrics.update(cur_metrics)
+                    # accumulate measures
+                    epoch_moving_metrics.update(cur_metrics)
+                    iter_moving_metrics.update(cur_metrics)
 
-                # display_train training info
-                if harn.check_interval('display_' + tag, bx):
-                    ave_metrics = iter_moving_metrics.average()
+                    # display_train training info
+                    if harn.check_interval('display_' + tag, bx):
+                        ave_metrics = iter_moving_metrics.average()
 
-                    msg = harn._batch_msg({'loss': ave_metrics['loss']}, bsize, learn)
-                    prog.set_description(tag + ' ' + msg)
+                        msg = harn._batch_msg({'loss': ave_metrics['loss']}, bsize, learn)
+                        prog.set_description(tag + ' ' + msg)
 
-                    # log_iter_train, log_iter_test, log_iter_vali
-                    if harn.check_interval('log_iter_' + tag, bx):
-                        iter_idx = (harn.epoch * n_batches + bx)
-                        for key, value in ave_metrics.items():
-                            harn.log_value(tag + ' iter ' + key, value, iter_idx)
+                        # log_iter_train, log_iter_test, log_iter_vali
+                        if harn.check_interval('log_iter_' + tag, bx):
+                            iter_idx = (harn.epoch * n_batches + bx)
+                            for key, value in ave_metrics.items():
+                                harn.log_value(tag + ' iter ' + key, value, iter_idx)
 
-                    prog.update(harn.intervals['display_' + tag])
-                    harn._update_prog_postfix(prog)
+                        prog.update(harn.intervals['display_' + tag])
+                        harn._update_prog_postfix(prog)
 
-                # Some schedulers update every batch
-                if learn:
-                    harn._step_scheduler_batch()
+                    # Some schedulers update every batch
+                    if learn:
+                        harn._step_scheduler_batch()
+                except SkipBatch:
+                    harn.warn('skipping batch')
 
             # Ensure the data loader is shutdown properly
             if hasattr(batch_iter, 'shutdown'):
@@ -1793,8 +1797,8 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
         harn.config = {
             'show_prog': True,
             'use_tqdm': None,
-            'prog_backend': 'tqdm',
-            # 'prog_backend': 'progiter',
+            # 'prog_backend': 'tqdm',
+            'prog_backend': 'progiter',
 
             # Set this to a list of modules that the final standalone deployed
             # zipfile should not depend on. The exporter will expand any code

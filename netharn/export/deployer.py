@@ -48,24 +48,49 @@ Example:
     >>> harn.initialize(reset='delete')
     >>> harn.run()
     --- STEP 1: TRAIN A MODEL ---
-    Symlink: ...tests/deploy/fit/runs/deploy_demo/onnxqaww -> ...tests/deploy/fit/nice/deploy_demo
-    Model has 824 parameters
+    RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR
+    Symlink: .../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww -> .../.cache/netharn/tests/deploy/_mru
+    ......
+    Symlink: .../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww -> .../.cache/netharn/tests/deploy/fit/nice/deploy_demo
+    ......
+    INFO: Initializing tensorboard (dont forget to start the tensorboard server)
+    INFO: Model has 824 parameters
     INFO: Mounting ToyNet2d model on CPU
-    INFO: Initializing model weights
-    INFO: * harn.train_dpath = '...tests/deploy/fit/runs/deploy_demo/onnxqaww'
-    INFO: * harn.nice_dpath  = '...tests/deploy/fit/nice/deploy_demo'
-    INFO: Snapshots will save to harn.snapshot_dpath = '...tests/deploy/fit/runs/deploy_demo/onnxqaww/torch_snapshots'
+    INFO: Exported model topology to .../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/ToyNet2d_2a3f49.py
+    INFO: Initializing model weights with: <netharn.initializers.nninit_core.KaimingNormal object at 0x7fc67efdf8d0>
+    INFO:  * harn.train_dpath = '.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww'
+    INFO:  * harn.nice_dpath  = '.../.cache/netharn/tests/deploy/fit/nice/deploy_demo'
+    INFO: Snapshots will save to harn.snapshot_dpath = '.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/torch_snapshots'
+    INFO: ARGV:
+        .../.local/conda/envs/py36/bin/python .../.local/conda/envs/py36/bin/ipython
     INFO: dont forget to start:
-        tensorboard --logdir .../tests/deploy/fit/nice
-    INFO: === begin training 0 / 3 ===
-    epoch lr:0.1 │ vloss is unevaluated: 100%|██████████████████████████| 3/3 ...
-    train x64 │ loss:0.692 │: 100%|███████████████████████████████████████████████████████| ...
-    test x64 │ loss:0.735 │: 100%|████████████████████████████████████████████████████████| ...
-    <BLANKLINE>
+        tensorboard --logdir ~/.cache/netharn/tests/deploy/fit/nice
+    INFO: === begin training 0 / 3 : deploy_demo ===
+    epoch lr:0.01 │ vloss is unevaluated 0/3... rate=0 Hz, eta=?, total=0:00:00, wall=19:32 EST
+    train loss:0.717 │ 100.00% of 64x8... rate=2093.02 Hz, eta=0:00:00, total=0:00:00, wall=19:32 EST
+    test loss:0.674 │ 100.00% of 64x4... rate=14103.48 Hz, eta=0:00:00, total=0:00:00, wall=19:32 EST
+    Populating the interactive namespace from numpy and matplotlib
+    INFO: === finish epoch 0 / 3 : deploy_demo ===
+    epoch lr:0.04 │ vloss is unevaluated 1/3... rate=0.87 Hz, eta=0:00:02, total=0:00:01, wall=19:32 EST
+    train loss:0.712 │ 100.00% of 64x8... rate=2771.29 Hz, eta=0:00:00, total=0:00:00, wall=19:32 EST
+    test loss:0.663 │ 100.00% of 64x4... rate=15867.59 Hz, eta=0:00:00, total=0:00:00, wall=19:32 EST
+    INFO: === finish epoch 1 / 3 : deploy_demo ===
+    epoch lr:0.07 │ vloss is unevaluated 2/3... rate=1.04 Hz, eta=0:00:00, total=0:00:01, wall=19:32 EST
+    train loss:0.686 │ 100.00% of 64x8... rate=2743.56 Hz, eta=0:00:00, total=0:00:00, wall=19:32 EST
+    test loss:0.636 │ 100.00% of 64x4... rate=14332.63 Hz, eta=0:00:00, total=0:00:00, wall=19:32 EST
+    INFO: === finish epoch 2 / 3 : deploy_demo ===
+    epoch lr:0.1 │ vloss is unevaluated 3/3... rate=1.11 Hz, eta=0:00:00, total=0:00:02, wall=19:32 EST
     INFO: Maximum harn.epoch reached, terminating ...
-    <BLANKLINE>
+    INFO:
     INFO: training completed
+    INFO: harn.train_dpath = '.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww'
+    INFO: harn.nice_dpath  = '.../.cache/netharn/tests/deploy/fit/nice/deploy_demo'
+    INFO: view tensorboard results for this run via:
+        tensorboard --logdir ~/.cache/netharn/tests/deploy/fit/nice
+    [DEPLOYER] Deployed zipfpath=.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/deploy_ToyNet2d_onnxqaww_002_TXZBYL.zip
+    INFO: wrote single-file deployment to: '.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/deploy_ToyNet2d_onnxqaww_002_TXZBYL.zip'
     INFO: exiting fit harness.
+    Out[1]: '.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/deploy_ToyNet2d_onnxqaww_002_TXZBYL.zip'
     >>> #
     >>> ##########################################
     >>> print('--- STEP 2: DEPLOY THE MODEL ---')

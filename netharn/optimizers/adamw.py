@@ -4,7 +4,7 @@ from torch.optim.optimizer import Optimizer
 
 
 class AdamW(Optimizer):
-    """
+    r"""
     Implements Adam algorithm.
 
 

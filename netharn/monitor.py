@@ -81,7 +81,7 @@ class Monitor(object):
         Accepts keywords 'max_epoch' and 'patience'
         """
         from netharn.api import _update_defaults
-        _update_defaults(config, kw)
+        config = _update_defaults(config, kw)
         max_epoch = config.get('max_epoch', 100)
         return (cls, {
             'minimize': ['loss'],

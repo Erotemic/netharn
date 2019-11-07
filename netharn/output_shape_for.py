@@ -341,7 +341,12 @@ class OutputShapeFor(object):
         that both functions accept the same arguments.
         """
         # Run the output shape computation
-        expected_output_shape = self(input_shape, **kwargs)
+        expected = self(input_shape, **kwargs)
+
+        if isinstance(expected, OutputShape):
+            expected_output_shape = expected.data
+        else:
+            expected_output_shape = expected
 
         # Create dummy inputs and send them through the network
         inputs = torch.randn(input_shape)
@@ -351,9 +356,12 @@ class OutputShapeFor(object):
 
         if isinstance(outputs, dict):
             if not isinstance(expected_output_shape, dict):
-                raise AssertionError(
-                    'if outputs is a dict, '
-                    'then output_shape must also be a corresponding dict')
+                raise AssertionError((
+                    'if outputs is a dict, then output_shape must also be '
+                    'a corresponding dict. Instead we got: '
+                    'type(outputs)={} '
+                    'type(expected_output_shape)={} '
+                ).format(type(outputs), type(expected_output_shape)))
         computed_output_shape = output_shape_of(outputs)
 
         if computed_output_shape != expected_output_shape:

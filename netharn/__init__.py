@@ -3,7 +3,7 @@
 # (Remote the --dry to actually run it)
 mkinit netharn --noattrs --dry
 """
-__version__ = '0.1.6'
+__version__ = '0.1.7'
 
 from netharn.api import *  # NOQA
 from netharn.device import (XPU,)

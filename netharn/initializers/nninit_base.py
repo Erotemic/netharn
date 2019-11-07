@@ -72,7 +72,7 @@ class Initializer(object):
         """
         import netharn as nh
         from netharn.api import _update_defaults
-        _update_defaults(config, kw)
+        config = _update_defaults(config, kw)
 
         pretrained_fpath = config.get('pretrained_fpath', config.get('pretrained', None))
         config['pretrained_fpath'] = pretrained_fpath
@@ -257,7 +257,8 @@ def load_partial_state(model, model_state_dict, initializer=None,
                             initializer(self_state[key])
 
                         # Transfer as much as possible
-                        min_size = np.minimum(self_state[key].shape, other_value.shape)
+                        min_size = np.minimum(self_state[key].shape,
+                                              other_value.shape)
                         sl = tuple([slice(0, s) for s in min_size])
                         self_state[key][sl] = other_value[sl]
 
@@ -268,7 +269,11 @@ def load_partial_state(model, model_state_dict, initializer=None,
                         #     shock(self_state[key], func=initializer)
                         self_unset_keys.remove(key)
                         other_unused_keys.remove(key)
-                        seen_keys['partial_add'].add(key)
+
+                        if self_state[key].numel() < other_value.numel():
+                            seen_keys['partial_add_some'].add(key)
+                        else:
+                            seen_keys['partial_add_all'].add(key)
             else:
                 if verbose > 0:
                     print('Skipping {} due to incompatable size'.format(key))
@@ -281,7 +286,8 @@ def load_partial_state(model, model_state_dict, initializer=None,
     elif ignore_unset:
         self_unset_keys = list(ub.oset(self_unset_keys) - set(ignore_unset))
 
-    if self_unset_keys or other_unused_keys:
+    if (self_unset_keys or other_unused_keys or
+         seen_keys['partial_add_some'] or seen_keys['partial_add_all']):
         if verbose > 0:
             if seen_keys:
                 print('Pretrained weights are a partial fit')

@@ -181,7 +181,8 @@ useful to look at.  Its complexity is more than CIFAR but less than YOLO.
     >>>     # Data Components
     >>>     'datasets'    : {  # dict of plain ol torch.data.Dataset instances
     >>>         'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
-    >>>         'test': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+    >>>         'vali': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+    >>>         'test': nh.data.ToyData2d(size=3, border=1, n=128, rng=2),
     >>>     },
     >>>     'loaders'     : {'batch_size': 64}, # DataLoader instances or kw
     >>>     # ================
@@ -197,9 +198,9 @@ useful to look at.  Its complexity is more than CIFAR but less than YOLO.
     >>>         'param': 0,
     >>>     }),
     >>>     # these may receive an overhaul soon
-    >>>     'scheduler'   : (nh.schedulers.ListedLR, {
-    >>>         'points': {0: .0001, 2: .01, 5: .015, 6: .005, 9: .001},
-    >>>         'interpolate': True,
+    >>>     'scheduler'   : (nh.schedulers.ListedScheduler, {
+    >>>         'points': {'lr': {0: .0001, 2: .01, 5: .015, 6: .005, 9: .001}},
+    >>>         'interpolation': 'linear',
     >>>     }),
     >>>     'monitor'     : (nh.Monitor, {
     >>>         'max_epoch': 10,
@@ -208,9 +209,9 @@ useful to look at.  Its complexity is more than CIFAR but less than YOLO.
     >>>     # training loop. These parameters effect the learned model.
     >>>     'dynamics'   : {'batch_step': 4},
     >>> })
-    >>> harn = FitHarn(hyper)
+    >>> harn = nh.FitHarn(hyper)
     >>> # non-algorithmic behavior configs (do not change learned models)
-    >>> harn.config['prog_backend'] = 'tqdm'  # I prefer progiter (I may be biased)
+    >>> harn.config['prog_backend'] = 'progiter'  # alternative: 'tqdm'
     >>> # start training.
     >>> harn.initialize(reset='delete')
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
@@ -220,22 +221,268 @@ Running this code produes the following output:
 
 .. code-block:: 
 
-    RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR
-    Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/olqtvpde -> /home/joncrall/.cache/netharn/demo/fit/nice/demo
-    .... already exists
-    .... and points to the right place
-    Initializing tensorboard (dont forget to start the tensorboard server)
-    Model has 824 parameters
-    Mounting ToyNet2d model on GPU(0)
-    Initializing new model
-     * harn.train_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/olqtvpde'
-     * harn.nice_dpath = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
-    Snapshots will save to harn.snapshot_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/olqtvpde/torch_snapshots'
-    dont forget to start:
-        tensorboard --logdir /home/joncrall/.cache/netharn/demo/fit/nice
-    begin training
-    epoch lr:0.001 │ vloss is unevaluated: 100%|███████████████████████| 10/10 [00:00<00:00, 15.11it/s, wall=Jul:07 EST]10 [00:00<?, ?it/s]
-    train x64 │ loss:0.186 │: 100%|████████████████████████████████████████████████████████| 8/8 [00:00<00:00, 276.93it/s, wall=Jul:07 EST]
-    test x64 │ loss:0.159 │: 100%|█████████████████████████████████████████████████████████| 4/4 [00:00<00:00, 482.91it/s, wall=Jul:07 EST]
+   RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR
+   Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum -> /home/joncrall/.cache/netharn/demo/_mru
+   ... already exists
+   Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum -> /home/joncrall/.cache/netharn/demo/fit/nice/demo
+   ... already exists
+   ... and points to the right place
+   INFO: Initializing tensorboard (dont forget to start the tensorboard server)
+   INFO: Model has 824 parameters
+   INFO: Mounting ToyNet2d model on GPU(0)
+   INFO: Exported model topology to /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/ToyNet2d_2a3f49.py
+   INFO: Initializing model weights with: <netharn.initializers.nninit_core.KaimingNormal object at 0x7fc67eff0278>
+   INFO:  * harn.train_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum'
+   INFO:  * harn.nice_dpath  = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
+   INFO: Snapshots will save to harn.snapshot_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/torch_snapshots'
+   INFO: ARGV:
+       /home/joncrall/.local/conda/envs/py36/bin/python /home/joncrall/.local/conda/envs/py36/bin/ipython
+   INFO: dont forget to start:
+       tensorboard --logdir ~/.cache/netharn/demo/fit/nice
+   INFO: === begin training 0 / 10 : demo ===
+   epoch lr:0.0001 │ vloss is unevaluated  0/10... rate=0 Hz, eta=?, total=0:00:00, wall=19:36 EST
+   train loss:0.173 │ 100.00% of 64x8... rate=11762.01 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
+   vali loss:0.170 │ 100.00% of 64x4... rate=9991.94 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
+   test loss:0.170 │ 100.00% of 64x4... rate=24809.37 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
+   INFO: === finish epoch 0 / 10 : demo ===
+   epoch lr:0.00505 │ vloss: 0.1696 (n_bad=00, best=0.1696)  1/10... rate=1.24 Hz, eta=0:00:07, total=0:00:00, wall=19:36 EST
+   train loss:0.175 │ 100.00% of 64x8... rate=13522.14 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
+   vali loss:0.167 │ 100.00% of 64x4... rate=23598.31 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
+   test loss:0.167 │ 100.00% of 64x4... rate=20354.22 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
+   INFO: === finish epoch 1 / 10 : demo ===
+   epoch lr:0.01 │ vloss: 0.1685 (n_bad=00, best=0.1685)  2/10... rate=1.28 Hz, eta=0:00:06, total=0:00:01, wall=19:36 EST
+   train loss:0.177 │ 100.00% of 64x8... rate=15723.99 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
+   vali loss:0.163 │ 100.00% of 64x4... rate=29375.56 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
+   test loss:0.163 │ 100.00% of 64x4... rate=29664.69 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
+   INFO: === finish epoch 2 / 10 : demo ===
 
+   <JUST MORE OF THE SAME; REMOVED FOR BREVITY>
+
+   epoch lr:0.001 │ vloss: 0.1552 (n_bad=00, best=0.1552)  9/10... rate=1.11 Hz, eta=0:00:00, total=0:00:08, wall=19:36 EST
+   train loss:0.164 │ 100.00% of 64x8... rate=13795.93 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
+   vali loss:0.154 │ 100.00% of 64x4... rate=19796.72 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
+   test loss:0.154 │ 100.00% of 64x4... rate=21396.73 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
+   INFO: === finish epoch 9 / 10 : demo ===
+   epoch lr:0.001 │ vloss: 0.1547 (n_bad=00, best=0.1547) 10/10... rate=1.13 Hz, eta=0:00:00, total=0:00:08, wall=19:36 EST
+
+
+
+
+   INFO: Maximum harn.epoch reached, terminating ...
+   INFO: 
+
+
+
+   INFO: training completed
+   INFO: harn.train_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum'
+   INFO: harn.nice_dpath  = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
+   INFO: view tensorboard results for this run via:
+       tensorboard --logdir ~/.cache/netharn/demo/fit/nice
+   [DEPLOYER] Deployed zipfpath=/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_009_GAEYQT.zip
+   INFO: wrote single-file deployment to: '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_009_GAEYQT.zip'
+   INFO: exiting fit harness.
+
+Furthermore, if you were to run that code when `'--verbose' in sys.argv`, then
+it would produce this more detailed description of what it was doing:
+
+.. code-block:: 
+
+   RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR
+   Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum -> /home/joncrall/.cache/netharn/demo/_mru
+   ... already exists
+   Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum -> /home/joncrall/.cache/netharn/demo/fit/nice/demo
+   ... already exists
+   ... and points to the right place
+   DEBUG: Initialized logging
+   INFO: Initializing tensorboard (dont forget to start the tensorboard server)
+   DEBUG: harn.train_info[hyper] = {
+       'model': (
+           'netharn.models.toynet.ToyNet2d',
+           {
+               'input_channels': 1,
+               'num_classes': 2,
+           },
+       ),
+       'initializer': (
+           'netharn.initializers.nninit_core.KaimingNormal',
+           {
+               'mode': 'fan_in',
+               'param': 0,
+           },
+       ),
+       'optimizer': (
+           'torch.optim.sgd.SGD',
+           {
+               'dampening': 0,
+               'lr': 0.0001,
+               'momentum': 0,
+               'nesterov': False,
+               'weight_decay': 0,
+           },
+       ),
+       'scheduler': (
+           'netharn.schedulers.scheduler_redesign.ListedScheduler',
+           {
+               'interpolation': 'linear',
+               'optimizer': None,
+               'points': {'lr': {0: 0.0001, 2: 0.01, 5: 0.015, 6: 0.005, 9: 0.001}},
+           },
+       ),
+       'criterion': (
+           'netharn.criterions.focal.FocalLoss',
+           {
+               'focus': 2,
+               'ignore_index': -100,
+               'reduce': None,
+               'reduction': 'mean',
+               'size_average': None,
+               'weight': None,
+           },
+       ),
+       'loader': (
+           'torch.utils.data.dataloader.DataLoader',
+           {
+               'batch_size': 64,
+           },
+       ),
+       'dynamics': (
+           'Dynamics',
+           {
+               'batch_step': 4,
+               'grad_norm_max': None,
+           },
+       ),
+   }
+   DEBUG: harn.hyper = <netharn.hyperparams.HyperParams object at 0x7fb19b4b8748>
+   DEBUG: make XPU
+   DEBUG: harn.xpu = <XPU(GPU(0)) at 0x7fb12af24668>
+   DEBUG: Criterion: FocalLoss
+   DEBUG: Optimizer: SGD
+   DEBUG: Scheduler: ListedScheduler
+   DEBUG: Making loaders
+   DEBUG: Making model
+   DEBUG: ToyNet2d(
+     (layers): Sequential(
+       (0): Conv2d(1, 8, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+       (1): BatchNorm2d(8, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+       (2): ReLU(inplace)
+       (3): Conv2d(8, 8, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+       (4): BatchNorm2d(8, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+       (5): ReLU(inplace)
+       (6): Conv2d(8, 2, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+     )
+     (softmax): Softmax()
+   )
+   INFO: Model has 824 parameters
+   INFO: Mounting ToyNet2d model on GPU(0)
+   DEBUG: Making initializer
+   DEBUG: Move FocalLoss() model to GPU(0)
+   DEBUG: Make optimizer
+   DEBUG: Make scheduler
+   DEBUG: Make monitor
+   DEBUG: Make dynamics
+   INFO: Exported model topology to /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/ToyNet2d_2a3f49.py
+   INFO: Initializing model weights with: <netharn.initializers.nninit_core.KaimingNormal object at 0x7fb129e732b0>
+   DEBUG: calling harn.initializer=<netharn.initializers.nninit_core.KaimingNormal object at 0x7fb129e732b0>
+   INFO:  * harn.train_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum'
+   INFO:  * harn.nice_dpath  = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
+   INFO: Snapshots will save to harn.snapshot_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/torch_snapshots'
+   INFO: ARGV:
+       /home/joncrall/.local/conda/envs/py36/bin/python /home/joncrall/.local/conda/envs/py36/bin/ipython --verbose
+   INFO: dont forget to start:
+       tensorboard --logdir ~/.cache/netharn/demo/fit/nice
+   INFO: === begin training 0 / 10 : demo ===
+   DEBUG: epoch lr:0.0001 │ vloss is unevaluated
+   epoch lr:0.0001 │ vloss is unevaluated  0/10... rate=0 Hz, eta=?, total=0:00:00, wall=19:56 EST
+   DEBUG: === start epoch 0 ===
+   DEBUG: log_value(epoch lr, 0.0001, 0
+   DEBUG: log_value(epoch momentum, 0, 0
+   DEBUG: _run_epoch 0, tag=train, learn=True
+   DEBUG:  * len(loader) = 8
+   DEBUG:  * loader.batch_size = 64
+   train loss:-1.000 │ 0.00% of 64x8... rate=0 Hz, eta=?, total=0:00:00, wall=19:56 ESTDEBUG: Making batch iterator
+   DEBUG: Starting batch iteration for tag=train, epoch=0
+   train loss:0.224 │ 100.00% of 64x8... rate=12052.25 Hz, eta=0:00:00, total=0:00:00, wall=19:56 EST
+   DEBUG: log_value(train epoch loss, 0.22378234565258026, 0
+   DEBUG: Finished batch iteration for tag=train, epoch=0
+   DEBUG: _run_epoch 0, tag=vali, learn=False
+   DEBUG:  * len(loader) = 4
+   DEBUG:  * loader.batch_size = 64
+   vali loss:-1.000 │ 0.00% of 64x4... rate=0 Hz, eta=?, total=0:00:00, wall=19:56 ESTDEBUG: Making batch iterator
+   DEBUG: Starting batch iteration for tag=vali, epoch=0
+   vali loss:0.175 │ 100.00% of 64x4... rate=23830.75 Hz, eta=0:00:00, total=0:00:00, wall=19:56 EST
+   DEBUG: log_value(vali epoch loss, 0.1749105490744114, 0
+   DEBUG: Finished batch iteration for tag=vali, epoch=0
+   DEBUG: epoch lr:0.0001 │ vloss: 0.1749 (n_bad=00, best=0.1749)
+   DEBUG: _run_epoch 0, tag=test, learn=False
+   DEBUG:  * len(loader) = 4
+   DEBUG:  * loader.batch_size = 64
+   test loss:-1.000 │ 0.00% of 64x4... rate=0 Hz, eta=?, total=0:00:00, wall=19:56 ESTDEBUG: Making batch iterator
+   DEBUG: Starting batch iteration for tag=test, epoch=0
+   test loss:0.176 │ 100.00% of 64x4... rate=28606.65 Hz, eta=0:00:00, total=0:00:00, wall=19:56 EST
+   DEBUG: log_value(test epoch loss, 0.17605290189385414, 0
+   DEBUG: Finished batch iteration for tag=test, epoch=0
+   DEBUG: Saving snapshot to /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/torch_snapshots/_epoch_00000000.pt
+   DEBUG: Snapshot saved to /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/torch_snapshots/_epoch_00000000.pt
+   DEBUG: new best_snapshot /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/torch_snapshots/_epoch_00000000.pt
+   DEBUG: Plotting tensorboard data
+   Populating the interactive namespace from numpy and matplotlib
+   INFO: === finish epoch 0 / 10 : demo ===
+
+   <JUST MORE OF THE SAME; REMOVED FOR BREVITY>
+
+   INFO: === finish epoch 8 / 10 : demo ===
+   DEBUG: epoch lr:0.001 │ vloss: 0.2146 (n_bad=08, best=0.1749)
+   epoch lr:0.001 │ vloss: 0.2146 (n_bad=08, best=0.1749)  9/10... rate=1.20 Hz, eta=0:00:00, total=0:00:07, wall=19:56 EST
+   DEBUG: === start epoch 9 ===
+   DEBUG: log_value(epoch lr, 0.001, 9
+   DEBUG: log_value(epoch momentum, 0, 9
+   DEBUG: _run_epoch 9, tag=train, learn=True
+   DEBUG:  * len(loader) = 8
+   DEBUG:  * loader.batch_size = 64
+   train loss:-1.000 │ 0.00% of 64x8... rate=0 Hz, eta=?, total=0:00:00, wall=19:56 ESTDEBUG: Making batch iterator
+   DEBUG: Starting batch iteration for tag=train, epoch=9
+   train loss:0.207 │ 100.00% of 64x8... rate=13580.13 Hz, eta=0:00:00, total=0:00:00, wall=19:56 EST
+   DEBUG: log_value(train epoch loss, 0.2070118673145771, 9
+   DEBUG: Finished batch iteration for tag=train, epoch=9
+   DEBUG: _run_epoch 9, tag=vali, learn=False
+   DEBUG:  * len(loader) = 4
+   DEBUG:  * loader.batch_size = 64
+   vali loss:-1.000 │ 0.00% of 64x4... rate=0 Hz, eta=?, total=0:00:00, wall=19:56 ESTDEBUG: Making batch iterator
+   DEBUG: Starting batch iteration for tag=vali, epoch=9
+   vali loss:0.215 │ 100.00% of 64x4... rate=29412.91 Hz, eta=0:00:00, total=0:00:00, wall=19:56 EST
+   DEBUG: log_value(vali epoch loss, 0.21514184772968292, 9
+   DEBUG: Finished batch iteration for tag=vali, epoch=9
+   DEBUG: epoch lr:0.001 │ vloss: 0.2148 (n_bad=09, best=0.1749)
+   DEBUG: _run_epoch 9, tag=test, learn=False
+   DEBUG:  * len(loader) = 4
+   DEBUG:  * loader.batch_size = 64
+   test loss:-1.000 │ 0.00% of 64x4... rate=0 Hz, eta=?, total=0:00:00, wall=19:56 ESTDEBUG: Making batch iterator
+   DEBUG: Starting batch iteration for tag=test, epoch=9
+   test loss:0.216 │ 100.00% of 64x4... rate=25906.58 Hz, eta=0:00:00, total=0:00:00, wall=19:56 EST
+   DEBUG: log_value(test epoch loss, 0.21618007868528366, 9
+   DEBUG: Finished batch iteration for tag=test, epoch=9
+   DEBUG: Saving snapshot to /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/torch_snapshots/_epoch_00000009.pt
+   DEBUG: Snapshot saved to /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/torch_snapshots/_epoch_00000009.pt
+   DEBUG: Plotting tensorboard data
+   INFO: === finish epoch 9 / 10 : demo ===
+   DEBUG: epoch lr:0.001 │ vloss: 0.2148 (n_bad=09, best=0.1749)
+   epoch lr:0.001 │ vloss: 0.2148 (n_bad=09, best=0.1749) 10/10... rate=1.21 Hz, eta=0:00:00, total=0:00:08, wall=19:56 EST
+
+
+
+
+   INFO: Maximum harn.epoch reached, terminating ...
+   INFO: 
+
+
+
+   INFO: training completed
+   INFO: harn.train_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum'
+   INFO: harn.nice_dpath  = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
+   INFO: view tensorboard results for this run via:
+       tensorboard --logdir ~/.cache/netharn/demo/fit/nice
+   [DEPLOYER] Deployed zipfpath=/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_000_JWPNDC.zip
+   INFO: wrote single-file deployment to: '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_000_JWPNDC.zip'
+   INFO: exiting fit harness.
 

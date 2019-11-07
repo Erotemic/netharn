@@ -59,9 +59,9 @@ class ContrastiveLoss(nn.Module):
         >>> import torch
         >>> import netharn as nh
         >>> xpu = nh.XPU(None)
-        >>> imgs1 = xpu.variable(torch.rand(1, 3, 224, 244))
-        >>> imgs2 = xpu.variable(torch.rand(1, 3, 224, 244))
-        >>> label = (xpu.variable(torch.rand(3)) * 2).long()
+        >>> imgs1 = xpu.move(torch.rand(1, 3, 224, 244))
+        >>> imgs2 = xpu.move(torch.rand(1, 3, 224, 244))
+        >>> label = (xpu.move(torch.rand(3)) * 2).long()
 
         >>> model = SiameseLP(input_shape=imgs1.shape[1:])
         >>> output = model(imgs1, imgs2)

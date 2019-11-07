@@ -94,7 +94,9 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
     if norm_type == 'batch':
         in_channels_key = 'num_features'
 
-        if dim == 1:
+        if dim == 0:
+            cls = torch.nn.BatchNorm1d
+        elif dim == 1:
             cls = torch.nn.BatchNorm1d
         elif dim == 2:
             cls = torch.nn.BatchNorm2d
@@ -127,6 +129,7 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
 
 def rectify_conv(dim=2):
     conv_cls = {
+        0: torch.nn.Linear,
         1: torch.nn.Conv1d,
         2: torch.nn.Conv2d,
         3: torch.nn.Conv3d,
@@ -136,6 +139,7 @@ def rectify_conv(dim=2):
 
 def rectify_dropout(dim=2):
     conv_cls = {
+        0: torch.nn.Dropout,
         1: torch.nn.Dropout,
         2: torch.nn.Dropout2d,
         3: torch.nn.Dropout3d,
@@ -145,6 +149,7 @@ def rectify_dropout(dim=2):
 
 def rectify_maxpool(dim=2):
     conv_cls = {
+        0: torch.nn.MaxPool1d,
         1: torch.nn.MaxPool1d,
         2: torch.nn.MaxPool2d,
         3: torch.nn.MaxPool3d,

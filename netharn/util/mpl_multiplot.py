@@ -318,9 +318,19 @@ def multi_plot(xdata=None, ydata=None, xydata=None, **kwargs):
             #plot_list_kw['orientation'] = ['horizontal'] * num_lines
             plot_list_kw[width_key] = [width] * num_lines
 
-    spread_list = kwargs.get('spread_list', None)
-    if spread_list is None:
-        pass
+    spread = kwargs.get('spread_list', kwargs.get('spread', None))
+    if spread is not None:
+        if isinstance(spread, list):
+            if spread and ub.iterable(spread[0]):
+                spread_list = spread
+            else:
+                spread_list = [spread]
+        elif isinstance(spread, dict):
+            spread_list = [spread[k] for k in ykeys]
+        else:
+            raise TypeError(type(spread))
+    else:
+        spread_list = None
 
     # nest into a list of dicts for each line in the multiplot
     valid_keys = list(set(plot_list_kw.keys()) - set(extra_plot_kw_keys))

@@ -123,13 +123,32 @@ def stats_dict(list_, axis=None, nan=False, sum=False, extreme=True,
 
 class MovingAve(ub.NiceRepr):
     def average(self):
-        raise NotImplementedError()
+        return self.mean()
+
+    def mean(self):
+        raise NotImplementedError
+
+    def std(self):
+        raise NotImplementedError
+
+    # def variance(self):
+    #     raise NotImplementedError
+
+    def normal(self):
+        mean = self.mean()
+        std = self.std()
+        info = {k: {'mu': mean[k], 'sigma': std[k]}
+                for k in mean.keys()}
+        return info
 
     def update(self, other):
         raise NotImplementedError()
 
     def __nice__(self):
-        return str(ub.repr2(self.average(), nl=0))
+        try:
+            return str(ub.repr2(self.normal(), nl=0, si=True, nobr=True, explicit=1))
+        except NotImplementedError:
+            return str(ub.repr2(self.average(), nl=0))
 
     def __getstate__(self):
         return self.__dict__
@@ -144,9 +163,10 @@ class CumMovingAve(MovingAve):
 
     References:
         https://en.wikipedia.org/wiki/Moving_average
+        https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Weighted_incremental_algorithm
 
     TODO:
-        - [ ] Add support for moving variance:
+        - [X] Add support for moving variance:
             https://stackoverflow.com/questions/1174984/how-to-efficiently-calculate-a-running-standard-deviation
             https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
 
@@ -154,28 +174,49 @@ class CumMovingAve(MovingAve):
         >>> from netharn.util.util_averages import *
         >>> self = CumMovingAve()
         >>> print(str(self.update({'a': 10})))
-        <CumMovingAve({'a': 10.0})>
         >>> print(str(self.update({'a': 0})))
-        <CumMovingAve({'a': 5.0})>
         >>> print(str(self.update({'a': 2})))
-        <CumMovingAve({'a': 4.0})>
+        <CumMovingAve(a={mu: 10.0, sigma: 0.0})>
+        <CumMovingAve(a={mu: 5.0, sigma: 5.0})>
+        <CumMovingAve(a={mu: 4.0, sigma: 4.3204...})>
 
     Example:
         >>> from netharn.util.util_averages import *
-        >>> self = CumMovingAve(nan_method='ignore')
+        >>> self = CumMovingAve(nan_method='ignore', bessel=True)
         >>> print(str(self.update({'a': 10})))
         >>> print(str(self.update({'a': 0})))
         >>> print(str(self.update({'a': np.nan})))
+        <CumMovingAve(a={mu: 10.0, sigma: nan})>
+        <CumMovingAve(a={mu: 5.0, sigma: 7.0710...})>
+        <CumMovingAve(a={mu: 5.0, sigma: 7.0710...})>
     """
-    def __init__(self, nan_method='zero'):
+    def __init__(self, nan_method='zero', bessel=False):
+
         self.totals = ub.odict()
-        self.nan_method = nan_method
         self.weights = ub.odict()
+        self.square_weights = ub.odict()
+        self.means = ub.odict()
+        self.var_sums = ub.odict()
+
+        self.bessel = bessel
+
+        self.nan_method = nan_method
         if self.nan_method not in {'ignore', 'zero'}:
             raise KeyError(self.nan_method)
 
-    def average(self):
-        return {k: v / float(self.weights[k]) for k, v in self.totals.items()}
+    def mean(self):
+        return {k: v / self.weights[k] for k, v in self.totals.items()}
+
+    def std(self, bessel=None):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'invalid value')
+            if bessel is None:
+                bessel = self.bessel
+            if bessel:
+                return {k: np.sqrt(np.array(s) / (self.weights[k] - 1)) for k, s in self.var_sums.items()}
+            else:
+                return {k: np.sqrt(s / self.weights[k]) for k, s in self.var_sums.items()}
 
     def update(self, other):
         for k, v in other.items():
@@ -192,8 +233,18 @@ class CumMovingAve(MovingAve):
             if k not in self.totals:
                 self.totals[k] = 0.0
                 self.weights[k] = 0.0
-            self.totals[k] += v  # should be v * w
+                self.square_weights[k] = 0.0
+                self.means[k] = 0.0
+                self.var_sums[k] = 0.0
+
+            self.totals[k] += v * w
             self.weights[k] += w
+            self.square_weights[k] += w ** 2
+            old_mean = self.means[k]
+            mean = self.means[k] = old_mean + (w / self.weights[k]) * (v - old_mean)
+            delta1 = (v - old_mean)
+            delta2 = (v - mean)
+            self.var_sums[k] += w * delta1 * delta2
         return self
 
 
@@ -207,19 +258,24 @@ class WindowedMovingAve(MovingAve):
     Example:
         >>> self = WindowedMovingAve(window=3)
         >>> print(str(self.update({'a': 10})))
-        <WindowedMovingAve({'a': 10.0})>
         >>> print(str(self.update({'a': 0})))
-        <WindowedMovingAve({'a': 5.0})>
         >>> print(str(self.update({'a': 2})))
-        <WindowedMovingAve({'a': 4.0})>
+        <WindowedMovingAve(a={mu: 10.0, sigma: 0.0})>
+        <WindowedMovingAve(a={mu: 5.0, sigma: 5.0})>
+        <WindowedMovingAve(a={mu: 4.0, sigma: 4.3204...})>
     """
     def __init__(self, window=500):
         self.window = window
         self.totals = ub.odict()
         self.history = {}
 
-    def average(self):
+    def mean(self):
         return {k: v / float(len(self.history[k])) for k, v in self.totals.items()}
+
+    def std(self):
+        # inefficient, but conforms to the api
+        stds = {k: np.array(vals).std() for k, vals in self.history.items()}
+        return stds
 
     def update(self, other):
         for k, v in other.items():
@@ -256,30 +312,35 @@ class ExpMovingAve(MovingAve):
             the unmodified exponential average is returned.
 
     References:
-        .. [1] http://greenteapress.com/thinkstats2/html/thinkstats2013.html
-        .. [2] https://sgugger.github.io/how-do-you-find-a-good-learning-rate.html
-        .. [3] https://en.wikipedia.org/wiki/Exponential_smoothing
+        .. [1]_ http://greenteapress.com/thinkstats2/html/thinkstats2013.html
+        .. [2]_ https://sgugger.github.io/how-do-you-find-a-good-learning-rate.html
+        .. [3]_ https://en.wikipedia.org/wiki/Exponential_smoothing
+        .. [4]_ https://en.wikipedia.org/wiki/Moving_average#Exponentially_weighted_moving_variance_and_standard_deviation
+
+    CommandLine:
+        xdoctest -m netharn.util.util_averages ExpMovingAve
 
     Example:
         >>> self = ExpMovingAve(span=3)
         >>> print(str(self.update({'a': 10})))
-        <ExpMovingAve({'a': 10})>
         >>> print(str(self.update({'a': 0})))
-        <ExpMovingAve({'a': 5.0})>
         >>> print(str(self.update({'a': 2})))
-        <ExpMovingAve({'a': 3.5})>
+        <ExpMovingAve(a={mu: 10, sigma: 0.0})>
+        <ExpMovingAve(a={mu: 5.0, sigma: 5.0})>
+        <ExpMovingAve(a={mu: 3.5, sigma: 3.840...})>
 
     Example:
         >>> self = ExpMovingAve(span=3, correct_bias=True)
         >>> print(str(self.update({'a': 10})))
-        <ExpMovingAve({'a': 10.0})>
         >>> print(str(self.update({'a': 1})))
-        <ExpMovingAve({'a': 4.0})>
         >>> print(str(self.update({'a': 4})))
-        <ExpMovingAve({'a': 4.0})>
+        <ExpMovingAve(a={mu: 10.0, sigma: 5.0})>
+        <ExpMovingAve(a={mu: 4.0, sigma: 4.0620...})>
+        <ExpMovingAve(a={mu: 4.0, sigma: 2.9154...})>
     """
     def __init__(self, span=None, alpha=None, correct_bias=False):
-        self.values = ub.odict()
+        self.means = ub.odict()
+        self.variances = ub.odict()
 
         self.correct_bias = correct_bias
 
@@ -298,16 +359,16 @@ class ExpMovingAve(MovingAve):
         else:
             raise AssertionError('impossible state')
 
-    def average(self):
+    def mean(self):
         """
         Returns the current estimation of the moving average.
 
         Returns:
-            Dict[str, float]: values : mapping from keys to tracked values.
+            Dict[str, float]: means : mapping from keys to tracked means.
         """
         if self.correct_bias:
             # Even though the examples given to the exponential moving average
-            # (EMA) are "unweighted", the `alpha` values used in recursive
+            # (EMA) are "unweighted", the `alpha` means used in recursive
             # formula for the EMA do induce a weighting. This weighting
             # turns out to have a simplified form equal to
             # `1 - (1 - alpha) ** i`, where i is the number of observations.
@@ -316,11 +377,16 @@ class ExpMovingAve(MovingAve):
             # small numbers of observations.
             beta = 1 - self.alpha
             weights = {k: (1 - beta ** i) for k, i in self._n_obs.items()}
-            values =  ub.odict([(k, v / weights[k])
-                                for k, v in self.values.items()])
+            means =  ub.odict([(k, v / weights[k])
+                                for k, v in self.means.items()])
         else:
-            values = self.values
-        return values
+            means = self.means
+        return means
+
+    def std(self):
+        deviations =  ub.odict([(k, np.sqrt(v)) for k, v in
+                                self.variances.items()])
+        return deviations
 
     def update(self, other):
         """
@@ -333,19 +399,37 @@ class ExpMovingAve(MovingAve):
         for k, v in other.items():
             if pd.isnull(v):
                 v = 0
-            if k not in self.values:
-                if self.correct_bias:
+            if self.correct_bias:
+                if k not in self.means:
                     # bias correct treats values as if the initial estimate is
                     # zero
-                    self.values[k] = (alpha * v) + (1 - alpha) * 0
-                else:
-                    self.values[k] = v
+                    self.means[k] = 0
+                    self.variances[k] = 0
+                    self._n_obs[k] = 0
+
+            if k not in self.means:
+                # Note: We never hit this when correct_bias is False
+                self.means[k] = v
+                self.variances[k] = 0
                 self._n_obs[k] = 1
             else:
                 # Apply one step of the recursive formula for estimating the
                 # new average.
+
+                prev_mean = self.means[k]
+                prev_var = self.variances[k]
+                delta = v - prev_mean
+
+                curr_mean = (alpha * v) + (1 - alpha) * prev_mean
+                curr_mean_alt = alpha * delta + prev_mean
+                assert np.isclose(curr_mean, curr_mean_alt)
+                # print('curr_mean = {!r}'.format(curr_mean))
+                # print('curr_mean_alt = {!r}'.format(curr_mean_alt))
+                curr_var = (1 - alpha) * (prev_var + alpha * delta ** 2)
+
                 self._n_obs[k] += 1
-                self.values[k] = (alpha * v) + (1 - alpha) * self.values[k]
+                self.means[k] = curr_mean
+                self.variances[k] = curr_var
         return self
 
 
@@ -355,7 +439,7 @@ class RunningStats(object):
     per-element, across channels, or globally.
 
     TODO:
-        DEPRICATE or refactor
+        - [ ] This may need a few API tweaks and good documentation
 
     SeeAlso:
         InternalRunningStats

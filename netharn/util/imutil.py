@@ -738,12 +738,12 @@ def run_length_encoding(img):
     return (w, h), runlen
 
 
-def imread(fpath, **kw):
+def imread(fpath, space='rgb', **kw):
     """
-    reads image data in BGR format
+    reads image data in a specified colorspace (RGB or grayscale by default)
 
     TODO:
-        - [ ] read in rgb format by default
+        - [ ] stabalize the return colorspace API
 
     Example:
         >>> # xdoctest: +REQUIRES(--network)
@@ -826,13 +826,14 @@ def imread(fpath, **kw):
             import skimage.io
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                # skimage reads in RGB, convert to BGR
+                # skimage reads in RGB by default
                 image = skimage.io.imread(fpath, **kw)
-                if get_num_channels(image) == 3:
-                    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-                elif get_num_channels(image) == 4:
-                    image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)
+                if space is not None:
+                    if get_num_channels(image) in [3, 4]:
+                        image = convert_colorspace(image, 'rgb', dst_space=space,
+                                                   implicit=True)
         else:
+            # opencv reads in BGR by default
             image = cv2.imread(fpath, flags=cv2.IMREAD_UNCHANGED)
             if image is None:
                 if exists(fpath):
@@ -841,6 +842,11 @@ def imread(fpath, **kw):
                 else:
                     raise IOError('OpenCV cannot read this image: "{}", '
                                   'because it does not exist'.format(fpath))
+
+            if space is not None:
+                if get_num_channels(image) in [3, 4]:
+                    image = convert_colorspace(image, src_space='bgr',
+                                               dst_space=space, implicit=True)
         return image
     except Exception as ex:
         print('Error reading fpath = {!r}'.format(fpath))
@@ -1001,6 +1007,11 @@ def _stack_two_images(img1, img2, axis=0, resize=None, interpolation=None,
     Returns:
         Tuple[ndarray, Tuple, Tuple]: imgB, offset_tup, sf_tup
     """
+    if bg_value is not None:
+        _tmp = np.array([[bg_value]])
+        img1, _tmp = make_channels_comparable(img1, _tmp)
+        img2, _tmp = make_channels_comparable(img2, _tmp)
+        bg_value = _tmp[0, 0]
 
     def _rectify_axis(img1, img2, axis):
         """ determine if we are stacking in horzontally or vertically """
@@ -1157,7 +1168,10 @@ def _stack_two_images(img1, img2, axis=0, resize=None, interpolation=None,
     return imgB, offset_tup, sf_tup
 
 
-
 if __name__ == '__main__':
+    """
+    CommandLine:
+        xdoctest -m netharn.util.imutil all
+    """
     import xdoctest
     xdoctest.doctest_module(__file__)

@@ -319,8 +319,8 @@ class YoloHarn(nh.FitHarn):
         """
         batch_inputs, batch_labels = raw_batch
 
-        inputs = harn.xpu.variable(batch_inputs)
-        labels = {k: harn.xpu.variable(d) for k, d in batch_labels.items()}
+        inputs = harn.xpu.move(batch_inputs)
+        labels = {k: harn.xpu.move(d) for k, d in batch_labels.items()}
 
         batch = (inputs, labels)
         return batch

@@ -5,22 +5,36 @@ import torch.utils.data as torch_data
 import torch
 import ubelt as ub
 import numpy as np  # NOQA
-import collections
+import re
+
+# if six.PY2:
+#     import collections
+#     container_abcs = collections
+# elif six.PY3:
+#     import collections.abc
+#     container_abcs = collections.abc
+# string_classes = six.string_types
+# int_classes = six.integer_types
+from torch._six import container_abcs
 from torch._six import string_classes, int_classes
+numpy_type_map = torch_data.dataloader.numpy_type_map
+default_collate = torch_data.dataloader.default_collate
 
 
 class CollateException(Exception):
     pass
 
 
-default_collate = torch_data.dataloader.default_collate
+_DEBUG = False
 
 
 def _collate_else(batch, collate_func):
     """
     Handles recursion in the else case for these special collate functions
+
+    This is duplicates all non-tensor cases from `torch_data.dataloader.default_collate`
+    This also contains support for collating slices.
     """
-    import re
     error_msg = "batch must contain tensors, numbers, dicts or lists; found {}"
     elem_type = type(batch[0])
     if elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
@@ -34,29 +48,23 @@ def _collate_else(batch, collate_func):
             return torch.stack([torch.from_numpy(b) for b in batch], 0)
         if elem.shape == ():  # scalars
             py_type = float if elem.dtype.name.startswith('float') else int
-            return torch_data.dataloader.numpy_type_map[elem.dtype.name](list(map(py_type, batch)))
+            return numpy_type_map[elem.dtype.name](list(map(py_type, batch)))
     elif isinstance(batch[0], slice):
-        # batch = default_collate([{
-        #     'start': [0 if sl.start is None else sl.start],
-        #     'stop': [sl.stop],
-        #     'step': [1 if sl.step is None else sl.step]
-        # } for sl in batch])
         batch = default_collate([{
             'start': sl.start,
             'stop': sl.stop,
             'step': 1 if sl.step is None else sl.step
         } for sl in batch])
         return batch
-        # batch = torch.FloatTensor([(sl.start, sl.stop) for sl in batch])
     elif isinstance(batch[0], int_classes):
         return torch.LongTensor(batch)
     elif isinstance(batch[0], float):
         return torch.DoubleTensor(batch)
     elif isinstance(batch[0], string_classes):
         return batch
-    elif isinstance(batch[0], collections.Mapping):
+    elif isinstance(batch[0], container_abcs.Mapping):
         # Hack the mapping collation implementation to print error info
-        if __debug__:
+        if _DEBUG:
             collated = {}
             try:
                 for key in batch[0]:
@@ -66,20 +74,12 @@ def _collate_else(batch, collate_func):
                 raise
             return collated
         else:
-            return {key: default_collate([d[key] for d in batch]) for key in batch[0]}
-    elif isinstance(batch[0], collections.Sequence):
+            return {key: collate_func([d[key] for d in batch]) for key in batch[0]}
+    elif isinstance(batch[0], container_abcs.Sequence):
         transposed = zip(*batch)
         return [collate_func(samples) for samples in transposed]
     else:
         raise TypeError((error_msg.format(type(batch[0]))))
-    # if isinstance(inbatch[0], collections.Mapping):
-    #     keys = inbatch[0]
-    #     batch = {key: collate_func([d[key] for d in inbatch]) for key in keys}
-    # else:
-    #     transposed = zip(*inbatch)
-    #     # transposed = list(map(list, transposed))
-    #     batch = [collate_func(item) for item in transposed]
-    # return batch
 
 
 def list_collate(inbatch):
@@ -123,7 +123,6 @@ def list_collate(inbatch):
         >>> assert len(out_batch[1][0]) == bsize
     """
     try:
-        # if True:
         if torch.is_tensor(inbatch[0]):
             num_items = [len(item) for item in inbatch]
             if ub.allsame(num_items):
@@ -142,26 +141,6 @@ def list_collate(inbatch):
         else:
             raise
     return batch
-    # else:
-    #     # we know the order of data in __getitem__ so we can choose not to
-    #     # stack the variable length bboxes and labels
-    #     inbatchT = list(map(list, zip(*inbatch)))
-    #     inimgs, inlabels = inbatchT
-    #     imgs = default_collate(inimgs)
-
-    #     # Just transpose the list if we cant collate the labels
-    #     # However, try to collage each part.
-    #     n_labels = len(inlabels[0])
-    #     labels = [None] * n_labels
-    #     for i in range(n_labels):
-    #         simple = [x[i] for x in inlabels]
-    #         if ub.allsame(map(len, simple)):
-    #             labels[i] = default_collate(simple)
-    #         else:
-    #             labels[i] = simple
-
-    #     batch = imgs, labels
-    #     return batch
 
 
 def padded_collate(inbatch, fill_value=-1):
@@ -216,12 +195,9 @@ def padded_collate(inbatch, fill_value=-1):
             num_items = [len(item) for item in inbatch]
             if ub.allsame(num_items):
                 if len(num_items) == 0:
-                    # batch = torch.empty(0)
                     batch = torch.FloatTensor()
                 elif num_items[0] == 0:
-                    # batch = torch.empty(0)
                     batch = torch.FloatTensor()
-                    # batch = torch.Tensor(inbatch)
                 else:
                     batch = default_collate(inbatch)
             else:
@@ -254,11 +230,27 @@ def padded_collate(inbatch, fill_value=-1):
             batch = _collate_else(inbatch, padded_collate)
     except Exception as ex:
         if not isinstance(ex, CollateException):
+            try:
+                _debug_inbatch_shapes(inbatch)
+            except Exception:
+                pass
             raise CollateException(
                 'Failed to collate inbatch={}. Reason: {!r}'.format(inbatch, ex))
         else:
             raise
     return batch
+
+
+def _debug_inbatch_shapes(inbatch):
+    import ubelt as ub
+    print('len(inbatch) = {}'.format(len(inbatch)))
+    extensions = ub.util_format.FormatterExtensions()
+
+    @extensions.register((torch.Tensor, np.ndarray))
+    def format_shape(data, **kwargs):
+        return ub.repr2(dict(type=str(type(data)), shape=data.shape), nl=1, sv=1)
+
+    print('inbatch = ' + ub.repr2(inbatch, extensions=extensions, nl=True))
 
 
 if __name__ == '__main__':

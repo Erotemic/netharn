@@ -15,7 +15,6 @@ class Reshape(torch.nn.Module, util.ModuleMixin):
             if an item in shape is None it means that the output
             shape should keep the input shap value in that dimension
 
-
     Example:
         >>> import netharn as nh
         >>> nh.OutputShapeFor(Reshape(-1, 3))._check_consistency((20, 6, 20))
@@ -28,10 +27,14 @@ class Reshape(torch.nn.Module, util.ModuleMixin):
         (10, 4096, 4)
         >>> Reshape(None, -1, 4).output_shape_for((None, 32, 32, 16))
         (None, 4096, 4)
+        >>> import netharn as nh
+        >>> nh.OutputShapeFor(Reshape(-1, 3))._check_consistency((20, 6, 20))
 
     Ignore:
-        >>> self = Reshape(None, -1, 4)
-        >>> input_shape = (10, 32, 32, 16)
+        >>> from netharn.layers.reshape import *
+        >>> self = Reshape(None, 1600)
+        >>> input_shape = (10, 64, 5, 5)
+        >>> nh.OutputShapeFor(self)._check_consistency(input_shape)
     """
     def __init__(self, *shape):
         super(Reshape, self).__init__()
@@ -121,7 +124,7 @@ class Reshape(torch.nn.Module, util.ModuleMixin):
                 if j not in self._neg_dims and not (j in self._none_dims and input_has_none):
                     # if not input_has_none:
                     if s > input_total or input_total % s != 0:
-                        raise ValueError('does not fit')
+                        raise ValueError('does not fit: input_shape={} -> {}'.format(input_shape, self))
                     unused = unused // s
 
         if self._neg_dims:
@@ -135,7 +138,7 @@ class Reshape(torch.nn.Module, util.ModuleMixin):
         elif can_check_fit:
             assert unused == 1
 
-        return output_shape_for.OutputShape.coerce(output_shape)
+        return output_shape_for.OutputShape.coerce(tuple(output_shape))
 
 
 class Permute(torch.nn.Module, util.ModuleMixin):

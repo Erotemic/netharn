@@ -319,7 +319,7 @@ def compare_both_with_ln_weights():
                 ln_inputs, ln_bramboxes = ln_batch
 
                 # Convert brambox into components understood by netharn
-                ln_inputs = xpu.variable(ln_inputs)
+                ln_inputs = xpu.move(ln_inputs)
 
                 inp_size = tuple(ln_inputs.shape[-2:][::-1])
 

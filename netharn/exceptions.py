@@ -20,3 +20,7 @@ class CannotResume(NetharnSignal):
 
 class TrainingDiverged(NetharnError):
     """ Thrown when netharn detects divergence """
+
+
+class SkipBatch(NetharnError):
+    """ Thrown when netharn detects divergence """

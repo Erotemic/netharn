@@ -10,6 +10,7 @@ __extra_all__ = [
 
 # <AUTOGEN_INIT>
 from netharn.util import imutil
+from netharn.util import mpl_3d
 from netharn.util import mpl_multiplot
 from netharn.util import mplutil
 from netharn.util import util_averages
@@ -46,6 +47,7 @@ from netharn.util.imutil import (CV2_INTERPOLATION_TYPES, adjust_gamma,
                                  overlay_colorized, run_length_encoding,
                                  stack_images, stack_images_grid,
                                  stack_multiple_images, wide_strides_1d,)
+from netharn.util.mpl_3d import (plot_surface3d,)
 from netharn.util.mpl_multiplot import (is_list_of_lists, is_list_of_scalars,
                                         is_listlike, multi_plot,)
 from netharn.util.mplutil import (Color, PlotNums, adjust_subplots, aggensure,
@@ -133,11 +135,12 @@ __all__ = ['BatchNormContext', 'Boxes', 'CV2_INTERPOLATION_TYPES',
            'is_list_of_lists', 'is_list_of_scalars', 'is_listlike',
            'isect_flags', 'iter_reduce_ufunc', 'legend', 'load_image_paths',
            'make_channels_comparable', 'make_heatmask', 'make_idstr',
-           'make_legend_img', 'make_short_idstr', 'mpl_multiplot', 'mplutil',
-           'multi_plot', 'next_fnum', 'non_max_supression', 'num_channels',
-           'number_of_parameters', 'one_hot_embedding', 'one_hot_lookup',
-           'overlay_alpha_images', 'overlay_colorized', 'pandas_plot_matrix',
-           'profiler', 'putMultiLineText', 'qtensure', 'random_combinations',
+           'make_legend_img', 'make_short_idstr', 'mpl_3d', 'mpl_multiplot',
+           'mplutil', 'multi_plot', 'next_fnum', 'non_max_supression',
+           'num_channels', 'number_of_parameters', 'one_hot_embedding',
+           'one_hot_lookup', 'overlay_alpha_images', 'overlay_colorized',
+           'pandas_plot_matrix', 'plot_surface3d', 'profiler',
+           'putMultiLineText', 'qtensure', 'random_combinations',
            'random_product', 'read_arr', 'read_h5arr', 'read_json',
            'read_tensorboard_scalars', 'render_figure_to_image',
            'reverse_colormap', 'roundrobin', 'run_length_encoding',
