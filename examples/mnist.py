@@ -110,7 +110,10 @@ class MnistHarn(nh.FitHarn):
         bx = harn.bxs[harn.current_tag]
         if bx < 3:
             decoded = harn._decode(outputs, batch['label'])
-            harn._draw_batch(bx, batch, decoded)
+            stacked = harn._draw_batch(bx, batch, decoded)
+            dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
+            fpath = join(dpath, 'epoch_{}_batch_{}.jpg'.format(harn.epoch, bx))
+            nh.util.imwrite(fpath, stacked)
 
         acc = (true_labels == pred_labels).mean()
 
@@ -217,11 +220,8 @@ class MnistHarn(nh.FitHarn):
                                              color='lawngreen', **fontkw)
             todraw.append(im_)
 
-        dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
-        fpath = join(dpath, 'batch_{}_epoch_{}.jpg'.format(bx, harn.epoch))
         stacked = nh.util.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
-        nh.util.imwrite(fpath, stacked)
-        return fpath
+        return stacked
 
 
 def setup_mnist_harn():

@@ -145,6 +145,7 @@ from netharn.exceptions import StopTraining, CannotResume, TrainingDiverged
 
 from netharn import util
 from netharn.util import profiler
+
 from netharn import export
 from xdoctest.utils import strip_ansi
 
@@ -1186,7 +1187,7 @@ class CoreMixin:
                 from netharn.mixins import _dump_monitor_tensorboard
                 _dump_monitor_tensorboard(harn)
             except Exception as ex:
-                harn.warn(str(ex))
+                harn.warn('Failed to dump tensorboard: {}'.format(repr(ex)))
 
         harn.after_epochs()
 

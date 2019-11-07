@@ -4,6 +4,10 @@
 Cython >= 0.28.4
 cffi >= 1.11.5
 
+# Build System
+#=============
+scikit-build >= 0.8.1 
+
 
 # Misc
 # ====

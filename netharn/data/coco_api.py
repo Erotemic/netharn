@@ -1030,7 +1030,6 @@ class MixinCocoAddRemove(object):
         self.index._add_image(gid, img)
         return gid
 
-    @util.profile
     def add_annotation(self, gid, cid, bbox=None, aid=None, **kw):
         """
         Add an annotation to the dataset (dynamically updates the index)
@@ -1068,7 +1067,6 @@ class MixinCocoAddRemove(object):
         self.index._add_annotation(aid, gid, cid, ann)
         return aid
 
-    @util.profile
     def add_annotations(self, anns):
         """
         Faster less-safe multi-item alternative
@@ -1087,7 +1085,6 @@ class MixinCocoAddRemove(object):
         self.dataset['annotations'].extend(anns)
         self.index._add_annotations(anns)
 
-    @util.profile
     def add_images(self, imgs):
         """
         Faster less-safe multi-item alternative

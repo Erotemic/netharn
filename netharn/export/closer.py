@@ -99,31 +99,6 @@ def source_closure(obj, expand_names=[]):
         >>> expand_names = ['netharn']
         >>> text = source_closure(model_class, expand_names)
         >>> print(text)
-
-    Ignore:
-        >>> # Test a heavier duty class
-        >>> from netharn.export.closer import *
-        >>> import netharn as nh
-        >>> model_class = nh.device.MountedModel
-        >>> model_class = nh.layers.ConvNormNd
-        >>> model_class = nh.layers.Sequential
-        >>> from netharn.models.yolo2.light_yolo import Yolo
-        >>> model_class = Yolo
-        >>> expand_names = ['netharn', 'ubelt']
-        >>> expand_names = ['netharn']
-        >>> text = source_closure(model_class, expand_names)
-        >>> text = remove_comments_and_docstrings(text)
-        >>> print(text)
-        >>>
-        >>> from ovharn.models import multiscale_mcd_arch
-        >>> model_class = multiscale_mcd_arch.Multiscale_MCD_Resnet50
-        >>> expand_names = ['ovharn']
-        >>> text = source_closure(model_class, expand_names)
-        >>> from netharn.export.exporter import remove_comments_and_docstrings
-        >>> #text = remove_comments_and_docstrings(text)
-        >>> print(text)
-
-        >>> expand_names = ['ovharn']
     """
     closer = Closer()
     closer.add_dynamic(obj)

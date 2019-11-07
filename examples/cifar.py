@@ -37,7 +37,7 @@ let the developer focus on the important parts.
 CommandLine:
     python examples/cifar.py --gpu=0 --arch=resnet50
     python examples/cifar.py --gpu=0 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
-    python examples/cifar.py --gpu=1,2 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
+    python examples/cifar.py --gpu=1,2,3 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw --batch_size=1800
     python examples/cifar.py --gpu=1,2 --arch=resnet50 --lr=0.003 --schedule=onecycle --optim=adamw
 
 """
@@ -119,7 +119,10 @@ class CIFAR_FitHarn(nh.FitHarn):
         bx = harn.bxs[harn.current_tag]
         if bx < 3:
             decoded = harn._decode(outputs, batch['label'])
-            harn._draw_batch(bx, batch, decoded)
+            stacked = harn._draw_batch(batch, decoded)
+            dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
+            fpath = join(dpath, 'batch_{}_epoch_{}.jpg'.format(bx, harn.epoch))
+            nh.util.imwrite(fpath, stacked)
 
         harn._accum_confusion_vectors['y_true'].append(y_true)
         harn._accum_confusion_vectors['y_pred'].append(y_pred)
@@ -192,7 +195,7 @@ class CIFAR_FitHarn(nh.FitHarn):
             decoded['true_scores'] = true_probs
         return decoded
 
-    def _draw_batch(harn, bx, batch, decoded, limit=32):
+    def _draw_batch(harn, batch, decoded, limit=32):
         """
         CommandLine:
             xdoctest -m ~/code/netharn/examples/cifar.py CIFAR_FitHarn._draw_batch --show --arch=wrn_22
@@ -202,17 +205,14 @@ class CIFAR_FitHarn(nh.FitHarn):
             >>> sys.path.append('/home/joncrall/code/netharn/examples')
             >>> from cifar import *
             >>> harn = setup_harn().initialize()
-            >>> #
             >>> batch = harn._demo_batch(0, tag='test')
             >>> outputs, loss = harn.run_batch(batch)
-            >>> bx = harn.bxs[harn.current_tag]
             >>> decoded = harn._decode(outputs, batch['label'])
-            >>> fpath = harn._draw_batch(bx, batch, decoded, limit=42)
-            >>> print('fpath = {!r}'.format(fpath))
+            >>> stacked = harn._draw_batch(batch, decoded, limit=42)
             >>> # xdoctest: +REQUIRES(--show)
             >>> import netharn as nh
             >>> nh.util.autompl()
-            >>> nh.util.imshow(fpath, colorspace='rgb', doclf=True)
+            >>> nh.util.imshow(stacked, colorspace='rgb', doclf=True)
             >>> nh.util.show_if_requested()
         """
         inputs = batch['input']
@@ -274,11 +274,8 @@ class CIFAR_FitHarn(nh.FitHarn):
                                              color='lawngreen', **fontkw)
             todraw.append(im_)
 
-        dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
-        fpath = join(dpath, 'batch_{}_epoch_{}.jpg'.format(bx, harn.epoch))
         stacked = nh.util.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
-        nh.util.imwrite(fpath, stacked)
-        return fpath
+        return stacked
 
 
 def setup_harn():

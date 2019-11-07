@@ -2701,9 +2701,29 @@ def draw_line_segments(pts1, pts2, ax=None, **kwargs):
     ax.add_collection(line_group)
 
 
-def make_heatmask(probs, cmap='plasma', with_alpha=True):
+def make_heatmask(probs, cmap='plasma', with_alpha=1.0, space='rgb',
+                  dsize=None):
     """
     Colorizes a single-channel intensity mask (with an alpha channel)
+
+    Args:
+        probs (ndarray): 2D probability map with values between 0 and 1
+        cmap (str): mpl colormap
+        with_alpha (float): between 0 and 1, uses probs as the alpha multipled
+            by this number.
+        space (str): output colorspace
+        dsize (tuple): if not None, then output is resized to W,H=dsize
+
+    CommandLine:
+        xdoctest -m netharn.util.mplutil make_heatmask --show
+
+    Example:
+        >>> probs = np.tile(np.linspace(0, 1, 10), (10, 1))
+        >>> heatmask = make_heatmask(probs, with_alpha=0.8, dsize=(100, 100))
+        >>> # xdoc: +REQUIRES(--show)
+        >>> import netharn as nh
+        >>> nh.util.imshow(heatmask, fnum=1, doclf=True, colorspace='rgb')
+        >>> nh.util.show_if_requested()
     """
     import matplotlib as mpl
     from netharn.util import imutil
@@ -2711,10 +2731,13 @@ def make_heatmask(probs, cmap='plasma', with_alpha=True):
     assert len(probs.shape) == 2
     cmap_ = mpl.cm.get_cmap(cmap)
     probs = imutil.ensure_float01(probs)
-    heatmask = cmap_(probs)
-    if with_alpha:
-        heatmask[:, :, 0:3] = heatmask[:, :, 0:3][:, :, ::-1]
-        heatmask[:, :, 3] = probs
+    heatmask = cmap_(probs).astype(np.float32)
+    heatmask = imutil.convert_colorspace(heatmask, 'rgba', space, implicit=True)
+    if with_alpha is not False and with_alpha is not None:
+        heatmask[:, :, 3] = (probs * with_alpha)  # assign probs to alpha channel
+    if dsize is not None:
+        import cv2
+        heatmask = cv2.resize(heatmask, tuple(dsize), interpolation=cv2.INTER_NEAREST)
     return heatmask
 
 

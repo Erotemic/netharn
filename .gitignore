@@ -112,3 +112,4 @@ netharn/util/cython_boxes.html
 profile_output.*
 
 src/
+_skbuild

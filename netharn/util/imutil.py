@@ -422,12 +422,19 @@ def atleast_3channels(arr, copy=True):
 
 
 def ensure_grayscale(img, colorspace_hint='BGR'):
+    """
+    Example:
+        >>> import numpy as np
+        >>> ensure_grayscale(np.array([[[0, 0, 1]]], dtype=np.float32))
+        array([[0.299]], dtype=float32)
+    """
     img = ensure_float01(img, copy=False)
     c = get_num_channels(img)
     if c == 1:
         return img
     else:
-        return convert_colorspace(img, 'gray', colorspace_hint)
+        return convert_colorspace(img, src_space=colorspace_hint,
+                                  dst_space='gray')
 
 
 def convert_colorspace(img, src_space, dst_space, copy=False,
