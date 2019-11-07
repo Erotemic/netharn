@@ -28,6 +28,7 @@ CommandLine:
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ast
+import six  # NOQA
 import re
 import hashlib
 import io
@@ -79,8 +80,12 @@ def export_model_code(dpath, model, initkw=None, export_modules=[]):
         >>> static_modpath = export_model_code(dpath, model, initkw)
         >>> print('static_modpath = {!r}'.format(static_modpath))
         ...
-        >>> print(basename(static_modpath))
-        DenseNet_58cff7.py
+        >>> mod_fname = (basename(static_modpath))
+        >>> print('mod_fname = {!r}'.format(mod_fname))
+        >>> if six.PY2:
+        >>>     assert mod_fname == 'DenseNet_0b9daf.py'
+        >>> else:
+        >>>     assert mod_fname == 'DenseNet_58cff7.py'
         >>> # now the module can be loaded
         >>> module = ub.import_module_from_path(static_modpath)
         >>> loaded = module.make()

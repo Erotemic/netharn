@@ -7,35 +7,6 @@ But everything is overwritable.
 Experimentation and freedom to protype quickly is extremely important
 We do our best not to get in the way, just performing a jumping off
 point.
-
-TODO:
-    TrainingModes:
-        [x] categorical
-            see demos on:
-                [x] MNIST
-                [.] Cifar100
-                [ ] ImageNet
-                [ ] ...
-        [ ] segmentation
-            [ ] semantic
-                [ ] CamVid
-                [ ] CityScapes
-                [ ] Diva
-                [ ] UrbanMapper3D
-                [ ] ...
-            [ ] instance
-                [ ] UrbanMapper3D
-        [ ] tracking
-            [ ] ...
-        [ ] detection
-            [ ] ...
-            [ ] VOC2007
-        [ ] identification
-            [ ] 1-vs-all
-            [ ] N-vs-all
-            [ ] (1-vs-1) pairwise
-            [ ] (N-vs-N)
-            [ ] ...
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import os
@@ -146,7 +117,7 @@ class MnistHarn(nh.FitHarn):
             >>> import sys
             >>> sys.path.append('/home/joncrall/code/netharn/examples')
             >>> from mnist import *
-            >>> harn = setup_mnist_harn().initialize()
+            >>> harn = setup_harn().initialize()
             >>> #
             >>> batch = harn._demo_batch(0, tag='test')
             >>> outputs, loss = harn.run_batch(batch)
@@ -224,7 +195,7 @@ class MnistHarn(nh.FitHarn):
         return stacked
 
 
-def setup_mnist_harn():
+def setup_harn(**kw):
     """
     CommandLine:
         python examples/mnist.py
@@ -232,6 +203,9 @@ def setup_mnist_harn():
         python ~/code/netharn/examples/mnist.py --gpu=2
         python ~/code/netharn/examples/mnist.py
     """
+    config = {
+        'batch_size': kw.get('batch_size', 128),
+    }
     root = os.path.expanduser('~/data/mnist/')
 
     # Define your dataset
@@ -276,7 +250,6 @@ def setup_mnist_harn():
     # Give the training dataset an input_id
     datasets['train'].input_id = 'mnist_' + ub.hash_data(train_idx.numpy())[0:8]
 
-    batch_size = 128
     n_classes = 10
     xpu = nh.XPU.from_argv(min_memory=300)
 
@@ -288,7 +261,7 @@ def setup_mnist_harn():
         initializer = (nh.initializers.KaimingNormal, {})
 
     loaders = ub.odict()
-    data_kw = {'batch_size': batch_size}
+    data_kw = {'batch_size': config['batch_size']}
     if xpu.is_gpu():
         data_kw.update({'num_workers': 6, 'pin_memory': True})
     for tag in ['train', 'vali', 'test']:
@@ -315,8 +288,27 @@ def setup_mnist_harn():
         loaders=loaders,
         model=(MnistNet, dict(n_channels=1, n_classes=n_classes)),
         # optimizer=torch.optim.Adam,
-        optimizer=(torch.optim.SGD, {'lr': 0.01}),
-        scheduler='ReduceLROnPlateau',
+        optimizer=(torch.optim.SGD, {'lr': 0.01, 'weight_decay': 3e-6}),
+        # scheduler='ReduceLROnPlateau',
+        scheduler=(nh.schedulers.ListedScheduler, {
+            'points': {
+                'lr': {
+                    0   : 0.01,
+                    10  : 0.10,
+                    20  : 0.01,
+                    40  : 0.0001,
+                },
+                'momentum': {
+                    0   : 0.95,
+                    10  : 0.85,
+                    20  : 0.95,
+                    40  : 0.99,
+                },
+                'weight_decay': {
+                    0: 3e-6,
+                }
+            }
+        }),
         criterion=torch.nn.CrossEntropyLoss,
         initializer=initializer,
         monitor=(nh.Monitor, {
@@ -346,7 +338,7 @@ def setup_mnist_harn():
 
 
 def train_mnist():
-    harn = setup_mnist_harn()
+    harn = setup_harn()
     reset = ub.argflag('--reset')
 
     # Initializing a FitHarn object can take a little time, but not too much.

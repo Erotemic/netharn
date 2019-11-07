@@ -601,7 +601,9 @@ def score_detection_assignment(y, labels=None, method='voc2012'):
         mAP = 0.5875
         >>> y2 = util.DataFrameArray(y)
         >>> ave_precs = ave_precisions(y2, method='voc2007')
-        >>> assert np.allclose(ave_precs._pandas(), ave_precisions(y, method='voc2007'))
+        >>> ours = ave_precs._pandas()
+        >>> theirs = ave_precisions(y, method='voc2007')
+        >>> assert np.allclose(ours, theirs)
     """
     if method not in ['sklearn', 'voc2007', 'voc2012']:
         raise KeyError(method)
@@ -631,7 +633,7 @@ def score_detection_assignment(y, labels=None, method='voc2012'):
     else:
         coldata = zip(*class_aps)
         columns = ['cx', 'ap']
-        data = dict(zip(columns, map(np.array, coldata)))
+        data = ub.odict(zip(columns, map(np.array, coldata)))
         ave_precs = util.DataFrameArray(data)
 
     return ave_precs
@@ -727,8 +729,8 @@ def pr_curves(y, method='voc2012'):  # -> Tuple[float, ndarray, ndarray]:
             if IS_PANDAS:
                 tp = tp.values.astype(np.int)
             fp = 1 - tp
-            fp_cum = np.cumsum(fp)
-            tp_cum = np.cumsum(tp)
+            fp_cum = np.cumsum(fp).astype(np.float)
+            tp_cum = np.cumsum(tp).astype(np.float)
 
             eps = np.finfo(np.float64).eps
             rec = 1 if npos == 0 else tp_cum / npos
@@ -834,8 +836,8 @@ def voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012', bias=1):
                 fp[d] = 1.
 
         # compute precision recall
-        fp = np.cumsum(fp)
-        tp = np.cumsum(tp)
+        fp = np.cumsum(fp).astype(np.float)
+        tp = np.cumsum(tp).astype(np.float)
         rec = tp / float(npos)
         # avoid divide by zero in case the first detection matches a difficult
         # ground truth

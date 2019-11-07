@@ -14,9 +14,10 @@ class Conv1d_pad(torch.nn.Conv1d, common.ModuleMixin):
     """
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  padding=0, dilation=1, groups=1, bias=True, mode='reflect'):
-        super().__init__(in_channels, out_channels, kernel_size,
-                         stride=stride, padding=0, dilation=dilation,
-                         groups=groups, bias=bias)
+        super(Conv1d_pad, self).__init__(in_channels, out_channels,
+                                         kernel_size, stride=stride, padding=0,
+                                         dilation=dilation, groups=groups,
+                                         bias=bias)
         self._custom_padding = padding
         self._pad_mode = mode
         self.ndim = 1
@@ -24,7 +25,7 @@ class Conv1d_pad(torch.nn.Conv1d, common.ModuleMixin):
     def forward(self, input):
         # Custom pad, then convolve
         x = F.pad(input, [self._custom_padding] * (2 * self.ndim), mode=self._pad_mode)
-        return super().forward(x)
+        return super(Conv1d_pad, self).forward(x)
 
 
 class Conv2d_pad(torch.nn.Conv2d, common.ModuleMixin):
@@ -33,9 +34,10 @@ class Conv2d_pad(torch.nn.Conv2d, common.ModuleMixin):
     """
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  padding=0, dilation=1, groups=1, bias=True, mode='reflect'):
-        super().__init__(in_channels, out_channels, kernel_size,
-                         stride=stride, padding=0, dilation=dilation,
-                         groups=groups, bias=bias)
+        super(Conv2d_pad, self).__init__(in_channels, out_channels,
+                                         kernel_size, stride=stride, padding=0,
+                                         dilation=dilation, groups=groups,
+                                         bias=bias)
         self._custom_padding = padding
         self._pad_mode = mode
         self.ndim = 2
@@ -43,7 +45,7 @@ class Conv2d_pad(torch.nn.Conv2d, common.ModuleMixin):
     def forward(self, input):
         # Custom pad, then convolve
         x = F.pad(input, [self._custom_padding] * (2 * self.ndim), mode=self._pad_mode)
-        return super().forward(x)
+        return super(Conv2d_pad, self).forward(x)
 
 
 class GaussianBlurNd(common.Module):
@@ -119,7 +121,7 @@ class GaussianBlurNd(common.Module):
 
     def __init__(self, dim, num_features, sigma, kernel_size=None,
                  truncate=4.0, separable=False):
-        super().__init__()
+        super(GaussianBlurNd, self).__init__()
         self.separable = separable
 
         # Create a x, y coordinate grid of shape (kernel_size, kernel_size, 2)

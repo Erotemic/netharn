@@ -75,6 +75,20 @@ class Monitor(object):
         monitor.patience = patience
         monitor.max_epoch = max_epoch
 
+    @classmethod
+    def coerce(cls, config, **kw):
+        """
+        Accepts keywords 'max_epoch' and 'patience'
+        """
+        from netharn.api import _update_defaults
+        _update_defaults(config, kw)
+        max_epoch = config.get('max_epoch', 100)
+        return (cls, {
+            'minimize': ['loss'],
+            'patience': config.get('patience', max_epoch),
+            'max_epoch': max_epoch,
+        })
+
     def show(monitor):
         """
         Draws the monitored metrics using matplotlib

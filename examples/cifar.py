@@ -499,21 +499,38 @@ def setup_harn():
         # div_factor = 25
         # pct_start=0.3,
         # wd=0.4
-        pct = np.linspace(0, 1.0, 35)
-        cos_up = (np.cos(np.pi * (1 - pct)) + 1) / 2
-        cos_down = cos_up[::-1]
+        # pct = np.linspace(0, 1.0, 35)
+        # cos_up = (np.cos(np.pi * (1 - pct)) + 1) / 2
+        # cos_down = cos_up[::-1]
 
-        pt1 = config['lr'] / 25.0
-        pt2 = config['lr']
-        pt3 = config['lr'] / (1000 * 25.0)
+        # pt1 = config['lr'] / 25.0
+        # pt2 = config['lr']
+        # pt3 = config['lr'] / (1000 * 25.0)
 
-        phase1 = (pt2 - pt1) * cos_up + pt1
-        phase2 = (pt2 - pt3) * cos_down + pt3
-        points = dict(enumerate(ub.flatten([phase1, phase2])))
+        # phase1 = (pt2 - pt1) * cos_up + pt1
+        # phase2 = (pt2 - pt3) * cos_down + pt3
+        # points = dict(enumerate(ub.flatten([phase1, phase2])))
 
-        scheduler_ = (nh.schedulers.ListedLR, {
-            'points': points,
-            'interpolate': False
+        # scheduler_ = (nh.schedulers.ListedLR, {
+        #     'points': points,
+        #     'interpolate': False
+        # })
+        scheduler_ = (nh.schedulers.ListedScheduler, {
+            'points': {
+                'lr': {
+                    0   : config['lr'] * 1.00,
+                    35  : config['lr'] * 25,
+                    70  : config['lr'] / 1000,
+                },
+                'momentum': {
+                    0   : 0.95,
+                    35  : 0.85,
+                    70  : 0.95,
+                },
+                # 'weight_decay': {
+                #     0: 3e-6,
+                # }
+            }
         })
     else:
         raise KeyError(config['schedule'])

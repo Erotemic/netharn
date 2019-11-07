@@ -25,8 +25,10 @@ class ToyData1d(torch_data.Dataset, base.DataMixin):
             >>> cls1 = data[labels == 0]
             >>> cls2 = data[labels == 1]
             >>> from matplotlib import pyplot as plt
-            >>> plt.plot(*cls1.T.numpy(), 'rx')
-            >>> plt.plot(*cls2.T.numpy(), 'bx')
+            >>> a, b = cls1.T.numpy()
+            >>> c, d = cls2.T.numpy()
+            >>> plt.plot(a, b, 'rx')
+            >>> plt.plot(c, d, 'bx')
             >>> mplutil.show_if_requested()
         """
         rng = util.ensure_rng(rng)

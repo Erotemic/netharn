@@ -95,9 +95,9 @@ def source_closure(obj, expand_names=[]):
         >>> # Test a heavier duty class
         >>> from netharn.export.closer import *
         >>> import netharn as nh
-        >>> model_class = nh.layers.ConvNormNd
+        >>> obj = nh.layers.ConvNormNd
         >>> expand_names = ['netharn']
-        >>> text = source_closure(model_class, expand_names)
+        >>> text = source_closure(obj, expand_names)
         >>> print(text)
     """
     closer = Closer()
@@ -638,11 +638,14 @@ class ImportVisitor(ast.NodeVisitor, ub.NiceRepr):
             if source is None:
                 source = inspect.getsource(module)
             if modpath is None:
-                modname = module.__name__
+                modname = module.__file__
             if modname is None:
-                modpath = module.__file__
+                modname = module.__name__
 
         if modpath is not None:
+            if modpath.endswith('.pyc'):
+                modpath = modpath.replace('.pyc', '.py')  # python 2 hack
+
             if isdir(modpath):
                 modpath = join(modpath, '__init__.py')
             if modname is None:
@@ -658,7 +661,16 @@ class ImportVisitor(ast.NodeVisitor, ub.NiceRepr):
             raise ValueError('unable to derive source code')
 
         source = ub.ensure_unicode(source)
-        pt = ast.parse(source)
+        if six.PY2:
+            try:
+                pt = ast.parse(source)
+            except SyntaxError as ex:
+                if 'encoding declaration in Unicode string' in ex.args[0]:
+                    pt = ast.parse(source.encode())
+                else:
+                    raise
+        else:
+            pt = ast.parse(source)
         visitor = ImportVisitor(modpath, modname, module, pt=pt)
         visitor.visit(pt)
         return visitor

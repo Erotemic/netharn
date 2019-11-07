@@ -13,7 +13,7 @@ def read_tensorboard_scalars(train_dpath, verbose=1, cache=1):
     try:
         from tensorboard.backend.event_processing import event_accumulator
     except ImportError:
-        raise ImportError('tensorboard is not installed')
+        raise ImportError('tensorboard/tensorflow is not installed')
     event_paths = sorted(glob.glob(join(train_dpath, 'events.out.tfevents*')))
     # make a hash so we will re-read of we need to
     cfgstr = ub.hash_data(list(map(ub.hash_file, event_paths))) if cache else ''

@@ -123,6 +123,9 @@ from os.path import relpath
 
 __all__ = ['DeployedModel']
 
+if six.PY2:
+    FileNotFoundError = OSError
+
 
 def existing_snapshots(train_dpath):
     # NOTE: Specific to netharn directory structure
@@ -335,7 +338,10 @@ class DeployedModel(ub.NiceRepr):
         >>> initializer(model)
         ...
         >>> print('model.__module__ = {!r}'.format(model.__module__))
-        model.__module__ = 'ToyNet2d_2a3f49'
+        >>> if six.PY3:
+        ...     assert model.__module__ == 'ToyNet2d_2a3f49'
+        ... else:
+        ...     assert model.__module__ == 'ToyNet2d_d573a3'
 
     Example:
         >>> # Test the zip file as the model deployment
@@ -348,7 +354,7 @@ class DeployedModel(ub.NiceRepr):
         >>> initializer(model)
         ...
         >>> print('model.__module__ = {!r}'.format(model.__module__))
-        model.__module__ = 'deploy_ToyNet2d_mhuhweia_000_.../ToyNet2d_2a3f49'
+        model.__module__ = 'deploy_ToyNet2d_mhuhweia_000_.../ToyNet2d_...'
 
         model.__module__ = 'deploy_ToyNet2d_rljhgepw_000_.../ToyNet2d_2a3f49'
     """
@@ -570,7 +576,7 @@ def _demodata_trained_dpath():
 if __name__ == '__main__':
     """
     CommandLine:
-        xdoctest -m netharn.export.deployer
+        xdoctest -m netharn.export.deployer all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

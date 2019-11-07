@@ -145,6 +145,11 @@ class CumMovingAve(MovingAve):
     References:
         https://en.wikipedia.org/wiki/Moving_average
 
+    TODO:
+        - [ ] Add support for moving variance:
+            https://stackoverflow.com/questions/1174984/how-to-efficiently-calculate-a-running-standard-deviation
+            https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
+
     Example:
         >>> from netharn.util.util_averages import *
         >>> self = CumMovingAve()
@@ -233,16 +238,27 @@ class WindowedMovingAve(MovingAve):
 
 class ExpMovingAve(MovingAve):
     """
-    Exponentially weighted moving average of dictionary values
+    Exponentially weighted moving average of dictionary values.
+    Tracks multiple values which are differentiated by dictionary keys.
 
     Args:
         span (float): roughly corresponds to window size.
-            equivalent to (2 / alpha) - 1
+            If specified this is converted to `alpha`. Mutually exclusive with
+            `alpha`. Equivalent to (2 / alpha) - 1.
+
         alpha (float): roughly corresponds to window size.
-            equivalent to 2 / (span + 1)
+             Mutually exclusive with `span`.  Should range between 0 and 1.
+             Equivalent to 2 / (span + 1). A higher `alpha` places more weight
+             on newer examples.
+
+        correct_bias (bool, default=False): if True, applies bias-correction
+            to the final average estimation, as done in [2], otherwise
+            the unmodified exponential average is returned.
 
     References:
-        http://greenteapress.com/thinkstats2/html/thinkstats2013.html
+        .. [1] http://greenteapress.com/thinkstats2/html/thinkstats2013.html
+        .. [2] https://sgugger.github.io/how-do-you-find-a-good-learning-rate.html
+        .. [3] https://en.wikipedia.org/wiki/Exponential_smoothing
 
     Example:
         >>> self = ExpMovingAve(span=3)
@@ -252,10 +268,24 @@ class ExpMovingAve(MovingAve):
         <ExpMovingAve({'a': 5.0})>
         >>> print(str(self.update({'a': 2})))
         <ExpMovingAve({'a': 3.5})>
+
+    Example:
+        >>> self = ExpMovingAve(span=3, correct_bias=True)
+        >>> print(str(self.update({'a': 10})))
+        <ExpMovingAve({'a': 10.0})>
+        >>> print(str(self.update({'a': 1})))
+        <ExpMovingAve({'a': 4.0})>
+        >>> print(str(self.update({'a': 4})))
+        <ExpMovingAve({'a': 4.0})>
     """
-    def __init__(self, span=None, alpha=None):
-        values = ub.odict()
-        self.values = values
+    def __init__(self, span=None, alpha=None, correct_bias=False):
+        self.values = ub.odict()
+
+        self.correct_bias = correct_bias
+
+        # number of times we've seen each particular value
+        self._n_obs = ub.odict()
+
         if span is None and alpha is None:
             alpha = 0
         if not bool(span is None) ^ bool(alpha is None):
@@ -269,16 +299,52 @@ class ExpMovingAve(MovingAve):
             raise AssertionError('impossible state')
 
     def average(self):
-        return self.values
+        """
+        Returns the current estimation of the moving average.
+
+        Returns:
+            Dict[str, float]: values : mapping from keys to tracked values.
+        """
+        if self.correct_bias:
+            # Even though the examples given to the exponential moving average
+            # (EMA) are "unweighted", the `alpha` values used in recursive
+            # formula for the EMA do induce a weighting. This weighting
+            # turns out to have a simplified form equal to
+            # `1 - (1 - alpha) ** i`, where i is the number of observations.
+            # When there are large numbers of observations this value goes to
+            # one, which means bias correction is mainly useful when there are
+            # small numbers of observations.
+            beta = 1 - self.alpha
+            weights = {k: (1 - beta ** i) for k, i in self._n_obs.items()}
+            values =  ub.odict([(k, v / weights[k])
+                                for k, v in self.values.items()])
+        else:
+            values = self.values
+        return values
 
     def update(self, other):
+        """
+        Add a new observation
+
+        Args:
+            other (Dict[str, float]): a new value for each value being tracked.
+        """
         alpha = self.alpha
         for k, v in other.items():
             if pd.isnull(v):
                 v = 0
             if k not in self.values:
-                self.values[k] = v
+                if self.correct_bias:
+                    # bias correct treats values as if the initial estimate is
+                    # zero
+                    self.values[k] = (alpha * v) + (1 - alpha) * 0
+                else:
+                    self.values[k] = v
+                self._n_obs[k] = 1
             else:
+                # Apply one step of the recursive formula for estimating the
+                # new average.
+                self._n_obs[k] += 1
                 self.values[k] = (alpha * v) + (1 - alpha) * self.values[k]
         return self
 
@@ -287,6 +353,9 @@ class RunningStats(object):
     """
     Dynamically records per-element array statistics and can summarized them
     per-element, across channels, or globally.
+
+    TODO:
+        DEPRICATE or refactor
 
     SeeAlso:
         InternalRunningStats

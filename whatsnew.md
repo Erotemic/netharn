@@ -1,6 +1,20 @@
+Version 0.1.6
+==============
+* Fix Python2 compatibility issues
+* Add `api.py` containing code to help reduce netharn boilerplate by parsing a config dictionary.
+* Fixed bug in `IgnoreLayerContext` preventing it from being used with `DataParallel`
+* Add `api.py` containing code to help reduce netharn boilerplate by parsing a config dictionary.
+* Remove deprecated `_to_var`
+* Add new `ListedScheduler` which is able to modify multiple optimizer attributes including learning rate and momentum. 
+* FitHarn now logs momentum by default in addition to learning rate
+* Add variant of Leslie Smith's learning rate test
+* `nh.util.ExpMovingAve` now has a bias-correction option.
+
+
 Version 0.1.5
 ==============
 * Switched to skbuild
+* Bug fixes
 
 Version 0.1.4
 ==============

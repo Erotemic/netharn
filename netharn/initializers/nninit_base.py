@@ -37,6 +37,71 @@ class Initializer(object):
         # info['__initkw__'] = initkw
         return initkw
 
+    @staticmethod
+    def coerce(config={}, **kw):
+        """
+        Accepts 'init', 'pretrained', 'pretrained_fpath', and 'noli'
+
+        Args:
+            config (dict):
+
+        Returns:
+            Tuple[nh.Initializer, dict]: initializer_ = initializer_cls, kw
+
+        Examples:
+            >>> import netharn as nh
+            >>> print(ub.repr2(nh.Initializer.coerce({'init': 'noop'})))
+            (
+                <class 'netharn.initializers.nninit_base.NoOp'>,
+                {},
+            )
+            >>> config = {
+            ...     'init': 'pretrained',
+            ...     'pretrained_fpath': '/fit/nice/untitled'
+            ... }
+            >>> print(ub.repr2(nh.Initializer.coerce(config)))
+            (
+                <class 'netharn.initializers.nninit_core.Pretrained'>,
+                {'fpath': '/fit/nice/untitled'},
+            )
+            >>> print(ub.repr2(nh.Initializer.coerce({'init': 'kaiming_normal'})))
+            (
+                <class 'netharn.initializers.nninit_core.KaimingNormal'>,
+                {'param': 0},
+            )
+        """
+        import netharn as nh
+        from netharn.api import _update_defaults
+        _update_defaults(config, kw)
+
+        pretrained_fpath = config.get('pretrained_fpath', config.get('pretrained', None))
+        config['pretrained_fpath'] = pretrained_fpath
+        config['pretrained'] = pretrained_fpath
+
+        if pretrained_fpath is not None:
+            config['init'] = 'pretrained'
+
+        # ---
+        initializer_ = None
+        if config['init'] == 'kaiming_normal':
+            initializer_ = (nh.initializers.KaimingNormal, {
+                # initialization params should depend on your choice of
+                # nonlinearity in your model. See the Kaiming Paper for details.
+                'param': 1e-2 if config.get('noli', 'relu') == 'leaky_relu' else 0,
+            })
+        elif config['init'] == 'noop':
+            initializer_ = (nh.initializers.NoOp, {})
+        elif config['init'] == 'pretrained':
+            initializer_ = (nh.initializers.Pretrained, {
+                'fpath': ub.truepath(config['pretrained_fpath'])})
+        elif config['init'] == 'cls':
+            # Indicate that the model will initialize itself
+            # We have to trust that the user does the right thing here.
+            pass
+        else:
+            raise KeyError(config['init'])
+        return initializer_
+
 
 _BaseInitializer = Initializer
 
@@ -44,7 +109,7 @@ _BaseInitializer = Initializer
 class NoOp(Initializer):
     """
     Example:
-        >>> from netharn.initializers import *
+        >>> from netharn.initializers.nninit_base import *
         >>> self = NoOp()
         >>> #info = self.history()
         >>> #assert info['__name__'] == 'NoOp'

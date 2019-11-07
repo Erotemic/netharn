@@ -716,7 +716,7 @@ class MixinCocoExtras(object):
         if rebuild:
             self._build_index()
         else:
-            self.index.clear()
+            del self.index[:]
 
     def _aspycoco(self):
         # Converts to the official pycocotools.coco.COCO object
@@ -1154,8 +1154,8 @@ class MixinCocoAddRemove(object):
             >>> print(ub.repr2(self.basic_stats(), nobr=1, nl=0, si=1))
             n_anns: 0, n_imgs: 0, n_cats: 7
         """
-        self.dataset['images'].clear()
-        self.dataset['annotations'].clear()
+        del self.dataset['images'][:]
+        del self.dataset['annotations'][:]
         self.index._remove_all_images()
 
     def clear_annotations(self):
@@ -1168,7 +1168,7 @@ class MixinCocoAddRemove(object):
             >>> print(ub.repr2(self.basic_stats(), nobr=1, nl=0, si=1))
             n_anns: 0, n_imgs: 3, n_cats: 7
         """
-        self.dataset['annotations'].clear()
+        del self.dataset['annotations'][:]
         self.index._remove_all_annotations()
 
     remove_all_images = clear_images

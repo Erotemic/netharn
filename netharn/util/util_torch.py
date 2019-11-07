@@ -2,6 +2,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 import torch
+import six
 import ubelt as ub
 
 
@@ -63,6 +64,35 @@ class grad_context(object):
             return False
 
 
+def _get_method_func(method):
+    func = method.im_func if six.PY2 else method.__func__
+    return func
+
+
+def _get_method_base_class(method):
+    """
+    Finds the class in which a particular method function was defined.
+
+    CommandLine:
+        xdoctest -m netharn.util.util_torch _get_method_base_class
+
+    Example:
+        >>> method = torch.nn.BatchNorm2d(1).forward
+        >>> print(_get_method_base_class(method))
+        <class 'torch.nn.modules.batchnorm._BatchNorm'>
+    """
+    import sys
+    if six.PY2:
+        from qualname import qualname as find_qualname
+        qualname = find_qualname(method)
+    else:
+        qualname = method.__qualname__
+    module = sys.modules[method.__module__]
+    base_name = qualname.split('.')[0]
+    base_cls = getattr(module, base_name)
+    return base_cls
+
+
 class IgnoreLayerContext(object):
     """
     Context manager that modifies (monkey-patches) models to temporarily
@@ -86,31 +116,100 @@ class IgnoreLayerContext(object):
         >>> output3 = model(input)
         >>> assert torch.all(output3 == output1)
         >>> assert torch.all(output2 == input)
+
+    Ignore:
+        >>> # Test issue with data parallel
+        >>> from netharn.util.util_torch import *
+        >>> import torch
+        >>> import netharn as nh
+        >>> layer = raw_model = torch.nn.BatchNorm2d(1)
+        >>> raw_inputs = torch.rand(8, 1, 10, 10)
+        >>> xpu = nh.XPU.coerce([0,1])
+        >>> model = xpu.mount(raw_model)
+        >>> inputs = xpu.move(raw_inputs)
+        >>> output1 = model(inputs)
+        >>> with nh.util.IgnoreLayerContext(model, torch.nn.BatchNorm2d):
+        ...     print('model.module.forward = {!r}'.format(model.module.forward))
+        ...     output2 = model(inputs)
+        >>> output3 = model(inputs)
+        >>> assert torch.all(output3 == output1)
+        >>> assert torch.all(output2 == inputs)
+        >>> # ------------
+        >>> raw_model = torch.nn.BatchNorm2d(1)
+        >>> raw_inputs = torch.rand(8, 1, 10, 10)
+        >>> model = xpu.mount(raw_model)
+        >>> inputs = xpu.move(raw_inputs)
+        >>> output1 = model(inputs)
+        >>> self = nh.util.IgnoreLayerContext(model, torch.nn.BatchNorm2d)
+        >>> self.__enter__()
+        >>> output2 = model(inputs)
+        >>> self.__exit__()
+        >>> print('CAN WE DO THIS?')
+        >>> output3 = model(inputs)
+        >>> # ------------
+        >>> xpu = nh.XPU.coerce([0,1])
+        >>> devices = [torch.device(type='cuda', index=i) for i in [0, 1]]
+        >>> replicas = torch.nn.parallel.replicate(xpu.move(raw_model), devices)
+        >>> [r.forward for r in replicas]
+        >>> print([r.weight for r in replicas])
+        >>> r = replicas[1]
+        >>> # ------
+        >>> assert torch.all(output3 == output1)
+        >>> assert torch.all(output2 == inputs)
     """
     def __init__(self, model, category=None, enabled=True):
         self.model = model
         self.category = category
         self.prev_state = None
 
+        self._PATCH_CLASS = True  # are we patching the instance or class?
+
     def __enter__(self):
         self.prev_state = {}
-        def _forward(self, input, *args, **kwargs):
-            return input
+        def _noop_forward(self, inputs, *args, **kwargs):
+            return inputs
+        _noop_forward._patched = True
+
         for name, layer in trainable_layers(self.model, names=True):
             needs_filter = False
             if self.category is not None:
                 needs_filter |= isinstance(layer, self.category)
 
             if needs_filter:
-                self.prev_state[name] = layer.forward
-                ub.inject_method(layer, _forward, name='forward')
+                if self._PATCH_CLASS:
+                    func = _get_method_func(layer.forward)
+                    already_patched = not getattr(func, '_patched', False)
+                    if already_patched:
+                        # Patch the entire class if it wasn't already
+                        base_cls = _get_method_base_class(layer.forward)
+                        assert 'forward' in base_cls.__dict__
+                        # print('PATCH FORWARD IN base_cls = {!r}'.format(base_cls))
+                        # print('base_cls = {!r}'.format(base_cls))
+                        self.prev_state[name] = (base_cls, base_cls.forward)
+                        base_cls.forward = _noop_forward
+                else:
+                    self.prev_state[name] = layer.forward
+                    ub.inject_method(layer, _noop_forward, name='forward')
         return self
 
     def __exit__(self, *args):
         if self.prev_state:
-            for name, layer in trainable_layers(self.model, names=True):
-                if name in self.prev_state:
-                    layer.forward = self.prev_state[name]
+            if self._PATCH_CLASS:
+                # Unpatch all patched classes
+                for name, state in self.prev_state.items():
+                    base_cls, orig = state
+                    base_cls.forward = orig
+            else:
+                for name, layer in trainable_layers(self.model, names=True):
+                    if name in self.prev_state:
+                        # Unset the instance attribute that overrides the default
+                        # class function attribute. Note that we cannot simply
+                        # reset the forward attribute to its old value because that
+                        # will still leave an entry in the layer.__dict__ that
+                        # previously wasn't there. Having the forward method
+                        # populated in layer.__dict__ causes issues with data
+                        # parallel.
+                        del layer.__dict__['forward']
 
 
 class BatchNormContext(object):

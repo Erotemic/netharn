@@ -1,5 +1,3 @@
-|Travis| |Codecov| |Appveyor| |Pypi|
-
 
 NetHarn - a PyTorch Network Harness
 -----------------------------------
@@ -95,7 +93,7 @@ setup instructions, but for now they are the same.
 Description
 ===========
 
-Parameterized fit and prediction harnesses for PyTorch.
+Parameterized fit harnesses for PyTorch.
 
 Trains models and keeps track of your hyperparameters.
 

@@ -163,8 +163,19 @@ class XPU(ub.NiceRepr):
             return False
 
     @property
+    def devices(xpu):
+        """ A list of torch devices represented by this XPU """
+        if xpu.is_gpu():
+            return [torch.device(type='cuda', index=index)
+                    for index in xpu._device_ids]
+        else:
+            return [torch.device(type='cpu')]
+
+    @property
     def main_device(xpu):
         """
+        The main torch device represented by this XPU
+
         Example:
             >>> xpu = XPU(None)
             >>> print(repr(xpu.main_device))

@@ -36,7 +36,7 @@ class MultiLayerPerceptronNd(common.Sequential):
     """
     def __init__(self, dim, in_channels, hidden_channels, out_channels,
                  bias=True, dropout=0, noli='relu', norm='batch'):
-        super().__init__()
+        super(MultiLayerPerceptronNd, self).__init__()
         dropout_cls = rectify.rectify_dropout(dim)
         conv_cls = rectify.rectify_conv(dim=dim)
         curr_in = in_channels

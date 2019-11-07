@@ -185,7 +185,7 @@ def _disjoint_dict_update(a, b):
 @register_mixin
 class ExtraMixins:
 
-    def _demo_epoch(harn, tag='vali', learn=False):
+    def _demo_epoch(harn, tag='vali', learn=False, max_iter=None):
         """
         Runs an epoch (usually for testing / demo purposes).
         """
@@ -195,7 +195,8 @@ class ExtraMixins:
             for tag, loader in harn.loaders.items()
         }
         loader = harn.loaders[tag]
-        epoch_metrics = harn._run_epoch(loader, tag=tag, learn=learn)
+        epoch_metrics = harn._run_epoch(loader, tag=tag, learn=learn,
+                                        max_iter=max_iter)
         return epoch_metrics
 
     def _demo_batch(harn, index=0, tag='train', raw=False):
@@ -370,7 +371,10 @@ class InitializeMixin:
             # Add a stdout handler
             stdout_handler = logging.StreamHandler(sys.stdout)
             stdout_handler.setFormatter(s_formatter)
-            stdout_handler.setLevel(logging.INFO)
+            if ub.argflag('--verbose'):
+                stdout_handler.setLevel(logging.DEBUG)
+            else:
+                stdout_handler.setLevel(logging.INFO)
 
             _log.addHandler(w_handler)
             _log.addHandler(a_handler)
@@ -519,7 +523,8 @@ class InitializeMixin:
 
 @register_mixin
 class ProgMixin:
-    def _make_prog(harn, chunksize=None, **kw):
+    def _make_prog(harn, *args, **kw):
+        chunksize = kw.pop('chunksize', None)
         if harn.config['use_tqdm'] is not None:
             harn.config['prog_backend'] = 'tqdm' if harn.config['use_tqdm'] else 'progiter'
 
@@ -530,7 +535,7 @@ class ProgMixin:
             Prog = functools.partial(ub.ProgIter, chunksize=chunksize, verbose=1)
         else:
             raise KeyError(harn.config['prog_backend'])
-        return Prog(**kw)
+        return Prog(*args, **kw)
 
     def _batch_msg(harn, metric_dict, batch_size, learn=False):
         parts = ['{}:{:.3f}'.format(k, v) for k, v in metric_dict.items()]
@@ -880,7 +885,10 @@ class SnapshotCallbacks:
                     # This is handled via state
                     pass
                 else:
-                    harn.scheduler.step(epoch=harn.epoch - 1)
+                    if getattr(harn.scheduler, '__netharn_redesign__', False):
+                        harn.scheduler.step(epoch=harn.epoch)
+                    else:
+                        harn.scheduler.step(epoch=harn.epoch - 1)
 
 
 @register_mixin
@@ -892,32 +900,35 @@ class ScheduleMixin:
         """
         optim_lrs = {group['lr'] for group in harn.optimizer.param_groups}
 
-        if harn.scheduler is None:
-            assert harn.optimizer is not None
-            lrs = set(map(lambda group: group['lr'], harn.optimizer.param_groups))
-        elif hasattr(harn.scheduler, '_current_lrs'):
-            lrs = set(harn.scheduler._current_lrs())
-        elif hasattr(harn.scheduler, 'get_lrs'):
-            # Prefered netharn scheduler style
-            lrs = harn.scheduler.get_lrs()
-        elif hasattr(harn.scheduler, 'get_lr'):
-            # Handle torch schedulers
-            lr = harn.scheduler.get_lr()
-            lrs = set(lr) if ub.iterable(lr) else {lr}
+        if 0 and __debug__:
+            if harn.scheduler is None:
+                assert harn.optimizer is not None
+                lrs = set(map(lambda group: group['lr'], harn.optimizer.param_groups))
+            elif hasattr(harn.scheduler, '_current_lrs'):
+                lrs = set(harn.scheduler._current_lrs())
+            elif hasattr(harn.scheduler, 'get_lrs'):
+                # Prefered netharn scheduler style
+                lrs = harn.scheduler.get_lrs()
+            elif hasattr(harn.scheduler, 'get_lr'):
+                # Handle torch schedulers
+                lr = harn.scheduler.get_lr()
+                lrs = set(lr) if ub.iterable(lr) else {lr}
+            else:
+                # workaround for ReduceLROnPlateau
+                lrs = {group['lr'] for group in harn.scheduler.optimizer.param_groups}
+
+            optim_lrs = sorted(optim_lrs)
+            lrs = sorted(lrs)
+
+            if not np.isclose(optim_lrs, lrs):
+                harn.error('[ERROR] optim_lrs = {!r}'.format(optim_lrs))
+                harn.error('[ERROR] lrs = {!r}'.format(lrs))
+                harn.error('[ERROR] epoch = {!r}'.format(harn.epoch))
+                warnings.warn(
+                    'optimizer and scheduler are out of sync')
+                # raise AssertionError(
         else:
-            # workaround for ReduceLROnPlateau
-            lrs = {group['lr'] for group in harn.scheduler.optimizer.param_groups}
-
-        optim_lrs = sorted(optim_lrs)
-        lrs = sorted(lrs)
-
-        if not np.isclose(optim_lrs, lrs):
-            harn.error('[ERROR] optim_lrs = {!r}'.format(optim_lrs))
-            harn.error('[ERROR] lrs = {!r}'.format(lrs))
-            harn.error('[ERROR] epoch = {!r}'.format(harn.epoch))
-            warnings.warn(
-                'optimizer and scheduler are out of sync')
-            # raise AssertionError(
+            lrs = optim_lrs
         return lrs
 
     def _check_termination(harn):
@@ -944,6 +955,12 @@ class ScheduleMixin:
         epoch_that_just_finished = harn.epoch
         if harn.scheduler is None:
             pass
+        elif getattr(harn.scheduler, '__netharn_redesign__', False):
+            # New netharn style schedulers step to the epoch you want them to
+            # step to. This means we step them to the next epoch. This is
+            # different than the standard torch behavior, which uses prev_epoch
+            # as the primative.
+            harn.scheduler.step(epoch=epoch_that_just_finished + 1)
         elif getattr(harn.scheduler, '__batchaware__', False):
             # For netharn style detectors step_spoch will change epoch instead
             # of last_epoch
@@ -1087,7 +1104,6 @@ class CoreMixin:
 
         harn.info('\n\n\n')
         harn.info('training completed')
-        harn.info('current lrs: {}'.format(harn._current_lrs()))
 
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
@@ -1141,8 +1157,16 @@ class CoreMixin:
 
         harn.debug('=== start epoch {} ==='.format(harn.epoch))
 
-        current_lr = max(harn._current_lrs())
-        harn.log_value('epoch lr', current_lr, harn.epoch)
+        # current_lr = max(harn._current_lrs())
+        # Log learning rate and momentum
+        from netharn.schedulers.scheduler_redesign import _get_optimizer_values
+        for attr in ['lr', 'momentum']:
+            try:
+                lr = max(_get_optimizer_values(harn.optimizer, attr))
+                harn.log_value('epoch ' + attr, lr, harn.epoch)
+            except KeyError:
+                harn.warn('No optimizer attr={}'.format(attr))
+                raise
 
         harn.current_tag = None
         harn.before_epochs()
@@ -1209,9 +1233,21 @@ class CoreMixin:
             harn.main_prog.update(1)
 
     @profiler.profile
-    def _run_epoch(harn, loader, tag, learn=False):
+    def _run_epoch(harn, loader, tag, learn=False, max_iter=None):
         """
         evaluate the model on test / train / or validation data
+
+        Args:
+            loader : the loader for your current data split (this will
+                usually be harn.loaders[tag]
+
+            tag : the label for the loader's data split
+
+            learn (bool, default=False): if True, the weights of
+                harn.model are updated by harn.optimizer
+
+            max_iter (int, default=None): if specified, only runs this
+               many iterations at max.
         """
         harn.debug('_run_epoch {}, tag={}, learn={}'.format(harn.epoch, tag, learn))
         harn.debug(' * len(loader) = {}'.format(len(loader)))
@@ -1236,7 +1272,13 @@ class CoreMixin:
         else:
             position = (list(harn.loaders.keys()).index(tag) +
                         harn.main_prog.pos + 1)
-        prog = harn._make_prog(desc=desc, total=len(loader),
+
+        if max_iter is None:
+            n_batches = len(loader)
+        else:
+            n_batches = min(max_iter, len(loader))
+
+        prog = harn._make_prog(desc=desc, total=n_batches,
                                disable=not harn.config['show_prog'],
                                position=position,
                                chunksize=bsize, leave=True, dynamic_ncols=True)
@@ -1265,7 +1307,7 @@ class CoreMixin:
             harn.debug('Starting batch iteration for tag={}, epoch={}'.format(
                 tag, harn.epoch))
 
-            for bx in range(len(loader)):
+            for bx in range(n_batches):
                 if DUMMY and bx > 2:
                     break
 
@@ -1277,7 +1319,19 @@ class CoreMixin:
                 batch = harn.prepare_batch(raw_batch)
 
                 # core learning / backprop
-                outputs, loss = harn._run_batch(bx, batch, learn=learn)
+                # outputs, loss = harn._run_batch(bx, batch, learn=learn)
+                # if profiler.IS_PROFILING:
+                #     torch.cuda.synchronize()
+
+                # Run the forward pass to compute outputs and loss
+                outputs, loss = harn.run_batch(batch)
+
+                # if profiler.IS_PROFILING:
+                #     torch.cuda.synchronize()
+
+                # Backpropogate to accumulate gradients and step the optimizer
+                if learn:
+                    harn.backpropogate(bx, batch, loss)
 
                 # measure train accuracy and other informative metrics
                 cur_metrics = harn._on_batch(bx, batch, outputs, loss)
@@ -1295,7 +1349,7 @@ class CoreMixin:
 
                     # log_iter_train, log_iter_test, log_iter_vali
                     if harn.check_interval('log_iter_' + tag, bx):
-                        iter_idx = (harn.epoch * len(loader) + bx)
+                        iter_idx = (harn.epoch * n_batches + bx)
                         for key, value in ave_metrics.items():
                             harn.log_value(tag + ' iter ' + key, value, iter_idx)
 
@@ -1305,6 +1359,11 @@ class CoreMixin:
                 # Some schedulers update every batch
                 if learn:
                     harn._step_scheduler_batch()
+
+            # Ensure the data loader is shutdown properly
+            if hasattr(batch_iter, 'shutdown'):
+                batch_iter._shutdown_workers()
+            batch_iter = None
 
         # do a final step when bstep > 1, so the last few batches arent skipped
         # if harn.dynamics['batch_step'] > 1:
@@ -1333,6 +1392,10 @@ class CoreMixin:
     @profiler.profile
     def _run_batch(harn, bx, batch, learn=False):
         """
+        The internals that run `run_batch` and `backpropogate`
+
+        DEPRICATE?
+
         batch with weight updates
         """
         if profiler.IS_PROFILING:
@@ -1425,15 +1488,6 @@ class CoreCallbacks:
     We encourage you to overwrite these methods
     """
 
-    def _tovar(harn, data):
-        # DEPRICATE? I don't think this is needed anymore
-        # handle cases when labels are unstructured
-        if isinstance(data, list):
-            # handle one level of nesting
-            return [harn.xpu.variable(d) for d in data]
-        else:
-            return harn.xpu.variable(data)
-
     def after_initialize(harn):
         """
         Perform a custom initialization step (not usually needed)
@@ -1496,7 +1550,7 @@ class CoreCallbacks:
 
     @profiler.profile
     def backpropogate(harn, bx, batch, loss):
-        """Custom callback which can overwrite the default backwards pass
+        """Custom callback which can overwrite the default backward pass
 
         Overload is generally not necessary for this function.
 
@@ -1589,13 +1643,32 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
     Note:
         The following methods can be overriden to customize the harness
 
-            * prepare_batch(harn, raw_batch)
+            * prepare_batch(harn, raw_batch) - gets result of `next(loader)`
+                and then moves the data onto the GPU / does dynamic preproc.
 
-            * run_batch(harn, batch)
+            * run_batch(harn, batch) - runs the `forward` method of your model,
+                computes the loss, and returns both.
 
-            * on_batch(harn, batch, outputs, loss)
+            * on_batch(harn, batch, outputs, loss) - does nothing by default.
+                This is where you should log statistics about a batch.
 
-            * on_epoch(harn)
+            * on_epoch(harn) - does nothing by default. This is where you
+                should compute quality metrics about the problem your
+                addressing.
+
+
+        Also see:
+
+            * after_initialize(harn) - initialize your own custom harn
+                attribute variables. Runs before `harn.run()`
+
+            * before_epochs(harn) - before train/vali/test epochs are done
+
+            * after_epochs(harn) - runs after train/vali/test epochs are done
+
+            * backpropogate(harn, bx, batch, loss) - calls `loss.backward()`,
+                steps the optimizer, and zeros the gradients. (also handles
+                the "dynamics", but that might get depricated, so ignore it.)
 
     Args:
         hyper (netharn.HyperParams | dict):
@@ -1625,14 +1698,16 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             layers that may not be in torchvision.
 
         initializer (netharn.Initializer):
-            pass
+            An initialization strategy (usually either KaimingNormal if
+            starting from scratch or Pretrained if doing transfer learning)
 
         optimizer (torch.optim.optimizer.Optimizer) :
             Optimization algorithm like SGD or ADAM. SeeAlso: `netharn.optimizers`
 
         scheduler (torch.optim.lr_scheduler._LRScheduler) :
             Learning rate scheduler. SeeAlso: `netharn.schedulers` for a schedulers
-            that are not currently implemented in torch.
+            that are not currently implemented in torch. Note that the
+            newstyle-netharn schedulers can control momentum as well as lr.
 
         criterion (torch.nn.modules.loss._Loss) :
             Objective function / loss criterion. SeeAlso: `netharn.criterions`

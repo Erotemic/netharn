@@ -742,6 +742,9 @@ def imread(fpath, **kw):
     """
     reads image data in BGR format
 
+    TODO:
+        - [ ] read in rgb format by default
+
     Example:
         >>> # xdoctest: +REQUIRES(--network)
         >>> import tempfile
@@ -853,8 +856,9 @@ def imwrite(fpath, image, space='rgb'):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             # skimage writes in RGB, convert from BGR
-            image = convert_colorspace(image, space, dst_space='rgb',
-                                       implicit=True)
+            if get_num_channels(image) > 1:
+                image = convert_colorspace(image, space, dst_space='rgb',
+                                           implicit=True)
             return skimage.io.imsave(fpath, image)
     else:
         # OpenCV writes in bgr

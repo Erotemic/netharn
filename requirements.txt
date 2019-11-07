@@ -57,6 +57,16 @@ tensorboard_logger >= 0.1.0  # actually optional
 scikit-learn >= 0.19.1
 
 
+# Actually Optional
+# =================
+tensorboard >= 1.8.0
+
+
+# Python 2.7 Only
+# ====================
+qualname>=0.1.0;python_version < '3.0' 
+
+
 # Other
 # =====
 # I like these packages, but I'm not using them
@@ -69,4 +79,3 @@ scikit-learn >= 0.19.1
 # scikit-image
 # onnx
 # sortedcontainers
-# tensorboard >= 1.8.0

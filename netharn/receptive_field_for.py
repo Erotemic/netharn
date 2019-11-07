@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import torch
+import copy
 import six  # NOQA
 import torch.nn as nn
 import torchvision
@@ -50,15 +51,52 @@ def compute_type(*types):
 # ReceptiveField = dict
 
 class ReceptiveField(OrderedDict):
-    """ container for holding a receptive feild """
+    """
+    container for holding a receptive feild
+
+    Example:
+        >>> self = ReceptiveField.coerce({
+        >>>     'stride': np.array([4]),
+        >>>     'shape': np.array([1]),
+        >>>     'crop': np.array([0]),
+        >>> })
+        >>> self_copy = copy.deepcopy(self)
+    """
     def __init__(self, data, hidden=None):
-        OrderedDict.__init__(self, sorted(OrderedDict(data).items()))
-        self.data = data
+        # Inheriting from an odict consistently between python 2/3 is weird
+        data2 = OrderedDict(sorted(OrderedDict(data).items()))
+        OrderedDict.__init__(self, data2)
+        self.data = data2
         self.hidden = hidden
 
+    def __copy__(self):
+        self_copy = ReceptiveField(self.data, self.hidden)
+        return self_copy
+
+    def __deepcopy__(self, memo):
+        data_copy = copy.deepcopy(self.data, memo)
+        hidden_copy = copy.deepcopy(self.hidden, memo)
+        self_copy = ReceptiveField(data_copy, hidden_copy)
+        return self_copy
 
     @classmethod
     def coerce(cls, data, hidden=None):
+        """
+        Example:
+            >>> # test weird python2 failure case
+            >>> from netharn.receptive_field_for import *
+            >>> cls = ReceptiveField
+            >>> data = [(0, ReceptiveFieldFor.input())]
+            >>> self = cls.coerce(data)
+            >>> print(ub.repr2(self, with_dtype=False))
+            {
+                0: {
+                    'crop': np.array([0., 0.]),
+                    'shape': np.array([1., 1.]),
+                    'stride': np.array([1., 1.]),
+                },
+            }
+        """
         # TODO: make this work like OutputShape
         if isinstance(data, cls):
             if hidden is None:
@@ -69,8 +107,8 @@ class ReceptiveField(OrderedDict):
             self = cls(data, hidden)
         return self
 
-    def __getitem__(self, key):
-        return self.data[key]
+    # def __getitem__(self, key):
+    #     return self.data[key]
 
 
 class HiddenFields(OrderedDict, ub.NiceRepr):
@@ -255,7 +293,7 @@ class _TorchMixin(object):
         # correct. To use the crop in practice take the floor / ceil of the
         # final result, but in this intermediate stage, subpixel crops are
         # perfectly valid.
-        crop = ((support / 2) - p)
+        crop = ((support / 2.0) - p)
 
         field = ReceptiveField.coerce({
             # The new stride only depends on the layer stride and the previous
@@ -291,6 +329,7 @@ class _TorchMixin(object):
         # raise NotImplementedError(
         #     'Cannot compute receptive field shape on a Linear layer')
 
+    @staticmethod
     def _kernelized_tranpose(module, input_field=None):
         """
         Receptive field formula for pooling layers
@@ -538,12 +577,13 @@ class _TorchMixin(object):
     def sequential(module, input_field=None):
         """
         Example:
+            >>> import netharn as nh
             >>> self = nn.Sequential(
             >>>     nn.Conv2d(2, 3, kernel_size=3),
             >>>     nn.Conv2d(3, 5, kernel_size=3),
             >>>     nn.Conv2d(5, 7, kernel_size=3),
             >>> )
-            >>> rfield = ReceptiveFieldFor(self)()
+            >>> rfield = nh.ReceptiveFieldFor(self)()
             >>> print('rfield = {}'.format(ub.repr2(rfield, nl=1, with_dtype=False)))
             rfield = {
                 'crop': np.array([3., 3.]),
@@ -555,11 +595,14 @@ class _TorchMixin(object):
             input_field = ReceptiveFieldFor.input()
         rfield = input_field
         hidden = HiddenFields()
+        iter_ = iter(module._modules.items())
         for key, child in module._modules.items():
+            key, child = next(iter_)
             if hasattr(child, 'receptive_field_for'):
                 rfield = hidden[key] = child.receptive_field_for(rfield)
             else:
                 rfield = hidden[key] = ReceptiveFieldFor(child)(rfield)
+        rfield = ReceptiveField.coerce(rfield)
         rfield.hidden = hidden
         return rfield
 
@@ -719,7 +762,7 @@ class _TorchvisionMixin(object):
         rfield_flatten = ReceptiveField.coerce(dict(**rfield))
         # not sure if this is 100% correct
         rfield_flatten['shape'] = rfield['shape'] + (spatial_shape - 1) * rfield['stride']
-        hidden['flatten'] = rfield = rfield_flatten
+        rfield = hidden['flatten'] = rfield_flatten
 
         # The reshape operation will blend the receptive fields of the inputs
         # but it will depend on the output shape of the layer.

@@ -103,11 +103,26 @@ def _rectify_class(lookup, arg, kw):
 
 def _class_default_params(cls):
     """
-    cls = torch.optim.Adam
+    CommandLine:
+        xdoctest -m netharn.hyperparams _class_default_params
+
+    Doctest:
+        >>> cls = torch.optim.Adam
+        >>> _class_default_params(cls)
+        >>> cls = initializers.KaimingNormal
+        >>> print(ub.repr2(_class_default_params(cls), nl=0))
+        {'mode': 'fan_in', 'param': 0}
+        >>> cls = initializers.NoOp
+        >>> _class_default_params(cls)
+        {}
     """
     if six.PY2:
-        import funcsigs
-        sig = funcsigs.signature(cls)
+        if cls.__init__ is object.__init__:
+            # hack for python2 classes without __init__
+            return {}
+        else:
+            import funcsigs
+            sig = funcsigs.signature(cls)
     else:
         import inspect
         sig = inspect.signature(cls)

@@ -18,7 +18,10 @@ def _dump_monitor_tensorboard(harn):
         >>> from netharn.mixins import _dump_monitor_tensorboard
         >>> harn = _demodata_toy_harn()
         >>> harn.run()
-        >>> _dump_monitor_tensorboard(harn)
+        >>> try:
+        >>>     _dump_monitor_tensorboard(harn)
+        >>> except ImportError:
+        >>>     pass
     """
     import ubelt as ub
     import netharn as nh
@@ -35,8 +38,9 @@ def _dump_monitor_tensorboard(harn):
                  ('train_epoch' in key or
                   'vali_epoch' in key or
                   'test_epoch' in key or
-                  'epoch_lr' in key)]
-    y01_measures = ['_acc', '_ap', '_mAP', '_auc', '_mcc', '_brier']
+                  # 'epoch_lr' in key)
+                  'epoch_' in key)]
+    y01_measures = ['_acc', '_ap', '_mAP', '_auc', '_mcc', '_brier', '_mauc']
     y0_measures = ['error', 'loss']
 
     out_dpath = ub.ensuredir((harn.train_dpath, 'monitor', 'tensorboard'))

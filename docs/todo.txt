@@ -1,0 +1,29 @@
+
+TODO:
+    TrainingModes:
+        [x] categorical
+            see demos on:
+                [x] MNIST
+                [x] Cifar100
+                [ ] ImageNet
+                [ ] ...
+        [ ] segmentation
+            [ ] semantic
+                [ ] CamVid
+                [ ] CityScapes
+                [ ] Diva
+                [ ] UrbanMapper3D
+                [ ] ...
+            [ ] instance
+                [ ] UrbanMapper3D
+        [ ] tracking
+            [ ] ...
+        [ ] detection
+            [ ] ...
+            [ ] VOC2007
+        [ ] identification
+            [ ] 1-vs-all
+            [ ] N-vs-all
+            [ ] (1-vs-1) pairwise
+            [ ] (N-vs-N)
+            [ ] ...
