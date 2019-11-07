@@ -46,6 +46,7 @@ imgaug >= 0.2.6
 pygtrie >= 2.2
 protobuf >= 3.6.0
 tensorboard_logger >= 0.1.0  # actually optional
+scikit-learn >= 0.19.1
 
 
 # Other

@@ -602,6 +602,13 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
         """
         Makes random boxes
 
+        Args:
+            num (int): number of boxes to generate
+            scale (float): size of imgdims
+            format (str): format of boxes to be created (e.g. tlbr, xywh)
+            anchors (ndarray): width / heights of anchor boxes to perterb and
+                randomly place.
+
         Example:
             >>> # xdoctest: +IGNORE_WHITESPACE
             >>> Boxes.random(3, rng=0, scale=100)
@@ -705,7 +712,7 @@ class Boxes(ub.NiceRepr, _BoxConversionMixins, _BoxPropertyMixins, _BoxTransform
             >>> self.take([])
             <Boxes(tlbr, array([], shape=(0, 4), dtype=int64))>
         """
-        if len(self.data.shape) != 2:
+        if len(self) and len(self.data.shape) != 2:
             raise ValueError('data must be 2d got {}d'.format(len(self.data.shape)))
         self2 = self if inplace else self.copy()
         self2.data = self2.data.take(idxs, axis=axis)

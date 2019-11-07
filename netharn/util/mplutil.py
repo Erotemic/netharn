@@ -947,16 +947,13 @@ def copy_figure_to_clipboard(fig):
 
 
 def dict_intersection(dict1, dict2):
-    r"""
+    """
     Args:
         dict1 (dict):
         dict2 (dict):
 
     Returns:
         dict: mergedict_
-
-    CommandLine:
-        python -m utool.util_dict --exec-dict_intersection
 
     Example:
         >>> # ENABLE_DOCTEST
@@ -1274,7 +1271,9 @@ def distinct_colors(N, brightness=.878, randomize=True, hue_range=(0.0, 1.0), cm
         HSV_tuples = [(hue, sat, val) for hue in hue_list]
         RGB_tuples = [colorsys.hsv_to_rgb(*x) for x in HSV_tuples]
     if randomize:
-        deterministic_shuffle(RGB_tuples)
+        from netharn import util
+        rng = util.ensure_rng(rng=0)
+        rng.shuffle(RGB_tuples)
     return RGB_tuples
 
 
@@ -1313,29 +1312,6 @@ def distinct_markers(num, style='astrisk', total=None, offset=0):
         for count in range(num)
     ]
     return marker_list
-
-
-def deterministic_shuffle(list_, rng=0):
-    r"""
-    Args:
-        list_ (list):
-        seed (int):
-
-    Returns:
-        list: list_
-
-    Example:
-        >>> list_ = [1, 2, 3, 4, 5, 6]
-        >>> seed = 1
-        >>> list_ = deterministic_shuffle(list_, seed)
-        >>> result = str(list_)
-        >>> print(result)
-        [3, 2, 5, 1, 4, 6]
-    """
-    from netharn import util
-    rng = util.ensure_rng(rng)
-    rng.shuffle(list_)
-    return list_
 
 
 _BASE_FNUM = 9001
@@ -1634,16 +1610,21 @@ def aggensure():
             set_mpl_backend('agg')
 
 
-def set_mpl_backend(backend):
+def set_mpl_backend(backend, verbose=None):
     """
     Args:
         backend (str): name of backend to use (e.g. Agg, PyQt)
     """
     import sys
     import matplotlib as mpl
+    if verbose:
+        print('set_mpl_backend backend={}'.format(backend))
     if backend.lower().startswith('qt'):
         # handle interactive qt case
         qtensure()
+    current_backend = mpl.get_backend()
+    if verbose:
+        print('* current_backend = {!r}'.format(current_backend))
     if backend != mpl.get_backend():
         # If we have already imported pyplot, then we need to use experimental
         # behavior. Otherwise, we can just set the backend.
@@ -1654,23 +1635,48 @@ def set_mpl_backend(backend):
             mpl.use(backend)
 
 
-def autompl():
+def autompl(verbose=0):
     """
     Uses platform heuristics to automatically set the mpl backend.
     If no display is available it will be set to agg, otherwise we will try to
     use the cross-platform Qt5Agg backend.
+
+    References:
+        https://stackoverflow.com/questions/637005/how-to-check-if-x-server-is-running
     """
     import os
     import sys
+    if verbose:
+        print('AUTOMPL')
     if sys.platform.startswith('win32'):
         # TODO: something reasonable
         pass
     else:
         DISPLAY = os.environ.get('DISPLAY', '')
+        if DISPLAY:
+            # Check if we can actually connect to X
+            info = ub.cmd('xdpyinfo', shell=True)
+            if verbose:
+                # python -c "import ubelt as ub; ub.Timerit(10).call(lambda: ub.cmd('xset q', shell=True)['ret']).print()"
+                # python -c "import ubelt as ub; ub.Timerit(10).call(lambda: ub.cmd('xdpyinfo', shell=True)['ret']).print()"
+                print('xdpyinfo-info = {}'.format(ub.repr2(info)))
+            if info['ret'] != 0:
+                DISPLAY = None
+
+        if verbose:
+            print(' * DISPLAY = {!r}'.format(DISPLAY))
+
         if not DISPLAY:
-            set_mpl_backend('agg')
+            backend = 'agg'
         else:
-            set_mpl_backend('Qt5Agg')
+            if ub.modname_to_modpath('PyQt5'):
+                backend = 'Qt5Agg'
+            elif ub.modname_to_modpath('PyQt4'):
+                backend = 'Qt4Agg'
+            else:
+                backend = 'agg'
+
+        set_mpl_backend(backend, verbose=verbose)
 
 
 def imshow(img,
@@ -1720,12 +1726,11 @@ def imshow(img,
 
     Ignore:
         >>> autompl()
-        >>> img_fpath = ut.grab_test_imgpath('carl.jpg')
-        >>> img = util.imread(img_fpath)
+        >>> img = util.grab_test_image('carl')
         >>> (fig, ax) = imshow(img)
         >>> result = ('(fig, ax) = %s' % (str((fig, ax)),))
         >>> print(result)
-        >>> ut.show_if_requested()
+        >>> nh.util.show_if_requested()
     """
     import matplotlib as mpl
     import matplotlib.pyplot as plt
@@ -2213,7 +2218,7 @@ def interpolated_colormap(colors, resolution=64, space='lch-ab'):
             fracs = np.linspace(0, 1, len(colors_inputs))
             colors_inputs = list(zip(fracs, colors_inputs))
 
-    print('colors_inputs = {!r}'.format(colors_inputs))
+    # print('colors_inputs = {!r}'.format(colors_inputs))
     colors = [Color(c) for f, c in colors_inputs]
     fracs = [f for f, c in colors_inputs]
 
@@ -2551,7 +2556,7 @@ def draw_boxes(boxes, box_format='tlwh', color='blue', labels=None,
 
     boxes = np.asarray(boxes)
 
-    if box_format == 'tlwh':
+    if box_format == 'tlwh' or box_format == 'xywh':
         tlwh = boxes
     elif box_format == 'cxywh':
         cx, cy, w, h = boxes.T[0:4]
@@ -2857,7 +2862,11 @@ class Color(ub.NiceRepr):
         return color01
 
     @classmethod
-    def named_colors():
+    def named_colors(cls):
+        """
+        Returns:
+            List[str]: names of colors that Color accepts
+        """
         from matplotlib import colors as mcolors
         names = sorted(list(mcolors.BASE_COLORS.keys()) + list(mcolors.CSS4_COLORS.keys()))
         return names
@@ -2880,6 +2889,68 @@ class Color(ub.NiceRepr):
             return distinct_colors
         else:
             return [Color(c, space='rgb').as01(space=space) for c in distinct_colors]
+
+
+def make_legend_img(classname_to_rgb, dpi=96, shape=(200, 200), transparent=False):
+    """
+    Makes an image of a categorical legend
+
+    CommandLine:
+        python -m netharn.util.mplutil make_legend_img
+
+    Example:
+        >>> import netharn as nh
+        >>> classname_to_rgb = {
+        >>>     'blue': nh.util.Color('blue').as01(),
+        >>>     'red': nh.util.Color('red').as01(),
+        >>> }
+        >>> img = make_legend_img(classname_to_rgb)
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> nh.util.autompl()
+        >>> nh.util.imshow(img)
+        >>> nh.util.show_if_requested()
+    """
+    # import matplotlib as mpl
+    # mpl.use('agg', force=False, warn=False)
+    from netharn.util import mplutil
+    from matplotlib import pyplot as plt
+
+    def append_phantom_legend_label(label, color, type_='line', alpha=1.0, ax=None):
+        if ax is None:
+            ax = plt.gca()
+        _phantom_legend_list = getattr(ax, '_phantom_legend_list', None)
+        if _phantom_legend_list is None:
+            _phantom_legend_list = []
+            setattr(ax, '_phantom_legend_list', _phantom_legend_list)
+        if type_ == 'line':
+            phantom_actor = plt.Line2D((0, 0), (1, 1), color=color, label=label,
+                                       alpha=alpha)
+        else:
+            phantom_actor = plt.Circle((0, 0), 1, fc=color, label=label,
+                                       alpha=alpha)
+        _phantom_legend_list.append(phantom_actor)
+
+    fig = plt.figure(dpi=dpi)
+
+    w, h = shape[1] / dpi, shape[0] / dpi
+    fig.set_size_inches(w, h)
+
+    ax = fig.add_subplot('111')
+    for label, color in classname_to_rgb.items():
+        append_phantom_legend_label(label, color, ax=ax)
+
+    _phantom_legend_list = getattr(ax, '_phantom_legend_list', None)
+    if _phantom_legend_list is None:
+        _phantom_legend_list = []
+        setattr(ax, '_phantom_legend_list', _phantom_legend_list)
+    ax.legend(handles=_phantom_legend_list)
+    ax.grid(False)
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+    plt.axis('off')
+    legend_img = mplutil.render_figure_to_image(fig, dpi=dpi, transparent=transparent)
+    plt.close(fig)
+    return legend_img
 
 if __name__ == '__main__':
     r"""

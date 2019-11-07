@@ -344,6 +344,29 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         loader = torch_data.DataLoader(self, *args, **kwargs)
         return loader
 
+    def to_coco(self):
+        """ Transform VOC to coco-style dataset """
+        import netharn as nh
+        voc_dset = self
+        coco_dset = nh.data.coco_api.CocoDataset()
+        coco_dset._build_index()
+
+        for cx, catname in enumerate(self.label_names):
+            coco_dset.add_category(catname, cid=int(cx))
+
+        for gx, gpath in enumerate(ub.ProgIter(voc_dset.gpaths,
+                                               label='convert coco')):
+            coco_dset.add_image(gpath, gid=int(gx))
+            voc_anno = self._load_annotation(gx)
+
+            for i in range(len(voc_anno['boxes'])):
+                box = nh.util.Boxes(voc_anno['boxes'][i], 'tlbr')
+                cx = voc_anno['gt_classes'][i]
+                weight = 1 - voc_anno['gt_ishard'][i]
+                coco_dset.add_annotation(
+                    gid=int(gx), cid=int(cx), bbox=box, weight=weight)
+        return coco_dset
+
 
 if __name__ == '__main__':
     r"""

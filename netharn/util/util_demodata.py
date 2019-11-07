@@ -14,3 +14,9 @@ def grab_test_image(key='astro', space='rgb'):
     bgr = cv2.imread(fpath)
     image = convert_colorspace(bgr, space, src_space='bgr')
     return image
+
+
+# def grab_test_image_fpath(key='carl'):
+#     assert key == 'carl'
+#     fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
+#     return fpath

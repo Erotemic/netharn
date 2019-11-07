@@ -2,7 +2,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 import glob
 from os.path import expanduser, exists, join, basename
-import ubelt as ub
+import ubelt as ub  # NOQA
 import warnings
 import numpy as np
 import cv2
@@ -74,12 +74,6 @@ def imscale(img, scale, interpolation=None):
     return new_img, new_scale
 
 
-def grab_test_imgpath(key='carl'):
-    assert key == 'carl'
-    fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
-    return fpath
-
-
 def adjust_gamma(img, gamma=1.0):
     """
     gamma correction function
@@ -89,7 +83,7 @@ def adjust_gamma(img, gamma=1.0):
 
     Ignore:
         >>> from netharn import util
-        >>> fpath = grab_test_imgpath()
+        >>> fpath = util.grab_test_image()
         >>> img = util.imread(fpath)
         >>> gamma = .5
         >>> imgf = ensure_float01(img)
@@ -141,12 +135,12 @@ def make_channels_comparable(img1, img2):
         python -m netharn.util.imutil make_channels_comparable
 
     Example:
-        >>> # DISABLE_DOCTEST
+        >>> import itertools as it
         >>> wh_basis = [(5, 5), (3, 5), (5, 3), (1, 1), (1, 3), (3, 1)]
         >>> for w, h in wh_basis:
         >>>     shape_basis = [(w, h), (w, h, 1), (w, h, 3)]
         >>>     # Test all permutations of shap inputs
-        >>>     for shape1, shape2 in ut.product(shape_basis, shape_basis):
+        >>>     for shape1, shape2 in it.product(shape_basis, shape_basis):
         >>>         print('*    input shapes: %r, %r' % (shape1, shape2))
         >>>         img1 = np.empty(shape1)
         >>>         img2 = np.empty(shape2)
@@ -179,9 +173,14 @@ def make_channels_comparable(img1, img2):
             # Both images have 3 dims.
             # Check if either have color, then check for alpha
             if c1 == 1 and c2 == 1:
-                raise AssertionError('UNREACHABLE: Both are 3-grayscale')
+                # raise AssertionError('UNREACHABLE: Both are 3-grayscale')
+                pass
+            elif c1 == 4 and c2 == 4:
+                # raise AssertionError('UNREACHABLE: Both are 3-alpha')
+                pass
             elif c1 == 3 and c2 == 3:
-                raise AssertionError('UNREACHABLE: Both are 3-color')
+                # raise AssertionError('UNREACHABLE: Both are 3-color')
+                pass
             elif c1 == 1 and c2 == 3:
                 img1 = np.tile(img1, 3)
             elif c1 == 3 and c2 == 1:
@@ -322,9 +321,11 @@ def _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2):
     # (numer1 + numer2)
     np.add(rgb3, temp_rgb, out=rgb3)
 
-    with np.errstate(invalid='ignore'):
-        np.divide(rgb3, alpha3[..., None], out=rgb3)
-    rgb3[alpha3 == 0] = 0
+    # removing errstate is actually a significant speedup
+    # with np.errstate(invalid='ignore'):
+    np.divide(rgb3, alpha3[..., None], out=rgb3)
+    if not np.all(alpha3):
+        rgb3[alpha3 == 0] = 0
     return rgb3, alpha3
 
 
@@ -742,6 +743,189 @@ def imwrite(fpath, image, **kw):
             return skimage.io.imsave(fpath, image)
     else:
         return cv2.imwrite(fpath, image)
+
+
+def stack_images(img1, img2, axis=0, resize=None, interpolation=None,
+                 overlap=0):
+    """
+    Make a new image with the input images side-by-side
+
+    Args:
+        img1 (ndarray[ndim=2]):  image data
+        img2 (ndarray[ndim=2]):  image data
+        axis (int): axis to stack on (either 0 or 1)
+        resize (int, str, or None): if None image sizes are not modified,
+            otherwise resize resize can be either 0 or 1.  We resize the
+            `resize`-th image to match the `1 - resize`-th image. Can
+            also be strings "larger" or "smaller".
+        interpolation (int or str): string or cv2-style interpolation type.
+            only used if resize or overlap > 0
+        overlap (int): number of pixels to overlap. Using a negative
+            number results in a border.
+
+    Example:
+        >>> from netharn import util
+        >>> img1 = util.grab_test_image('carl', space='bgr')
+        >>> img2 = util.grab_test_image('astro', space='bgr')
+        >>> imgB, offs, sfs = stack_images(img1, img2, axis=0, resize=0,
+        >>>                                overlap=-10)
+        >>> woff, hoff = offs
+        >>> # verify results
+        >>> result = str((imgB.shape, woff, hoff))
+        >>> print(result)
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import netharn as nh
+        >>> nh.util.autompl()
+        >>> nh.util.imshow(imgB, colorspace='bgr')
+        >>> wh1 = np.multiply(img1.shape[0:2][::-1], sfs[0])
+        >>> wh2 = np.multiply(img2.shape[0:2][::-1], sfs[1])
+        >>> nh.util.draw_boxes([(0, 0, wh1[0], wh1[1])], 'xywh', color=(1.0, 0, 0))
+        >>> nh.util.draw_boxes([(woff[1], hoff[1], wh2[0], wh2[0])], 'xywh', color=(0, 1.0, 0))
+        >>> nh.util.show_if_requested()
+        ((662, 512, 3), (0.0, 0.0), (0, 150))
+    """
+
+    def _rectify_axis(img1, img2, axis):
+        """ determine if we are stacking in horzontally or vertically """
+        (h1, w1) = img1.shape[0: 2]  # get chip dimensions
+        (h2, w2) = img2.shape[0: 2]
+        woff, hoff = 0, 0
+        vert_wh  = max(w1, w2), h1 + h2
+        horiz_wh = w1 + w2, max(h1, h2)
+        if axis is None:
+            # Display the orientation with the better (closer to 1) aspect ratio
+            vert_ar  = max(vert_wh) / min(vert_wh)
+            horiz_ar = max(horiz_wh) / min(horiz_wh)
+            axis = 0 if vert_ar < horiz_ar else 1
+        if axis == 0:  # vertical stack
+            wB, hB = vert_wh
+            hoff = h1
+        elif axis == 1:
+            wB, hB = horiz_wh
+            woff = w1
+        else:
+            raise ValueError('axis can only be 0 or 1')
+        return axis, h1, h2, w1, w2, wB, hB, woff, hoff
+
+    def _round_dsize(dsize, scale):
+        """
+        Returns an integer size and scale that best approximates
+        the floating point scale on the original size
+
+        Args:
+            dsize (tuple): original width height
+            scale (float or tuple): desired floating point scale factor
+        """
+        try:
+            sx, sy = scale
+        except TypeError:
+            sx = sy = scale
+        w, h = dsize
+        new_w = int(round(w * sx))
+        new_h = int(round(h * sy))
+        new_scale = new_w / w, new_h / h
+        new_dsize = (new_w, new_h)
+        return new_dsize, new_scale
+
+    def _ramp(shape, axis):
+        """ nd ramp function """
+        newshape = [1] * len(shape)
+        reps = list(shape)
+        newshape[axis] = -1
+        reps[axis] = 1
+        basis = np.linspace(0, 1, shape[axis])
+        data = basis.reshape(newshape)
+        return np.tile(data, reps)
+
+    def _blend(part1, part2, alpha):
+        """ blending based on an alpha mask """
+        part1, alpha = make_channels_comparable(part1, alpha)
+        part2, alpha = make_channels_comparable(part2, alpha)
+        partB = (part1 * (1.0 - alpha)) + (part2 * (alpha))
+        return partB
+
+    interpolation = _rectify_interpolation(interpolation, default=cv2.INTER_NEAREST)
+
+    img1, img2 = make_channels_comparable(img1, img2)
+    nChannels = get_num_channels(img1)
+
+    assert img1.dtype == img2.dtype, (
+        'img1.dtype=%r, img2.dtype=%r' % (img1.dtype, img2.dtype))
+
+    axis, h1, h2, w1, w2, wB, hB, woff, hoff = _rectify_axis(img1, img2, axis)
+
+    # allow for some overlap / blending of the images
+    if overlap:
+        if axis == 0:
+            hB -= overlap
+        else:
+            wB -= overlap
+    # Rectify both images to they are the same dimension
+    if resize:
+        # Compre the lengths of the width and height
+        length1 = img1.shape[1 - axis]
+        length2 = img2.shape[1 - axis]
+        if resize == 'larger':
+            resize = 0 if length1 > length2 else 1
+        elif resize == 'smaller':
+            resize = 0 if length1 < length2 else 1
+        if resize == 0:
+            tonew_sf2 = (1., 1.)
+            scale = length2 / length1
+            dsize, tonew_sf1 = _round_dsize(img1.shape[0:2][::-1], scale)
+            img1 = cv2.resize(img1, dsize, interpolation=interpolation)
+        elif resize == 1:
+            tonew_sf1 = (1., 1.)
+            scale = length1 / length2
+            dsize, tonew_sf2 = _round_dsize(img2.shape[0:2][::-1], scale)
+            img2 = cv2.resize(img2, dsize, interpolation=interpolation)
+        else:
+            raise ValueError('resize can only be 0 or 1')
+        axis, h1, h2, w1, w2, wB, hB, woff, hoff = _rectify_axis(img1, img2, axis)
+    else:
+        tonew_sf1 = (1., 1.)
+        tonew_sf2 = (1., 1.)
+
+    # Do image concatentation
+    if nChannels > 1 or len(img1.shape) > 2:
+        newshape = (hB, wB, nChannels)
+    else:
+        newshape = (hB, wB)
+    # Allocate new image for both
+    imgB = np.zeros(newshape, dtype=img1.dtype)
+
+    # Insert the images in the larger frame
+    if overlap:
+        if axis == 0:
+            hoff -= overlap
+        elif axis == 1:
+            woff -= overlap
+        # Insert the images
+        imgB[0:h1, 0:w1] = img1
+        imgB[hoff:(hoff + h2), woff:(woff + w2)] = img2
+        if overlap > 0:
+            # Blend the overlapping part
+            if axis == 0:
+                part1 = img1[-overlap:, :]
+                part2 = imgB[hoff:(hoff + overlap), 0:w1]
+                alpha = _ramp(part1.shape[0:2], axis=axis)
+                blended = _blend(part1, part2, alpha)
+                imgB[hoff:(hoff + overlap), 0:w1] = blended
+            elif axis == 1:
+                part1 = img1[:, -overlap:]
+                part2 = imgB[0:h1, woff:(woff + overlap)]
+                alpha = _ramp(part1.shape[0:2], axis=axis)
+                blended = _blend(part1, part2, alpha)
+                imgB[0:h1, woff:(woff + overlap)] = blended
+    else:
+        imgB[0:h1, 0:w1] = img1
+        imgB[hoff:(hoff + h2), woff:(woff + w2)] = img2
+
+    offset1 = (0.0, 0.0)
+    offset2 = (woff, hoff)
+    offset_tup = (offset1, offset2)
+    sf_tup = (tonew_sf1, tonew_sf2)
+    return imgB, offset_tup, sf_tup
 
 
 if __name__ == '__main__':

@@ -63,8 +63,9 @@ class CIFAR_FitHarn(nh.FitHarn):
 
         y_pred = output.data.max(dim=1)[1].cpu().numpy()
         y_true = label.data.cpu().numpy()
+        probs = output.data.cpu().numpy()
 
-        harn.batch_confusions.append((y_true, y_pred))
+        harn.batch_confusions.append((y_true, y_pred, probs))
 
     def on_epoch(harn):
         """
@@ -72,28 +73,45 @@ class CIFAR_FitHarn(nh.FitHarn):
         y_pred = np.array([1, 1, 1, 2, 1, 0, 0, 0, 2, 2])
         all_labels = np.array([0, 1, 2])
         """
-        from netharn.metrics import (confusion_matrix,
-                                     global_accuracy_from_confusion,
-                                     class_accuracy_from_confusion)
-        all_labels = np.arange(10)
+        from netharn.metrics import clf_report
 
-        all_trues, all_preds = zip(*harn.batch_confusions)
+        dset = harn.datasets[harn.current_tag]
+        target_names = dset.class_names
+
+        all_trues, all_preds, all_probs = zip(*harn.batch_confusions)
+
+        probs = np.vstack(all_probs)
         y_true = np.hstack(all_trues)
         y_pred = np.hstack(all_preds)
 
+        # Compute multiclass metrics (new way!)
+        report = clf_report.ovr_classification_report(
+            y_true, probs, target_names=target_names, metrics=[
+                'auc', 'ap', 'mcc', 'brier'
+            ])
+        #print(ub.repr2(report))
+
+        # from netharn.metrics import (confusion_matrix,
+        #                              global_accuracy_from_confusion,
+        #                              class_accuracy_from_confusion)
+        # all_labels = np.arange(10)
         # percent error really isn't a great metric, but its standard.
         errors = (y_true != y_pred)
         percent_error = errors.mean() * 100
+        # cfsn = confusion_matrix(y_true, y_pred, labels=all_labels)
 
-        cfsn = confusion_matrix(y_true, y_pred, labels=all_labels)
-
-        global_acc = global_accuracy_from_confusion(cfsn)
-        class_acc = class_accuracy_from_confusion(cfsn)
+        # global_acc = global_accuracy_from_confusion(cfsn)
+        # class_acc = class_accuracy_from_confusion(cfsn)
 
         metrics_dict = ub.odict()
-        metrics_dict['global_acc'] = global_acc
-        metrics_dict['class_acc'] = class_acc
+        # metrics_dict['global_acc'] = global_acc
+        # metrics_dict['class_acc'] = class_acc
+        metrics_dict['ave_brier'] = report['ave']['brier']
+        metrics_dict['ave_mcc'] = report['ave']['mcc']
+        metrics_dict['ave_auc'] = report['ave']['auc']
+        metrics_dict['ave_ap'] = report['ave']['ap']
         metrics_dict['percent_error'] = percent_error
+        metrics_dict['acc'] = 1 - percent_error
 
         harn.batch_confusions.clear()
         return metrics_dict
@@ -125,7 +143,8 @@ def train():
     torch.manual_seed(137852547 % 4294967295)
     random.seed(2497950049 % 4294967295)
 
-    batch_size = int(ub.argval('--batch_size', default=128))
+    # batch_size = int(ub.argval('--batch_size', default=128))
+    batch_size = int(ub.argval('--batch_size', default=64))
     workers = int(ub.argval('--workers', default=2))
     model_key = ub.argval('--model', default='densenet121')
     xpu = nh.XPU.cast('argv')
@@ -156,6 +175,15 @@ def train():
                                              download=True,
                                              transform=transform_test),
     }
+
+    # For some reason the torchvision objects dont have the label names
+    CIFAR10_CLASSNAMES = [
+        'airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog',
+        'horse', 'ship', 'truck',
+    ]
+    datasets['train'].class_names = CIFAR10_CLASSNAMES
+    datasets['test'].class_names = CIFAR10_CLASSNAMES
+
     n_classes = 10  # hacked in
     loaders = {
         key: torch.utils.data.DataLoader(dset, shuffle=key == 'train',

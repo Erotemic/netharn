@@ -116,3 +116,74 @@ def trainable_layers(model, names=False):
             #     yield item
             for child in item.children():
                 queue.append(child)
+
+
+def one_hot_embedding(labels, num_classes, dtype=None):
+    """
+    Embedding labels to one-hot form.
+
+    Args:
+      labels: (LongTensor) class labels, sized [N,].
+      num_classes: (int) number of classes.
+
+    Returns:
+      (tensor) encoded labels, sized [N,#classes].
+
+    References:
+        https://discuss.pytorch.org/t/convert-int-into-one-hot-format/507/4
+
+    CommandLine:
+        python -m netharn.loss one_hot_embedding
+
+    Example:
+        >>> # each element in target has to have 0 <= value < C
+        >>> labels = torch.LongTensor([0, 0, 1, 4, 2, 3])
+        >>> num_classes = max(labels) + 1
+        >>> t = one_hot_embedding(labels, num_classes)
+        >>> assert all(row[y] == 1 for row, y in zip(t.numpy(), labels.numpy()))
+        >>> import ubelt as ub
+        >>> print(ub.repr2(t.numpy().tolist()))
+        [
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0],
+        ]
+        >>> t2 = one_hot_embedding(labels.numpy(), num_classes)
+        >>> assert np.all(t2 == t.numpy())
+        >>> if torch.cuda.is_available():
+        >>>     t3 = one_hot_embedding(labels.to(0), num_classes)
+        >>>     assert np.all(t3.cpu().numpy() == t.numpy())
+    """
+    if isinstance(labels, np.ndarray):
+        dtype = dtype or np.float
+        y = np.eye(num_classes, dtype=dtype)
+        y_onehot = y[labels]
+    else:  # if torch.is_tensor(labels):
+        dtype = dtype or torch.float
+        y = torch.eye(num_classes, device=labels.device, dtype=dtype)
+        y_onehot = y[labels]
+    return y_onehot
+
+
+def one_hot_lookup(probs, labels):
+    """
+    Return probbility of a particular label (usually true labels) for each item
+
+    Each item in labels corresonds to a row in probs. Returns the index
+    specified at each row.
+
+    Example:
+        >>> probs = np.array([
+        >>>     [0, 1, 2],
+        >>>     [3, 4, 5],
+        >>>     [6, 7, 8],
+        >>>     [9, 10, 11],
+        >>> ])
+        >>> labels = np.array([0, 1, 2, 1])
+        >>> one_hot_lookup(probs, labels)
+        array([ 0,  4,  8, 10])
+    """
+    return probs[np.eye(probs.shape[1], dtype=np.bool)[labels]]

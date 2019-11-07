@@ -2,10 +2,11 @@
 import torch  # NOQA
 import torch.nn.functional as F
 import torch.nn.modules
+import numpy as np
 from torch import autograd
 
 
-def one_hot_embedding(labels, num_classes, cpu=True):
+def one_hot_embedding(labels, num_classes):
     """
     Embedding labels to one-hot form.
 
@@ -38,26 +39,40 @@ def one_hot_embedding(labels, num_classes, cpu=True):
             [0.0, 0.0, 1.0, 0.0, 0.0],
             [0.0, 0.0, 0.0, 1.0, 0.0],
         ]
+        >>> t2 = one_hot_embedding(labels.numpy(), num_classes)
+        >>> assert np.all(t2 == t.numpy())
+        >>> if torch.cuda.is_available():
+        >>>     t3 = one_hot_embedding(labels.to(0), num_classes)
+        >>>     assert np.all(t3.cpu().numpy() == t.numpy())
     """
-    # y = torch.eye(num_classes)  # [D,D]
-    # if labels.is_cuda:
-    #     y = y.cuda(labels.get_device())
-    # y_onehot = y[labels]        # [N,D]
-    if cpu:
-        y = torch.eye(int(num_classes))  # [D,D]
-        y_onehot = y[labels.cpu()]  # [N,D]
-        if labels.is_cuda:
-            device = labels.get_device()
-            y_onehot = y_onehot.cuda(device)
+    # if True:
+    if torch.is_tensor(labels):
+        y = torch.eye(int(num_classes), device=labels.device)
+        y_onehot = y[labels]
     else:
-        if labels.is_cuda:
-            y_onehot = torch.cuda.FloatTensor(labels.shape[0], num_classes,
-                                              device=labels.get_device()).zero_()
-            y_onehot.scatter_(1, labels[:, None], 1)
-        else:
-            y_onehot = torch.FloatTensor(labels.shape[0], num_classes).zero_()
-            y_onehot.scatter_(1, labels[:, None], 1)
+        y = np.eye(int(num_classes))
+        y_onehot = y[labels]
     return y_onehot
+    # else:
+    #     # y = torch.eye(num_classes)  # [D,D]
+    #     # if labels.is_cuda:
+    #     #     y = y.cuda(labels.get_device())
+    #     # y_onehot = y[labels]        # [N,D]
+    #     # if cpu:
+    #     y = torch.eye(int(num_classes))  # [D,D]
+    #     y_onehot = y[labels.cpu()]  # [N,D]
+    #     if labels.is_cuda:
+    #         device = labels.get_device()
+    #         y_onehot = y_onehot.cuda(device)
+    #     # else:
+    #     #     if labels.is_cuda:
+    #     #         y_onehot = torch.cuda.FloatTensor(labels.shape[0], num_classes,
+    #     #                                           device=labels.get_device()).zero_()
+    #     #         y_onehot.scatter_(1, labels[:, None], 1)
+    #     #     else:
+    #     #         y_onehot = torch.FloatTensor(labels.shape[0], num_classes).zero_()
+    #     #         y_onehot.scatter_(1, labels[:, None], 1)
+    #     return y_onehot
 
 
 class FocalLoss(torch.nn.modules.loss._WeightedLoss):
