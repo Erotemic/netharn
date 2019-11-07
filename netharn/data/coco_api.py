@@ -614,7 +614,7 @@ class MixinCocoExtras(object):
         # raise AssertionError('missing images')
 
     def rename_categories(self, mapper, strict=False, preserve=False,
-                          rebuild=True):
+                          rebuild=True, simple=False):
         """
         Create a coarser categorization
 
@@ -632,73 +632,87 @@ class MixinCocoExtras(object):
             >>> assert 'hat' in self.name_to_cat
             >>> assert 'helmet' not in self.name_to_cat
         """
-        new_cats = []
         old_cats = self.dataset['categories']
-        new_name_to_cat = {}
-        old_to_new_id = {}
 
-        if not callable(mapper):
-            mapper = mapper.__getitem__
+        if simple:
+            # In the simple case we are just changing the labels, so nothing
+            # special needs to happen.
+            old_cat_names = {cat['name'] for cat in old_cats}
+            assert set(mapper.keys()).issubset(set(old_cat_names))
+            assert not set(mapper.values()).intersection(set(old_cat_names))
+            assert not set(mapper.values()).intersection(set(mapper.keys()))
 
-        for old_cat in old_cats:
-            try:
-                new_name = mapper(old_cat['name'])
-            except KeyError:
-                if strict:
-                    raise
-                new_name = old_cat['name']
+            for key, value in mapper.items():
+                for cat in self.dataset['categories']:
+                    if cat['name'] == key:
+                        cat['name'] = value
+        else:
+            new_cats = []
+            old_cats = self.dataset['categories']
+            new_name_to_cat = {}
+            old_to_new_id = {}
 
-            old_cat['supercategory'] = new_name
+            if not callable(mapper):
+                mapper = mapper.__getitem__
 
-            if new_name in new_name_to_cat:
-                # Multiple old categories are mapped to this new one
-                new_cat = new_name_to_cat[new_name]
-            else:
-                if old_cat['name'] == new_name:
-                    # new name is an existing category
-                    new_cat = old_cat.copy()
-                    new_cat['id'] = len(new_cats) + 1
+            for old_cat in old_cats:
+                try:
+                    new_name = mapper(old_cat['name'])
+                except KeyError:
+                    if strict:
+                        raise
+                    new_name = old_cat['name']
+
+                old_cat['supercategory'] = new_name
+
+                if new_name in new_name_to_cat:
+                    # Multiple old categories are mapped to this new one
+                    new_cat = new_name_to_cat[new_name]
                 else:
-                    # new name is a entirely new category
-                    new_cat = _dict([
-                        ('id', len(new_cats) + 1),
-                        ('name', new_name),
-                    ])
-                new_name_to_cat[new_name] = new_cat
-                new_cats.append(new_cat)
+                    if old_cat['name'] == new_name:
+                        # new name is an existing category
+                        new_cat = old_cat.copy()
+                        new_cat['id'] = len(new_cats) + 1
+                    else:
+                        # new name is a entirely new category
+                        new_cat = _dict([
+                            ('id', len(new_cats) + 1),
+                            ('name', new_name),
+                        ])
+                    new_name_to_cat[new_name] = new_cat
+                    new_cats.append(new_cat)
 
-            old_to_new_id[old_cat['id']] = new_cat['id']
+                old_to_new_id[old_cat['id']] = new_cat['id']
 
-        if preserve:
-            raise NotImplementedError
-            # for old_cat in old_cats:
-            #     # Ensure all old cats are preserved
-            #     if old_cat['name'] not in new_name_to_cat:
-            #         new_cat = old_cat.copy()
-            #         new_cat['id'] = len(new_cats) + 1
-            #         new_name_to_cat[new_name] = new_cat
-            #         new_cats.append(new_cat)
-            #         old_to_new_id[old_cat['id']] = new_cat['id']
+            if preserve:
+                raise NotImplementedError
+                # for old_cat in old_cats:
+                #     # Ensure all old cats are preserved
+                #     if old_cat['name'] not in new_name_to_cat:
+                #         new_cat = old_cat.copy()
+                #         new_cat['id'] = len(new_cats) + 1
+                #         new_name_to_cat[new_name] = new_cat
+                #         new_cats.append(new_cat)
+                #         old_to_new_id[old_cat['id']] = new_cat['id']
 
-        # self.dataset['fine_categories'] = old_cats
-        self.dataset['categories'] = new_cats
+            # self.dataset['fine_categories'] = old_cats
+            self.dataset['categories'] = new_cats
 
-        # Fix annotations of modified categories
-        # (todo: if the index is built, we can use that to only modify
-        #  a potentially smaller subset of annotations)
-        for ann in self.dataset['annotations']:
-            old_id = ann['category_id']
-            new_id = old_to_new_id[old_id]
+            # Fix annotations of modified categories
+            # (todo: if the index is built, we can use that to only modify
+            #  a potentially smaller subset of annotations)
+            for ann in self.dataset['annotations']:
+                old_id = ann['category_id']
+                new_id = old_to_new_id[old_id]
 
-            if old_id != new_id:
-                ann['category_id'] = new_id
-                # See if the annotation already has a fine-grained category If
-                # not, then use the old id as its current fine-grained
-                # granularity
-                fine_id = ann.get('fine_category_id', None)
-                if fine_id is None:
-                    ann['fine_category_id'] = old_id
-
+                if old_id != new_id:
+                    ann['category_id'] = new_id
+                    # See if the annotation already has a fine-grained category If
+                    # not, then use the old id as its current fine-grained
+                    # granularity
+                    fine_id = ann.get('fine_category_id', None)
+                    if fine_id is None:
+                        ann['fine_category_id'] = old_id
         if rebuild:
             self._build_index()
         else:
@@ -1599,9 +1613,19 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             parts.append(info)
         return ', '.join(parts)
 
-    def dumps(self, indent=4):
+    def dumps(self, indent=None, newlines=False):
         """
         Writes the dataset out to the json format
+
+        Args:
+            newlines (bool) :
+                if True, each annotation, image, category gets its own line
+
+        Notes:
+            Using newlines=True is similar to:
+                print(ub.repr2(dset.dataset, nl=2, trailsep=False))
+                However, the above may not output valid json if it contains
+                ndarrays.
 
         Example:
             >>> from netharn.data.coco_api import *
@@ -1611,25 +1635,104 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             >>> self2 = CocoDataset(json.loads(text), tag='demo2')
             >>> assert self2.dataset == self.dataset
             >>> assert self2.dataset is not self.dataset
+
+            >>> text = self.dumps(newlines=True)
+            >>> print(text)
+            >>> self2 = CocoDataset(json.loads(text), tag='demo2')
+            >>> assert self2.dataset == self.dataset
+            >>> assert self2.dataset is not self.dataset
         """
-        fp = StringIO()
-        self.dump(fp, indent=indent)
-        fp.seek(0)
-        text = fp.read()
+        def _json_dumps(data, indent=None):
+            fp = StringIO()
+            json.dump(data, fp, indent=indent)
+            fp.seek(0)
+            text = fp.read()
+            return text
+
+        # Instead of using json to dump the whole thing make the text a bit
+        # more pretty.
+        if newlines:
+            if indent is None:
+                indent = ''
+            if isinstance(indent, int):
+                indent = ' ' * indent
+            dict_lines = []
+            main_keys = ['info', 'licenses', 'categories', 'images',
+                         'annotations']
+            other_keys = sorted(set(self.dataset.keys()) - set(main_keys))
+            for key in main_keys:
+                if key not in self.dataset:
+                    continue
+                # We know each main entry is a list, so make it such that
+                # Each entry gets its own line
+                value = self.dataset[key]
+                value_lines = [_json_dumps(v) for v in value]
+                if value_lines:
+                    value_body = (',\n' + indent).join(value_lines)
+                    value_repr = '[\n' + indent + value_body + '\n]'
+                else:
+                    value_repr = '[]'
+                item_repr = '{}: {}'.format(_json_dumps(key), value_repr)
+                dict_lines.append(item_repr)
+
+            for key in other_keys:
+                # Dont assume anything about other data
+                value = self.dataset.get(key, [])
+                value_repr = _json_dumps(value)
+                item_repr = '{}: {}'.format(_json_dumps(key), value_repr)
+                dict_lines.append(item_repr)
+            text = '{\n' + ',\n'.join(dict_lines) + '\n}'
+        else:
+            text = _json_dumps(self.dataset, indent=indent)
+
         return text
 
-    def dump(self, file, indent=4):
+    def dump(self, file, indent=None, newlines=False):
         """
         Writes the dataset out to the json format
 
         Args:
-            file (str of stream)
+            file (PathLike | FileLike):
+                Where to write the data.  Can either be a path to a file or an
+                open file pointer / stream.
+
+            newlines (bool) : if True, each annotation, image, category gets
+                its own line.
+
+        Example:
+            >>> import tempfile
+            >>> from netharn.data.coco_api import *
+            >>> self = CocoDataset.demo()
+            >>> file = tempfile.NamedTemporaryFile('w')
+            >>> self.dump(file)
+            >>> file.seek(0)
+            >>> text = open(file.name, 'r').read()
+            >>> print(text)
+            >>> file.seek(0)
+            >>> dataset = json.load(open(file.name, 'r'))
+            >>> self2 = CocoDataset(dataset, tag='demo2')
+            >>> assert self2.dataset == self.dataset
+            >>> assert self2.dataset is not self.dataset
+
+            >>> file = tempfile.NamedTemporaryFile('w')
+            >>> self.dump(file, newlines=True)
+            >>> file.seek(0)
+            >>> text = open(file.name, 'r').read()
+            >>> print(text)
+            >>> file.seek(0)
+            >>> dataset = json.load(open(file.name, 'r'))
+            >>> self2 = CocoDataset(dataset, tag='demo2')
+            >>> assert self2.dataset == self.dataset
+            >>> assert self2.dataset is not self.dataset
         """
         if isinstance(file, six.string_types):
             with open(file, 'w') as fp:
-                self.dump(fp, indent=indent)
+                self.dump(fp, indent=indent, newlines=newlines)
         else:
-            json.dump(self.dataset, file, indent=indent)
+            if newlines:
+                file.write(self.dumps(indent=indent, newlines=newlines))
+            else:
+                json.dump(self.dataset, file, indent=indent)
 
     def _check_index(self):
         # We can verify our index invariants by copying the raw dataset and

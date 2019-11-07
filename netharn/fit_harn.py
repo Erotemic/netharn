@@ -140,7 +140,6 @@ import torch
 import numpy as np
 import ubelt as ub
 
-from netharn import folders
 from netharn import hyperparams
 from netharn.exceptions import StopTraining, CannotResume, TrainingDiverged
 
@@ -243,7 +242,7 @@ class ExtraMixins:
 @register_mixin
 class InitializeMixin:
 
-    def initialize(harn, reset=False):
+    def initialize(harn, reset=False, overwrite=True):
         """
         Uses the hyper parameters to initialize the necessary resources and
         restart from previously
@@ -252,22 +251,32 @@ class InitializeMixin:
             print('RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR')
             if harn.train_info is None:
                 # Need to determine which path needs deletion.
-                harn._setup_paths()
+                harn._setup_paths_and_train_info()
             for path in glob.glob(join(harn.train_dpath, '*')):
                 ub.delete(path)
         elif reset:
             print('RESET HARNESS BY RESTARTING FROM EPOCH 0')
 
         if harn.train_info is None:
-            harn._setup_paths()
+            harn._setup_paths_and_train_info()
         else:
             ub.ensuredir(harn.train_dpath)
 
         # Dump training info to disk
-        # TODO: if train_info already exists, and it is not the same as this
+        # - [X] if train_info already exists, and it is not the same as this
         # train info, keep a backup of the old ones.
-        train_info_fpath = join(harn.train_dpath, 'train_info.json')
-        util.write_json(train_info_fpath, harn.train_info)
+        if harn.train_dpath and overwrite:
+            train_info_fpath = join(harn.train_dpath, 'train_info.json')
+            if os.path.exists(train_info_fpath):
+                if overwrite:
+                    old_train_info = util.read_json(train_info_fpath)
+                    if old_train_info != harn.train_info:
+                        backup_dpath = ub.ensuredir((harn.train_dpath, '_backup'))
+                        backup_fpath = join(backup_dpath, 'train_info.json.' + ub.timestamp() + '.backup')
+                        shutil.move(train_info_fpath, backup_fpath)
+                    util.write_json(train_info_fpath, harn.train_info)
+            else:
+                util.write_json(train_info_fpath, harn.train_info)
 
         harn._setup_loggers()
 
@@ -300,12 +309,25 @@ class InitializeMixin:
         harn.after_initialize()
         return harn
 
-    def _setup_paths(harn):
+    def _setup_paths_and_train_info(harn):
         if harn.hyper is None:
             harn.warn('harn.train_dpath is None, cannot setup_paths')
         else:
-            paths = folders.Folders(hyper=harn.hyper)
-            train_info = paths.setup_dpath(train_dpath=harn.train_dpath)
+            # TODO: we may fold the functionality of Folders into Hyperparams
+            train_info = harn.hyper.train_info(harn.train_dpath)
+            ub.ensuredir(train_info['train_dpath'])
+            if train_info['nice_dpath']:
+                # Link the hashed run dir to the human friendly nice dir
+                ub.ensuredir(os.path.dirname(train_info['nice_dpath']))
+                ub.symlink(train_info['train_dpath'], train_info['nice_dpath'],
+                           overwrite=True, verbose=3)
+
+            # Make a very simple MRU link
+            if True:
+                mru_dpath = join(harn.hyper.workdir, '_mru')
+                ub.symlink(train_info['train_dpath'], mru_dpath,
+                           overwrite=True, verbose=3)
+
             harn.train_info = train_info
             harn.nice_dpath = train_info['nice_dpath']
             harn.train_dpath = train_info['train_dpath']
@@ -362,6 +384,9 @@ class InitializeMixin:
             harn._tlog = tensorboard_logger.Logger(harn.train_dpath,
                                                      flush_secs=2)
         else:
+            # TODO:
+            # - [ ] setup an alternative database to record epoch measures for
+            # plotting if tensorboard is not available.
             harn.warn('Tensorboard is not available')
 
     def _setup_modules(harn):
@@ -971,7 +996,15 @@ class CoreMixin:
     """
     def run(harn):
         """
-        main training loop
+        Runs the main training loop
+
+        This starts the main loop which will run until a the monitor's
+        terminator criterion is satisfied. If the initialize step loaded a
+        checkpointed that already met the termination criterion, then this will
+        simply return.
+
+        Returns:
+            PathLike: deploy_fpath: the path to the standalone deployed model
         """
         if not harn._initialized:
             harn.initialize()
@@ -1060,10 +1093,11 @@ class CoreMixin:
             harn.info('view tensorboard results for this run via:\n'
                       '    tensorboard --logdir ' + ub.compressuser(train_base))
 
-        harn._deploy()
+        deploy_fpath = harn._deploy()
 
         harn.on_complete()
         harn.info('exiting fit harness.')
+        return deploy_fpath
 
     def _deploy(harn):
         """
@@ -1124,6 +1158,10 @@ class CoreMixin:
 
             if harn.check_interval('cleanup', harn.epoch):
                 harn.cleanup_snapshots()
+
+        if tensorboard_logger:
+            # Perhaps dump tensorboard metrics to png / pickle?
+            pass
 
         harn.after_epochs()
 
@@ -1334,12 +1372,18 @@ class ChecksMixin:
         # num_batches_tracked once 0.5.0 lands
         state = harn.model.module.state_dict()
         sums = ub.map_vals(torch.sum, state)
-        weight_sum = sum(sums.values())
+        weight_sum = sum(s.float() for s in sums.values())
         if 'torch' in str(type(weight_sum)):  # torch 0.3 / 0.4 / 1.0 compat
             weight_sum = weight_sum.cpu().numpy()
-
+        try:
+            weight_sum = weight_sum.cpu().numpy()
+        except AttributeError:
+            pass
         if not np.isfinite(weight_sum):
-            flags = [not np.isfinite(s) for s in sums.values()]
+            try:
+                flags = [not np.isfinite(s.cpu().numpy()) for s in sums.values()]
+            except AttributeError:
+                flags = [not np.isfinite(s) for s in sums.values()]
             bad_layers = ub.odict(zip(
                 ub.compress(sums.keys(), flags),
                 ub.compress(sums.values(), flags)
@@ -1424,8 +1468,8 @@ class CoreCallbacks:
         Overload is generally not necessary for this function.
 
         TODO:
-            perhaps remove dynamics as a netharn core component and simply
-            allow the end-application to take care of that detail.
+            - [ ] perhaps remove dynamics as a netharn core component and
+            simply allow the end-application to take care of that detail.
         """
         loss.backward()
 
@@ -1521,11 +1565,14 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             * on_epoch(harn)
 
     Args:
-        hyper (netharn.HyperParams): Parameters that determine the system.
-            This serializable class encodes enough information to
-            deterministically reproduce an experiment.
+        hyper (netharn.HyperParams | dict):
+            Parameters that determine the system.  This serializable class
+            encodes enough information to deterministically reproduce an
+            experiment.
 
-            Because it is serializable it also has a dict representation.
+            Because it is serializable it also has a dict representation. If
+            hyper is a dict then that dict is used as keyword arguments to
+            construct an instance of `netharn.HyperParams`.
 
         train_dpath (str or None): if specified, all progress information is
             stored in this path and the path computed via hyper is ignored.
@@ -1533,11 +1580,33 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             `hyper` to create a directory based on the hyperparamters.
 
     Attributes:
-        model (torch.nn.Module) : an instance of your model (po
-        optimizer (torch.nn.Module) :
-        scheduler (torch.nn.Module) :
-        criterion (torch.nn.Module) :
-        monitor (nh.Monitor) : monitors performance of the validation set
+        hyper (netharn.Hyperparams):
+            The rectified `hyper` argument that was passed to the FitHarn
+            constructor.  Note that hyper is the only (important) argument to
+            FitHarn and all other attributes will be derived from `hyper`.
+            SeeAlso: `netharn.hyperparameters`.
+
+        model (torch.nn.Module) :
+            An instance of your model architecture.
+            SeeAlso: `netharn.models` and `netharn.layers` for models and
+            layers that may not be in torchvision.
+
+        initializer (netharn.Initializer):
+            pass
+
+        optimizer (torch.optim.optimizer.Optimizer) :
+            Optimization algorithm like SGD or ADAM. SeeAlso: `netharn.optimizers`
+
+        scheduler (torch.optim.lr_scheduler._LRScheduler) :
+            Learning rate scheduler. SeeAlso: `netharn.schedulers` for a schedulers
+            that are not currently implemented in torch.
+
+        criterion (torch.nn.modules.loss._Loss) :
+            Objective function / loss criterion. SeeAlso: `netharn.criterions`
+
+        monitor (netharn.Monitor) :
+            monitors performance of the validation set. SeeAlso `netharn.monitor`.
+
 
     Note:
         hyper is optional. If you choose not to specify it then you must
@@ -1563,6 +1632,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
 
         # The following attributes will be initialized in harn._setup_modules()
         harn.model = None
+        harn.initializer = None
         harn.optimizer = None
         harn.scheduler = None
         harn.criterion = None

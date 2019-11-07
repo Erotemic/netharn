@@ -4,6 +4,7 @@ Abstracted processing device
 Creates a common API for dynamically running on CPU, GPU, or many GPUs
 """
 from __future__ import absolute_import, division, print_function
+import psutil
 import ubelt as ub
 import warnings
 import torch
@@ -30,7 +31,10 @@ class MountedModel(torch.nn.Module):
     """
     Abstraction of DataParallel and DataSerial
     """
-    pass
+
+    def receptive_field_for(self, prev=None):
+        import netharn as nh
+        return nh.ReceptiveFieldFor(self)(prev)
 
 
 class DataParallel(torch.nn.DataParallel, MountedModel):
@@ -191,19 +195,19 @@ class XPU(ub.NiceRepr):
             raise TypeError(type(item))
 
     @classmethod
-    def of(XPU, item, **kwargs):
+    def from_data(XPU, item, **kwargs):
         """
         Creates an XPU to represent the processing device(s) a Module, Tensor,
         or Variable currently exists on.
 
         Example:
-            >>> xpu = XPU.of(torch.randn(3))
+            >>> xpu = XPU.from_data(torch.randn(3))
             >>> assert not xpu.is_gpu()
             >>> if torch.cuda.is_available():
-            >>>     xpu = XPU.of(torch.randn(3).to('cuda'))
+            >>>     xpu = XPU.from_data(torch.randn(3).to('cuda'))
             >>>     assert xpu.is_gpu()
             >>>     for i in range(torch.cuda.device_count()):
-            >>>         xpu = XPU.of(torch.randn(3).to(i))
+            >>>         xpu = XPU.from_data(torch.randn(3).to(i))
             >>>         assert xpu.is_gpu()
             >>>         assert xpu._main_device_id == i
         """
@@ -231,7 +235,16 @@ class XPU(ub.NiceRepr):
         else:
             raise TypeError(type(item))
 
-    from_data = of
+    of = from_data
+
+    @classmethod
+    def coerce(cls, item, **kwargs):
+        """
+        Converts objects of many different types into an XPU.
+
+        I think I like this name better than cast, not sure
+        """
+        return cls.cast(item, **kwargs)
 
     @classmethod
     def cast(xpu, item, **kwargs):
@@ -246,9 +259,9 @@ class XPU(ub.NiceRepr):
         elif isinstance(item, XPU):
             return item
         elif isinstance(item, _TENSOR_TYPES):
-            return XPU.of(item)
+            return XPU.from_data(item)
         elif isinstance(item, torch.nn.Module):
-            return XPU.of(item)
+            return XPU.from_data(item)
         elif isinstance(item, int):
             return XPU(item)
         elif isinstance(item, (list, tuple)):
@@ -281,6 +294,44 @@ class XPU(ub.NiceRepr):
                 return XPU(item)
         else:
             raise ValueError('cannot cast to XPU. item={}'.format(item))
+
+    def memory(self):
+        """
+        Example:
+            >>> from netharn.device import *
+            >>> print(ub.repr2(XPU.cast(None).memory()))
+            {
+                'available': ...,
+                'total': ...,
+                'used': ...,
+            }
+            >>> # xdoctest: +REQUIRES(--cuda)
+            >>> print(ub.repr2(XPU.cast(0).memory()))
+            {
+                'available': ...,
+                'total': ...,
+                'used': ...,
+            }
+
+        """
+        gpus = gpu_info()
+        info = {
+            'available': 0,
+            'total': 0,
+            'used': 0,
+        }
+        if self._device_ids is None:
+            tup = psutil.virtual_memory()
+            MB = 1 / 2 ** 20
+            info['total'] += tup.total * MB
+            info['used'] += tup.used * MB
+            info['available'] += tup.available * MB
+        else:
+            for id in self._device_ids:
+                info['total'] += gpus[id]['mem_total']
+                info['used'] += gpus[id]['mem_used']
+                info['available'] += gpus[id]['mem_avail']
+        return info
 
     @classmethod
     def from_auto(XPU, min_memory=NETHARN_MIN_MB):
@@ -379,12 +430,16 @@ class XPU(ub.NiceRepr):
         """ The number of underlying devices abstracted by this XPU """
         return 1 if not xpu._device_ids else len(xpu._device_ids)
 
+    def is_cpu(xpu):
+        return xpu._main_device_id is None
+
     def is_gpu(xpu):
         """ True if running in single or parallel gpu mode """
         return xpu._main_device_id is not None
         # return 'gpu' in xpu.mode
 
-    def raw(xpu, model):
+    @staticmethod
+    def raw(model):
         """
         Unmounts the original core model if it is mounted.
 
@@ -442,9 +497,9 @@ class XPU(ub.NiceRepr):
         Example:
             >>> data = torch.FloatTensor([0])
             >>> if torch.cuda.is_available():
-            >>>     xpu = XPU.cast('gpu')
+            >>>     xpu = XPU.coerce('gpu')
             >>>     assert isinstance(xpu.move(data), torch.cuda.FloatTensor)
-            >>> xpu = XPU.cast('cpu')
+            >>> xpu = XPU.coerce('cpu')
             >>> assert isinstance(xpu.move(data), torch.FloatTensor)
         """
         if xpu.is_gpu():
@@ -617,10 +672,15 @@ def gpu_info():
     Warnings:
         if nvidia-smi is not installed
 
+    CommandLine:
+        xdoctest -m netharn.device gpu_info --cuda
+
     Example:
-        >>> if torch.cuda.is_available():
-        >>>     gpus = gpu_info()
-        >>>     assert len(gpus) == torch.cuda.device_count()
+        >>> # xdoctest: +REQUIRES(--cuda)
+        >>> from netharn.device import *
+        >>> gpus = gpu_info()
+        >>> print('gpus = {}'.format(ub.repr2(gpus)))
+        >>> assert len(gpus) == torch.cuda.device_count()
     """
     try:
         result = ub.cmd('nvidia-smi')

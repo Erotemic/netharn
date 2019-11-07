@@ -2,6 +2,7 @@ import torch.nn.functional as F
 import torch
 from torch import nn
 from netharn.layers import common
+from netharn import output_shape_for
 
 
 class L2Norm(common.Module):
@@ -50,4 +51,7 @@ class L2Norm(common.Module):
         return scale * x
 
     def output_shape_for(self, input_shape):
-        return input_shape
+        return output_shape_for.OutputShape.coerce(input_shape)
+
+    def receptive_field_for(self, input_field=None):
+        return input_field, input_field

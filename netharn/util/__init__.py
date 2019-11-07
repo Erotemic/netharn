@@ -107,19 +107,20 @@ else:
                                           SlidingWindow, Stitcher,)
     from netharn.util.util_subextreme import (argsubmax, argsubmaxima,)
     from netharn.util.util_tensorboard import (read_tensorboard_scalars,)
-    from netharn.util.util_torch import (DisableBatchNorm, ModuleMixin,
+    from netharn.util.util_torch import (BatchNormContext, DisableBatchNorm,
+                                         IgnoreLayerContext, ModuleMixin,
                                          grad_context, number_of_parameters,
                                          one_hot_embedding, one_hot_lookup,
                                          trainable_layers,)
     from netharn.util.util_zip import (split_archive, zopen,)
 
-    __all__ = ['Boxes', 'CV2_INTERPOLATION_TYPES', 'CacheStamp', 'Color',
-               'CumMovingAve', 'DataFrameArray', 'DataFrameLight',
-               'DisableBatchNorm', 'ExpMovingAve', 'IS_PROFILING',
-               'InternalRunningStats', 'LocLight', 'LossyJSONEncoder',
-               'ModuleMixin', 'MovingAve', 'NumpyEncoder', 'PlotNums',
-               'RunningStats', 'SlidingIndexDataset', 'SlidingSlices',
-               'SlidingWindow', 'Stitcher', 'SupressPrint',
+    __all__ = ['BatchNormContext', 'Boxes', 'CV2_INTERPOLATION_TYPES',
+               'CacheStamp', 'Color', 'CumMovingAve', 'DataFrameArray',
+               'DataFrameLight', 'DisableBatchNorm', 'ExpMovingAve',
+               'IS_PROFILING', 'IgnoreLayerContext', 'InternalRunningStats',
+               'LocLight', 'LossyJSONEncoder', 'ModuleMixin', 'MovingAve',
+               'NumpyEncoder', 'PlotNums', 'RunningStats', 'SlidingIndexDataset',
+               'SlidingSlices', 'SlidingWindow', 'Stitcher', 'SupressPrint',
                'TORCH_HAS_EMPTY_SHAPE', 'WindowedMovingAve', 'absdev',
                'adjust_gamma', 'adjust_subplots', 'aggensure', 'align_paths',
                'apply_grouping', 'argsubmax', 'argsubmaxima', 'atleast_3channels',

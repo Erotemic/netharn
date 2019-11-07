@@ -1,10 +1,11 @@
-import torch
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 from netharn.output_shape_for import OutputShapeFor
-from netharn import util
 from netharn.layers import rectify
+from netharn.layers import common
 
 
-class ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
+class ConvNormNd(common.Sequential):
     """
     Backbone convolution component. The convolution hapens first, normalization
     and nonlinearity happen after the convolution.
@@ -54,10 +55,6 @@ class ConvNormNd(torch.nn.Sequential, util.ModuleMixin):
     def output_shape_for(self, input_shape):
         return OutputShapeFor.sequential(self, input_shape)
 
-    def hidden_shapes_for(self, input_shape):
-        shape = OutputShapeFor.sequential(self, input_shape)
-        return shape, shape
-
 
 class ConvNorm1d(ConvNormNd):
     """
@@ -73,6 +70,7 @@ class ConvNorm1d(ConvNormNd):
             if None, then normalization is disabled.
 
     Example:
+        >>> from netharn.layers.conv_norm import *
         >>> input_shape = [2, 3, 5]
         >>> self = ConvNorm1d(input_shape[1], 7, kernel_size=3)
         >>> OutputShapeFor(self)._check_consistency(input_shape)

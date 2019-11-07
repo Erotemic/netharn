@@ -9,6 +9,17 @@ into a stanadlone file. As long as your model definition is indepenent of your
 training code, then the exported file can be passed around in a similar way to
 a caffe prototext file.
 
+TODO:
+    - [ ]: Look into: https://www.reddit.com/r/MachineLearning/comments/a856oe/d_pytorch_10_deployment_pipeline/ec9w94c/
+
+    >>> from torchvision.models import densenet
+    >>> import torch
+    >>> model = densenet.DenseNet(growth_rate=16).eval()
+    >>> traced = torch.jit.trace(model, example_inputs=(torch.randn(2, 3, 224, 224), ))
+    >>> traced.save("densenet.pt")
+    >>> model_ = torch.jit.load("densenet.pt")
+
+
 CommandLine:
     xdoctest -m netharn.export.exporter export_model_code
     xdoctest -m netharn.export.exporter source_closure:1
@@ -35,7 +46,7 @@ import six
 __all__ = ['export_model_code']
 
 
-__pt_export_version__ = '0.4.0'
+__pt_export_version__ = '0.5.0'
 
 
 def _parse_static_node_value(node):
@@ -306,7 +317,6 @@ def source_closure(model_class):
             if obj.__module__ == module_name:
                 sourcecode = inspect.getsource(obj)
                 return 'code', sourcecode
-
         raise NotImplementedError(str(obj) + ' ' + str(name))
 
     import_lines = []
@@ -318,7 +328,15 @@ def source_closure(model_class):
         names = sorted(set(names))
         for name in names:
             obj = getattr(module, name)
-            type_, text = closure_(obj, name)
+            try:
+                type_, text = closure_(obj, name)
+            except NotImplementedError:
+                # TODO Fix issue with from . import statements
+                print('Error in import_lines: {!r}'.format(import_lines))
+                print('Error in lines: {}'.format('\n\n'.join(lines)))
+                print('Error with obj = {!r}'.format(obj))
+                print('Error with name = {!r}'.format(name))
+                raise
             if type_ == 'import':
                 import_lines.append(text)
             else:
