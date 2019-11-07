@@ -1,16 +1,37 @@
+Version 0.1.2
+==============
+* Fixed Python2.7 bugs. 
+* `nh.CocoAPI.show_image` now correctly clears the axis before drawing
+* Added `_demo_epoch` function to `FitHarn` which runs a single epoch for testing purposes.
+* Added new layers: `GaussianBlurNd`, `L2Norm`, `Permute`, `Conv1d_pad`, `Conv2d_pad`
+* Focal loss no longer produces warnings with newer versions of torch.
+* The `nh.util.group_items` utility will now default to the `ubelt` implementation for object and string arrays.
+* Improved efficiency of `DataFrameArray.groupby`
+* `nh.XPU` now supports `__eq__`
+* `one_hot_embedding` now supports the `dim` keyword argument.
+* Added `nh.XPU.raw` to access the raw underlying model.
+* `nh.Pretrained` can now discover weights inside deployment files.
+* Added `util_filesys` which has the function `get_file_info`.
+* Fixed bug in `FitHarn._check_divergence`
+* Added dependency on `astunparse` to fix bug where exporter could not handle complex assignments
+* `nh.Pretrained` initializer now only requires the path to the deploy zipfile. It can figure out which files in the deployment are the weights.
+* `nh.CocoAPI` can now look up images by filename
+* `nh.CocoAPI` can now delete categories by category name
+
+
 Version 0.1.1
 ==============
-* Deprecated and removed irrelevant parts of CocoAPI
-* Removing annotations and categories now dynamically updates indexes CocoAPI
-* Added remove categories to CocoAPI
-* Added experimental `_build_hashid` to CocoAPI
-* Fixed take in ObjectList1D in CocoAPI
-* Added compress to ObjectList1D in CocoAPI
-* Adding hidden_state_for
+* Deprecated and removed irrelevant parts of `CocoAPI`
+* Removing annotations and categories now dynamically updates indexes `CocoAPI`
+* Added remove categories to `CocoAPI`
+* Added experimental `_build_hashid` to `CocoAPI`
+* Fixed take in `ObjectList1D` in `CocoAPI`
+* Added compress to `ObjectList1D` in `CocoAPI`
+* Adding `hidden_state_for`
 * Fixed bug where `OutputShapeFor(_MaxPoolNd)` did not respect `ceil_mode`.
-* Fixed bug where cpu implementation of NMS was different
-* Added `__json__` method to XPU
-* Fixed bug where snapshots are corrupted with an EOFError
+* Fixed bug where CPU implementation of NMS was different
+* Added `__json__` method to `nh.XPU`
+* Fixed bug where snapshots are corrupted with an `EOFError`
 * Fixed bug where temporary directories were not cleaned up
 * `harn._export` is now its own function
 

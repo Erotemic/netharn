@@ -133,9 +133,6 @@ def make_channels_comparable(img1, img2):
     """
     Broadcasts image arrays so they can have elementwise operations applied
 
-    CommandLine:
-        python -m netharn.util.imutil make_channels_comparable
-
     Example:
         >>> import itertools as it
         >>> wh_basis = [(5, 5), (3, 5), (5, 3), (1, 1), (1, 3), (3, 1)]
@@ -324,8 +321,8 @@ def _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2):
     np.add(rgb3, temp_rgb, out=rgb3)
 
     # removing errstate is actually a significant speedup
-    # with np.errstate(invalid='ignore'):
-    np.divide(rgb3, alpha3[..., None], out=rgb3)
+    with np.errstate(invalid='ignore'):
+        np.divide(rgb3, alpha3[..., None], out=rgb3)
     if not np.all(alpha3):
         rgb3[alpha3 == 0] = 0
     return rgb3, alpha3
@@ -997,9 +994,5 @@ def stack_images(img1, img2, axis=0, resize=None, interpolation=None,
 
 
 if __name__ == '__main__':
-    r"""
-    CommandLine:
-        python -m netharn.util.imutil all
-    """
     import xdoctest
     xdoctest.doctest_module(__file__)

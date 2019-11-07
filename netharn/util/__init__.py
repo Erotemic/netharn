@@ -29,6 +29,7 @@ else:
     from netharn.util import util_cv2
     from netharn.util import util_dataframe
     from netharn.util import util_demodata
+    from netharn.util import util_filesys
     from netharn.util import util_fname
     from netharn.util import util_groups
     from netharn.util import util_idstr
@@ -53,7 +54,7 @@ else:
                                      load_image_paths, make_channels_comparable,
                                      overlay_alpha_images, overlay_colorized,
                                      run_length_encoding, stack_images,
-                                     wide_strides_1d,)
+                                     stack_multiple_images, wide_strides_1d,)
     from netharn.util.mplutil import (Color, PlotNums, adjust_subplots, aggensure,
                                       autompl, axes_extent, colorbar,
                                       colorbar_image, copy_figure_to_clipboard,
@@ -69,16 +70,12 @@ else:
                                       scores_to_color, set_figtitle,
                                       set_mpl_backend, show_if_requested,)
     from netharn.util.nms import (non_max_supression,)
-    from netharn.util.profiler import (IS_PROFILING, KernprofParser,
-                                       dump_global_profile_report, dynamic_profile,
-                                       find_parent_class, find_pattern_above_row,
-                                       find_pyclass_above_row, profile,
-                                       profile_onthefly,)
+    from netharn.util.profiler import (IS_PROFILING, profile, profile_onthefly,)
     from netharn.util.util_averages import (CumMovingAve, ExpMovingAve,
                                             InternalRunningStats, MovingAve,
                                             RunningStats, WindowedMovingAve,
                                             absdev, stats_dict,)
-    from netharn.util.util_boxes import (Boxes, box_ious,)
+    from netharn.util.util_boxes import (Boxes, TORCH_HAS_EMPTY_SHAPE, box_ious,)
     from netharn.util.util_cachestamp import (CacheStamp,)
     from netharn.util.util_cv2 import (draw_boxes_on_image, draw_text_on_image,
                                        putMultiLineText,)
@@ -86,6 +83,7 @@ else:
                                              LocLight,)
     from netharn.util.util_demodata import (grab_test_image,
                                             grab_test_image_fpath,)
+    from netharn.util.util_filesys import (get_file_info,)
     from netharn.util.util_fname import (align_paths, check_aligned, dumpsafe,
                                          shortest_unique_prefixes,
                                          shortest_unique_suffixes,)
@@ -118,23 +116,21 @@ else:
     __all__ = ['Boxes', 'CV2_INTERPOLATION_TYPES', 'CacheStamp', 'Color',
                'CumMovingAve', 'DataFrameArray', 'DataFrameLight',
                'DisableBatchNorm', 'ExpMovingAve', 'IS_PROFILING',
-               'InternalRunningStats', 'KernprofParser', 'LocLight',
-               'LossyJSONEncoder', 'ModuleMixin', 'MovingAve', 'NumpyEncoder',
-               'PlotNums', 'RunningStats', 'SlidingIndexDataset', 'SlidingSlices',
-               'SlidingWindow', 'Stitcher', 'SupressPrint', 'WindowedMovingAve',
-               'absdev', 'adjust_gamma', 'adjust_subplots', 'aggensure',
-               'align_paths', 'apply_grouping', 'argsubmax', 'argsubmaxima',
-               'atleast_3channels', 'atleast_nd', 'autompl', 'axes_extent',
-               'box_ious', 'check_aligned', 'colorbar', 'colorbar_image',
-               'compact_idstr', 'convert_colorspace', 'copy_figure_to_clipboard',
-               'dict_intersection', 'distinct_colors', 'distinct_markers',
-               'draw_border', 'draw_boxes', 'draw_boxes_on_image',
-               'draw_line_segments', 'draw_text_on_image',
-               'dump_global_profile_report', 'dumpsafe', 'dynamic_profile',
-               'ensure_alpha_channel', 'ensure_float01', 'ensure_fnum',
+               'InternalRunningStats', 'LocLight', 'LossyJSONEncoder',
+               'ModuleMixin', 'MovingAve', 'NumpyEncoder', 'PlotNums',
+               'RunningStats', 'SlidingIndexDataset', 'SlidingSlices',
+               'SlidingWindow', 'Stitcher', 'SupressPrint',
+               'TORCH_HAS_EMPTY_SHAPE', 'WindowedMovingAve', 'absdev',
+               'adjust_gamma', 'adjust_subplots', 'aggensure', 'align_paths',
+               'apply_grouping', 'argsubmax', 'argsubmaxima', 'atleast_3channels',
+               'atleast_nd', 'autompl', 'axes_extent', 'box_ious', 'check_aligned',
+               'colorbar', 'colorbar_image', 'compact_idstr', 'convert_colorspace',
+               'copy_figure_to_clipboard', 'dict_intersection', 'distinct_colors',
+               'distinct_markers', 'draw_border', 'draw_boxes',
+               'draw_boxes_on_image', 'draw_line_segments', 'draw_text_on_image',
+               'dumpsafe', 'ensure_alpha_channel', 'ensure_float01', 'ensure_fnum',
                'ensure_grayscale', 'ensure_rng', 'ensure_ulimit',
-               'extract_axes_extents', 'figure', 'find_parent_class',
-               'find_pattern_above_row', 'find_pyclass_above_row',
+               'extract_axes_extents', 'figure', 'get_file_info',
                'get_num_channels', 'grab_test_image', 'grab_test_image_fpath',
                'grad_context', 'group_consecutive', 'group_consecutive_indices',
                'group_indices', 'group_items', 'image_slices', 'imread', 'imscale',
@@ -153,11 +149,11 @@ else:
                'seed_global', 'set_figtitle', 'set_mpl_backend',
                'shortest_unique_prefixes', 'shortest_unique_suffixes',
                'show_if_requested', 'shuffle', 'split_archive', 'stack_images',
-               'stats_dict', 'trainable_layers', 'util_averages', 'util_boxes',
-               'util_cachestamp', 'util_cv2', 'util_dataframe', 'util_demodata',
-               'util_fname', 'util_groups', 'util_idstr', 'util_io', 'util_iter',
-               'util_json', 'util_misc', 'util_numpy', 'util_random',
-               'util_resources', 'util_slider', 'util_subextreme',
-               'util_tensorboard', 'util_torch', 'util_zip', 'walk_json',
-               'wide_strides_1d', 'write_arr', 'write_h5arr', 'write_json',
-               'zopen']
+               'stack_multiple_images', 'stats_dict', 'trainable_layers',
+               'util_averages', 'util_boxes', 'util_cachestamp', 'util_cv2',
+               'util_dataframe', 'util_demodata', 'util_filesys', 'util_fname',
+               'util_groups', 'util_idstr', 'util_io', 'util_iter', 'util_json',
+               'util_misc', 'util_numpy', 'util_random', 'util_resources',
+               'util_slider', 'util_subextreme', 'util_tensorboard', 'util_torch',
+               'util_zip', 'walk_json', 'wide_strides_1d', 'write_arr',
+               'write_h5arr', 'write_json', 'zopen']

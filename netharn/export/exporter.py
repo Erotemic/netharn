@@ -17,6 +17,7 @@ CommandLine:
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ast
+import astunparse
 import re
 import hashlib
 import inspect
@@ -61,9 +62,11 @@ def _parse_static_node_value(node):
         # disregard pathological python2 corner cases
         value = {'None': None, 'True': True, 'False': False}[node.id]
     else:
-        print('node.__dict__ = {!r}'.format(node.__dict__))
-        raise TypeError('Cannot parse a static value from non-static node '
-                        'of type: {!r}'.format(type(node)))
+        msg = ('Cannot parse a static value from non-static node '
+               'of type: {!r}'.format(type(node)))
+        # print('node.__dict__ = {!r}'.format(node.__dict__))
+        # print('msg = {!r}'.format(msg))
+        raise TypeError(msg)
     return value
 
 
@@ -199,7 +202,7 @@ class ImportVisitor(ast.NodeVisitor):
 def source_closure(model_class):
     """
     Hacky way to pull just the minimum amount of code needed to define a
-    model_class.
+    model_class. Uses a combination of dynamic and static introspection.
 
     Args:
         model_class (type): class used to define the model_class
@@ -207,32 +210,51 @@ def source_closure(model_class):
     Returns:
         str: closed_sourcecode: text defining a new python module.
 
+    CommandLine:
+        xdoctest -m netharn.export.exporter source_closure
+
     Example:
+        >>> import torchvision
         >>> from torchvision import models
+        >>> got = {}
 
         >>> model_class = models.AlexNet
         >>> text = source_closure(model_class)
         >>> assert not undefined_names(text)
-        >>> print(hash_code(text))
-        18a043fc0563bcf8f97b2ee76d...
+        >>> got['alexnet'] = hash_code(text)
 
         >>> model_class = models.DenseNet
         >>> text = source_closure(model_class)
         >>> assert not undefined_names(text)
-        >>> print(hash_code(text))
-        d52175ef0d52ec5ca155bdb1037...
+        >>> got['densenet'] = hash_code(text)
 
         >>> model_class = models.resnet50
         >>> text = source_closure(model_class)
         >>> assert not undefined_names(text)
-        >>> print(hash_code(text))
-        ad683af44142b58c85b6c2314...
+        >>> got['resnet50'] = hash_code(text)
 
         >>> model_class = models.Inception3
         >>> text = source_closure(model_class)
         >>> assert not undefined_names(text)
-        >>> print(hash_code(text))
-        bd7c67c37e292ffad6beb8532324d3...
+        >>> got['inception3'] = hash_code(text)
+
+        >>> # The hashes will depend on torchvision itself
+        >>> if torchvision.__version__ == '0.2.1':
+        >>>     want = {
+        >>>         'alexnet': '18a043fc0563bcf8f97b2ee76d',
+        >>>         'densenet': 'd52175ef0d52ec5ca155bdb10',
+        >>>         'resnet50': 'ad683af44142b58c85b6c2',
+        >>>         'inception3': 'bd7c67c37e292ffad6beb',
+        >>>     }
+        >>>     failed = []
+        >>>     for k in want:
+        >>>         if not got[k].startswith(want[k]):
+        >>>             item = (k, got[k], want[k])
+        >>>             print('failed item = {!r}'.format(item))
+        >>>             failed.append(item)
+        >>>     assert not failed, str(failed)
+        >>> else:
+        >>>     warnings.warn('Unsupported version of torchvision')
     """
     module_name = model_class.__module__
     module = sys.modules[module_name]
@@ -254,19 +276,28 @@ def source_closure(model_class):
         pass
 
     def closure_(obj, name):
-        # TODO: handle assignments
+        """
+        Given a live-object and its assigned name in a file find the lines of
+        code that define it.
+        """
         if name in visitor.import_lines:
             # Check and see if the name was imported from elsewhere
             return 'import', visitor.import_lines[name]
         elif name in visitor.assignments:
+            # TODO: better handling of assignments
             type_, value = visitor.assignments[name]
             if type_ == 'node':
-                # TODO, need to handle non-simple expressions
-                return type_, '{} = {}'.format(name, value.value.id)
-            else:
-                # when value is a dict we need to be sure it is
-                # extracted in the same order as we see it
+                # Use ast unparser to generate the rhs of the assignment
+                # May be able to use astunparse elsewhere to reduce bloat
+                value = astunparse.unparse(value.value)  # .rstrip()
+                return type_, '{} = {}'.format(name, value)
+            elif type_ == 'static':
+                # We were able to pre-extract a static value.
+                # Note, when value is a dict we need to be sure it is extracted
+                # in the same order as we see it
                 return type_, '{} = {}'.format(name, ub.repr2(value))
+            else:
+                raise NotImplementedError(type_)
         elif isinstance(obj, types.FunctionType):
             if obj.__module__ == module_name:
                 sourcecode = inspect.getsource(obj)
@@ -305,7 +336,7 @@ def source_closure(model_class):
 
 
 def remove_comments_and_docstrings(source):
-    """
+    r"""
     Args:
         source (str): uft8 text of source code
 
@@ -453,6 +484,7 @@ def export_model_code(dpath, model, initkw=None):
         >>> dpath = ub.ensure_app_cache_dir('netharn/tests')
         >>> static_modpath = export_model_code(dpath, model, initkw)
         >>> print('static_modpath = {!r}'.format(static_modpath))
+        ...
         >>> print(basename(static_modpath))
         DenseNet_c662ba.py
         >>> # now the module can be loaded
@@ -547,3 +579,12 @@ def export_model_code(dpath, model, initkw=None):
     with open(static_modpath, 'w') as file:
         file.write(sourcecode)
     return static_modpath
+
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        xdoctest -m netharn.export.exporter
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

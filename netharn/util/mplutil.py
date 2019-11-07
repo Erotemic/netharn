@@ -928,6 +928,8 @@ def render_figure_to_image(fig, dpi=None, transparent=None, **savekw):
 def savefig2(fig, fpath, **kwargs):
     """
     Does a tight layout and saves the figure with transparency
+
+    DEPRICATE
     """
     import matplotlib as mpl
     if 'transparent' not in kwargs:
@@ -1823,12 +1825,17 @@ def imshow(img,
             plt_imshow_kwargs['vmax'] = 255
 
     # Handle tensor chw format in most cases
+    try:
+        if 'torch' in img.__module__:
+            img = img.cpu().data.numpy()
+    except Exception:
+        pass
+
     if img.ndim == 3:
         if img.shape[0] == 3 or img.shape[0] == 1:
             if img.shape[2] > 4:
                 # probably in chw format
                 img = img.transpose(1, 2, 0)
-
     try:
         if len(img.shape) == 3 and (img.shape[2] == 3 or img.shape[2] == 4):
             # img is in a color format

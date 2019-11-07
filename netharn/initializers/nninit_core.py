@@ -42,23 +42,64 @@ class Pretrained(nninit_base._BaseInitializer, ub.NiceRepr):
     def __nice__(self):
         return self.fpath
 
+    def _rectify_deploy_zip_weights_path(self):
+        # Find the path to the weights inside the zipfile
+        import zipfile
+        fpath = None
+        candidates = []
+        with zipfile.ZipFile(self.fpath, 'r') as myzip:
+            for zinfo in myzip.filelist:
+                if zinfo.filename.endswith('deploy_snapshot.pt'):
+                    candidates = [zinfo.filename]
+                    break
+                elif zinfo.filename.endswith('.pt'):
+                    candidates.append(zinfo)
+        if len(candidates) == 0:
+            raise OSError('Cannot find pretrained weights in {}'.format(
+                self.fpath))
+        elif len(candidates) > 1:
+            raise OSError('Multiple weights files in {}'.format(
+                self.fpath))
+        else:
+            fpath = join(self.fpath, candidates[0])
+        return fpath
+
     def forward(self, model):
         from netharn import XPU
         xpu = XPU.from_data(model)
         # model_state_dict = xpu.load(self.fpath)
         if self.fpath is None:
             raise ValueError('Pretrained fpath is None!')
+
+        # Handle torch deployment zipfiles
+        if exists(self.fpath) and self.fpath.endswith('.zip'):
+            fpath = self._rectify_deploy_zip_weights_path()
+        else:
+            fpath = self.fpath
+
         try:
-            model_state_dict = xpu.load(util.zopen(self.fpath, 'rb', seekable=True))
+            model_state_dict = xpu.load(util.zopen(fpath, 'rb', seekable=True))
         except Exception:
-            print('Failed to open self.fpath = {!r}'.format(self.fpath))
+            print('Failed to open fpath = {!r}'.format(fpath))
             raise
 
         if 'model_state_dict' in model_state_dict:
             model_state_dict = model_state_dict['model_state_dict']
         elif 'weights' in model_state_dict:
             model_state_dict = model_state_dict['weights']
-        nninit_base.load_partial_state(model, model_state_dict,
+        else:
+            # If the dictionary is flat (i.e. all values are tensors) then it
+            # is safe to assume this file only contains weights.
+            # Otherwise raise an exception.
+            if not all(torch.is_tensor(v) for v in model_state_dict.values()):
+                raise Exception(
+                    'snapshot file is nested, but does not have expected keys: '
+                    'model_state_dict or weights. Root keys are {}'.format(
+                        sorted(model_state_dict.keys())
+                    ))
+        # Remove any DataParallel / DataSerial
+        raw_model = xpu.raw(model)
+        nninit_base.load_partial_state(raw_model, model_state_dict,
                                        initializer=self.initializer)
 
     def history(self):

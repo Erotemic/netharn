@@ -93,17 +93,19 @@ class XPU(ub.NiceRepr):
                 raise KeyError(item.type)
         elif isinstance(item, six.string_types):
             item = item.lower()
-            item = item.replace('cpu', '')
-            item = item.replace('gpu', '')
-            item = item.replace('cuda', '')
-            if ',' in item:
-                item = list(map(int, ','.split(item)))
-            if item == '':
-                item = 0
-            if item == 'none':
+            if item in ['cpu', 'none']:
                 item = None
+            elif item.startswith(('gpu', 'cuda')):
+                item = item.replace('gpu', '')
+                item = item.replace('cuda', '')
+                if item == '':
+                    item = 0
+                elif ',' in item:
+                    item = list(map(int, ','.split(item)))
+                else:
+                    item = int(item)
             else:
-                item = int(item)
+                raise KeyError('Unknown XPU string coding')
 
         if check:
             if not XPU.exists(item):
@@ -114,21 +116,46 @@ class XPU(ub.NiceRepr):
                     raise ValueError('XPU {} does not exist.'.format(item))
 
         if item is None:
-            xpu.mode = 'cpu'
+            xpu._main_device_id = None
+            xpu._device_ids = None
         elif isinstance(item, int):
-            xpu.mode = 'gpu'
             xpu._main_device_id = item
+            xpu._device_ids = [item]
         elif isinstance(item, (list, tuple)):
-            xpu.mode = 'multi-gpu'
             xpu._device_ids = list(item)
-            if not xpu._device_ids:
+            if len(xpu._device_ids) == 0:
                 raise IndexError('empty device list')
             xpu._main_device_id = xpu._device_ids[0]
         else:
             raise TypeError(xpu)
 
+        if xpu._main_device_id is None:
+            xpu.mode = 'cpu'
+        else:
+            if xpu._device_ids and len(xpu._device_ids) > 1:
+                xpu.mode = 'multi-gpu'
+            else:
+                xpu.mode = 'gpu'
+
         if xpu._main_device_id is not None:
             xpu._cuda_device = torch.cuda.device(xpu._main_device_id)
+
+    def __eq__(xpu, other):
+        """
+        Example:
+            >>> assert XPU([0], check=False) == XPU(0, check=False)
+            >>> assert XPU('gpu', check=False) == XPU(0, check=False)
+            >>> assert XPU([1], check=False) != XPU(0, check=False)
+            >>> assert XPU('cpu', check=False) == XPU(None, check=False)
+            >>> assert XPU([0, 1], check=False) == XPU([0, 1], check=False)
+            >>> assert XPU([0, 1], check=False) != XPU([1, 0], check=False)
+            >>> assert 'numpy' != XPU([1, 0], check=False)
+        """
+        try:
+            return (xpu._main_device_id == other._main_device_id and
+                    xpu._device_ids == other._device_ids)
+        except AttributeError:
+            return False
 
     @property
     def main_device(xpu):
@@ -319,7 +346,7 @@ class XPU(ub.NiceRepr):
 
     def __nice__(xpu):
         if xpu.is_gpu():
-            if xpu._device_ids:
+            if xpu._device_ids and len(xpu._device_ids) > 1:
                 parts = [str(n) + '*' if n == xpu._main_device_id else str(n)
                          for n in xpu._device_ids]
                 return 'GPU({})'.format(','.join(parts))
@@ -330,6 +357,8 @@ class XPU(ub.NiceRepr):
 
     def __json__(xpu):
         """
+        String encoding of an XPU
+
         CommandLine:
             xdoctest -m ~/code/netharn/netharn/device.py XPU.__json__
 
@@ -355,26 +384,43 @@ class XPU(ub.NiceRepr):
         return xpu._main_device_id is not None
         # return 'gpu' in xpu.mode
 
+    def raw(xpu, model):
+        """
+        Unmounts the original core model if it is mounted.
+
+        Args:
+            model (torch.nn.Module): a model (potentially mounted)
+
+        Returns:
+            torch.nn.Module:
+                if `model` is mounted returns `model.module`
+                otherwise, returns `model`
+        """
+        if isinstance(model, (MountedModel, torch.nn.DataParallel)):
+            # Unwrap the core model
+            model = model.module
+        return model
+
     def mount(xpu, model):
         """
-        Like move, but only for models. Creates an instance
+        Like move, but only for models.
+        Note that this works inplace for non-Tensor objects.
 
+        Args:
+            model (torch.nn.Module): the model to mount
 
-        Mounts a model on the xpu.
-        (Note this may be multiple gpus).
-
-        Unlike move this function does NOT work in place.
+        Returns:
+            DataSerial | DataParallel :
+                the model mounted on the XPU (which may be multiple GPUs)
 
         Example:
             >>> model = torch.nn.Conv2d(1, 1, 1)
             >>> xpu = XPU()
         """
-        if isinstance(model, (MountedModel, torch.nn.DataParallel)):
-            # Unwrap the core model
-            model = model.module
-
+        # Unwrap the core model if necessary
+        model = xpu.raw(model)
         model = xpu.move(model)
-        if xpu._device_ids:
+        if xpu._device_ids and len(xpu._device_ids) > 1:
             model = DataParallel(model, device_ids=xpu._device_ids,
                                  output_device=xpu._main_device_id)
         else:
@@ -383,12 +429,15 @@ class XPU(ub.NiceRepr):
 
     def move(xpu, data, **kwargs):
         """
+        Moves the model onto the primary GPU or CPU.
+        Note that this works inplace for non-Tensor objects.
+
         Args:
             data (torch.Tensor): raw data
             **kwargs : forwarded to `data.cuda`
 
-        Notes:
-            this function operates inplace.
+        Returns:
+            torch.Tensor: the tensor with a dtype for this device
 
         Example:
             >>> data = torch.FloatTensor([0])
@@ -406,6 +455,8 @@ class XPU(ub.NiceRepr):
     def variable(xpu, item, **kw):
         """
         Moves data to this XPU and wraps it inside a `torch.autograd.Variable`
+
+        DEPRICATE
 
         Args:
             item (Tensor): a of tensors
@@ -440,6 +491,8 @@ class XPU(ub.NiceRepr):
     def variables(xpu, *args, **kw):
         """
         Convinience function to wrap multiple Tensors in Variables at once
+
+        DEPRICATE
         """
         for item in args:
             yield xpu.variable(item, **kw)

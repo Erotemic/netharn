@@ -40,16 +40,21 @@ import warnings
 from os.path import splitext
 from os.path import basename
 from os.path import join
+from collections import OrderedDict
 import json
 import numpy as np
 import ubelt as ub
 import six
 import itertools as it
+from six.moves import cStringIO as StringIO
+import copy
 from netharn import util
 
 __all__ = [
     'CocoDataset',
 ]
+
+_dict = OrderedDict
 
 
 INT_TYPES = (int, np.integer)
@@ -103,6 +108,37 @@ class ObjectList1D(ub.NiceRepr):
         newself = self.__class__(subids, self._dset)
         return newself
 
+    def _lookup(self, key):
+        raise NotImplementedError('must be implemented')
+
+    def _ilookup(self, key):
+        raise NotImplementedError('must be implemented')
+
+
+class ObjectGroups(ub.NiceRepr):
+    def __init__(self, groups, dset):
+        self._groups = groups
+
+    def _lookup(self, key):
+        return [group._lookup(key) for group in self._groups]
+
+    def _ilookup(self, key):
+        return (group._lookup(key) for group in self._groups)
+
+    def __nice__(self):
+        # import timerit
+        # mu = timerit.core._trychar('μ', 'm')
+        # sigma = timerit.core._trychar('σ', 's')
+        mu = 'm'
+        sigma = 's'
+        len_list = list(map(len, self._groups))
+        num = len(self._groups)
+        mean = np.mean(len_list)
+        std = np.std(len_list)
+        nice = 'n={!r}, {}={:.1f}, {}={:.1f}'.format(
+            num, mu, mean, sigma, std)
+        return nice
+
 
 class Images(ObjectList1D):
     """
@@ -116,6 +152,9 @@ class Images(ObjectList1D):
 
     def _lookup(self, key):
         return [img[key] for img in ub.take(self._dset.imgs, self._ids)]
+
+    def _ilookup(self, key):
+        return (img[key] for img in ub.take(self._dset.imgs, self._ids))
 
     @property
     def width(self):
@@ -135,7 +174,29 @@ class Images(ObjectList1D):
             >>> print(self.size)
             [(512, 512), (300, 250), (256, 256)]
         """
-        return list(zip(self.width, self.height))
+        return list(zip(self._ilookup('width'), self._ilookup('height')))
+
+    @property
+    def area(self):
+        """
+        Example:
+            >>> from netharn.data.coco_api import *
+            >>> self = CocoDataset.demo().images()
+            >>> self._dset._ensure_imgsize()
+            >>> print(self.area)
+            [262144, 75000, 65536]
+        """
+        return [w * h for w, h in zip(self._ilookup('width'), self._ilookup('height'))]
+
+    @property
+    def n_annots(self):
+        """
+        Example:
+            >>> self = CocoDataset.demo().images()
+            >>> print(ub.repr2(self.n_annots, nl=0))
+            [9, 2, 0]
+        """
+        return list(map(len, ub.take(self._dset.gid_to_aids, self._ids)))
 
     @property
     def aids(self):
@@ -184,9 +245,14 @@ class Annots(ObjectList1D):
     def _lookup(self, key):
         return [ann[key] for ann in ub.take(self._dset.anns, self._ids)]
 
+    def _ilookup(self, key):
+        return (ann[key] for ann in ub.take(self._dset.anns, self._ids))
+
     @property
     def boxes(self):
         """
+        Returns netharn-style boxes
+
         Example:
             >>> self = CocoDataset.demo().annots([1, 2, 11])
             >>> print(self.boxes)
@@ -200,28 +266,27 @@ class Annots(ObjectList1D):
         boxes = nh.util.Boxes(xywh, 'xywh')
         return boxes
 
+    @property
+    def xywh(self):
+        """
+        Returns raw boxes
 
-class ObjectGroups(ub.NiceRepr):
-    def __init__(self, groups, dset):
-        self._groups = groups
-
-    def __nice__(self):
-        # import timerit
-        # mu = timerit.core._trychar('μ', 'm')
-        # sigma = timerit.core._trychar('σ', 's')
-        mu = 'm'
-        sigma = 's'
-        len_list = list(map(len, self._groups))
-        num = len(self._groups)
-        mean = np.mean(len_list)
-        std = np.std(len_list)
-        nice = 'n={!r}, {}={:.1f}, {}={:.1f}'.format(
-            num, mu, mean, sigma, std)
-        return nice
+        Example:
+            >>> self = CocoDataset.demo().annots([1, 2, 11])
+            >>> print(self.boxes)
+            <Boxes(tlwh,
+                array([[ 10,  10, 360, 490],
+                       [350,   5, 130, 290],
+                       [124,  96,  45,  18]]))>
+        """
+        xywh = self._lookup('bbox')
+        return xywh
 
 
 class AnnotGroups(ObjectGroups):
-    pass
+    @property
+    def cids(self):
+        return self._lookup('category_id')
 
 
 class ImageGroups(ObjectGroups):
@@ -406,12 +471,38 @@ class MixinCocoExtras(object):
             hashid_parts['image_data'] = ub.hash_data(gpath_sha512s)
 
         # Hash individual components
-        hashid_parts['annotations'] = ub.hash_data(json.dumps(
-            [sorted(self.anns[aid].items()) for aid in aids]))
-        hashid_parts['images']  = ub.hash_data(json.dumps([
-            sorted(self.imgs[gid].items()) for gid in gids]))
-        hashid_parts['categories'] = ub.hash_data(json.dumps([
-            sorted(self.cats[cid].items()) for cid in cids]))
+        with ub.Timer(label='hash coco parts', verbose=verbose > 1):
+            # Dumping annots to json takes the lonest amount of time
+            # However, its faster than hashing the data directly
+            """
+            if False:
+                import ubelt as ub
+                for timer in ub.Timerit(20, bestof=5, label='organize'):
+                    with timer:
+                        anns_ordered = [sorted(self.anns[aid].items()) for aid in aids]
+
+                from collections import OrderedDict
+                import ubelt as ub
+                for timer in ub.Timerit(20, bestof=3, label='organize-alt'):
+                    with timer:
+                        anns_ordered = [self.anns[aid] for aid in aids]
+                        anns_ordered = [list(ann.items()) if isinstance(ann, ub.odict) else sorted(ann.items()) for ann in anns_ordered]
+                with ub.Timer('to_json'):
+                    anns_text = json.dumps(anns_ordered)
+                with ub.Timer('alt_hash'):
+                    ub.hash_data(anns_ordered)
+            """
+            def _ditems(d):
+                # return sorted(d.items())
+                return list(d.items()) if isinstance(d, OrderedDict) else sorted(d.items())
+            _anns_ordered = (self.anns[aid] for aid in aids)
+            anns_ordered = [_ditems(ann) for ann in _anns_ordered]
+            anns_text = json.dumps(anns_ordered)
+            hashid_parts['annotations'] = ub.hash_data(anns_text)
+            hashid_parts['images']  = ub.hash_data(json.dumps([
+                _ditems(self.imgs[gid]) for gid in gids]))
+            hashid_parts['categories'] = ub.hash_data(json.dumps([
+                _ditems(self.cats[cid]) for cid in cids]))
 
         hashid_parts['n_anns'] = len(aids)
         hashid_parts['n_imgs'] = len(gids)
@@ -433,16 +524,21 @@ class MixinCocoExtras(object):
             >>> assert self.imgs[2]['width'] == 300
             >>> assert self.imgs[3]['width'] == 256
         """
-        from PIL import Image
-        for img in ub.ProgIter(self.dataset['images'], desc='ensure imgsize',
-                               verbose=verbose):
-            gpath = join(self.img_root, img['file_name'])
-            if 'width' not in img:
-                pil_img = Image.open(gpath)
-                w, h = pil_img.size
-                pil_img.close()
-                img['width'] = w
-                img['height'] = h
+        if any('width' not in img for img in self.dataset['images']):
+            from PIL import Image
+            if self.tag:
+                desc = 'populate imgsize for ' + self.tag
+            else:
+                desc = 'populate imgsize for untagged coco dataset'
+            for img in ub.ProgIter(self.dataset['images'], desc=desc,
+                                   verbose=verbose):
+                gpath = join(self.img_root, img['file_name'])
+                if 'width' not in img:
+                    pil_img = Image.open(gpath)
+                    w, h = pil_img.size
+                    pil_img.close()
+                    img['width'] = w
+                    img['height'] = h
 
     def _resolve_to_id(self, id_or_dict):
         """
@@ -452,6 +548,18 @@ class MixinCocoExtras(object):
             resolved_id = id_or_dict
         else:
             resolved_id = id_or_dict['id']
+        return resolved_id
+
+    def _resolve_to_cid(self, id_or_name_or_dict):
+        """
+        Ensures output is an category id
+        """
+        if isinstance(id_or_name_or_dict, INT_TYPES):
+            resolved_id = id_or_name_or_dict
+        elif isinstance(id_or_name_or_dict, six.string_types):
+            resolved_id = self.index.name_to_cat[id_or_name_or_dict]['id']
+        else:
+            resolved_id = id_or_name_or_dict['id']
         return resolved_id
 
     def _resolve_to_ann(self, aid_or_ann):
@@ -486,7 +594,7 @@ class MixinCocoExtras(object):
         import networkx as nx
         graph = nx.DiGraph()
         for cat in self.dataset['categories']:
-            graph.add_node(cat['name'])
+            graph.add_node(cat['name'], **cat)
             if 'supercategory' in cat:
                 graph.add_edge(cat['supercategory'], cat['name'])
         return graph
@@ -552,7 +660,7 @@ class MixinCocoExtras(object):
                     new_cat['id'] = len(new_cats) + 1
                 else:
                     # new name is a entirely new category
-                    new_cat = ub.odict([
+                    new_cat = _dict([
                         ('id', len(new_cats) + 1),
                         ('name', new_name),
                     ])
@@ -594,7 +702,7 @@ class MixinCocoExtras(object):
         if rebuild:
             self._build_index()
         else:
-            self._clear_index()
+            self.index.clear()
 
     def _aspycoco(self):
         # Converts to the official pycocotools.coco.COCO object
@@ -782,8 +890,8 @@ class MixinCocoDraw(object):
                 look up gid based on this aid.
 
         Ignore:
-            >>> from netharn.util import mplutil
-            >>> mplutil.qtensure()
+            >>> import netharn as nh
+            >>> nh.util.autompl()
         """
         import matplotlib as mpl
         from matplotlib import pyplot as plt
@@ -854,8 +962,11 @@ class MixinCocoDraw(object):
         gpath = join(self.img_root, img['file_name'])
         with Image.open(gpath) as pil_img:
             np_img = np.array(pil_img)
+
+        fig = plt.gcf()
+        ax = fig.gca()
+        ax.cla()
         plt.imshow(np_img)
-        ax = plt.gca()
 
         # Show all annotations inside it
         for (x1, y1, catname, textkw) in texts:
@@ -897,15 +1008,12 @@ class MixinCocoAddRemove(object):
         elif self.imgs and gid in self.imgs:
             raise IndexError('Image id={} already exists'.format(gid))
 
-        img = ub.odict()
+        img = _dict()
         img['id'] = int(gid)
         img['file_name'] = str(gname)
         img.update(**kw)
         self.dataset['images'].append(img)
-        if self.imgs is not None:
-            # self._clear_index()
-            self.imgs[gid] = img
-            self.gid_to_aids[gid] = []
+        self.index._add_image(gid, img)
         return gid
 
     @util.profile
@@ -932,7 +1040,7 @@ class MixinCocoAddRemove(object):
         elif self.anns and aid in self.anns:
             raise IndexError('Annot id={} already exists'.format(aid))
 
-        ann = ub.odict()
+        ann = _dict()
         ann['id'] = int(aid)
         ann['image_id'] = int(gid)
         ann['category_id'] = int(cid)
@@ -943,38 +1051,44 @@ class MixinCocoAddRemove(object):
         # assert not set(kw).intersection(set(ann))
         ann.update(**kw)
         self.dataset['annotations'].append(ann)
-
-        if self.anns is not None:
-            # self._clear_index()
-            self.anns[aid] = ann
-            self.gid_to_aids[gid].append(aid)
-            self.cid_to_aids[cid].append(aid)
+        self.index._add_annotation(aid, gid, cid, ann)
         return aid
 
     @util.profile
     def add_annotations(self, anns):
-        """ Faster less-safe multi-item alternative """
+        """
+        Faster less-safe multi-item alternative
+
+        Args:
+            anns (List[Dict]): list of annotation dictionaries
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> anns = [self.anns[aid] for aid in [2, 3, 5, 7]]
+            >>> self.remove_annotations(anns)
+            >>> assert self.n_annots == 7 and self._check_index()
+            >>> self.add_annotations(anns)
+            >>> assert self.n_annots == 11 and self._check_index()
+        """
         self.dataset['annotations'].extend(anns)
-        if self.anns is not None:
-            aids = [ann['id'] for ann in anns]
-            gids = [ann['image_id'] for ann in anns]
-            cids = [ann['category_id'] for ann in anns]
-            new_anns = dict(zip(aids, anns))
-            self.anns.update(new_anns)
-            for gid, cid, aid in zip(gids, cids, aids):
-                self.gid_to_aids[gid].append(aid)
-                self.cid_to_aids[cid].append(aid)
+        self.index._add_annotations(anns)
 
     @util.profile
     def add_images(self, imgs):
-        """ Faster less-safe multi-item alternative """
+        """
+        Faster less-safe multi-item alternative
+
+        Args:
+            imgs (List[Dict]): list of image dictionaries
+
+        Example:
+            >>> imgs = CocoDataset.demo().dataset['images']
+            >>> self = CocoDataset()
+            >>> self.add_images(imgs)
+            >>> assert self.n_images == 3 and self._check_index()
+        """
         self.dataset['images'].extend(imgs)
-        if self.imgs is not None:
-            gids = [img['id'] for img in imgs]
-            new_imgs = dict(zip(gids, imgs))
-            self.imgs.update(new_imgs)
-            for gid in gids:
-                self.gid_to_aids[gid] = []
+        self.index._add_images(imgs)
 
     def add_category(self, name, supercategory=None, cid=None):
         """
@@ -984,17 +1098,29 @@ class MixinCocoAddRemove(object):
             name (str): name of the new category
             supercategory (str, optional): parent of this category
             cid (int, optional): use this category id, if it was not taken
+
+        CommandLine:
+            xdoctest -m netharn.data.coco_api MixinCocoAddRemove.add_category
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> cid = self.add_category('dog', supercategory='object')
+            >>> assert self.cats[cid]['name'] == 'dog'
+            >>> assert self.n_cats == 8
+            >>> import pytest
+            >>> with pytest.raises(ValueError):
+            >>>     self.add_category('dog', supercategory='object')
         """
-        if self.cats is not None:
-            if name in self.name_to_cat:
-                raise ValueError(name)
+        index = self.index
+        if index.cats and name in index.name_to_cat:
+            raise ValueError('Category name={!r} already exists'.format(name))
 
         if cid is None:
             cid = self._next_ids.get('cid')
-        elif self.cats and cid in self.cats:
+        elif index.cats and cid in index.cats:
             raise IndexError('Category id={} already exists'.format(cid))
 
-        cat = ub.odict()
+        cat = _dict()
         cat['id'] = int(cid)
         cat['name'] = str(name)
         if supercategory:
@@ -1004,38 +1130,38 @@ class MixinCocoAddRemove(object):
         self.dataset['categories'].append(cat)
 
         # And add to the indexes
-        if self.cats is not None:
-            self.cats[cid] = cat
-            self.cid_to_aids[cid] = []
-            self.name_to_cat[name] = cat
+        index._add_category(cid, name, cat)
         return cid
 
-    def remove_all_images(self):
+    def clear_images(self):
         """
         Removes all images and annotations (but not categories)
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> self.clear_images()
+            >>> print(ub.repr2(self.basic_stats(), nobr=1, nl=0, si=1))
+            n_anns: 0, n_imgs: 0, n_cats: 7
         """
         self.dataset['images'].clear()
         self.dataset['annotations'].clear()
-        if self.imgs is not None:
-            # Keep the category indexes alive
-            self.imgs.clear()
-            self.anns.clear()
-            self.gid_to_aids.clear()
-            for _ in self.cid_to_aids.values():
-                _.clear()
+        self.index._remove_all_images()
 
-    def remove_all_annotations(self):
+    def clear_annotations(self):
         """
         Removes all annotations (but not images and categories)
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> self.clear_annotations()
+            >>> print(ub.repr2(self.basic_stats(), nobr=1, nl=0, si=1))
+            n_anns: 0, n_imgs: 3, n_cats: 7
         """
         self.dataset['annotations'].clear()
-        if self.anns is not None:
-            # Keep the category and image indexes alive
-            self.anns.clear()
-            for _ in self.gid_to_aids.values():
-                _.clear()
-            for _ in self.cid_to_aids.values():
-                _.clear()
+        self.index._remove_all_annotations()
+
+    remove_all_images = clear_images
+    remove_all_annotations = clear_annotations
 
     def remove_annotation(self, aid_or_ann):
         """
@@ -1054,9 +1180,9 @@ class MixinCocoAddRemove(object):
         # Do the simple thing, its O(n) anyway,
         remove_ann = self._resolve_to_ann(aid_or_ann)
         self.dataset['annotations'].remove(remove_ann)
-        self._clear_index()
+        self.index.clear()
 
-    def remove_annotations(self, aids_or_anns):
+    def remove_annotations(self, aids_or_anns, verbose=0):
         """
         Remove multiple annotations from the dataset.
 
@@ -1079,62 +1205,289 @@ class MixinCocoAddRemove(object):
                 for index, ann in enumerate(self.dataset['annotations'])
             }
             remove_aids = list(map(self._resolve_to_id, aids_or_anns))
+
             # Lookup the indices to remove, sort in descending order
-            toremove = sorted(ub.take(aid_to_index, remove_aids))[::-1]
-            for idx in toremove:
-                del self.dataset['annotations'][idx]
+            if verbose > 1:
+                print('Removing annotations')
 
-            if self.anns:
-                # dynamically update the annotation index
-                for aid in remove_aids:
-                    ann = self.anns.pop(aid)
-                    gid = ann['image_id']
-                    cid = ann['category_id']
-                    self.cid_to_aids[cid].remove(aid)
-                    self.gid_to_aids[gid].remove(aid)
-            # self._clear_index()
+            remove_idxs = list(ub.take(aid_to_index, remove_aids))
+            delitems(self.dataset['annotations'], remove_idxs)
 
-    def remove_categories(self, cids_or_cats):
+            self.index._remove_annotations(remove_aids, verbose=verbose)
+
+    def remove_categories(self, cids_or_cats, verbose=0):
         """
         Remove categories and all annotations in those categories.
         Currently does not change any heirarchy information
 
         Args:
-            cids_or_cats (List): list of category dicts or ids
+            cids_or_cats (List): list of category dicts, names, or ids
 
         Example:
             >>> self = CocoDataset.demo()
-            >>> cids_or_cats = [self.cats[1], 2, 3]
+            >>> cids_or_cats = [self.cats[1], 'rocket', 3]
             >>> self.remove_categories(cids_or_cats)
             >>> assert len(self.dataset['categories']) == 4
             >>> self._check_index()
         """
         if cids_or_cats:
-            remove_cids = list(map(self._resolve_to_id, cids_or_cats))
-            # First remove any annotation that belongs to those categories
-            remove_aids = list(it.chain(*[self.cid_to_aids[cid] for cid in remove_cids]))
-            self.remove_annotations(remove_aids)
 
+            if verbose > 1:
+                print('Removing annots of removed categories')
+
+            remove_cids = list(map(self._resolve_to_cid, cids_or_cats))
+            # First remove any annotation that belongs to those categories
+            if self.cid_to_aids:
+                remove_aids = list(it.chain(*[self.cid_to_aids[cid]
+                                              for cid in remove_cids]))
+            else:
+                remove_aids = [ann['id'] for ann in self.dataset['annotations']
+                               if ann['category_id'] in remove_cids]
+
+            self.remove_annotations(remove_aids, verbose=verbose)
+
+            if verbose > 1:
+                print('Removing category entries')
             cid_to_index = {
                 cat['id']: index
                 for index, cat in enumerate(self.dataset['categories'])
             }
             # Lookup the indices to remove, sort in descending order
-            toremove = sorted(ub.take(cid_to_index, remove_cids))[::-1]
-            for idx in toremove:
-                del self.dataset['categories'][idx]
+            remove_idxs = list(ub.take(cid_to_index, remove_cids))
+            delitems(self.dataset['categories'], remove_idxs)
 
-            if self.cats:
-                # dynamically update the category index
-                for cid in remove_cids:
-                    cat = self.cats.pop(cid)
-                    del self.cid_to_aids[cid]
-                    del self.name_to_cat[cat['name']]
+            self.index._remove_categories(remove_cids, verbose=verbose)
+
+
+class CocoIndex(object):
+    """
+    Fast lookup index for the COCO dataset with dynamic modification
+    """
+
+    # _set = ub.oset  # many operations are much slower for oset
+    _set = set
+
+    def __init__(self):
+        self.anns = None
+        self.imgs = None
+        self.cats = None
+        self.gid_to_aids = None
+        self.cid_to_aids = None
+        self.name_to_cat = None
+        self.file_name_to_img = None
+
+    def __bool__(self):
+        return self.anns is not None
+
+    __nonzero__ = __bool__  # python 2 support
+
+    def _add_image(self, gid, img):
+        if self.imgs is not None:
+            self.imgs[gid] = img
+            self.gid_to_aids[gid] = self._set()
+            self.file_name_to_img[img['file_name']] = img
+
+    def _add_images(self, imgs):
+        if self.imgs is not None:
+            gids = [img['id'] for img in imgs]
+            new_imgs = dict(zip(gids, imgs))
+            self.imgs.update(new_imgs)
+            self.file_name_to_img.update(
+                {img['file_name']: img for img in imgs})
+            for gid in gids:
+                self.gid_to_aids[gid] = self._set()
+
+    def _add_annotation(self, aid, gid, cid, ann):
+        if self.anns is not None:
+            self.anns[aid] = ann
+            self.gid_to_aids[gid].add(aid)
+            self.cid_to_aids[cid].add(aid)
+
+    def _add_annotations(self, anns):
+        if self.anns is not None:
+            aids = [ann['id'] for ann in anns]
+            gids = [ann['image_id'] for ann in anns]
+            cids = [ann['category_id'] for ann in anns]
+            new_anns = dict(zip(aids, anns))
+            self.anns.update(new_anns)
+            for gid, cid, aid in zip(gids, cids, aids):
+                self.gid_to_aids[gid].add(aid)
+                self.cid_to_aids[cid].add(aid)
+
+    def _add_category(self, cid, name, cat):
+        if self.cats is not None:
+            self.cats[cid] = cat
+            self.cid_to_aids[cid] = self._set()
+            self.name_to_cat[name] = cat
+
+    def _remove_all_annotations(self):
+        # Keep the category and image indexes alive
+        if self.anns is not None:
+            self.anns.clear()
+            for _ in self.gid_to_aids.values():
+                _.clear()
+            for _ in self.cid_to_aids.values():
+                _.clear()
+
+    def _remove_all_images(self):
+        # Keep the category indexes alive
+        if self.imgs is not None:
+            self.imgs.clear()
+            self.anns.clear()
+            self.gid_to_aids.clear()
+            self.file_name_to_img.clear()
+            for _ in self.cid_to_aids.values():
+                _.clear()
+
+    def _remove_annotations(self, remove_aids, verbose=0):
+        if self.anns is not None:
+            if verbose > 1:
+                print('Updating annotation index')
+            # This is faster for simple set cid_to_aids
+            for aid in remove_aids:
+                ann = self.anns.pop(aid)
+                gid = ann['image_id']
+                cid = ann['category_id']
+                self.cid_to_aids[cid].remove(aid)
+                self.gid_to_aids[gid].remove(aid)
+
+    def _remove_categories(self, remove_cids, verbose=0):
+        # dynamically update the category index
+        if self.cats is not None:
+            for cid in remove_cids:
+                cat = self.cats.pop(cid)
+                del self.cid_to_aids[cid]
+                del self.name_to_cat[cat['name']]
+            if verbose > 2:
+                print('Updated category index')
+
+    def clear(self):
+        self.anns = None
+        self.imgs = None
+        self.cats = None
+        self.gid_to_aids = None
+        self.cid_to_aids = None
+        self.name_to_cat = None
+        self.file_name_to_img = None
+
+    def build(self, parent):
+        """
+        build reverse indexes
+
+        Notation:
+            aid - Annotation ID
+            gid - imaGe ID
+            cid - Category ID
+        """
+        # create index
+        anns, cats, imgs = {}, {}, {}
+        gid_to_aids = ub.ddict(self._set)
+        cid_to_aids = ub.ddict(self._set)
+
+        # Build one-to-one self-lookup maps
+        for cat in parent.dataset.get('categories', []):
+            cid = cat['id']
+            if cid in cat:
+                warnings.warn(
+                    'Categories have the same id in {}:\n{} and\n{}'.format(
+                        parent, cats[cid], cat))
+            cats[cid] = cat
+
+        for img in parent.dataset.get('images', []):
+            gid = img['id']
+            if gid in imgs:
+                warnings.warn(
+                    'Images have the same id in {}:\n{} and\n{}'.format(
+                        parent, imgs[gid], img))
+            imgs[gid] = img
+
+        for ann in parent.dataset.get('annotations', []):
+            aid = ann['id']
+            if aid in anns:
+                warnings.warn(
+                    'Annotations at index {} and {} '
+                    'have the same id in {}:\n{} and\n{}'.format(
+                        parent.dataset['annotations'].index(anns[aid]),
+                        parent.dataset['annotations'].index(ann),
+                        parent, anns[aid], ann))
+            anns[aid] = ann
+
+        # Build one-to-many lookup maps
+        for ann in anns.values():
+            try:
+                aid = ann['id']
+                gid = ann['image_id']
+                cid = ann['category_id']
+            except KeyError:
+                raise KeyError('Annotation does not have ids {}'.format(ann))
+
+            if not isinstance(aid, INT_TYPES):
+                raise TypeError('bad aid={} type={}'.format(aid, type(aid)))
+            if not isinstance(gid, INT_TYPES):
+                raise TypeError('bad gid={} type={}'.format(gid, type(gid)))
+            if not isinstance(cid, INT_TYPES):
+                raise TypeError('bad cid={} type={}'.format(cid, type(cid)))
+
+            gid_to_aids[gid].add(aid)
+            cid_to_aids[cid].add(aid)
+            if gid not in imgs:
+                warnings.warn('Annotation {} in {} references '
+                              'unknown image_id'.format(ann, parent))
+            if cid not in cats:
+                warnings.warn('Annotation {} in {} references '
+                              'unknown category_id'.format(ann, parent))
+
+        # Fix one-to-zero cases
+        for cid in cats.keys():
+            if cid not in cid_to_aids:
+                cid_to_aids[cid] = self._set()
+
+        for gid in imgs.keys():
+            if gid not in gid_to_aids:
+                gid_to_aids[gid] = self._set()
+
+        # create class members
+        self.anns = anns
+        self.imgs = imgs
+        self.cats = cats
+        self.gid_to_aids = gid_to_aids
+        self.cid_to_aids = cid_to_aids
+        self.name_to_cat = {cat['name']: cat for cat in self.cats.values()}
+        self.file_name_to_img = {img['file_name']: img for img in self.imgs.values()}
+
+
+class MixinCocoIndex(object):
+    """
+    Give the dataset top level access to index attributes
+    """
+    @property
+    def anns(self):
+        return self.index.anns
+
+    @property
+    def imgs(self):
+        return self.index.imgs
+
+    @property
+    def cats(self):
+        return self.index.cats
+
+    @property
+    def gid_to_aids(self):
+        return self.index.gid_to_aids
+
+    @property
+    def cid_to_aids(self):
+        return self.index.cid_to_aids
+
+    @property
+    def name_to_cat(self):
+        return self.index.name_to_cat
 
 
 class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                   MixinCocoAttrs, MixinCocoDraw, MixinCocoExtras,
-                  MixinCocoDepricate):
+                  MixinCocoIndex, MixinCocoDepricate):
     """
     Notes:
         A keypoint annotation
@@ -1210,16 +1563,11 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         if img_root is None:
             img_root = '.'
 
+        self.index = CocoIndex()
+
         self.tag = tag
         self.dataset = data
         self.img_root = img_root
-
-        self.anns = None
-        self.imgs = None
-        self.cats = None
-        self.gid_to_aids = None
-        self.cid_to_aids = None
-        self.name_to_cat = None
 
         # Keep track of an unused id we may use
         self._next_ids = _NextId(self)
@@ -1237,8 +1585,8 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             >>> assert new.imgs[1] == self.dataset['images'][0]
             >>> assert new.imgs[1] is not self.dataset['images'][0]
         """
-        import copy
         new = copy.copy(self)
+        new.index = CocoIndex()
         new.dataset = copy.deepcopy(self.dataset)
         new._build_index()
         return new
@@ -1264,7 +1612,6 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             >>> assert self2.dataset == self.dataset
             >>> assert self2.dataset is not self.dataset
         """
-        from six.moves import cStringIO as StringIO
         fp = StringIO()
         self.dump(fp, indent=indent)
         fp.seek(0)
@@ -1287,106 +1634,23 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
     def _check_index(self):
         # We can verify our index invariants by copying the raw dataset and
         # checking if the newly constructed index is the same as this index.
-        import copy
         new = copy.copy(self)
         new.dataset = copy.deepcopy(self.dataset)
         new._build_index()
-        assert self.anns == new.anns
-        assert self.imgs == new.imgs
-        assert self.cats == new.cats
-        assert self.gid_to_aids == new.gid_to_aids
-        assert self.cid_to_aids == new.cid_to_aids
-        assert self.name_to_cat == new.name_to_cat
+        assert self.index.anns == new.index.anns
+        assert self.index.imgs == new.index.imgs
+        assert self.index.cats == new.index.cats
+        assert self.index.gid_to_aids == new.index.gid_to_aids
+        assert self.index.cid_to_aids == new.index.cid_to_aids
+        assert self.index.name_to_cat == new.index.name_to_cat
+        assert self.index.file_name_to_img == new.index.file_name_to_img
+        return True
 
     def _build_index(self):
-        """
-        build reverse indexes
-
-        Notation:
-            aid - Annotation ID
-            gid - imaGe ID
-            cid - Category ID
-        """
-        # create index
-        _set = ub.oset
-        anns, cats, imgs = {}, {}, {}
-        gid_to_aids = ub.ddict(_set)
-        cid_to_aids = ub.ddict(_set)
-
-        # Build one-to-one self-lookup maps
-        for cat in self.dataset.get('categories', []):
-            cid = cat['id']
-            if cid in cat:
-                warnings.warn('Categories have the same id in {}:\n{} and\n{}'.format(
-                    self, cats[cid], cat))
-            cats[cid] = cat
-
-        for img in self.dataset.get('images', []):
-            gid = img['id']
-            if gid in imgs:
-                warnings.warn('Images have the same id in {}:\n{} and\n{}'.format(
-                    self, imgs[gid], img))
-            imgs[gid] = img
-
-        for ann in self.dataset.get('annotations', []):
-            aid = ann['id']
-            if aid in anns:
-                warnings.warn('Annotations at index {} and {} '
-                              'have the same id in {}:\n{} and\n{}'.format(
-                                  self.dataset['annotations'].index(anns[aid]),
-                                  self.dataset['annotations'].index(ann),
-                                  self, anns[aid], ann))
-            anns[aid] = ann
-
-        # Build one-to-many lookup maps
-        for ann in anns.values():
-            try:
-                aid = ann['id']
-                gid = ann['image_id']
-                cid = ann['category_id']
-            except KeyError:
-                raise KeyError('Annotation does not have ids {}'.format(ann))
-
-            if not isinstance(aid, INT_TYPES):
-                raise TypeError('bad aid={} type={}'.format(aid, type(aid)))
-            if not isinstance(gid, INT_TYPES):
-                raise TypeError('bad gid={} type={}'.format(gid, type(gid)))
-            if not isinstance(cid, INT_TYPES):
-                raise TypeError('bad cid={} type={}'.format(cid, type(cid)))
-
-            gid_to_aids[gid].add(aid)
-            cid_to_aids[cid].add(aid)
-            if gid not in imgs:
-                warnings.warn('Annotation {} in {} references '
-                              'unknown image_id'.format(ann, self))
-            if cid not in cats:
-                warnings.warn('Annotation {} in {} references '
-                              'unknown category_id'.format(ann, self))
-
-        # Fix one-to-zero cases
-        for cid in cats.keys():
-            if cid not in cid_to_aids:
-                cid_to_aids[cid] = _set()
-
-        for gid in imgs.keys():
-            if gid not in gid_to_aids:
-                gid_to_aids[gid] = _set()
-
-        # create class members
-        self.anns = anns
-        self.imgs = imgs
-        self.cats = cats
-        self.gid_to_aids = gid_to_aids
-        self.cid_to_aids = cid_to_aids
-        self.name_to_cat = {cat['name']: cat for cat in self.cats.values()}
+        self.index.build(self)
 
     def _clear_index(self):
-        self.anns = None
-        self.imgs = None
-        self.cats = None
-        self.gid_to_aids = None
-        self.cid_to_aids = None
-        self.name_to_cat = None
+        self.index.clear()
 
     @classmethod
     def union(CocoDataset, *others, **kw):
@@ -1402,7 +1666,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
         def _coco_union(relative_dsets):
             """ union of dictionary based data structure """
-            merged = ub.odict([
+            merged = _dict([
                 ('categories', []),
                 ('licenses', []),
                 ('info', []),
@@ -1438,7 +1702,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                         # Only add if it does not yet exist
                         new_id = len(merged_cat_name_to_id) + 1
                         merged_cat_name_to_id[old_cat['name']] = new_id
-                        new_cat = ub.odict([
+                        new_cat = _dict([
                             ('id', new_id),
                             ('name', old_cat['name']),
                             # ('supercategory', old_cat['supercategory']),
@@ -1449,7 +1713,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
                 # Add the images into the merged dataset
                 for old_img in old_dset['images']:
-                    new_img = ub.odict([
+                    new_img = _dict([
                         ('id', len(merged['images']) + 1),
                         ('file_name', join(subdir, old_img['file_name'])),
                     ])
@@ -1474,7 +1738,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                         # sanity check:
                         # if any(img['id'] == old_img_id for img in old_dset['images']):
                         #     raise Exception('Image id {} does not exist in {}'.format(old_img_id, subdir))
-                    new_annot = ub.odict([
+                    new_annot = _dict([
                         ('id', len(merged['annotations']) + 1),
                         ('image_id', new_img_id),
                         ('category_id', new_cat_id),
@@ -1511,7 +1775,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             >>> assert len(sub3.anns) == 0
             >>> assert rejoined.basic_stats() == self.basic_stats()
         """
-        new_dataset = ub.odict([(k, []) for k in self.dataset])
+        new_dataset = _dict([(k, []) for k in self.dataset])
         new_dataset['categories'] = self.dataset['categories']
         new_dataset['info'] = self.dataset.get('info', [])
         new_dataset['licenses'] = self.dataset.get('licenses', [])
@@ -1524,6 +1788,19 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
         sub_dset = CocoDataset(new_dataset, img_root=self.img_root)
         return sub_dset
+
+
+def delitems(items, remove_idxs, thresh=750):
+    if len(remove_idxs) > thresh:
+        # Its typically faster to just make a new list when there are
+        # lots and lots of items to remove.
+        keep_idxs = sorted(set(range(len(items))) - set(remove_idxs))
+        newlist = [items[idx] for idx in keep_idxs]
+        items[:] = newlist
+    else:
+        # However, when there are a few hundred items to remove, del is faster.
+        for idx in sorted(remove_idxs, reverse=True):
+            del items[idx]
 
 
 def demo_coco_data():

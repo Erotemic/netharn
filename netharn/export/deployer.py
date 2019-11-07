@@ -110,8 +110,9 @@ Example:
 """
 import glob
 import json
+import six
 import ubelt as ub
-import warnings
+# import warnings
 import zipfile
 import os
 from os.path import exists
@@ -123,6 +124,7 @@ __all__ = ['DeployedModel']
 
 
 def existing_snapshots(train_dpath):
+    # NOTE: Specific to netharn directory structure
     import parse
     snapshot_dpath = join(train_dpath, 'torch_snapshots/')
     prev_states = sorted(glob.glob(join(snapshot_dpath, '_epoch_*.pt')))
@@ -136,6 +138,7 @@ def find_best_snapshot(train_dpath):
     Returns snapshot written by monitor if available otherwise takes the last
     one.
     """
+    # NOTE: Specific to netharn directory structure
     # Netharn should populate best_snapshot.pt if there is a validation set.
     # Other names are to support older codebases.
     expected_names = [
@@ -159,91 +162,12 @@ def find_best_snapshot(train_dpath):
     return snap_fpath
 
 
-def _package_deploy(train_dpath):
-    """
-    Combine the model, weights, and info files into a single deployable file
-
-    CommandLine:
-        xdoctest -m netharn.export.deployer _package_deploy
-
-    Args:
-        train_dpath (PathLike): the netharn training directory
-
-    Example:
-        >>> dpath = ub.ensure_app_cache_dir('netharn', 'tests/_package_deploy')
-        >>> train_dpath = ub.ensuredir((dpath, 'my_train_dpath'))
-        >>> ub.touch(join(train_dpath, 'final_snapshot.pt'))
-        >>> ub.touch(join(train_dpath, 'my_model.py'))
-        >>> zipfpath = _package_deploy(train_dpath)
-        ...
-        >>> print(os.path.basename(zipfpath))
-        deploy_UNKNOWN-ARCH_my_train_dpath_UNKNOWN-EPOCH_QOOEZT.zip
-    """
-    print('[DEPLOYER] Deploy to dpath={}'.format(train_dpath))
-    snap_fpath = find_best_snapshot(train_dpath)
-
-    model_fpaths = glob.glob(join(train_dpath, '*.py'))
-    if len(model_fpaths) == 0:
-        raise FileNotFoundError('The model topology cannot be found')
-    elif len(model_fpaths) > 1:
-        warnings.warn('There are multiple models here: {}'.format(model_fpaths))
-
-    if not snap_fpath:
-        raise FileNotFoundError('No weights are associated with the model')
-
-    weights_hash = ub.hash_file(snap_fpath, base='abc', hasher='sha512')[0:6].upper()
-
-    train_info_fpath = join(train_dpath, 'train_info.json')
-
-    if exists(train_info_fpath):
-        train_info = json.load(open(train_info_fpath, 'r'))
-        model_name = train_info['hyper']['model'][0].split('.')[-1]
-        train_hash = ub.hash_data(train_info['train_id'], hasher='sha512',
-                                  base='abc', types=True)[0:8]
-    else:
-        model_name = 'UNKNOWN-ARCH'
-        train_hash = os.path.basename(train_dpath)
-        print('WARNING: Training metadata does not exist')
-
-    try:
-        import torch
-        state = torch.load(snap_fpath)
-        epoch = '{:03d}'.format(state['epoch'])
-    except Exception:
-        epoch = 'UNKNOWN-EPOCH'
-
-    deploy_name = 'deploy_{model}_{trainid}_{epoch}_{weights}'.format(
-        model=model_name,
-        trainid=train_hash,
-        epoch=epoch,
-        weights=weights_hash)
-
-    deploy_fname = deploy_name + '.zip'
-
-    def zwrite(myzip, fpath, fname=None):
-        if fname is None:
-            fname = relpath(fpath, train_dpath)
-        myzip.write(fpath, arcname=join(deploy_name, fname))
-
-    zipfpath = join(train_dpath, deploy_fname)
-    with zipfile.ZipFile(zipfpath, 'w') as myzip:
-        if exists(train_info_fpath):
-            zwrite(myzip, train_info_fpath)
-        zwrite(myzip, snap_fpath, fname='deploy_snapshot.pt')
-        for model_fpath in model_fpaths:
-            zwrite(myzip, model_fpath)
-        # Add some quick glanceable info
-        # for bestacc_fpath in glob.glob(join(train_dpath, 'best_epoch_*')):
-        #     zwrite(myzip, bestacc_fpath)
-        for p in glob.glob(join(train_dpath, 'glance/*')):
-            zwrite(myzip, p)
-    print('[DEPLOYER] Deployed zipfpath={}'.format(zipfpath))
-    return zipfpath
-
-
 def unpack_model_info(path):
     """
-    return paths to the most relevant files in a zip or path deployment
+    return paths to the most relevant files in a zip or path deployment.
+
+    If path is not a zipfile, this function expects a netharn fit directory
+    structure.
 
     Args:
         path (PathLike): either a zip deployment or train_dpath
@@ -252,35 +176,144 @@ def unpack_model_info(path):
         'train_info_fpath': None,
         'snap_fpath': None,
         'model_fpath': None,
+
+        # TODO: need to rename and allow a list of arbitrary files
+        'glance': [],  # a list of files in the glance directory
     }
     def populate(root, fpaths):
         # TODO: make more robust
         for fpath in fpaths:
+            # FIXME: make this more general and robust
             if fpath.endswith('.json'):
                 info['train_info_fpath'] = join(root, fpath)
             if fpath.endswith('.pt'):
                 info['snap_fpath'] = join(root, fpath)
             if fpath.endswith('.py'):
+                new_fpath = join(root, fpath)
                 if info['model_fpath'] is not None:
-                    # TODO: warn the user and take the most recently
-                    # modified path.
-                    raise Exception('Multiple model paths!')
-                info['model_fpath'] = join(root, fpath)
+                    try:
+                        # Try to take the most recent path if possible.
+                        # This will fail if the file is in a zipfile
+                        # (because we should not package multiple models)
+                        cur_time = os.stat(info['model_fpath']).st_mtime
+                        new_time = os.stat(new_fpath).st_mtime
+                        if new_time < cur_time:
+                            continue  # Keep the current path
+                    except OSError:
+                        raise Exception(
+                            'Multiple model paths! {} and {}'.format(
+                                info['model_fpath'], fpath))
+                info['model_fpath'] = new_fpath
+            # TODO: make including arbitrary files easier
+            if fpath.startswith(('glance/', 'glance\\')):
+                info['glance'].append(join(root, fpath))
 
     if path.endswith('.zip'):
         zipfpath = path
         myzip = zipfile.ZipFile(zipfpath, 'r')
         with zipfile.ZipFile(zipfpath, 'r') as myzip:
             populate(zipfpath, (f.filename for f in myzip.filelist))
+
     elif exists(path) and isdir(path):
+        # Populate core files
         populate(path, os.listdir(path))
+        # Populate extra glanceable files
+        populate(path, [
+            relpath(p, path) for p in glob.glob(join(path, 'glance/*'))])
         # If there are no snapshots in the root directory, then
         # use the latest snapshot from the torch_snapshots dir
         if info['snap_fpath'] is None:
             info['snap_fpath'] = find_best_snapshot(path)
+
     else:
         raise ValueError('cannot unpack model ' + path)
     return info
+
+
+def _make_package_name2(info):
+    """
+    Construct a unique and descriptive name for the deployment
+    """
+    snap_fpath = info['snap_fpath']
+    model_fpath = info['model_fpath']
+    train_info_fpath = info['train_info_fpath']
+
+    if train_info_fpath and exists(train_info_fpath):
+        train_info = json.load(open(train_info_fpath, 'r'))
+        model_name = train_info['hyper']['model'][0].split('.')[-1]
+        train_hash = ub.hash_data(train_info['train_id'], hasher='sha512',
+                                  base='abc', types=True)[0:8]
+    else:
+        model_name = os.path.splitext(os.path.basename(model_fpath))[0]
+        train_hash = 'UNKNOWN-TRAINID'
+        print('WARNING: Train info metadata does not exist')
+
+    try:
+        # netharn models contain epoch info in the weights file
+        import torch
+        state = torch.load(snap_fpath,
+                           map_location=lambda storage, location: storage)
+        epoch = '{:03d}'.format(state['epoch'])
+    except Exception:
+        epoch = 'UNKNOWN-EPOCH'
+
+    weights_hash = ub.hash_file(snap_fpath, base='abc',
+                                hasher='sha512')[0:6].upper()
+
+    deploy_name = 'deploy_{model}_{trainid}_{epoch}_{weights}'.format(
+        model=model_name, trainid=train_hash, epoch=epoch,
+        weights=weights_hash)
+    return deploy_name
+
+
+def _package_deploy2(dpath, info):
+    """
+    Combine the model, weights, and info files into a single deployable file
+
+    Args:
+        dpath (PathLike): where to dump the deployment
+        info (Dict): containing model_fpath and snap_fpath and optionally
+            train_info_fpath and glance, which is a list of extra files.
+
+    Ignore:
+        dpath = '/home/joncrall/.cache/netharn/tests/_package_custom'
+        path = '/home/joncrall/work/opir/fit/nice/_Sim3-kw6-99-finetune_ML3D_BEST_2018-9-20_LR1e-4_f2_vel0.0_hn0.25_bs64_nr5.0'
+        info = unpack_model_info(path)
+        zipfpath = _package_deploy2(dpath, info)
+
+
+    """
+    model_fpath = info['model_fpath']
+    snap_fpath = info['snap_fpath']
+    train_info_fpath = info.get('train_info_fpath', None)
+
+    if not snap_fpath:
+        raise FileNotFoundError('No weights are associated with the model')
+
+    deploy_name = _make_package_name2(info)
+
+    deploy_fname = deploy_name + '.zip'
+
+    def zwrite(myzip, fpath, fname=None):
+        if fname is None:
+            fname = relpath(fpath, dpath)
+        myzip.write(fpath, arcname=join(deploy_name, fname))
+
+    zipfpath = join(dpath, deploy_fname)
+    with zipfile.ZipFile(zipfpath, 'w') as myzip:
+        if train_info_fpath and exists(train_info_fpath):
+            zwrite(myzip, train_info_fpath, fname='train_info.json')
+        zwrite(myzip, snap_fpath, fname='deploy_snapshot.pt')
+        zwrite(myzip, model_fpath, fname=os.path.basename(model_fpath))
+        # Add some quick glanceable info
+        for p in info.get('glance', []):
+            zwrite(myzip, p, fname=join('glance', os.path.basename(p)))
+        # for bestacc_fpath in glob.glob(join(train_dpath, 'best_epoch_*')):
+        #     zwrite(myzip, bestacc_fpath)
+        # for p in glob.glob(join(train_dpath, 'glance/*')):
+        #     zwrite(myzip, p)
+    print('[DEPLOYER] Deployed zipfpath={}'.format(zipfpath))
+    return zipfpath
 
 
 class DeployedModel(ub.NiceRepr):
@@ -314,37 +347,122 @@ class DeployedModel(ub.NiceRepr):
         >>> initializer(model)
         ...
         >>> print('model.__module__ = {!r}'.format(model.__module__))
-        model.__module__ = 'deploy_ToyNet2d_rljhgepw_001_.../ToyNet2d_2a3f49'
+        model.__module__ = 'deploy_ToyNet2d_rljhgepw_000_.../ToyNet2d_2a3f49'
     """
     def __init__(self, path):
         self.path = path
-
         self._model = None
+        self._info = None
+
+    @classmethod
+    def custom(DeployedModel, snap_fpath, model, initkw=None, train_info_fpath=None):
+        """
+        Create a deployed model even if the model wasnt trained with FitHarn
+
+        This just requires specifying a bit more information, which FitHarn
+        would have tracked.
+
+        Args:
+            snap_fpath (PathLike):
+                path to the exported weights file
+
+            model (PathLike or nn.Module): can either be
+                (1) a path to model topology (created via `export_model_code`)
+                (2) the model class or an instance of the class
+
+            initkw (Dict): if model is a class or instance, then
+                you must pass the keyword arguments used to construct it.
+
+            train_info_fpath (PathLike, optional):
+                path to a json file containing additional training metadata
+
+        Example:
+            >>> # Setup raw components
+            >>> train_dpath = _demodata_trained_dpath()
+            >>> deployed = DeployedModel(train_dpath)
+            >>> snap_fpath = deployed.info['snap_fpath']
+            >>> model, initkw = deployed.model_definition()
+            >>> train_info_fpath = deployed.info['train_info_fpath']
+            >>> # Past raw components to custom
+            >>> self = DeployedModel.custom(snap_fpath, model, initkw)
+            >>> dpath = ub.ensure_app_cache_dir('netharn', 'tests/_package_custom')
+            >>> self.package(dpath)
+
+        Ignore:
+            from netharn.export.deployer import *
+            fcnn116 = ub.import_module_from_path(ub.truepath('~/remote/hermes/tmp/fcnn116.py'))
+            model = fcnn116.FCNN116()
+            initkw = {}
+            snap_fpath = ub.truepath('~/remote/hermes/tmp/fcnn116.pt')
+            train_info_fpath = None
+            self = DeployedModel.custom(snap_fpath, model, initkw)
+            zipfile = self.package(dpath)
+
+            loaded = DeployedModel(zipfile).load_model()
+        """
+        if isinstance(model, six.string_types):
+            model_fpath = model
+            if initkw is not None:
+                raise ValueError('initkw not used when model is a path')
+        else:
+            import tempfile
+            from netharn.export import exporter
+            dpath = tempfile.mkdtemp()
+            model_fpath = exporter.export_model_code(dpath, model, initkw=initkw)
+
+        _info = {
+            'model_fpath': model_fpath,
+            'snap_fpath': snap_fpath,
+            'train_info_fpath': train_info_fpath,
+        }
+        self = DeployedModel(None)
+        self._info = _info
+        return self
 
     def __nice__(self):
-        return self.path
+        return self.__json__()
 
     def __json__(self):
-        return self.path
+        if self.path is None:
+            if self._info:
+                return ub.repr2(self._info, nl=0)
+        else:
+            return self.path
 
-    def package(self):
+    def package(self, dpath=None):
         """
         If self.path is a directory, packages important info into a deployable
         zipfile.
-        """
-        if self.path.endswith('.zip'):
-            raise Exception('Deployed model is already a package')
 
-        zip_fpath = _package_deploy(self.path)
+        Args:
+            dpath (PathLike, optional): directory to dump your packaged model.
+                If not specified, it uses the netharn train_dpath if available.
+
+        Returns:
+            PathLike: path to single-file deployment
+        """
+        if dpath is None:
+            if self.path is None:
+                raise ValueError('Must specify dpath for custom deployments')
+            else:
+                if self.path.endswith('.zip'):
+                    raise Exception('Deployed model is already a package')
+                dpath = self.path
+
+        zip_fpath = _package_deploy2(dpath, self.info)
         return zip_fpath
+
+    @property
+    def info(self):
+        if self._info is None:
+            self._info = self.unpack_info()
+        return self._info
 
     def unpack_info(self):
         return unpack_model_info(self.path)
 
     def model_definition(self):
-        info = self.unpack_info()
-
-        model_fpath = info['model_fpath']
+        model_fpath = self.info['model_fpath']
         module = ub.import_module_from_path(model_fpath)
 
         export_version = getattr(module, '__pt_export_version__', '0')
@@ -368,15 +486,13 @@ class DeployedModel(ub.NiceRepr):
 
     def initializer_definition(self):
         import netharn as nh
-        info = self.unpack_info()
         initializer_ = (nh.initializers.Pretrained,
-                        {'fpath': info['snap_fpath']})
+                        {'fpath': self.info['snap_fpath']})
         return initializer_
 
     def train_info(self):
         import netharn as nh
-        info = self.unpack_info()
-        train_info_fpath = info.get('train_info_fpath', None)
+        train_info_fpath = self.info.get('train_info_fpath', None)
         if train_info_fpath is not None:
             train_info = json.load(nh.util.zopen(train_info_fpath, 'r'))
         else:
@@ -390,12 +506,12 @@ class DeployedModel(ub.NiceRepr):
         model_cls, model_kw = self.model_definition()
         model = model_cls(**model_kw)
 
-        # TODO: load directly from instead of using initializer info['snap_fpath']?
+        # TODO: load directly from instead of using initializer self.info['snap_fpath']?
         # Actually we can't because we lose the zopen stuff. Its probably ok
         # To depend on netharn a little bit.
         # import torch
         # info = self.unpack_info()
-        # state_dict = torch.load(info['snap_fpath'])
+        # state_dict = torch.load(self.info['snap_fpath'])
         # model.load_state_dict()
 
         initializer_ = self.initializer_definition()
