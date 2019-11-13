@@ -71,7 +71,7 @@ stages:
     source venv/bin/activate
     pip install pip -U
     pip install pip setuptools -U
-    pip install pip requirements/tests.txt
+    pip install pip -r requirements/tests.txt
 
 
 ._common_test_script: &_common_test_script |-
