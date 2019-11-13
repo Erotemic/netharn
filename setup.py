@@ -1,71 +1,31 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # NOTE: pip install -U --pre h5py
-"""
-Installation:
-    pip install git+https://github.com/Erotemic/netharn.git
-
-Developing:
-    git clone https://github.com/Erotemic/netharn.git
-    pip install -e netharn
-
-Pypi:
-     # Presetup
-     pip install twine
-
-     # First tag the source-code
-     VERSION=$(python -c "import setup; print(setup.version)")
-     echo $VERSION
-     git tag $VERSION -m "tarball tag $VERSION"
-     git push --tags origin master
-
-     # NEW API TO UPLOAD TO PYPI
-     # https://packaging.python.org/tutorials/distributing-packages/
-
-     # Build wheel or source distribution
-     # TODO: linuxmany distribution https://www.python.org/dev/peps/pep-0513/
-
-     # In the meantime, build a pure python version without binary files
-     # not sure exactly how to do this so just hack it.
-     python setup.py bdist_wheel --universal
-     find . -iname *.so -d
-
-     # Use twine to upload. This will prompt for username and password
-     twine upload --username erotemic --skip-existing dist/*
-
-     # Check the url to make sure everything worked
-     https://pypi.org/project/netharn/
-
-     # ---------- OLD ----------------
-     # Check the url to make sure everything worked
-     https://pypi.python.org/pypi?:action=display&name=netharn
-
-"""
 from __future__ import absolute_import, division, print_function
 import sys
 from os.path import dirname
 from setuptools import find_packages
 from os.path import exists
 from os.path import join
-import ast
 import glob
-import ubelt as ub
 import os
 from skbuild import setup
 
 
-def parse_version(package):
+def parse_version(fpath):
     """
-    Statically parse the version number from __init__.py
+    Statically parse the version number from a python file
     """
-    init_fpath = join(dirname(__file__), package, '__init__.py')
-    with open(init_fpath) as file_:
+    import ast
+    if not exists(fpath):
+        raise ValueError('fpath={!r} does not exist'.format(fpath))
+    with open(fpath, 'r') as file_:
         sourcecode = file_.read()
     pt = ast.parse(sourcecode)
     class VersionVisitor(ast.NodeVisitor):
         def visit_Assign(self, node):
             for target in node.targets:
-                if target.id == '__version__':
+                if getattr(target, 'id', None) == '__version__':
                     self.version = node.value.s
     visitor = VersionVisitor()
     visitor.visit(pt)
@@ -75,25 +35,19 @@ def parse_version(package):
 def parse_description():
     """
     Parse the description in the README file
+
+    CommandLine:
+        pandoc --from=markdown --to=rst --output=README.rst README.md
+        python -c "import setup; print(setup.parse_description())"
     """
-    readme_fpath = join(dirname(__file__), 'README.md')
+    from os.path import dirname, join, exists
+    readme_fpath = join(dirname(__file__), 'README.rst')
     # This breaks on pip install, so check that it exists.
     if exists(readme_fpath):
-        textlines = []
         with open(readme_fpath, 'r') as f:
-            capture = False
-            for line in f.readlines():
-                if '# Purpose' in line:
-                    capture = True
-                elif line.startswith('##'):
-                    break
-                elif capture:
-                    textlines += [line]
-        text = ''.join(textlines).strip()
-        text = text.replace('\n\n', '_NLHACK_')
-        text = text.replace('\n', ' ')
-        text = text.replace('_NLHACK_', '\n\n')
+            text = f.read()
         return text
+    return ''
 
 
 def parse_requirements(fname='requirements.txt'):
@@ -220,6 +174,7 @@ def clean_repo(repodir, modname, rel_paths=[]):
     for abs_path in abs_paths:
         enqueue(abs_path)
 
+    import ubelt as ub
     for dpath in toremove:
         # print('Removing dpath = {!r}'.format(dpath))
         ub.delete(dpath, verbose=1)
@@ -240,13 +195,6 @@ def clean():
         'build',
         '**/*.pyc',
         'profile*'
-        'netharn/util/_nms_backend/cpu_nms.c',
-        'netharn/util/_nms_backend/cpu_nms.c',
-        'netharn/util/_nms_backend/cpu_nms.cpp',
-        'netharn/util/_nms_backend/*_nms.*so',
-        'netharn/util/structs/_boxes_backend/cython_boxes.c',
-        'netharn/util/structs/_boxes_backend/cython_boxes.html',
-        'netharn/util/structs/_boxes_backend/cython_boxes*.*so',
         'pip-wheel-metadata',
     ]
     clean_repo(repodir, modname, rel_paths)
@@ -273,10 +221,11 @@ if __name__ == '__main__':
         name='netharn',
         version=version,
         author='Jon Crall',
-        author_email='erotemic@gmail.com',
-        url='https://github.com/Erotemic/netharn',
+        author_email='jon.crall@kitware.com',
+        url='https://gitlab.kitware.com/computer-vision/netharn',
         description='Train and deploy pytorch models',
         long_description=parse_description(),
+        long_description_content_type='text/x-rst',
         install_requires=parse_requirements('requirements/runtime.txt'),
         extras_require={
             'all': parse_requirements('requirements.txt'),
@@ -295,7 +244,8 @@ if __name__ == '__main__':
             # This should be interpreted as Apache License v2.0
             'License :: OSI Approved :: Apache Software License',
             # Supported Python versions
-            'Programming Language :: Python :: 3.6',
+            'Programming Language :: Python :: 2.7',
+            'Programming Language :: Python :: 3',
         ],
         **compile_setup_kw
     )

@@ -1,6 +1,6 @@
 import os
 from collections import OrderedDict
-from pwd import getpwuid
+import sys
 import datetime
 
 
@@ -19,6 +19,7 @@ def get_file_info(fpath, raw=False):
             filesize: Size in bytes of the file
             last_accessed: Time of last access.
             last_modified: Time of last modification.
+            owner: user that owns the file (None if unable to be determined)
 
     Example:
         >>> import ubelt as ub
@@ -37,7 +38,15 @@ def get_file_info(fpath, raw=False):
 
     try:
         # Sometimes this fails
-        owner = getpwuid(statbuf.st_uid).pw_name
+        if sys.platform.startswith('win32'):
+            import win32security
+            sec_desc = win32security.GetFileSecurity(
+                fpath, win32security.OWNER_SECURITY_INFORMATION)
+            owner_sid = sec_desc.GetSecurityDescriptorOwner()
+            owner = win32security.LookupAccountSid(None, owner_sid)[0]
+        else:
+            from pwd import getpwuid
+            owner = getpwuid(statbuf.st_uid).pw_name
     except Exception:
         owner = None
 

@@ -3,6 +3,11 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
+## Version 0.5.0
+
+### Changed
+* Second public release
+
 ## Version 0.4.1
 
 ### Added
@@ -16,11 +21,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## Version 0.4.0
 
 ### Added
-* Add `AnalyticModule` (PF)
-* Add support for interpolate output-shape-for (PF)
-* Add PSPNet and DeepLab (PF)
+* Add `AnalyticModule` 
+* Add support for interpolate output-shape-for 
+* Add PSPNet and DeepLab 
 * Support for 'AdaptivePooling' in output-shape-for
-* Added CamVid capable torch dataset (PF)
+* Added CamVid capable torch dataset 
 * Add `nh.util.freeze_layers`
 * Added `super_setup.py` to handle external utility dependencies.
 * `FitHarn` now attempts to checkpoint the model if it encounters an error. 
@@ -28,8 +33,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Add property `FitHarn.batch_index` that points to the current batch index.
 * Add border mode and imgaug stochastic params to `Resize`.
 * Add `InputNorm` layer, which couples input centering with a torch model.
-* General segmentation example (PF)
-* General object detection example (PF)
+* General segmentation example 
+* General object detection example 
 * Add `ForwardFor`
 * Add `getitem`, `view`, and `shape` for  `ForwardFor` and `OutputShapeFor`
 * Add `add`, `sub`, `mul`, and `div` for  `ForwardFor` and `OutputShapeFor` and  `ReceptiveFieldFor`
@@ -72,7 +77,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 
 ### Future
-* Support for classical classification (SVM / RF) on top of deep features. (PF)
+* Support for classical classification (SVM / RF) on top of deep features. 
 
 
 ## Version 0.2.0
@@ -94,108 +99,108 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 **Note: many of the changes in this version were immediately factored out into external modules**
 
 ### Added
-* Backport `ndsampler` Coco-API (PF/IF)
-* Add `arglexmax`, `argmaxima`, `argminima` (IF)
-* Add `util_distributions` (IF)
+* Backport `ndsampler` Coco-API 
+* Add `arglexmax`, `argmaxima`, `argminima` 
+* Add `util_distributions` 
 
 ### Changed
-* Move `Boxes` and `DataFrameLight` from `netharn.util` to `netharn.util.structs` (IF/PF)
-* Enhance `Boxes` and `DataFrameLight` functionality / docs (IF/PF)
-* Add `netharn.util.structs.Detections` (IF/PF)
-* Loss components are now automatically logged when loss is returned as a dict (IF). 
-* Add a small interactive debug interface on `KeyboardInterrupt` (IF)
+* Move `Boxes` and `DataFrameLight` from `netharn.util` to `netharn.util.structs` 
+* Enhance `Boxes` and `DataFrameLight` functionality / docs 
+* Add `netharn.util.structs.Detections` 
+* Loss components are now automatically logged when loss is returned as a dict . 
+* Add a small interactive debug interface on `KeyboardInterrupt` 
 * Fix XPU.coerce / XPU.cast when input is multi-gpu
-* Add `draw_clf_on_image` (PF)
-* Add `valign` to `draw_text_on_image` (PF)
-* Add `border` to `draw_text_on_image` (PF)
+* Add `draw_clf_on_image` 
+* Add `valign` to `draw_text_on_image` 
+* Add `border` to `draw_text_on_image` 
 
 * A handful of PF GGR-related commits stashed on my home machine meant for 0.1.7 
-* Add `nh.data.batch_samplers.MatchingSamplerPK` (PF)
-* Add `shift_sat` and `shift_val` to HSV augmenter (PF)
-* Refactor and clean `api.py` (PF)
-* Refactor and clean `netharn.initializers` (PF)
-* Refactor `draw_boxes` and `draw_segments` into `mpl_draw` (IF)
-* Fixed issues with YOLO example (PF)
-* Add `torch_ravel_multi_index` to `nh.util` (PF)
+* Add `nh.data.batch_samplers.MatchingSamplerPK` 
+* Add `shift_sat` and `shift_val` to HSV augmenter 
+* Refactor and clean `api.py` 
+* Refactor and clean `netharn.initializers` 
+* Refactor `draw_boxes` and `draw_segments` into `mpl_draw` 
+* Fixed issues with YOLO example 
+* Add `torch_ravel_multi_index` to `nh.util` 
 
 
 ## Version 0.1.7
 
 ### Added
-* Add `plot_surface3d` (PF)
-* Add `models.DescriptorNetwork` (PF)
-* `MLP` can now accept `dim=0` (PF)
+* Add `plot_surface3d` 
+* Add `models.DescriptorNetwork` 
+* `MLP` can now accept `dim=0` 
 
 ### Changed
 
-* Modified batch outputs to all use `:g` format (PF)
-* Use `progiter` by default instead of `tqdm` (PF)
-* `nh.XPU.move` is now applied recursively to containers (e.g. dict list) (IF)
-* All `MovingAve` objects can now track variance  (PF)
-* `CumMovingAve` can now track variance (PF)
-* `ExpMovingAve` can now track variance  (PF)
-* `WindowedMovingAve` can now track variance  (PF)
-* `imread` now attempts to return RGB or gray-scale by default. (IF)
-* `lr_range_test` now shows std-dev error bars (IF)
+* Modified batch outputs to all use `:g` format 
+* Use `progiter` by default instead of `tqdm` 
+* `nh.XPU.move` is now applied recursively to containers (e.g. dict list) 
+* All `MovingAve` objects can now track variance  
+* `CumMovingAve` can now track variance 
+* `ExpMovingAve` can now track variance  
+* `WindowedMovingAve` can now track variance  
+* `imread` now attempts to return RGB or gray-scale by default. 
+* `lr_range_test` now shows std-dev error bars 
 * Improve API coerce methods (PF / IF)
 
 ### Removed
-* `nh.XPU.variable` is deprecated and removed. (IF)
+* `nh.XPU.variable` is deprecated and removed. 
 
 
 ## Version 0.1.6
 
 ### Fixed
-* Fix Python2 compatibility issues. (IF)
-* Fixed bug in `IgnoreLayerContext` preventing it from being used with `DataParallel`. (IF)
+* Fix Python2 compatibility issues. 
+* Fixed bug in `IgnoreLayerContext` preventing it from being used with `DataParallel`. 
 
 ### Added
-* Add `api.py` containing code to help reduce netharn boilerplate by parsing a config dictionary. (PF)
-* Add new `ListedScheduler` which is able to modify multiple optimizer attributes including learning rate and momentum. (PF)
-* Add variant of Leslie Smith's learning rate test (IF)
-* `nh.util.ExpMovingAve` now has a bias-correction option. (IF)
+* Add `api.py` containing code to help reduce netharn boilerplate by parsing a config dictionary. 
+* Add new `ListedScheduler` which is able to modify multiple optimizer attributes including learning rate and momentum. 
+* Add variant of Leslie Smith's learning rate test 
+* `nh.util.ExpMovingAve` now has a bias-correction option. 
 
 ### Removed
-* Remove deprecated `_to_var`. (PF)
+* Remove deprecated `_to_var`. 
 
 ### Changed
-* FitHarn now logs momentum by default in addition to learning rate  (PF)
+* FitHarn now logs momentum by default in addition to learning rate  
 
 
 ## Version 0.1.5
 
 ### Changed
-* Switched to `skbuild` (PF)
+* Switched to `skbuild` 
 
 ### Fixed
-* Bug fixes (IF)
+* Bug fixes 
 
 
 ## Version 0.1.4
 
 ### Added
-* Ported `multi_plot` from `KWIL` (IF)
-* Add `devices` to `nh.layers.Module` (IF)
-* `FitHarn.config` can now specify `export_modules`, which will be modules to expand when running the pytorch exporter. (IF)
+* Ported `multi_plot` from `KWIL` 
+* Add `devices` to `nh.layers.Module` 
+* `FitHarn.config` can now specify `export_modules`, which will be modules to expand when running the pytorch exporter. 
 
 ### Changed
-* Scheduler states are now saved by default (IF)
-* Netharn now dumps tensorboard plots every epoch by default (IF)
-* The default `prepare_batch` now returns a dictionary with keys `input` and `label`. (IF)
-* Ported modifications from KWIL to `imwrite`, `stack_imges`, etc... (IF)
-* Improve CIFAR example. (PF)
-* Improve MNIST example. (PF)
-* Rename internal variables of `nh.Monitor` (IF)
+* Scheduler states are now saved by default 
+* Netharn now dumps tensorboard plots every epoch by default 
+* The default `prepare_batch` now returns a dictionary with keys `input` and `label`. 
+* Ported modifications from KWIL to `imwrite`, `stack_imges`, etc... 
+* Improve CIFAR example. 
+* Improve MNIST example. 
+* Rename internal variables of `nh.Monitor` 
 * Improve doc-strings for `nh.Monitor`
-* Move folder functionality into `hyperparams`. (IF)
+* Move folder functionality into `hyperparams`. 
 
 ### Fixed
-* Fix issue with relative imports in netharn exporter (IF)
-* Refactored the exporter closure-extractor into its own file. (IF)
+* Fix issue with relative imports in netharn exporter 
+* Refactored the exporter closure-extractor into its own file. 
 
 ### Removed
-* Deprecate and remove `HiddenShapesFor` (IF)
-* Move `HiddenShapesFor` functionality to `OutputShapeFor` (IF)
+* Deprecate and remove `HiddenShapesFor` 
+* Move `HiddenShapesFor` functionality to `OutputShapeFor` 
 
 
 ## Version 0.1.3

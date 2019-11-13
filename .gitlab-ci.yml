@@ -1,0 +1,325 @@
+# Note: expand yaml
+# yaml merge-expand .gitlab-ci.yml _expandyml && cat _expandyml
+# 
+# GITLAB LINTER
+# https://gitlab.kitware.com/computer-vision/netharn/-/ci/lint
+
+# This CI file has 4 types of jobs:
+# (1) in the build stage we we build the wheels on a manylinux docker image
+# (2) then in the test stage we install the wheels, run unit tests, and measure coverage
+# (3) after testing we sign the wheels with the CI's GPG key
+# (4) finally if we are on the release branch we will push the signed wheels to pypi
+
+stages:
+  - build
+  - test
+  - gpgsign
+  - deploy
+
+
+### TEMPLATES ###
+# Define common templates using YAML anchors
+
+.common_template: &common_template
+    tags:
+        # Tags define which runners will accept which jobs
+        - docker
+        - linux
+
+    variables:
+        # Change pip's cache directory to be inside the project directory since we can
+        # only cache local items.
+        PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+    
+    
+.build_template: &build_template
+    <<: 
+        - *common_template
+
+    stage: 
+        build
+
+    before_script:
+        - python -V  # Print out python version for debugging
+        - pip install virtualenv
+        - virtualenv venv
+        - source venv/bin/activate
+        - pip install pip -U
+        - pip install pip setuptools -U
+        - pip install -r requirements/build.txt
+
+    script: 
+        - python setup.py bdist_wheel --universal
+
+    artifacts:
+        paths:
+            - dist/*.whl
+
+
+# TODO: Make a test target that tests gdal 
+.test_template: &test_template
+    <<: 
+        - *common_template
+
+    stage: 
+        test
+
+    before_script:
+        # Setup the correct version of python on this manylinux instance
+        - python --version  # Print out python version for debugging
+        - python -m pip install virtualenv
+        - python -m virtualenv venv
+        - source venv/bin/activate
+        - pip install pip -U
+        - pip install pip setuptools -U
+        - pip install -r requirements.txt
+
+    script: 
+        - ls dist
+        - VERSION=$(python -c "import setup; print(setup.version)")
+        - MB_PYTHON_TAG="py2.py3-none-any"
+        - BDIST_WHEEL_PATH=dist/netharn-${VERSION}-${MB_PYTHON_TAG}.whl
+        - pip install $BDIST_WHEEL_PATH
+        - pip install pygments
+        # Hack to test the installed wheel. TODO: make run_tests work better in this case.
+        - mkdir -p foo && cd foo && pytest --cov-config ../.coveragerc --cov-report html --cov-report term --cov=netharn --xdoc $(python -c "import ubelt; print(ubelt.modname_to_modpath('netharn'))") ../tests
+          
+    # Coverage is a regex that will parse the coverage from the test stdout
+    coverage: '/TOTAL.+ ([0-9]{1,3}%)/'
+
+
+.__gpg_heredoc__: &__gpg_heredoc__
+        - | 
+            # THIS IS NOT EXECUTE ON THE CI, THIS IS FOR DEVELOPER REFERENCE
+            # ON HOW THE ENCRYPTED GPG KEYS ARE SETUP.
+            
+            # Load or generate secrets
+            source $(secret_loader.sh)
+            echo $CI_KITWARE_SECRET
+            echo $TWINE_USERNAME
+
+            # encrypt relevant travis variables
+            # ADD RELEVANT VARIABLES TO GITLAB SECRET VARIABLES
+            # https://gitlab.kitware.com/computer-vision/netharn/-/settings/ci_cd
+            # Note that it is important to make sure that these variables are
+            # only decrpyted on protected branches by selecting the protected
+            # and masked option.
+            #
+            # On travis we would do:
+            #gitlab encrypt CI_KITWARE_SECRET=$CI_KITWARE_SECRET
+            #gitlab encrypt TWINE_PASSWORD=$TWINE_PASSWORD  
+            #gitlab encrypt TWINE_USERNAME=$TWINE_USERNAME 
+
+            # HOW TO ENCRYPT YOUR SECRET GPG KEY
+            IDENTIFIER="travis-ci-Erotemic"
+            GPG_KEYID=$(gpg --list-keys --keyid-format LONG "$IDENTIFIER" | head -n 2 | tail -n 1 | awk '{print $1}' | tail -c 9)
+            echo "GPG_KEYID = $GPG_KEYID"
+
+            # Export plaintext gpg public keys, private keys, and trust info
+            mkdir -p dev
+            gpg --armor --export-secret-keys $GPG_KEYID > dev/ci_secret_gpg_key.pgp
+            gpg --armor --export $GPG_KEYID > dev/ci_public_gpg_key.pgp
+            gpg --export-ownertrust > dev/gpg_owner_trust
+
+            # Encrypt gpg keys and trust with travis secret
+            GLKWS=$CI_KITWARE_SECRET openssl enc -aes-256-cbc -pbkdf2 -md SHA512 -pass env:GLKWS -e -a -in dev/ci_public_gpg_key.pgp > dev/ci_public_gpg_key.pgp.enc
+            GLKWS=$CI_KITWARE_SECRET openssl enc -aes-256-cbc -pbkdf2 -md SHA512 -pass env:GLKWS -e -a -in dev/ci_secret_gpg_key.pgp > dev/ci_secret_gpg_key.pgp.enc
+            GLKWS=$CI_KITWARE_SECRET openssl enc -aes-256-cbc -pbkdf2 -md SHA512 -pass env:GLKWS -e -a -in dev/gpg_owner_trust > dev/gpg_owner_trust.enc
+
+            # Test decrpyt
+            GLKWS=$CI_KITWARE_SECRET openssl enc -aes-256-cbc -pbkdf2 -md SHA512 -pass env:GLKWS -d -a -in dev/ci_public_gpg_key.pgp.enc
+
+            source $(secret_unloader.sh)
+
+            # Look at what we did, clean up, and add it to git
+            ls dev/*.enc
+            rm dev/gpg_owner_trust dev/*.pgp
+            git status
+            git add dev/*.enc
+
+
+.gpgsign_template: &gpgsign_template
+    <<: 
+        - *common_template
+
+    stage: 
+        gpgsign
+
+    script: 
+        - ls dist
+        - VERSION=$(python -c "import setup; print(setup.version)")
+        - MB_PYTHON_TAG="py2.py3-none-any"
+        - BDIST_WHEEL_PATH=dist/netharn-${VERSION}-${MB_PYTHON_TAG}.whl
+        # Decrypt and import GPG Keys / trust
+        - export GPG_EXECUTABLE=gpg
+        - export GPG_KEYID=D297D757
+        - $GPG_EXECUTABLE --version
+        - openssl version
+        - $GPG_EXECUTABLE --list-keys
+        # note CI_KITWARE_SECRET is a protected variables only available on master and release branch
+        - GLKWS=$CI_KITWARE_SECRET openssl enc -aes-256-cbc -pbkdf2 -md SHA512 -pass env:GLKWS -d -a -in dev/ci_public_gpg_key.pgp.enc | $GPG_EXECUTABLE --import 
+        - GLKWS=$CI_KITWARE_SECRET openssl enc -aes-256-cbc -pbkdf2 -md SHA512 -pass env:GLKWS -d -a -in dev/gpg_owner_trust.enc | $GPG_EXECUTABLE --import-ownertrust
+        - GLKWS=$CI_KITWARE_SECRET openssl enc -aes-256-cbc -pbkdf2 -md SHA512 -pass env:GLKWS -d -a -in dev/ci_secret_gpg_key.pgp.enc | $GPG_EXECUTABLE --import 
+        - GPG_SIGN_CMD="$GPG_EXECUTABLE --batch --yes --detach-sign --armor --local-user $GPG_KEYID"
+        #- # $GPG_EXECUTABLE --list-keys
+        - echo "Signing wheels"
+        - $GPG_SIGN_CMD --output $BDIST_WHEEL_PATH.asc $BDIST_WHEEL_PATH
+        - ls dist
+        - echo "Verifying wheels"
+        - $GPG_EXECUTABLE --verify $BDIST_WHEEL_PATH.asc $BDIST_WHEEL_PATH  || echo "hack, the first run of gpg very fails"
+        - $GPG_EXECUTABLE --verify $BDIST_WHEEL_PATH.asc $BDIST_WHEEL_PATH 
+        - echo "Verified wheels"
+
+    artifacts:
+        paths:
+            - dist/*.asc
+
+    only:
+        refs:
+            # Gitlab will only expose protected variables on protected branches
+            # (which I've set to be master and release), so only run this stage
+            # there.
+            - master
+            - release
+
+
+.deploy_template: &deploy_template
+    <<: 
+        - *common_template
+
+    stage: 
+        deploy
+
+    script: 
+        - ls dist
+        - VERSION=$(python -c "import setup; print(setup.version)")
+        - MB_PYTHON_TAG="py2.py3-none-any"
+        - BDIST_WHEEL_PATH=dist/netharn-${VERSION}-${MB_PYTHON_TAG}.whl
+        - pip install six pyopenssl ndg-httpsclient pyasn1 -U 
+        - pip install requests[security] twine 
+        - echo "Checking wheels"
+        - ls -al ${BDIST_WHEEL_PATH}*
+        - twine check $BDIST_WHEEL_PATH.asc $BDIST_WHEEL_PATH
+        - echo "Uploading wheels"
+        # todo, can we tag the branch here as well?
+        # note TWINE_USERNAME and TWINE_PASSWORD are protected variables only available on master and release branch
+        - twine upload --username $TWINE_USERNAME --password $TWINE_PASSWORD --sign $BDIST_WHEEL_PATH.asc $BDIST_WHEEL_PATH
+            
+    only:
+        refs:
+            - release
+
+### JOBS ###
+# Define the actual jobs
+
+
+# ---------------
+# Python 3.7 Jobs
+
+build/cp37-cp37m-universal:
+    <<: 
+        - *build_template
+    image:
+        python:3.7
+
+test/cp37-cp37m-universal:
+    <<: 
+        - *test_template
+    image:
+        python:3.7
+
+gpgsign/cp37-cp37m-universal:
+    <<: 
+        - *gpgsign_template
+    image:
+        python:3.7
+
+deploy/cp37-cp37m-universal:
+    <<: 
+        - *deploy_template
+    image:
+        python:3.7
+
+
+# ---------------
+# Python 3.6 Jobs
+
+#build/cp36-cp36m-universal:
+#    <<: 
+#        - *build_template
+#    image:
+#        python:3.6
+
+test/cp36-cp36m-universal:
+    <<: 
+        - *test_template
+    image:
+        python:3.6
+
+#gpgsign/cp36-cp36m-universal:
+#    <<: 
+#        - *gpgsign_template
+#    image:
+#        python:3.6
+
+#deploy/cp36-cp36m-universal:
+#    <<: 
+#        - *deploy_template
+#    image:
+#        python:3.6
+
+
+# ---------------
+# Python 3.5 Jobs
+
+#build/cp35-cp35m-universal:
+#    <<: 
+#        - *build_template
+#    image:
+#        python:3.5
+
+test/cp35-cp35m-universal:
+    <<: 
+        - *test_template
+    image:
+        python:3.5
+
+#gpgsign/cp35-cp35m-universal:
+#    <<: 
+#        - *gpgsign_template
+#    image:
+#        python:3.5
+
+#deploy/cp35-cp35m-universal:
+#    <<: 
+#        - *deploy_template
+#    image:
+#        python:3.5
+
+
+# ---------------
+# Python 2.7 Jobs
+
+#build/cp27-cp27mu-universal:
+#    <<: 
+#        - *build_template
+#    image:
+#        python:2.7
+
+test/cp27-cp27mu-universal:
+    <<: 
+        - *test_template
+    image:
+        python:2.7
+
+#gpgsign/cp27-cp27mu-universal:
+#    <<: 
+#        - *gpgsign_template
+#    image:
+#        python:2.7
+
+#deploy/cp27-cp27mu-universal:
+#    <<: 
+#        - *deploy_template
+#    image:
+#        python:2.7
