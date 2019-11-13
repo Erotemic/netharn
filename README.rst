@@ -2,6 +2,8 @@
 NetHarn - a PyTorch Network Harness
 -----------------------------------
 
+|GitlabCIPipeline| |GitlabCICoverage| |Pypi| |Downloads| 
+
 NAME:
     NetHarn (pronounced "net-harn")
 FRAMEWORK:
@@ -493,3 +495,23 @@ it would produce this more detailed description of what it was doing:
 Acknowledgements:
 =================
 The authors would like to thank AFRL for their support of this work via `SBIR Contract FA8650-18-C-1075 <https://govtribe.com/award/federal-contract-award/definitive-contract-fa865018c1075>`_. This library is approved for public release via 88ABW.
+
+
+.. |Pypi| image:: https://img.shields.io/pypi/v/netharn.svg
+   :target: https://pypi.python.org/pypi/netharn
+
+.. |Downloads| image:: https://img.shields.io/pypi/dm/netharn.svg
+   :target: https://pypistats.org/packages/netharn
+
+.. |ReadTheDocs| image:: https://readthedocs.org/projects/netharn/badge/?version=latest
+    :target: http://netharn.readthedocs.io/en/latest/
+
+.. # See: https://ci.appveyor.com/project/jon.crall/netharn/settings/badges
+.. .. |Appveyor| image:: https://ci.appveyor.com/api/projects/status/py3s2d6tyfjc8lm3/branch/master?svg=true
+.. :target: https://ci.appveyor.com/project/jon.crall/netharn/branch/master
+
+.. |GitlabCIPipeline| image:: https://gitlab.kitware.com/computer-vision/netharn/badges/master/pipeline.svg
+   :target: https://gitlab.kitware.com/computer-vision/netharn/-/jobs
+
+.. |GitlabCICoverage| image:: https://gitlab.kitware.com/computer-vision/netharn/badges/master/coverage.svg?job=coverage
+    :target: https://gitlab.kitware.com/computer-vision/netharn/commits/master
