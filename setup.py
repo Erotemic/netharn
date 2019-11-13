@@ -201,16 +201,7 @@ def clean():
     clean_repo(repodir, modname, rel_paths)
 
 
-# Scikit-build extension module logic
-compile_setup_kw = dict(
-    # cmake_languages=('C', 'CXX', 'CUDA'),
-    # cmake_source_dir='.',
-    # cmake_args=['-DSOME_FEATURE:BOOL=OFF'],
-    # cmake_source_dir='netharn',
-)
-
-
-version = parse_version('netharn')  # needs to be a global var for git tags
+version = parse_version('netharn/__init__.py')  # needs to be a global var for git tags
 
 if __name__ == '__main__':
     # if 'clean' in sys.argv:
@@ -248,5 +239,4 @@ if __name__ == '__main__':
             'Programming Language :: Python :: 2.7',
             'Programming Language :: Python :: 3',
         ],
-        **compile_setup_kw
     )
