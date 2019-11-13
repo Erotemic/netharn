@@ -111,6 +111,9 @@ class ConfusionVectors(object):
                 (Note:  we should write a efficient replacement for
                  this use case. #remove_pandas)
 
+        CommandLine:
+            xdoctest -m ~/code/netharn/netharn/metrics/confusion_vectors.py ConfusionVectors.confusion_matrix
+
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> from netharn.metrics import DetectionMetrics

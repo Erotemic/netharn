@@ -9,6 +9,7 @@ def draw_roc(roc_info, prefix=''):
     to make any sense!
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:kwplot)
         >>> # xdoctest: +REQUIRES(module:ndsampler)
         >>> from netharn.metrics import DetectionMetrics
         >>> dmet = DetectionMetrics.demo(
@@ -100,13 +101,14 @@ def draw_perclass_prcurve(cx_to_peritem, classes, prefix=''):
     """
     Example:
         >>> # xdoctest: +REQUIRES(module:ndsampler)
+        >>> # xdoctest: +REQUIRES(module:kwplot)
         >>> from netharn.metrics import DetectionMetrics
         >>> dmet = DetectionMetrics.demo(
         >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), nclasses=3)
         >>> cfsn_vecs = dmet.confusion_vectors()
         >>> classes = cfsn_vecs.classes
         >>> cx_to_peritem = cfsn_vecs.binarize_ovr().precision_recall()['perclass']
-        >>> import netharn as nh
+        >>> import kwplot
         >>> kwplot.autompl()
         >>> draw_perclass_prcurve(cx_to_peritem, classes)
         >>> # xdoctest: +REQUIRES(--show)
@@ -174,6 +176,7 @@ def draw_peritem_prcurve(peritem, prefix=''):
     """
     Example:
         >>> # xdoctest: +REQUIRES(module:ndsampler)
+        >>> # xdoctest: +REQUIRES(module:kwplot)
         >>> from netharn.metrics import DetectionMetrics
         >>> dmet = DetectionMetrics.demo(
         >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), nclasses=3)
@@ -181,7 +184,7 @@ def draw_peritem_prcurve(peritem, prefix=''):
 
         >>> classes = cfsn_vecs.classes
         >>> peritem = cfsn_vecs.binarize_peritem().precision_recall()
-        >>> import netharn as nh
+        >>> import kwplot
         >>> kwplot.autompl()
         >>> draw_peritem_prcurve(peritem)
         >>> # xdoctest: +REQUIRES(--show)

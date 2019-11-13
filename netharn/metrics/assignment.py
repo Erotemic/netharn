@@ -376,7 +376,7 @@ def _critical_loop(true_dets, pred_dets, _pred_sortx, _pred_cxs, _pred_scores,
     # Can we augment these vectors to balance these false negatives with
     # implicit false positives?
 
-    BALANCE_FN = True
+    BALANCE_FN = False
     if BALANCE_FN:
         # balance each false negatives with a false positive
         # Note: doing this is more correct, but is also more expensive Upweight
