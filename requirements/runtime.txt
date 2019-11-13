@@ -12,6 +12,12 @@ astunparse >= 1.6.1
 pygtrie >= 2.2
 psutil >= 5.4.7
 
+# NOTE: in the future kwimage and kwplot may become optional
+kwarray
+kwimage
+kwplot
+
+
 # Python 2.7 Only
 # ====================
 qualname>=0.1.0;python_version < '3.0' 
