@@ -61,6 +61,7 @@ class ConfusionVectors(object):
         Construct confusion vector data structure from component arrays
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> import kwarray
             >>> classes = ['person', 'vehicle', 'object']
             >>> rng = kwarray.ensure_rng(0)

@@ -394,7 +394,12 @@ class DeployedModel(ub.NiceRepr):
         >>> initializer = initializer_[0](**initializer_[1])
         >>> initializer(model)
         ...
+        >>> # NOTE: the module name should be consistent, but due to
+        >>> # small library changes it often changes, so we are permissive
+        >>> # with this got/want test
         >>> print('model.__module__ = {!r}'.format(model.__module__))
+        model.__module__ = 'deploy_ToyNet2d_..._000_.../ToyNet2d_...'
+
         model.__module__ = 'deploy_ToyNet2d_mhuhweia_000_.../ToyNet2d_...'
 
         model.__module__ = 'deploy_ToyNet2d_rljhgepw_000_.../ToyNet2d_2a3f49'
