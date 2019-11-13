@@ -9,7 +9,8 @@ from os.path import exists
 from os.path import join
 import glob
 import os
-from skbuild import setup
+from setuptools import setup
+# from skbuild import setup
 
 
 def parse_version(fpath):
