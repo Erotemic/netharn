@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import sklearn
 import ubelt as ub
 import warnings
 from .functional import fast_confusion_matrix
@@ -415,6 +414,8 @@ class BinaryConfusionVectors(object):
 
     @ub.memoize_method
     def precision_recall(self):
+        import sklearn
+        import sklearn.metrics  # NOQA
         data = self.data
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', message='invalid .* true_divide')
@@ -459,6 +460,8 @@ class BinaryConfusionVectors(object):
 
     @ub.memoize_method
     def roc(self, fp_cutoff=None):
+        import sklearn
+        import sklearn.metrics  # NOQA
         data = self.data
         y_true = data['is_true']
         y_score = data['pred_score']

@@ -5,6 +5,7 @@ torchvision >= 0.2.1
 six >= 1.11.0
 torch >= 1.0.0
 numpy >= 1.14.5
+scipy >= 1.2.1
 ubelt >= 0.8.2
 progiter >= 0.0.2
 parse >= 1.8.4
@@ -16,9 +17,9 @@ psutil >= 5.4.7
 imgaug >= 0.2.6
 
 # NOTE: in the future kwimage and kwplot may become optional
-kwarray
-kwimage
-kwplot
+kwarray >= 0.4.0
+kwimage >= 0.4.0
+kwplot >= 0.4.0
 
 
 # Python 2.7 Only
