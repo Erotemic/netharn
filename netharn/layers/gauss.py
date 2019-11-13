@@ -79,10 +79,11 @@ class GaussianBlurNd(common.Module):
         >>> assert self.number_of_parameters() == 0
         >>> output = self(input)
         >>> # xdoc: +REQUIRES(--show)
-        >>> nh.util.autompl()
-        >>> nh.util.imshow(input[0], colorspace='rgb', pnum=(1, 2, 1))
-        >>> nh.util.imshow(output[0], colorspace='rgb', pnum=(1, 2, 2))
-        >>> nh.util.show_if_requested()
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> kwplot.imshow(input[0], colorspace='rgb', pnum=(1, 2, 1))
+        >>> kwplot.imshow(output[0], colorspace='rgb', pnum=(1, 2, 2))
+        >>> kwplot.show_if_requested()
 
     References:
         https://discuss.pytorch.org/t/is-there-anyway-to-do-gaussian-filtering-for-an-image-2d-3d-in-pytorch/12351

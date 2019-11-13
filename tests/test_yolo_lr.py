@@ -117,7 +117,7 @@ def test_yolo_lr():
     try:
         harn.failpoint = 100
         harn.run()
-    except Failpoint as ex:
+    except Failpoint:
         pass
     print('\nFAILPOINT REACHED\n')
     failpoint_lrs = set(harn._current_lrs())
@@ -140,8 +140,9 @@ def test_yolo_lr():
     harn.run()
 
     if ub.argflag('--show'):
-        nh.util.autompl()
-        nh.util.multi_plot(harn.xdata, harn.ydata)
+        import kwplot
+        kwplot.autompl()
+        kwplot.multi_plot(harn.xdata, harn.ydata)
         from matplotlib import pyplot as plt
         plt.show()
 
