@@ -77,17 +77,19 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
             any predicted annotation.
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
         >>> import pandas as pd
         >>> import netharn as nh
+        >>> import kwimage
         >>> # Given a raw numpy representation construct Detection wrappers
-        >>> true_dets = nh.util.Detections(
-        >>>     boxes=nh.util.Boxes(np.array([
+        >>> true_dets = kwimage.Detections(
+        >>>     boxes=kwimage.Boxes(np.array([
         >>>         [ 0,  0, 10, 10], [10,  0, 20, 10],
         >>>         [10,  0, 20, 10], [20,  0, 30, 10]]), 'tlbr'),
         >>>     weights=np.array([1, 0, .9, 1]),
         >>>     class_idxs=np.array([0, 0, 1, 2]))
-        >>> pred_dets = nh.util.Detections(
-        >>>     boxes=nh.util.Boxes(np.array([
+        >>> pred_dets = kwimage.Detections(
+        >>>     boxes=kwimage.Boxes(np.array([
         >>>         [6, 2, 20, 10], [3,  2, 9, 7],
         >>>         [3,  9, 9, 7],  [3,  2, 9, 7],
         >>>         [2,  6, 7, 7],  [20,  0, 30, 10]]), 'tlbr'),
@@ -120,6 +122,7 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
         globals().update(get_func_kwargs(_assign_confusion_vectors))
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
         >>> import pandas as pd
         >>> from netharn.metrics import DetectionMetrics
         >>> dmet = DetectionMetrics.demo(nimgs=1, nclasses=8,
@@ -142,7 +145,7 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
         >>> print(y)  # xdoc: +IGNORE_WANT
         >>> print(y[(y.pred_raw != y.pred)])
     """
-    import netharn as nh
+    import kwarray
     valid_compat_keys = {'ancestors', 'mutex', 'all'}
     if compat not in valid_compat_keys:
         raise KeyError(compat)
@@ -154,7 +157,7 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
 
     # Group true boxes by class
     # Keep track which true boxes are unused / not assigned
-    unique_tcxs, tgroupxs = nh.util.group_indices(true_dets.class_idxs)
+    unique_tcxs, tgroupxs = kwarray.group_indices(true_dets.class_idxs)
     cx_to_txs = dict(zip(unique_tcxs, tgroupxs))
 
     unique_pcxs = np.array(sorted(set(pred_dets.class_idxs)))
@@ -205,7 +208,7 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
 
         # Batch up the IOU pre-computation between compatible truths / preds
         iou_lookup = {}
-        unique_pred_cxs, pgroupxs = nh.util.group_indices(pred_dets.class_idxs)
+        unique_pred_cxs, pgroupxs = kwarray.group_indices(pred_dets.class_idxs)
         for cx, pred_idxs in zip(unique_pred_cxs, pgroupxs):
             true_idxs = cx_to_matchable_txs[cx]
             ious = pred_dets.boxes[pred_idxs].ious(true_dets.boxes[true_idxs], bias=bias)
@@ -237,7 +240,7 @@ def _critical_loop(true_dets, pred_dets, _pred_sortx, _pred_cxs, _pred_scores,
     # * Preallocating numpy arrays does not help
     # * It might be useful to code this critical loop up in C / Cython
     # * Could numba help? (I'm having an issue with cmath)
-    import netharn as nh
+    import kwarray
 
     y_pred_raw = []
     y_pred = []
@@ -303,7 +306,7 @@ def _critical_loop(true_dets, pred_dets, _pred_sortx, _pred_cxs, _pred_scores,
                     cand_class_priority = pdist_priority[pred_cx][cand_true_cxs]
 
                     # ovidx = ub.argmax(zip(cand_class_priority, cand_ious))
-                    ovidx = nh.util.arglexmax([cand_ious, cand_class_priority])
+                    ovidx = kwarray.arglexmax([cand_ious, cand_class_priority])
 
                     ovmax = cand_ious[ovidx]
                     tx = cand_true_idxs[ovidx]

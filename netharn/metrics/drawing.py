@@ -9,6 +9,7 @@ def draw_roc(roc_info, prefix=''):
     to make any sense!
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
         >>> from netharn.metrics import DetectionMetrics
         >>> dmet = DetectionMetrics.demo(
         >>>     nimgs=100, nboxes=(0, 30), n_fp=(0, 1), nclasses=3,
@@ -19,12 +20,12 @@ def draw_roc(roc_info, prefix=''):
         >>> classes = cfsn_vecs.classes
         >>> roc_info = cfsn_vecs.binarize_ovr().roc()['perclass'][1]
         >>> # xdoctest: +REQUIRES(--show)
-        >>> import netharn as nh
-        >>> nh.util.autompl()
+        >>> import kwplot
+        >>> kwplot.autompl()
         >>> draw_roc(roc_info)
-        >>> nh.util.show_if_requested()
+        >>> kwplot.show_if_requested()
     """
-    import netharn as nh
+    import kwplot
     fp_count = roc_info['fp_count']
     fp_rate = roc_info['fpr']
     tp_rate = roc_info['tpr']
@@ -36,7 +37,7 @@ def draw_roc(roc_info, prefix=''):
     figtitle = None
     falsepos_total = fp_count[-1]
 
-    ax = nh.util.multi_plot(
+    ax = kwplot.multi_plot(
         list(fp_rate), list(tp_rate), marker='',
         # xlabel='FA count (false positive count)',
         xlabel='fpr (count={})'.format(falsepos_total),
@@ -53,7 +54,7 @@ def draw_perclass_roc(cx_to_rocinfo, classes, prefix=''):
     """
                 cx_to_rocinfo = roc_perclass
     """
-    import netharn as nh
+    import kwplot
     # Sort by descending AP
     cxs = list(cx_to_rocinfo.keys())
     priority = np.array([item['auc'] for item in cx_to_rocinfo.values()])
@@ -84,7 +85,7 @@ def draw_perclass_roc(cx_to_rocinfo, classes, prefix=''):
             label = 'auc={:0.2f}: {} ({:d})'.format(auc, catname, nsupport)
         xydata[label] = (fp_count, tpr)
 
-    ax = nh.util.multi_plot(
+    ax = kwplot.multi_plot(
         xydata=xydata, doclf=True, fnum=1,
         ylim=(0, 1), xpad=0.01, ypad=0.01,
         xlabel='FP-count', ylabel='TPR',
@@ -98,6 +99,7 @@ def draw_perclass_roc(cx_to_rocinfo, classes, prefix=''):
 def draw_perclass_prcurve(cx_to_peritem, classes, prefix=''):
     """
     Example:
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
         >>> from netharn.metrics import DetectionMetrics
         >>> dmet = DetectionMetrics.demo(
         >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), nclasses=3)
@@ -105,12 +107,12 @@ def draw_perclass_prcurve(cx_to_peritem, classes, prefix=''):
         >>> classes = cfsn_vecs.classes
         >>> cx_to_peritem = cfsn_vecs.binarize_ovr().precision_recall()['perclass']
         >>> import netharn as nh
-        >>> nh.util.autompl()
+        >>> kwplot.autompl()
         >>> draw_perclass_prcurve(cx_to_peritem, classes)
         >>> # xdoctest: +REQUIRES(--show)
-        >>> nh.util.show_if_requested()
+        >>> kwplot.show_if_requested()
     """
-    import netharn as nh
+    import kwplot
     # Sort by descending AP
     cxs = list(cx_to_peritem.keys())
     priority = np.array([item['ap'] for item in cx_to_peritem.values()])
@@ -157,7 +159,7 @@ def draw_perclass_prcurve(cx_to_peritem, classes, prefix=''):
         warnings.filterwarnings('ignore', 'Mean of empty slice', RuntimeWarning)
         mAP = np.nanmean(aps)
 
-    ax = nh.util.multi_plot(
+    ax = kwplot.multi_plot(
         xydata=xydata, doclf=True, fnum=1,
         xlim=(0, 1), ylim=(0, 1), xpad=0.01, ypad=0.01,
         xlabel='recall', ylabel='precision',
@@ -171,6 +173,7 @@ def draw_perclass_prcurve(cx_to_peritem, classes, prefix=''):
 def draw_peritem_prcurve(peritem, prefix=''):
     """
     Example:
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
         >>> from netharn.metrics import DetectionMetrics
         >>> dmet = DetectionMetrics.demo(
         >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), nclasses=3)
@@ -179,12 +182,12 @@ def draw_peritem_prcurve(peritem, prefix=''):
         >>> classes = cfsn_vecs.classes
         >>> peritem = cfsn_vecs.binarize_peritem().precision_recall()
         >>> import netharn as nh
-        >>> nh.util.autompl()
+        >>> kwplot.autompl()
         >>> draw_peritem_prcurve(peritem)
         >>> # xdoctest: +REQUIRES(--show)
-        >>> nh.util.show_if_requested()
+        >>> kwplot.show_if_requested()
     """
-    import netharn as nh
+    import kwplot
     aps = []
     ap = peritem['ap']
     pr = peritem['pr']
@@ -207,7 +210,7 @@ def draw_peritem_prcurve(peritem, prefix=''):
     else:
         label = 'ap={:0.2f}: ({:d})'.format(ap, nsupport)
 
-    ax = nh.util.multi_plot(
+    ax = kwplot.multi_plot(
         xdata=recall, ydata=precision, doclf=True, fnum=1, label=label,
         xlim=(0, 1), ylim=(0, 1), xpad=0.01, ypad=0.01,
         xlabel='recall', ylabel='precision',

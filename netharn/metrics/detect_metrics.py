@@ -13,6 +13,7 @@ class DetectionMetrics(object):
         classes (CategoryTree): category coder
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
         >>> dmet = DetectionMetrics.demo(
         >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1), nclasses=8, score_noise=0.9, hacked=False)
         >>> print(dmet.score_netharn(bias=0, compat='mutex', prioritize='iou')['mAP'])
@@ -44,6 +45,7 @@ class DetectionMetrics(object):
             pred_coco (ndsampler.CocoDataset):
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> import ndsampler
             >>> true_coco = ndsampler.CocoDataset.demo('shapes')
             >>> pred_coco = true_coco
@@ -298,6 +300,7 @@ class DetectionMetrics(object):
         score using voc method
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> dmet = DetectionMetrics.demo(
             >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1), nclasses=8, score_noise=.5)
             >>> print(dmet.score_voc()['mAP'])
@@ -433,6 +436,7 @@ class DetectionMetrics(object):
             anchors (ndarray, default=None): used to create random boxes
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> kwargs = {}
             >>> # Seed the RNG
             >>> kwargs['rng'] = 0

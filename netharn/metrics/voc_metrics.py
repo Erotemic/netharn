@@ -95,8 +95,8 @@ def _pr_curves(y, method='voc2012'):
         >>>     {'pred': 0, 'score':  8.52, 'true':  0, 'weight': 1.00},
         >>>     {'pred': 0, 'score':  5.20, 'true':  0, 'weight': 1.00},
         >>> ])
-        >>> import netharn as nh
-        >>> y2 = nh.util.DataFrameArray(y1)
+        >>> import kwarray
+        >>> y2 = kwarray.DataFrameArray(y1)
         >>> _pr_curves(y2)
         >>> _pr_curves(y1)
     """
