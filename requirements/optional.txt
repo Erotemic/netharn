@@ -16,7 +16,7 @@ tensorboard >= 1.8.0
 sympy >= 1.3
 
 # needed for pycoco tools
-Cython
+Cython >= 0.28.4
 pycocotools
 
 
