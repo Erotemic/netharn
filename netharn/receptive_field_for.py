@@ -531,7 +531,7 @@ class _TorchMixin(object):
         return ReceptiveFieldFor._unchanged(module, input_field)
 
     @staticmethod
-    @compute_type(nn.ReLU6, nn.PReLU, nn.LeakyReLU)
+    @compute_type(nn.ReLU6, nn.PReLU, nn.LeakyReLU, nn.ELU, nn.CELU, nn.SELU)
     def _unchanged_activation(module, input_field=None):
         return ReceptiveFieldFor._unchanged(module, input_field)
 
