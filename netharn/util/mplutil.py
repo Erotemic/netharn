@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Mostly depricated in favor of kwplot
+Mostly deprecated in favor of kwplot
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import cv2

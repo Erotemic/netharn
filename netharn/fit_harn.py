@@ -194,7 +194,7 @@ def _disjoint_dict_update(a, b):
 
 
 @register_mixin
-class ExtraMixins:
+class ExtraMixins(object):
     """
     Miscellaneous methods that will be mixed into FitHarn
     """
@@ -275,7 +275,7 @@ class ExtraMixins:
 
 
 @register_mixin
-class InitializeMixin:
+class InitializeMixin(object):
     """
     Methods for initializing logging, models, etc...
     """
@@ -633,7 +633,7 @@ class InitializeMixin:
 
 
 @register_mixin
-class ProgMixin:
+class ProgMixin(object):
     """
     Methods for displaying progress bars
     """
@@ -643,7 +643,7 @@ class ProgMixin:
 
         if harn.config['use_tqdm'] is not None:
             import warnings
-            warnings.warn('use_tqdm is depricated. Set prog_backend instead')
+            warnings.warn('use_tqdm is deprecated. Set prog_backend instead')
             harn.config['prog_backend'] = (
                 'tqdm' if harn.config['use_tqdm'] else 'progiter')
 
@@ -718,7 +718,7 @@ class ProgMixin:
 
 
 @register_mixin
-class LogMixin:
+class LogMixin(object):
     """
     Methods for logging messages and data within FitHarn.
     """
@@ -831,7 +831,7 @@ class LogMixin:
 
 
 @register_mixin
-class SnapshotMixin:
+class SnapshotMixin(object):
     """
     Methods for serializing the state of training.
     """
@@ -986,7 +986,7 @@ class SnapshotMixin:
 
 
 @register_mixin
-class SnapshotCallbacks:
+class SnapshotCallbacks(object):
     """
     Snapshot functions that may need to be extended for advanced usage
 
@@ -1064,7 +1064,7 @@ class SnapshotCallbacks:
 
 
 @register_mixin
-class ScheduleMixin:
+class ScheduleMixin(object):
     """
     Internal methods for inspecting and modifying the training scheduler.
     """
@@ -1186,7 +1186,7 @@ class ScheduleMixin:
 
 
 @register_mixin
-class CoreMixin:
+class CoreMixin(object):
     """
     Methods to run and support the core main execution loop
     """
@@ -1732,7 +1732,7 @@ class CoreMixin:
 
 
 @register_mixin
-class ChecksMixin:
+class ChecksMixin(object):
     """
     Helper functions to check if the optimization process is healthy
     """
@@ -1794,7 +1794,7 @@ class ChecksMixin:
 
 
 @register_mixin
-class CoreCallbacks:
+class CoreCallbacks(object):
     """
     FitHarn's default callback methods. We encourage you to overwrite these.
 
@@ -2006,7 +2006,7 @@ class CoreCallbacks:
 
 
 @register_mixin
-class PropertyMixin:
+class PropertyMixin(object):
     """
     Access commonly needed harness internals in a convenient way.
     """

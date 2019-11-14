@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-DEPRICATED
+DEPRECATED
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np

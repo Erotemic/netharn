@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-NOTE: THIS FILE IS DEPRICATED
+NOTE: THIS FILE IS DEPRECATED
 
 Processing for filenames. The logic is relatively hacky.
 

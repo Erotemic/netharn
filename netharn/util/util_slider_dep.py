@@ -14,7 +14,7 @@ class SlidingSlices(ub.NiceRepr):
     Generates basis for "sliding window" slices to break a large image into
     smaller pieces. Use it.product to slide across the coordinates.
 
-    DEPRICATED IN FAVOR OF SLIDING WINDOW
+    DEPRECATED IN FAVOR OF SLIDING WINDOW
 
     Args:
         source (ndarray): array to slice across. It is typically best to ensure

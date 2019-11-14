@@ -274,7 +274,7 @@ class BatchNormContext(object):
         self.models = models
         if kw:
             import warnings
-            warnings.warn('the enabled kwarg is depricated')
+            warnings.warn('the enabled kwarg is deprecated')
             training = kw.pop('enabled', training)
             if len(kw):
                 raise ValueError('Unsupported kwargs: {}'.format(list(kw)))
