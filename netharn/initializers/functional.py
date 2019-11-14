@@ -172,7 +172,7 @@ def load_partial_state(model, model_state_dict, leftover=None,
     """
     if initializer is not None:
         import warnings
-        warnings.warn('initializer is depricated use leftover')
+        warnings.warn('initializer is deprecated use leftover')
         leftover = initializer
 
     self_state = model.state_dict()

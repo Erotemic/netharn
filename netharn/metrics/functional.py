@@ -1,5 +1,4 @@
 import numpy as np
-import sklearn
 import warnings
 from scipy.sparse import coo_matrix
 
@@ -43,6 +42,7 @@ def _truncated_roc(y_df, bg_idx=-1, fp_cutoff=None):
     """
     Computes truncated ROC info
     """
+    import sklearn
     y_true = (y_df['true'] == y_df['pred'])
     y_score = y_df['score']
     sample_weight = y_df['weight']
@@ -118,6 +118,7 @@ def _pr_curves(y):
         Tuple[float, ndarray, ndarray]
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:sklearn)
         >>> import pandas as pd
         >>> y1 = pd.DataFrame.from_records([
         >>>     {'pred': 0, 'score': 10.00, 'true': -1, 'weight': 1.00},
@@ -132,10 +133,12 @@ def _pr_curves(y):
         >>>     {'pred': 0, 'score':  5.20, 'true':  0, 'weight': 1.00},
         >>> ])
         >>> import netharn as nh
-        >>> y2 = nh.util.DataFrameArray(y1)
+        >>> import kwarray
+        >>> y2 = kwarray.DataFrameArray(y1)
         >>> _pr_curves(y2)
         >>> _pr_curves(y1)
     """
+    import sklearn
     # compute metrics on a per class basis
     if y is None:
         return np.nan, [], []

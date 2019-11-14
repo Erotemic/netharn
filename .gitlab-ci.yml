@@ -30,6 +30,10 @@ stages:
         # Change pip's cache directory to be inside the project directory since we can
         # only cache local items.
         PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+    cache:
+        paths:
+            - .cache/pip
     
     
 .build_template: &build_template
@@ -56,8 +60,33 @@ stages:
             - dist/*.whl
 
 
+#### Define test templates
+
+
+._common_test_before_script: &_common_test_before_script |-
+    # Setup the correct version of python on this manylinux instance
+    python --version  # Print out python version for debugging
+    python -m pip install virtualenv
+    python -m virtualenv venv
+    source venv/bin/activate
+    pip install pip -U
+    pip install pip setuptools -U
+    pip install pip -r requirements/tests.txt
+
+
+._common_test_script: &_common_test_script |-
+    ls dist
+    VERSION=$(python -c "import setup; print(setup.version)")
+    MB_PYTHON_TAG="py2.py3-none-any"
+    BDIST_WHEEL_PATH=dist/netharn-${VERSION}-${MB_PYTHON_TAG}.whl
+    pip install $BDIST_WHEEL_PATH
+    pip install pygments
+    # Hack to test the installed wheel. TODO: make run_tests work better in this case.
+    mkdir -p foo && cd foo && pytest --cov-config ../.coveragerc --cov-report html --cov-report term --cov=netharn --xdoc $(python -c "import ubelt; print(ubelt.modname_to_modpath('netharn'))") ../tests
+
+
 # TODO: Make a test target that tests gdal 
-.test_template: &test_template
+.test_full_template: &test_full_template
     <<: 
         - *common_template
 
@@ -65,27 +94,35 @@ stages:
         test
 
     before_script:
-        # Setup the correct version of python on this manylinux instance
-        - python --version  # Print out python version for debugging
-        - python -m pip install virtualenv
-        - python -m virtualenv venv
-        - source venv/bin/activate
-        - pip install pip -U
-        - pip install pip setuptools -U
+        - *_common_test_before_script
+        # Install all requirements for full test
         - pip install -r requirements.txt
 
     script: 
-        - ls dist
-        - VERSION=$(python -c "import setup; print(setup.version)")
-        - MB_PYTHON_TAG="py2.py3-none-any"
-        - BDIST_WHEEL_PATH=dist/netharn-${VERSION}-${MB_PYTHON_TAG}.whl
-        - pip install $BDIST_WHEEL_PATH
-        - pip install pygments
-        # Hack to test the installed wheel. TODO: make run_tests work better in this case.
-        - mkdir -p foo && cd foo && pytest --cov-config ../.coveragerc --cov-report html --cov-report term --cov=netharn --xdoc $(python -c "import ubelt; print(ubelt.modname_to_modpath('netharn'))") ../tests
+        - *_common_test_script
           
     # Coverage is a regex that will parse the coverage from the test stdout
     coverage: '/TOTAL.+ ([0-9]{1,3}%)/'
+
+
+.test_basic_template: &test_basic_template
+    <<: 
+        - *common_template
+
+    stage: 
+        test
+
+    before_script:
+        - *_common_test_before_script
+
+    script: 
+        - *_common_test_script
+          
+    # Coverage is a regex that will parse the coverage from the test stdout
+    coverage: '/TOTAL.+ ([0-9]{1,3}%)/'
+
+
+#### End define test templates
 
 
 .__gpg_heredoc__: &__gpg_heredoc__
@@ -222,9 +259,15 @@ build/cp37-cp37m-universal:
     image:
         python:3.7
 
-test/cp37-cp37m-universal:
+test_full/cp37-cp37m-universal:
     <<: 
-        - *test_template
+        - *test_full_template
+    image:
+        python:3.7
+
+test_basic/cp37-cp37m-universal:
+    <<: 
+        - *test_basic_template
     image:
         python:3.7
 
@@ -250,9 +293,16 @@ deploy/cp37-cp37m-universal:
 #    image:
 #        python:3.6
 
-test/cp36-cp36m-universal:
+test_full/cp36-cp36m-universal:
     <<: 
-        - *test_template
+        - *test_full_template
+    image:
+        python:3.6
+
+
+test_basic/cp36-cp36m-universal:
+    <<: 
+        - *test_basic_template
     image:
         python:3.6
 
@@ -278,9 +328,15 @@ test/cp36-cp36m-universal:
 #    image:
 #        python:3.5
 
-test/cp35-cp35m-universal:
+test_full/cp35-cp35m-universal:
     <<: 
-        - *test_template
+        - *test_full_template
+    image:
+        python:3.5
+
+test_basic/cp35-cp35m-universal:
+    <<: 
+        - *test_basic_template
     image:
         python:3.5
 
@@ -306,9 +362,16 @@ test/cp35-cp35m-universal:
 #    image:
 #        python:2.7
 
-test/cp27-cp27mu-universal:
+test_full/cp27-cp27mu-universal:
     <<: 
-        - *test_template
+        - *test_full_template
+    image:
+        python:2.7
+
+
+test_basic/cp27-cp27mu-universal:
+    <<: 
+        - *test_basic_template
     image:
         python:2.7
 

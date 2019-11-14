@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""
+Mostly deprecated in favor of kwplot
+"""
 from __future__ import absolute_import, division, print_function, unicode_literals
 import cv2
 import itertools as it
@@ -754,9 +757,9 @@ def scores_to_color(score_list, cmap_='hot', logscale=False, reverse_cmap=False,
         >>> # score_list = np.linspace(0, 1, 100)
         >>> cmap_ = 'plasma'
         >>> colors = scores_to_color(score_list, cmap_)
-        >>> imgRGB = util.atleast_nd(np.array(colors)[:, 0:3], 3, tofront=True)
+        >>> imgRGB = kwarray.atleast_nd(np.array(colors)[:, 0:3], 3, tofront=True)
         >>> imgRGB = imgRGB.astype(np.float32)
-        >>> imgBGR = util.convert_colorspace(imgRGB, 'BGR', 'RGB')
+        >>> imgBGR = kwimage.convert_colorspace(imgRGB, 'BGR', 'RGB')
         >>> imshow(imgBGR)
         >>> show_if_requested()
 
@@ -1044,9 +1047,8 @@ def colorbar_image(domain, cmap='plasma', dpi=96, shape=(200, 20), transparent=F
         util.imwrite('foo.png', util.colorbar_image(np.linspace(0, 1, 100), dpi=200, shape=(1000, 40), transparent=1))
         ub.startfile('foo.png')
     """
-    import matplotlib as mpl
-    mpl.use('agg', force=False, warn=False)
-    from matplotlib import pyplot as plt
+    import kwplot
+    plt = kwplot.autoplt()
 
     fig = plt.figure(dpi=dpi)
 
@@ -1077,22 +1079,20 @@ def make_legend_img(classname_to_rgb, dpi=96, shape=(200, 200), mode='line',
         python -m netharn.util.mplutil make_legend_img
 
     Example:
-        >>> import netharn as nh
+        >>> # xdoctest: +REQUIRES(module:kwplot)
+        >>> import kwplot
         >>> classname_to_rgb = {
-        >>>     'blue': nh.util.Color('blue').as01(),
-        >>>     'red': nh.util.Color('red').as01(),
+        >>>     'blue': kwplot.Color('blue').as01(),
+        >>>     'red': kwplot.Color('red').as01(),
         >>> }
         >>> img = make_legend_img(classname_to_rgb)
         >>> # xdoctest: +REQUIRES(--show)
-        >>> import kwplot
         >>> kwplot.autompl()
-        >>> nh.util.imshow(img)
-        >>> nh.util.show_if_requested()
+        >>> kwplot.imshow(img)
+        >>> kwplot.show_if_requested()
     """
-    # import matplotlib as mpl
-    # mpl.use('agg', force=False, warn=False)
-    from netharn.util import mplutil
-    from matplotlib import pyplot as plt
+    import kwplot
+    plt = kwplot.autoplt()
 
     def append_phantom_legend_label(label, color, type_='line', alpha=1.0, ax=None):
         if ax is None:
@@ -1127,7 +1127,7 @@ def make_legend_img(classname_to_rgb, dpi=96, shape=(200, 200), mode='line',
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
     plt.axis('off')
-    legend_img = mplutil.render_figure_to_image(fig, dpi=dpi, transparent=transparent)
+    legend_img = render_figure_to_image(fig, dpi=dpi, transparent=transparent)
     plt.close(fig)
     return legend_img
 

@@ -121,15 +121,6 @@ def _dump_monitor_tensorboard(harn, mode='epoch'):
         func(*args)
 
 
-# def _reparse_tensorboard():
-#     """
-#     """
-#     import netharn as nh
-#     tb_data = nh.util.read_tensorboard_scalars(train_dpath, cache=0,
-#                                                verbose=0)
-#     pass
-
-
 def _redump_measures(dpath):
     """
     """
@@ -177,10 +168,10 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
         >>> _dump_measures(tb_data,  out_dpath)
     """
     import ubelt as ub
-    import netharn as nh
     from os.path import join
     import numpy as np
-    nh.util.autompl()
+    import kwplot
+    kwplot.autompl()
 
     # TODO: Is it possible to get htop to show this process with some name that
     # distinguishes it from the dataloader workers?
@@ -215,7 +206,7 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
     meta = tb_data.get('meta', {})
     nice = meta.get('nice', '?nice?')
 
-    fig = nh.util.figure(fnum=1)
+    fig = kwplot.figure(fnum=1)
 
     plot_keys = [key for key in tb_data if
                  ('train_' + mode in key or
@@ -296,9 +287,9 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
                 fig.clf()
                 ax = fig.gca()
                 title = nice + '\n' + tag + '_' + mode + ' losses'
-                nh.util.multi_plot(xydata=xydata, ylabel='loss', xlabel=mode,
-                                   yscale=yscale, title=title, fnum=1, ax=ax,
-                                   **kw)
+                kwplot.multi_plot(xydata=xydata, ylabel='loss', xlabel=mode,
+                                  yscale=yscale, title=title, fnum=1, ax=ax,
+                                  **kw)
                 if yscale == 'symlog':
                     ax.set_yscale('symlog', linthreshy=min_abs_y)
                 fname = '_'.join([tag, mode, 'multiloss', yscale]) + '.png'
@@ -333,8 +324,8 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
             fig.clf()
             ax = fig.gca()
             title = nice + '\n' + key
-            nh.util.multi_plot(d['xdata'], ydata, ylabel=key,
-                               xlabel=mode, title=title, fnum=1, ax=ax, **kw)
+            kwplot.multi_plot(d['xdata'], ydata, ylabel=key, xlabel=mode,
+                              title=title, fnum=1, ax=ax, **kw)
 
             # png is slightly smaller than jpg for this kind of plot
             fpath = join(out_dpath, key + '.png')

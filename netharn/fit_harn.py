@@ -81,10 +81,8 @@ Example:
     >>> })
     >>> harn = nh.FitHarn(hyper)
     >>> # non-algorithmic behavior configs (do not change learned models)
-    >>> harn.config['prog_backend'] = 'tqdm'
+    >>> harn.config['prog_backend'] = 'auto'
     >>> harn.config['use_tensorboard'] = False
-    >>> if ub.argflag('--progiter'):  # I prefer progiter (I may be biased)
-    ...     harn.config['prog_backend'] = 'progiter'
     >>> # start training.
     >>> harn.initialize(reset='delete')
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
@@ -196,7 +194,7 @@ def _disjoint_dict_update(a, b):
 
 
 @register_mixin
-class ExtraMixins:
+class ExtraMixins(object):
     """
     Miscellaneous methods that will be mixed into FitHarn
     """
@@ -277,7 +275,7 @@ class ExtraMixins:
 
 
 @register_mixin
-class InitializeMixin:
+class InitializeMixin(object):
     """
     Methods for initializing logging, models, etc...
     """
@@ -635,18 +633,30 @@ class InitializeMixin:
 
 
 @register_mixin
-class ProgMixin:
+class ProgMixin(object):
     """
     Methods for displaying progress bars
     """
 
     def _make_prog(harn, *args, **kw):
         chunksize = kw.pop('chunksize', None)
+
         if harn.config['use_tqdm'] is not None:
-            harn.config['prog_backend'] = 'tqdm' if harn.config['use_tqdm'] else 'progiter'
+            import warnings
+            warnings.warn('use_tqdm is deprecated. Set prog_backend instead')
+            harn.config['prog_backend'] = (
+                'tqdm' if harn.config['use_tqdm'] else 'progiter')
+
+        if harn.config['prog_backend'] == 'auto':
+            try:
+                import tqdm
+            except ImportError:
+                harn.config['prog_backend'] = 'progiter'
+            else:
+                harn.config['prog_backend'] = 'tqdm'
 
         if harn.config['prog_backend'] == 'tqdm':
-            import tqdm
+            import tqdm  # NOQA
             Prog = tqdm.tqdm
         elif harn.config['prog_backend'] == 'progiter':
             Prog = functools.partial(ub.ProgIter, chunksize=chunksize, verbose=1)
@@ -682,7 +692,7 @@ class ProgMixin:
             sys.stdout.write('\n\n\n\n')  # fixes progress bar formatting
 
     def _update_prog_postfix(harn, prog):
-        if harn.config['use_tqdm']:
+        if harn.config['prog_backend'] == 'tqdm':
             prog.set_postfix({
                 'wall': time.strftime('%h:%m') + ' ' + time.tzname[0]
             })
@@ -708,7 +718,7 @@ class ProgMixin:
 
 
 @register_mixin
-class LogMixin:
+class LogMixin(object):
     """
     Methods for logging messages and data within FitHarn.
     """
@@ -821,7 +831,7 @@ class LogMixin:
 
 
 @register_mixin
-class SnapshotMixin:
+class SnapshotMixin(object):
     """
     Methods for serializing the state of training.
     """
@@ -976,7 +986,7 @@ class SnapshotMixin:
 
 
 @register_mixin
-class SnapshotCallbacks:
+class SnapshotCallbacks(object):
     """
     Snapshot functions that may need to be extended for advanced usage
 
@@ -1054,7 +1064,7 @@ class SnapshotCallbacks:
 
 
 @register_mixin
-class ScheduleMixin:
+class ScheduleMixin(object):
     """
     Internal methods for inspecting and modifying the training scheduler.
     """
@@ -1176,7 +1186,7 @@ class ScheduleMixin:
 
 
 @register_mixin
-class CoreMixin:
+class CoreMixin(object):
     """
     Methods to run and support the core main execution loop
     """
@@ -1559,7 +1569,7 @@ class CoreMixin:
         ignore_inf_loss_parts = harn.config['ignore_inf_loss_parts']
         display_interval = harn.intervals['display_' + tag]
         is_profiling = profiler.IS_PROFILING
-        use_tqdm = harn.config['use_tqdm']
+        use_tqdm = harn.config['prog_backend'] == 'tqdm'
 
         if isinstance(prog, ub.ProgIter):
             prog.begin()
@@ -1722,7 +1732,7 @@ class CoreMixin:
 
 
 @register_mixin
-class ChecksMixin:
+class ChecksMixin(object):
     """
     Helper functions to check if the optimization process is healthy
     """
@@ -1784,7 +1794,7 @@ class ChecksMixin:
 
 
 @register_mixin
-class CoreCallbacks:
+class CoreCallbacks(object):
     """
     FitHarn's default callback methods. We encourage you to overwrite these.
 
@@ -1996,7 +2006,7 @@ class CoreCallbacks:
 
 
 @register_mixin
-class PropertyMixin:
+class PropertyMixin(object):
     """
     Access commonly needed harness internals in a convenient way.
     """
@@ -2189,8 +2199,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
 
             'show_prog': True,
             'use_tqdm': None,
-            # 'prog_backend': 'tqdm',
-            'prog_backend': 'progiter',
+            'prog_backend': 'progiter',  # can be 'progiter' or 'tqdm' or 'auto'
 
             # If your loss criterion returns a dictionary of parts, ignore any
             # infinite values before summing the total loss.

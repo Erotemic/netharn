@@ -9,9 +9,7 @@ from os.path import join
 from os.path import dirname
 from os.path import abspath
 import ubelt as ub
-import click
 import functools
-import git as gitpython
 
 
 class DirtyRepoError(Exception):
@@ -188,6 +186,7 @@ class Repo(ub.NiceRepr):
     # @ub.memoize_property
     def pygit(repo):
         """ pip install gitpython """
+        import git as gitpython
         if repo._pygit is None:
             repo._pygit = gitpython.Repo(repo.dpath)
         return repo._pygit
@@ -456,11 +455,11 @@ def make_netharn_registry():
 
         # The util libs
         CommonRepo(
-            name='kwarray', branch='dev/0.4.0', remote='computer-vision',
+            name='kwarray', branch='dev/0.5.2', remote='computer-vision',
             remotes={'computer-vision': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
         ),
         CommonRepo(
-            name='kwimage', branch='dev/0.4.0', remote='computer-vision',
+            name='kwimage', branch='dev/0.5.2', remote='computer-vision',
             remotes={'computer-vision': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
         ),
         CommonRepo(
@@ -471,17 +470,17 @@ def make_netharn_registry():
 
         # For example data and CLI
         CommonRepo(
-            name='scriptconfig', branch='dev/0.4.0', remote='computer-vision',
+            name='scriptconfig', branch='dev/0.5.1', remote='computer-vision',
             remotes={'computer-vision': 'git@gitlab.kitware.com:computer-vision/scriptconfig.git'},
         ),
         CommonRepo(
-            name='ndsampler', branch='dev/0.3.0', remote='computer-vision',
+            name='ndsampler', branch='dev/0.5.0', remote='computer-vision',
             remotes={'computer-vision': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
         ),
 
         # netharn - training harness
         CommonRepo(
-            name='netharn', branch='dev/0.3.0', remote='computer-vision',
+            name='netharn', branch='dev/0.5.1', remote='computer-vision',
             remotes={'computer-vision': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
         ),
     ]
@@ -490,6 +489,7 @@ def make_netharn_registry():
 
 
 def main():
+    import click
     registery = make_netharn_registry()
 
     num_workers = int(ub.argval('--workers', default=8))

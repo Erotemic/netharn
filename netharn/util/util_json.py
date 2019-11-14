@@ -33,7 +33,7 @@ class LossyJSONEncoder(json.JSONEncoder):
 
     Example:
         >>> import json
-        >>> class MyClass:
+        >>> class MyClass(object):
         >>>     def __init__(self, foo='bar'):
         >>>         self.foo = foo
         >>>         self.spam = 32

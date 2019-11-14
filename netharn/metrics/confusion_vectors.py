@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import sklearn
 import ubelt as ub
 import warnings
 from .functional import fast_confusion_matrix
@@ -18,6 +17,7 @@ class ConfusionVectors(object):
         probs (ndarray, optional): probabilities for each class
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
         >>> from netharn.metrics import DetectionMetrics
         >>> dmet = DetectionMetrics.demo(
         >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), nclasses=3)
@@ -60,9 +60,10 @@ class ConfusionVectors(object):
         Construct confusion vector data structure from component arrays
 
         Example:
-            >>> import netharn as nh
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> import kwarray
             >>> classes = ['person', 'vehicle', 'object']
-            >>> rng = nh.util.ensure_rng(0)
+            >>> rng = kwarray.ensure_rng(0)
             >>> true = (rng.rand(10) * len(classes)).astype(np.int)
             >>> probs = rng.rand(len(true), len(classes))
             >>> self = ConfusionVectors.from_arrays(true=true, probs=probs, classes=classes)
@@ -73,7 +74,7 @@ class ConfusionVectors(object):
             vehicle       2        4       1
             object        2        1       0
         """
-        import netharn as nh
+        import kwarray
         if pred is None:
             if probs is not None:
                 import ndsampler
@@ -93,7 +94,7 @@ class ConfusionVectors(object):
         }
 
         data = {k: v for k, v in data.items() if v is not None}
-        cfsn_data = nh.util.DataFrameArray(data)
+        cfsn_data = kwarray.DataFrameArray(data)
         self = ConfusionVectors(cfsn_data, probs=probs, classes=classes)
         return self
 
@@ -109,7 +110,11 @@ class ConfusionVectors(object):
                 (Note:  we should write a efficient replacement for
                  this use case. #remove_pandas)
 
+        CommandLine:
+            xdoctest -m ~/code/netharn/netharn/metrics/confusion_vectors.py ConfusionVectors.confusion_matrix
+
         Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> from netharn.metrics import DetectionMetrics
             >>> dmet = DetectionMetrics.demo(
             >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), n_fn=(0, 1), nclasses=3, cls_noise=.2)
@@ -161,7 +166,7 @@ class ConfusionVectors(object):
         Creates a coarsened set of vectors
         """
         import ndsampler
-        import netharn as nh
+        import kwarray
         assert self.probs is not None, 'need probs'
         if not isinstance(self.classes, ndsampler.CategoryTree):
             raise TypeError('classes must be a ndsampler.CategoryTree')
@@ -187,7 +192,7 @@ class ConfusionVectors(object):
             'pxs': self.data['pxs'],
             'gid': self.data['gid'],
         }
-        new_y_df = nh.util.DataFrameArray(new_y_df)
+        new_y_df = kwarray.DataFrameArray(new_y_df)
         coarse_cfsn_vecs = ConfusionVectors(new_y_df, self.classes, self.probs)
         return coarse_cfsn_vecs
 
@@ -198,6 +203,7 @@ class ConfusionVectors(object):
         the prediction.
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> from netharn.metrics import DetectionMetrics
             >>> dmet = DetectionMetrics.demo(
             >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), nclasses=3)
@@ -206,10 +212,10 @@ class ConfusionVectors(object):
             >>> binvecs = self.binarize_peritem()
         """
         import warnings
+        import kwarray
         warnings.warn('binarize_peritem DOES NOT PRODUCE CORRECT RESULTS')
 
-        import netharn as nh
-        bin_data = nh.util.DataFrameArray({
+        bin_data = kwarray.DataFrameArray({
             'is_true': self.data['true'] == self.data['pred'],
             'pred_score': self.data['score'],
             'weight': self.data['weight'],
@@ -262,7 +268,7 @@ class ConfusionVectors(object):
             predicted probability of beagle, which must be remembered outside
             the dataframe.
         """
-        import netharn as nh
+        import kwarray
 
         classes = self.classes
         data = self.data
@@ -295,8 +301,8 @@ class ConfusionVectors(object):
                     coarser_cxs = np.where(dist < 0)[0]
                     finer_eq_cxs = np.where(dist >= 0)[0]
 
-                is_finer_eq = nh.util.isect_flags(data['true'], finer_eq_cxs)
-                is_coarser = nh.util.isect_flags(data['true'], coarser_cxs)
+                is_finer_eq = kwarray.isect_flags(data['true'], finer_eq_cxs)
+                is_coarser = kwarray.isect_flags(data['true'], coarser_cxs)
 
                 # Construct a binary data frame to pass to sklearn functions.
                 bin_data = {
@@ -307,7 +313,7 @@ class ConfusionVectors(object):
                     'pxs': self.data['pxs'],
                     'gid': self.data['gid'],
                 }
-                bin_data = nh.util.DataFrameArray(bin_data)
+                bin_data = kwarray.DataFrameArray(bin_data)
 
                 # Ignore cases where we failed to predict an irrelevant class
                 flags = (data['pred'] == -1) & (bin_data['is_true'] == 0)
@@ -336,7 +342,7 @@ class ConfusionVectors(object):
                     'pxs': y_group['pxs'],
                     'gid': y_group['gid'],
                 }
-                bin_data = nh.util.DataFrameArray(bin_data)
+                bin_data = kwarray.DataFrameArray(bin_data)
                 bin_cfsn = BinaryConfusionVectors(bin_data, cx, classes)
             cx_to_binvecs[cx] = bin_cfsn
 
@@ -392,7 +398,7 @@ class BinaryConfusionVectors(object):
         `pred_score` - the predicted probability of class `classes[cx]`, and
         `weight` - sample weight of the example
 
-    Example:
+    Ignore:
         {'is_true': {0: True, 1: True, 2: False, 3: False, 4: False, 5: False, 6: False, 7: False},
         'pred_score': {0: 0.979, 1: 0.97035, 2: 0.88388, 3: 0.7680, 4: 0.435, 5: 0.2763, 6: 0.1799, 7: 0.0},
         'weight': {0: 0.9, 1: 0.9, 2: 1.0, 3: 1.0, 4: 1.0, 5: 1.0, 6: 1.0, 7: 0.9},
@@ -408,6 +414,8 @@ class BinaryConfusionVectors(object):
 
     @ub.memoize_method
     def precision_recall(self):
+        import sklearn
+        import sklearn.metrics  # NOQA
         data = self.data
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', message='invalid .* true_divide')
@@ -452,6 +460,8 @@ class BinaryConfusionVectors(object):
 
     @ub.memoize_method
     def roc(self, fp_cutoff=None):
+        import sklearn
+        import sklearn.metrics  # NOQA
         data = self.data
         y_true = data['is_true']
         y_score = data['pred_score']

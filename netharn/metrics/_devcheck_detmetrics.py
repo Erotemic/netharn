@@ -194,7 +194,6 @@ def _devcheck_voc_consistency2():
         https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py
     """
     from netharn.metrics.detections import DetectionMetrics
-    import netharn as nh
     xdata = []
     ydatas = ub.ddict(list)
 
@@ -232,8 +231,9 @@ def _devcheck_voc_consistency2():
     ydf = pd.DataFrame(ydatas)
     print(ydf)
 
-    nh.util.autompl()
-    nh.util.multi_plot(xdata=xdata, ydata=ydatas, fnum=1, doclf=True)
+    import kwplot
+    kwplot.autompl()
+    kwplot.multi_plot(xdata=xdata, ydata=ydatas, fnum=1, doclf=True)
 
     if False:
         dmet_ = dmets[-1]
@@ -309,13 +309,14 @@ def _devcheck_voc_consistency():
 
             # Create voc style data
             imgname = str(imgname)
-            true_boxes = nh.util.Boxes.random(num=nboxes, scale=100., rng=rng, format='cxywh')
+            import kwimage
+            true_boxes = kwimage.Boxes.random(num=nboxes, scale=100., rng=rng, format='cxywh')
             pred_boxes = true_boxes.copy()
             pred_boxes.data = pred_boxes.data.astype(np.float) + (rng.rand() * noise)
             if nbad:
                 pred_boxes.data = np.vstack([
                     pred_boxes.data,
-                    nh.util.Boxes.random(num=nbad, scale=100., rng=rng, format='cxywh').data])
+                    kwimage.Boxes.random(num=nbad, scale=100., rng=rng, format='cxywh').data])
 
             true_cxs = rng.choice(classes, size=len(true_boxes))
             pred_cxs = true_cxs.copy()
@@ -402,5 +403,6 @@ def _devcheck_voc_consistency():
     ydf = pd.DataFrame(ydatas)
     print(ydf)
 
-    nh.util.autompl()
-    nh.util.multi_plot(xdata=xdata, ydata=ydatas, fnum=1, doclf=True)
+    import kwplot
+    kwplot.autompl()
+    kwplot.multi_plot(xdata=xdata, ydata=ydatas, fnum=1, doclf=True)

@@ -42,7 +42,7 @@ class Pretrained(api.Initializer, ub.NiceRepr):
 
         info (dict, optional): specify explicit history info
 
-        initializer (netharn.Initializer): DEPRICATED use the `leftover`.
+        initializer (netharn.Initializer): DEPRECATED use the `leftover`.
 
     Example:
         >>> from netharn.initializers.pretrained import *
@@ -85,7 +85,7 @@ class Pretrained(api.Initializer, ub.NiceRepr):
                  initializer=None):
         if initializer is not None:
             import warnings
-            warnings.warn('Pretrained `initializer` kwarg is depricated '
+            warnings.warn('Pretrained `initializer` kwarg is deprecated '
                           'in favor of `leftover`', DeprecationWarning)
             leftover = initializer
 

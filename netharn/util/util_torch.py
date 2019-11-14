@@ -36,8 +36,8 @@ class ModuleMixin(object):
         Example:
             >>> import netharn as nh
             >>> self = nh.models.toynet.ToyNet2d()
-            >>> self.devices()
-            {device(type='cpu')}
+            >>> ub.peek(self.devices())
+            device(type='cpu')
             >>> # xdoctest: +REQUIRES(--multigpu)
             >>> self = nh.XPU([0, 1]).mount(self)
             >>> print(self.devices())
@@ -274,7 +274,7 @@ class BatchNormContext(object):
         self.models = models
         if kw:
             import warnings
-            warnings.warn('the enabled kwarg is depricated')
+            warnings.warn('the enabled kwarg is deprecated')
             training = kw.pop('enabled', training)
             if len(kw):
                 raise ValueError('Unsupported kwargs: {}'.format(list(kw)))

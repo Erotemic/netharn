@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
 """
+DEPRECATED
+
+NOTE:
+    THIS IS DEPRECATED IN FAVOR OF COCO_DATASET IN NDSAMPLER
+
+
 Extended MS-COCO API. Currently only supports keypoints and bounding boxes.
 
 Extends the format to also include line annotations.

@@ -2,7 +2,6 @@ import torch  # NOQA
 import copy
 import ubelt as ub
 import numpy as np
-import netharn as nh
 
 
 class TestResult(ub.NiceRepr):
@@ -39,8 +38,9 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
         >>> result = lr_range_test(harn)
         >>> print('result = {!r}'.format(result))
         >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
         >>> result.draw()
-        >>> nh.util.show_if_requested()
+        >>> kwplot.show_if_requested()
 
     Ignore:
         >>> import sys
@@ -66,6 +66,7 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
         init_value = 1e-5
         final_value = 0.1
     """
+    import netharn as nh
 
     # Save the original state
     orig_model_state = copy.deepcopy(harn.model.state_dict())
@@ -193,10 +194,11 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
         harn.on_epoch = _orig_on_epoch
 
     def draw():
-        nh.util.autompl()
+        import kwplot
+        kwplot.autompl()
         ylimits = records['loss'] + (6 * records['loss_std'])
         ymax = np.percentile(ylimits, 96.9) / .9
-        nh.util.multi_plot(
+        kwplot.multi_plot(
             xdata=records['lr'],
             ydata=records['loss'],
             spread=records['loss_std'],
@@ -246,8 +248,9 @@ def lr_range_scan(harn, low=1e-6, high=10.0, num=8, niter_train=1,
         >>> result = lr_range_scan(harn)
         >>> print('result = {!r}'.format(result))
         >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
         >>> result.draw()
-        >>> nh.util.show_if_requested()
+        >>> kwplot.show_if_requested()
 
     Ignore:
         >>> import sys
@@ -275,6 +278,7 @@ def lr_range_scan(harn, low=1e-6, high=10.0, num=8, niter_train=1,
         - [ ] cache the dataset if it fits into memory after we run the first
         epoch.
     """
+    import netharn as nh
     use_vali = bool(niter_vali)
 
     # These are the learning rates we will scan through
@@ -395,8 +399,8 @@ def lr_range_scan(harn, low=1e-6, high=10.0, num=8, niter_train=1,
 
     # Give the user a way of visualizing what we did
     def draw():
-        nh.util.autompl()
-        from matplotlib import pyplot as plt
+        import kwplot
+        plt = kwplot.autoplt()
         plotkw = dict(
             xlabel='learning-rate', ylabel='loss', xscale=scale,
             ymin=0, xmin='data', xmax=high, fnum=1,
@@ -404,7 +408,7 @@ def lr_range_scan(harn, low=1e-6, high=10.0, num=8, niter_train=1,
         R = 2 if 'vali' in records else 1
         for i, tag in enumerate(['train', 'vali']):
             if tag in records:
-                nh.util.multi_plot(
+                kwplot.multi_plot(
                     xdata=records[tag]['lr'], ydata=records[tag]['loss'],
                     ymax=1.2 * np.percentile(records[tag]['loss'], 60) / .6,
                     pnum=(1, R, i), title=tag + ' lr-scan', **plotkw)

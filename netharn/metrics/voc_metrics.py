@@ -1,4 +1,3 @@
-import sklearn
 import warnings
 import numpy as np
 import ubelt as ub
@@ -95,8 +94,8 @@ def _pr_curves(y, method='voc2012'):
         >>>     {'pred': 0, 'score':  8.52, 'true':  0, 'weight': 1.00},
         >>>     {'pred': 0, 'score':  5.20, 'true':  0, 'weight': 1.00},
         >>> ])
-        >>> import netharn as nh
-        >>> y2 = nh.util.DataFrameArray(y1)
+        >>> import kwarray
+        >>> y2 = kwarray.DataFrameArray(y1)
         >>> _pr_curves(y2)
         >>> _pr_curves(y1)
     """
@@ -115,6 +114,7 @@ def _pr_curves(y, method='voc2012'):
     # average_precision_score does not implement any interpolated variant
     # http://scikit-learn.org/stable/modules/model_evaluation.html
     if method in {'sklearn', 'scikit-learn'}:
+        import sklearn
         # In the future, we should simply use the sklearn version
         # which gives nice easy to reproduce results.
         with warnings.catch_warnings():

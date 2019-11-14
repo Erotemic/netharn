@@ -153,8 +153,9 @@ class TripletLoss(torch.nn.TripletMarginLoss):
         >>>     'hard_margin[1]': (1 + xdata).clamp_(0, None).numpy(),
         >>>     'hard_margin[4]': (4 + xdata).clamp_(0, None).numpy(),
         >>> }
-        >>> nh.util.autompl()
-        >>> nh.util.multi_plot(xdata.numpy(), ydata, fnum=1)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> kwplot.multi_plot(xdata.numpy(), ydata, fnum=1)
     """
 
     def __init__(self, margin=1.0, eps=1e-6, reduction='mean', soft=False):
@@ -475,12 +476,12 @@ class TripletLoss(torch.nn.TripletMarginLoss):
             >>> hard_loss = TripletLoss(reduction='none', soft=False).forward(pos_dists, neg_dists)
             >>> soft_loss = TripletLoss(reduction='none', soft=True).forward(pos_dists, neg_dists)
             >>> # xdoctest: +REQUIRES(--show)
-            >>> import netharn as nh
-            >>> nh.util.autompl()
-            >>> nh.util.plot_surface3d(pos_dists, neg_dists, hard_loss.numpy(), pnum=(1, 2, 1),
-            >>>                        xlabel='d_pos', ylabel='d_neg', zlabel='hard-loss', contour=True, cmap='magma')
-            >>> nh.util.plot_surface3d(pos_dists, neg_dists, soft_loss.numpy(), pnum=(1, 2, 2),
-            >>>                        xlabel='d_pos', ylabel='d_neg', zlabel='hard-loss', contour=True, cmap='magma')
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.plot_surface3d(pos_dists, neg_dists, hard_loss.numpy(), pnum=(1, 2, 1),
+            >>>                       xlabel='d_pos', ylabel='d_neg', zlabel='hard-loss', contour=True, cmap='magma')
+            >>> kwplot.plot_surface3d(pos_dists, neg_dists, soft_loss.numpy(), pnum=(1, 2, 2),
+            >>>                       xlabel='d_pos', ylabel='d_neg', zlabel='hard-loss', contour=True, cmap='magma')
         """
         if self.soft:
             loss = self._softmargin(pos_dists, neg_dists)

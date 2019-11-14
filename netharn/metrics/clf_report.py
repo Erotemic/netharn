@@ -4,9 +4,7 @@ import warnings
 import scipy as sp
 import numpy as np
 import pandas as pd
-import sklearn.metrics
 import ubelt as ub
-from sklearn.preprocessing import LabelEncoder
 
 
 def classification_report(y_true, y_pred, target_names=None,
@@ -31,6 +29,7 @@ def classification_report(y_true, y_pred, target_names=None,
 
     Example:
         >>> # xdoctest: +IGNORE_WANT
+        >>> # xdoctest: +REQUIRES(module:sklearn)
         >>> y_true = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3]
         >>> y_pred = [1, 2, 1, 3, 1, 2, 2, 3, 2, 2, 3, 3, 2, 3, 3, 3, 1, 3]
         >>> target_names = None
@@ -74,6 +73,8 @@ def classification_report(y_true, y_pred, target_names=None,
         >>> ys = df.to_dict(orient='list')
         >>> pt.multi_plot(ydata_list=ys)
     """
+    import sklearn.metrics
+    from sklearn.preprocessing import LabelEncoder
 
     if target_names is None:
         unique_labels = np.unique(np.hstack([y_true, y_pred]))
@@ -259,10 +260,13 @@ def classification_report(y_true, y_pred, target_names=None,
     confusion_df.index.name = 'real'
     confusion_df.columns.name = 'pred'
 
-    if np.all(confusion_df - np.floor(confusion_df) < .000001):
+    _residual = (confusion_df - np.floor(confusion_df)).values
+    _thresh = 1e-6
+    if np.all(_residual < _thresh):
         confusion_df = confusion_df.astype(np.int)
     confusion_df.iloc[(-1, -1)] = N
-    if np.all(confusion_df - np.floor(confusion_df) < .000001):
+    _residual = (confusion_df - np.floor(confusion_df)).values
+    if np.all(_residual < _thresh):
         confusion_df = confusion_df.astype(np.int)
 
     if verbose:
@@ -326,6 +330,7 @@ def ovr_classification_report(mc_y_true, mc_probs, target_names=None,
 
     Example:
         >>> # xdoctest: +IGNORE_WANT
+        >>> # xdoctest: +REQUIRES(module:sklearn)
         >>> y_true = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0]
         >>> y_probs = np.random.rand(len(y_true), max(y_true) + 1)
         >>> target_names = None
@@ -346,6 +351,7 @@ def ovr_classification_report(mc_y_true, mc_probs, target_names=None,
         2 0.8000 0.8693 0.2623 0.2652 0.1602        5  0.2778
 
     """
+    import sklearn.metrics
 
     if metrics is None:
         metrics = ['auc', 'ap', 'mcc', 'brier', 'kappa']
