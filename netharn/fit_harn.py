@@ -83,8 +83,6 @@ Example:
     >>> # non-algorithmic behavior configs (do not change learned models)
     >>> harn.config['prog_backend'] = 'auto'
     >>> harn.config['use_tensorboard'] = False
-    >>> if ub.argflag('--progiter'):  # I prefer progiter (I may be biased)
-    ...     harn.config['prog_backend'] = 'progiter'
     >>> # start training.
     >>> harn.initialize(reset='delete')
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
@@ -652,9 +650,10 @@ class ProgMixin:
         if harn.config['prog_backend'] == 'auto':
             try:
                 import tqdm
-                harn.config['prog_backend'] == 'tqdm'
             except ImportError:
-                harn.config['prog_backend'] == 'progiter'
+                harn.config['prog_backend'] = 'progiter'
+            else:
+                harn.config['prog_backend'] = 'tqdm'
 
         if harn.config['prog_backend'] == 'tqdm':
             import tqdm  # NOQA
@@ -2200,7 +2199,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
 
             'show_prog': True,
             'use_tqdm': None,
-            'prog_backend': 'progiter',  # can be 'progiter' or 'tqdm'
+            'prog_backend': 'progiter',  # can be 'progiter' or 'tqdm' or 'auto'
 
             # If your loss criterion returns a dictionary of parts, ignore any
             # infinite values before summing the total loss.

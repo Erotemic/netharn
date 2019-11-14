@@ -9,9 +9,7 @@ from os.path import join
 from os.path import dirname
 from os.path import abspath
 import ubelt as ub
-import click
 import functools
-import git as gitpython
 
 
 class DirtyRepoError(Exception):
@@ -188,6 +186,7 @@ class Repo(ub.NiceRepr):
     # @ub.memoize_property
     def pygit(repo):
         """ pip install gitpython """
+        import git as gitpython
         if repo._pygit is None:
             repo._pygit = gitpython.Repo(repo.dpath)
         return repo._pygit
@@ -490,6 +489,7 @@ def make_netharn_registry():
 
 
 def main():
+    import click
     registery = make_netharn_registry()
 
     num_workers = int(ub.argval('--workers', default=8))
