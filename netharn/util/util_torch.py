@@ -36,8 +36,8 @@ class ModuleMixin(object):
         Example:
             >>> import netharn as nh
             >>> self = nh.models.toynet.ToyNet2d()
-            >>> self.devices()
-            {device(type='cpu')}
+            >>> ub.peek(self.devices())
+            device(type='cpu')
             >>> # xdoctest: +REQUIRES(--multigpu)
             >>> self = nh.XPU([0, 1]).mount(self)
             >>> print(self.devices())
