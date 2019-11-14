@@ -30,6 +30,7 @@ def read_arr(fpath):
         >>> nh.util.write_arr(fpath, arr)
         >>> arr2 = nh.util.read_arr(fpath)
         >>> assert np.all(arr == arr2)
+        >>> # xdoctest: +REQUIRES(module:h5py)
         >>> fpath = join(dpath, 'arr.h5')
         >>> nh.util.write_arr(fpath, arr)
         >>> arr2 = nh.util.read_arr(fpath)

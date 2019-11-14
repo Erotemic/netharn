@@ -118,6 +118,7 @@ def _pr_curves(y):
         Tuple[float, ndarray, ndarray]
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:sklearn)
         >>> import pandas as pd
         >>> y1 = pd.DataFrame.from_records([
         >>>     {'pred': 0, 'score': 10.00, 'true': -1, 'weight': 1.00},

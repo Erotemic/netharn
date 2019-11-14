@@ -81,7 +81,7 @@ Example:
     >>> })
     >>> harn = nh.FitHarn(hyper)
     >>> # non-algorithmic behavior configs (do not change learned models)
-    >>> harn.config['prog_backend'] = 'tqdm'
+    >>> harn.config['prog_backend'] = 'auto'
     >>> harn.config['use_tensorboard'] = False
     >>> if ub.argflag('--progiter'):  # I prefer progiter (I may be biased)
     ...     harn.config['prog_backend'] = 'progiter'
@@ -642,11 +642,22 @@ class ProgMixin:
 
     def _make_prog(harn, *args, **kw):
         chunksize = kw.pop('chunksize', None)
+
         if harn.config['use_tqdm'] is not None:
-            harn.config['prog_backend'] = 'tqdm' if harn.config['use_tqdm'] else 'progiter'
+            import warnings
+            warnings.warn('use_tqdm is depricated. Set prog_backend instead')
+            harn.config['prog_backend'] = (
+                'tqdm' if harn.config['use_tqdm'] else 'progiter')
+
+        if harn.config['prog_backend'] == 'auto':
+            try:
+                import tqdm
+                harn.config['prog_backend'] == 'tqdm'
+            except ImportError:
+                harn.config['prog_backend'] == 'progiter'
 
         if harn.config['prog_backend'] == 'tqdm':
-            import tqdm
+            import tqdm  # NOQA
             Prog = tqdm.tqdm
         elif harn.config['prog_backend'] == 'progiter':
             Prog = functools.partial(ub.ProgIter, chunksize=chunksize, verbose=1)
@@ -682,7 +693,7 @@ class ProgMixin:
             sys.stdout.write('\n\n\n\n')  # fixes progress bar formatting
 
     def _update_prog_postfix(harn, prog):
-        if harn.config['use_tqdm']:
+        if harn.config['prog_backend'] == 'tqdm':
             prog.set_postfix({
                 'wall': time.strftime('%h:%m') + ' ' + time.tzname[0]
             })
@@ -1559,7 +1570,7 @@ class CoreMixin:
         ignore_inf_loss_parts = harn.config['ignore_inf_loss_parts']
         display_interval = harn.intervals['display_' + tag]
         is_profiling = profiler.IS_PROFILING
-        use_tqdm = harn.config['use_tqdm']
+        use_tqdm = harn.config['prog_backend'] == 'tqdm'
 
         if isinstance(prog, ub.ProgIter):
             prog.begin()
@@ -2189,8 +2200,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
 
             'show_prog': True,
             'use_tqdm': None,
-            # 'prog_backend': 'tqdm',
-            'prog_backend': 'progiter',
+            'prog_backend': 'progiter',  # can be 'progiter' or 'tqdm'
 
             # If your loss criterion returns a dictionary of parts, ignore any
             # infinite values before summing the total loss.

@@ -327,6 +327,7 @@ def ovr_classification_report(mc_y_true, mc_probs, target_names=None,
 
     Example:
         >>> # xdoctest: +IGNORE_WANT
+        >>> # xdoctest: +REQUIRES(module:sklearn)
         >>> y_true = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0]
         >>> y_probs = np.random.rand(len(y_true), max(y_true) + 1)
         >>> target_names = None
