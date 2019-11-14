@@ -104,28 +104,18 @@ This is a clean port of the good parts developed in my research repo: ``clab``.
 See the netharn/examples folder for example usage. The doctests are also a good
 resource. It would be nice if we had better docs.
 
-NetHarn is a research framework for training and deploying arbitrary PyTorch models.
-It was designed for the purpose of minimizing training-loop boilerplate and tracking hyperparameters to
-  encourage reproducible research.
-NetHarn separates the problem of training a model into the following core hyperparameter components:
-the datasets, model, criterion, initializer, optimizer, and learning rate scheduler.
-Runs with different hyperparameters are automatically logged to separate directories which makes it simple
-  to compare the results of two experiments.
-NetHarn also has the ability to create a single-file deployment of a trained model
-  that is independent of the system used to train it.
-This makes it fast and simple for research results to be externally verified and moved into production.
+NetHarn is a research framework for training and deploying arbitrary PyTorch
+models.  It was designed for the purpose of minimizing training-loop
+boilerplate and tracking hyperparameters to encourage reproducible research.
+NetHarn separates the problem of training a model into the following core
+hyperparameter components: the datasets, model, criterion, initializer,
+optimizer, and learning rate scheduler.  Runs with different hyperparameters
+are automatically logged to separate directories which makes it simple to
+compare the results of two experiments.  NetHarn also has the ability to create
+a single-file deployment of a trained model that is independent of the system
+used to train it.  This makes it fast and simple for research results to be
+externally verified and moved into production.
 
-
-.. |TravisOld| image:: https://img.shields.io/travis/Erotemic/netharn/master.svg?label=Travis%20CI
-   :target: https://travis-ci.org/Erotemic/netharn
-.. |Travis| image:: https://img.shields.io/travis/Erotemic/netharn.svg
-   :target: https://travis-ci.org/Erotemic/netharn
-.. |Codecov| image:: https://codecov.io/github/Erotemic/netharn/badge.svg?branch=master&service=github
-   :target: https://codecov.io/github/Erotemic/netharn?branch=master
-.. |Appveyor| image:: https://ci.appveyor.com/api/projects/status/github/Erotemic/netharn?svg=True
-   :target: https://ci.appveyor.com/project/Erotemic/netharn/branch/master
-.. |Pypi| image:: https://img.shields.io/pypi/v/netharn.svg
-   :target: https://pypi.python.org/pypi/netharn
 
 
 Developer Setup:
