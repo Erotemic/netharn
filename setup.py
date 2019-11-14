@@ -133,6 +133,7 @@ def clean_repo(repodir, modname, rel_paths=[]):
         'netharn/util/nms/cython_boxes.html',
     ]
     """
+    print('cleaning repo: {}/{}'.format(repodir, modname))
     toremove = []
     for root, dnames, fnames in os.walk(repodir):
 
@@ -157,7 +158,9 @@ def clean_repo(repodir, modname, rel_paths=[]):
 
         # Remove simple pyx inplace extensions
         for fname in fnames:
-            if fname.endswith('.so') or fname.endswith('.c'):
+            if fname.endswith('.pyc'):
+                toremove.append(join(root, fname))
+            if fname.endswith(('.so', '.c', '.o')):
                 if fname.split('.')[0] + '.pyx' in fnames:
                     toremove.append(join(root, fname))
 
@@ -204,10 +207,9 @@ def clean():
 version = parse_version('netharn/__init__.py')  # needs to be a global var for git tags
 
 if __name__ == '__main__':
-    # if 'clean' in sys.argv:
-    #     # hack
-    #     clean()
-    #     sys.exit(0)
+    if 'clean' in sys.argv:
+        clean()
+        # sys.exit(0)
 
     setup(
         name='netharn',
