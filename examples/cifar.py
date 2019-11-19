@@ -41,6 +41,7 @@ CommandLine:
     python examples/cifar.py --gpu=1,2 --arch=resnet50 --lr=0.003 --schedule=onecycle --optim=adamw
 
 """
+import sys
 from os.path import join
 import numpy as np
 import ubelt as ub
@@ -100,6 +101,17 @@ class CIFAR_FitHarn(nh.FitHarn):
         outputs = harn.model(inputs)
         loss = harn.criterion(outputs, labels)
         return outputs, loss
+
+    # def backpropogate(harn, bx, batch, loss):
+    #     """
+    #     Note: this function usually does not need to be overloaded,
+    #     but you can if you want to. The actual base implementation is
+    #     slightly more nuanced. For details see:
+    #     :func:netharn.fit_harn.CoreCallbacks.backpropogate
+    #     """
+    #     loss.backward()
+    #     harn.optimizer.step()
+    #     harn.optimizer.zero_grad()
 
     def on_batch(harn, batch, outputs, loss):
         """
@@ -305,12 +317,9 @@ def setup_harn():
     import torchvision
     from torchvision import transforms
 
+    # Note that most netharn training scripts will use scriptconfig instead of
+    # this more explicit approach.
     config = {
-        # TODO: the fast.ai baseline
-        # 'arch': ub.argval('--arch', default='wrn_22'),
-        # 'schedule': ub.argval('--arch', default='onecycle'),
-        # 'lr': float(ub.argval('--lr', default=0.003)),
-
         # A conservative traditional baseline
         'arch': ub.argval('--arch', default='resnet50'),
         'lr': float(ub.argval('--lr', default=0.1)),
@@ -403,6 +412,7 @@ def setup_harn():
                         transform=transform_test),
     }
     if True:
+        # Create a test train split
         learn = datasets['train']
         indices = np.arange(len(learn))
         indices = nh.util.shuffle(indices, rng=0)
@@ -411,7 +421,7 @@ def setup_harn():
         datasets['train'] = torch.utils.data.Subset(learn, indices[num_vali:])
 
     # For some reason the torchvision objects do not make the category names
-    # easilly available. We set them here for ease of use.
+    # easily available. We set them here for ease of use.
     reduction = int(ub.argval('--reduction', default=1))
     for key, dset in datasets.items():
         dset.categories = categories
@@ -555,7 +565,7 @@ def setup_harn():
 
     # Notice that arguments to hyperparameters are typically specified as a
     # tuple of (type, Dict), where the dictionary are the keyword arguments
-    # that can be used to instanciate an instance of that class. While
+    # that can be used to instantiate an instance of that class. While
     # this may be slightly awkward, it enables netharn to track hyperparameters
     # more effectively. Note that it is possible to simply pass an already
     # constructed instance of a class, but this causes information loss.
@@ -563,11 +573,13 @@ def setup_harn():
         # Datasets must be preconstructed
         datasets=datasets,
         nice='cifar10_' + config['arch'],
-        # Loader preconstructed
+        # Loader may be preconstructed
         loaders=loaders,
         workdir=config['workdir'],
         xpu=xpu,
         # The 6 major hyper components are best specified as a Tuple[type, dict]
+        # However, in recent releases of netharn, these may be preconstructed
+        # as well.
         model=model_,
         optimizer=optimizer_,
         scheduler=scheduler_,
@@ -586,6 +598,12 @@ def setup_harn():
             # Specify anything else that is special about your hyperparams here
             # Especially if you make a custom_batch_runner
         },
+        # These extra arguments are recorded in the train_info.json but do
+        # not contribute to the hyperparameter hash.
+        extra={
+            'config': ub.repr2(config.asdict()),
+            'argv': sys.argv,
+        }
     )
 
     # Creating an instance of a Fitharn object is typically fast.
@@ -606,7 +624,7 @@ def main():
     if ub.argval(('--vd', '--view-directory')):
         ub.startfile(harn.train_dpath)
 
-    # This starts the main loop which will run until a the monitor's terminator
+    # This starts the main loop which will run until the monitor's terminator
     # criterion is satisfied. If the initialize step loaded a checkpointed that
     # already met the termination criterion, then this will simply return.
     deploy_fpath = harn.run()

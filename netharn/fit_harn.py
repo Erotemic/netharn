@@ -1934,6 +1934,11 @@ class CoreCallbacks(object):
         TODO:
             - [ ] perhaps remove dynamics as a netharn core component and
             simply allow the end-application to take care of that detail.
+
+        Args:
+            bx (int): the current batch index
+            batch (object): the current batch
+            loss (Tensor): the loss computed in `run_batch`.
         """
         loss.backward()
 
