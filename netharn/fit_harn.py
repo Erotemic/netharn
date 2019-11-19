@@ -1609,7 +1609,14 @@ class CoreMixin(object):
         """
         harn.debug('_run_epoch {}, tag={}, learn={}'.format(harn.epoch, tag, learn))
         harn.debug(' * len(loader) = {}'.format(len(loader)))
-        harn.debug(' * loader.batch_size = {}'.format(loader.batch_size))
+
+        try:
+            bsize = loader.batch_sampler.batch_size
+        except AttributeError:
+            # Some loaders might have variable batch sizes
+            bsize = None
+
+        harn.debug(' * loader.batch_sampler.batch_size = {}'.format(bsize))
 
         harn.current_tag = tag
 
@@ -1625,7 +1632,6 @@ class CoreMixin(object):
         # call prepare epoch hook
         harn.prepare_epoch()
 
-        bsize = loader.batch_sampler.batch_size
         msg = harn._batch_msg({'loss': -1}, bsize, learn)
         desc = tag + ' ' + msg
         if harn.main_prog is None:
@@ -2382,6 +2388,9 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             idx (int): the iteration number
             first (bool, default=False): if True, trigger on the first
                 iteration, otherwise dont.
+
+        Returns:
+            bool: if it is time to do something or not
         """
         n = harn.intervals[tag]
         if n is None:
