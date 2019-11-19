@@ -1,4 +1,12 @@
 # -*- coding: utf-8 -*-
+"""
+An train an example semenatic segmenation model on the CamVid dataset.
+For a more general segmentation example that works with any (ndsampler-style)
+MS-COCO dataset see segmentation.py.
+
+CommandLine:
+    python ~/code/netharn/examples/sseg_camvid.py --workers=4 --xpu=0 --batch_size=2 --nice=expt1
+"""
 from __future__ import absolute_import, division, print_function, unicode_literals
 from os.path import join
 import ubelt as ub
@@ -15,6 +23,56 @@ import imgaug.augmenters as iaa
 import imgaug
 
 
+class SegmentationConfig(scfg.Config):
+    """
+    Default configuration for setting up a training session
+    """
+    default = {
+        'nice': scfg.Path('untitled', help='A human readable tag that is "nice" for humans'),
+        'workdir': scfg.Path('~/work/camvid', help='Dump all results in your workdir'),
+
+        'workers': scfg.Value(0, help='number of parallel dataloading jobs'),
+        'xpu': scfg.Value('argv', help='See netharn.XPU for details. can be cpu/gpu/cuda0/0,1,2,3)'),
+
+        'augment': scfg.Value('simple', help='type of training dataset augmentation'),
+        'class_weights': scfg.Value('log-median-idf', help='how to weight inbalanced classes'),
+        # 'class_weights': scfg.Value(None, help='how to weight inbalanced classes'),
+
+        'datasets': scfg.Value('special:camvid', help='Eventually you may be able to sepcify a coco file'),
+        'train_dataset': scfg.Value(None),
+        'vali_dataset': scfg.Value(None),
+
+        'arch': scfg.Value('psp', help='Network architecture code'),
+        'optim': scfg.Value('adamw', help='Weight optimizer. Can be SGD, ADAM, ADAMW, etc..'),
+
+        'input_dims': scfg.Value((128, 128), help='Window size to input to the network'),
+        'input_overlap': scfg.Value(0.25, help='amount of overlap when creating a sliding window dataset'),
+
+        'batch_size': scfg.Value(4, help='number of items per batch'),
+        'bstep': scfg.Value(1, help='number of batches before a gradient descent step'),
+
+        'max_epoch': scfg.Value(140, help='Maximum number of epochs'),
+        'patience': scfg.Value(140, help='Maximum "bad" validation epochs before early stopping'),
+
+        'lr': scfg.Value(1e-3, help='Base learning rate'),
+        'decay':  scfg.Value(1e-5, help='Base weight decay'),
+
+        'focus': scfg.Value(2.0, help='focus for focal loss'),
+
+        'schedule': scfg.Value('step90', help=('Special coercable netharn code. Eg: onecycle50, step50, gamma')),
+
+        'init': scfg.Value('kaiming_normal', help='How to initialized weights. (can be a path to a pretrained model)'),
+        'pretrained': scfg.Path(help=('alternative way to specify a path to a pretrained model')),
+    }
+
+    def normalize(self):
+        if self['pretrained'] in ['null', 'None']:
+            self['pretrained'] = None
+
+        if self['pretrained'] is not None:
+            self['init'] = 'pretrained'
+
+
 class SegmentationDataset(torch.utils.data.Dataset):
     """
     Efficient loader for training on a sementic segmentation dataset
@@ -24,14 +82,14 @@ class SegmentationDataset(torch.utils.data.Dataset):
         >>> #input_dims = (224, 224)
         >>> input_dims = (512, 512)
         >>> self = dset = SegmentationDataset(sampler, input_dims)
-        >>> output = self[10]
+        >>> item = self[10]
         >>> # xdoctest: +REQUIRES(--show)
         >>> import kwplot
         >>> plt = kwplot.autoplt()
-        >>> cidxs = output['class_idxs']
+        >>> cidxs = item['class_idxs']
         >>> colored_labels = self._colorized_labels(cidxs)
         >>> kwplot.figure(doclf=True)
-        >>> kwplot.imshow(output['im'])
+        >>> kwplot.imshow(item['im'])
         >>> kwplot.imshow(colored_labels, alpha=.4)
 
     Example:
@@ -41,16 +99,16 @@ class SegmentationDataset(torch.utils.data.Dataset):
         >>> plt = kwplot.autoplt()
         >>> indices = list(range(len(self)))
         >>> for index in xdev.InteractiveIter(indices):
-        >>>     output = self[index]
-        >>>     cidxs = output['class_idxs']
+        >>>     item = self[index]
+        >>>     cidxs = item['class_idxs']
         >>>     colored_labels = self._colorized_labels(cidxs)
         >>>     kwplot.figure(doclf=True)
-        >>>     kwplot.imshow(output['im'])
+        >>>     kwplot.imshow(item['im'])
         >>>     kwplot.imshow(colored_labels, alpha=.4)
         >>>     xdev.InteractiveIter.draw()
     """
     def __init__(self, sampler, input_dims=(224, 224), input_overlap=0.5,
-                 augmenter=False):
+                 augment=False):
         self.input_dims = None
         self.input_id = None
         self.cid_to_cidx = None
@@ -68,30 +126,31 @@ class SegmentationDataset(torch.utils.data.Dataset):
         self.cid_to_cidx = sampler.catgraph.id_to_idx
         self.classes = sampler.catgraph
 
+        self.augmenter = self._rectify_augmenter(augment)
+
         # Create a slider for every image
         self._build_sliders(input_dims=input_dims, input_overlap=input_overlap)
-        self.augmenter = self._rectify_augmenter(augmenter)
 
-    def _rectify_augmenter(self, augmenter):
+    def _rectify_augmenter(self, augment):
         import netharn as nh
-        if augmenter is True:
-            augmenter = 'simple'
+        if augment is True:
+            augment = 'simple'
 
-        if not augmenter:
+        if not augment:
             augmenter = None
-        elif augmenter == 'simple':
+        elif augment == 'simple':
             augmenter = iaa.Sequential([
                 iaa.Crop(percent=(0, .2)),
                 iaa.Fliplr(p=.5)
             ])
-        elif augmenter == 'complex':
+        elif augment == 'complex':
             augmenter = iaa.Sequential([
                 iaa.Sometimes(0.2, nh.data.transforms.HSVShift(hue=0.1, sat=1.5, val=1.5)),
                 iaa.Crop(percent=(0, .2)),
                 iaa.Fliplr(p=.5)
             ])
         else:
-            raise KeyError('Unknown augmentation {!r}'.format(self.augment))
+            raise KeyError('Unknown augmentation {!r}'.format(augment))
         return augmenter
 
     def _build_sliders(self, input_dims=(224, 224), input_overlap=0.5):
@@ -121,14 +180,14 @@ class SegmentationDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         """
         Example:
-            >>> self = SegmentationDataset.demo(augment=True)
-            >>> output = self[10]
+            >>> self = SegmentationDataset.demo(augment='complex')
+            >>> item = self[10]
             >>> # xdoctest: +REQUIRES(--show)
             >>> import kwplot
             >>> plt = kwplot.autoplt()
-            >>> colored_labels = self._colorized_labels(output['class_idxs'])
+            >>> colored_labels = self._colorized_labels(item['class_idxs'])
             >>> kwplot.figure(doclf=True)
-            >>> kwplot.imshow(output['im'])
+            >>> kwplot.imshow(item['im'])
             >>> kwplot.imshow(colored_labels, alpha=.4)
         """
         outer, inner = self.subindex.unravel(index)
@@ -147,9 +206,17 @@ class SegmentationDataset(torch.utils.data.Dataset):
         if self.augmenter:
             augdet = self.augmenter.to_deterministic()
             imdata = augdet.augment_image(imdata)
-            cidx_segmap_oi = imgaug.SegmentationMapOnImage(cidx_segmap, cidx_segmap.shape, nb_classes=len(self.classes))
-            cidx_segmap_oi = augdet.augment_segmentation_maps([cidx_segmap_oi])[0]
-            cidx_segmap = cidx_segmap_oi.arr.argmax(axis=2)
+            if hasattr(imgaug, 'SegmentationMapsOnImage'):
+                # Oh imgaug, stop breaking.
+                cidx_segmap_oi = imgaug.SegmentationMapsOnImage(cidx_segmap, cidx_segmap.shape)
+                cidx_segmap_oi = augdet.augment_segmentation_maps(cidx_segmap_oi)
+                assert cidx_segmap_oi.arr.shape[2] == 1
+                cidx_segmap = cidx_segmap_oi.arr[..., 0]
+                cidx_segmap = np.ascontiguousarray(cidx_segmap)
+            else:
+                cidx_segmap_oi = imgaug.SegmentationMapOnImage(cidx_segmap, cidx_segmap.shape, nb_classes=len(self.classes))
+                cidx_segmap_oi = augdet.augment_segmentation_maps([cidx_segmap_oi])[0]
+                cidx_segmap = cidx_segmap_oi.arr.argmax(axis=2)
 
         im_chw = torch.FloatTensor(
             imdata.transpose(2, 0, 1).astype(np.float32) / 255.)
@@ -157,12 +224,12 @@ class SegmentationDataset(torch.utils.data.Dataset):
         cidxs = torch.LongTensor(cidx_segmap)
         weight = (1 - (cidxs == 0).float())
 
-        output = {
+        item = {
             'im': im_chw,
             'class_idxs': cidxs,
             'weight': weight,
         }
-        return output
+        return item
 
     def _sample_to_sseg_heatmap(self, imdata, sample):
         annots = sample['annots']
@@ -344,6 +411,12 @@ class SegmentationHarn(nh.FitHarn):
 
             true_img = kwimage.ensure_uint255(true_img)
             pred_img = kwimage.ensure_uint255(pred_img)
+
+            true_img = kwimage.draw_text_on_image(
+                true_img, 'true', org=(0, 0), valign='top', color='blue')
+
+            pred_img = kwimage.draw_text_on_image(
+                pred_img, 'pred', org=(0, 0), valign='top', color='blue')
 
             item_img = kwimage.stack_images([pred_img, true_img], axis=1)
             batch_imgs.append(item_img)
@@ -704,56 +777,6 @@ class PredSlidingWindowDataset(torch_data.Dataset, ub.NiceRepr):
         return batch_item
 
 
-class SegmentationConfig(scfg.Config):
-    """
-    Default configuration for setting up a training session
-    """
-    default = {
-        'nice': scfg.Path('untitled', help='A human readable tag that is "nice" for humans'),
-        'workdir': scfg.Path('~/work/camvid', help='Dump all results in your workdir'),
-
-        'workers': scfg.Value(0, help='number of parallel dataloading jobs'),
-        'xpu': scfg.Value('argv', help='See netharn.XPU for details. can be cpu/gpu/cuda0/0,1,2,3)'),
-
-        'augmenter': scfg.Value('simple', help='type of training dataset augmentation'),
-        'class_weights': scfg.Value('log-median-idf', help='how to weight inbalanced classes'),
-        # 'class_weights': scfg.Value(None, help='how to weight inbalanced classes'),
-
-        'datasets': scfg.Value('special:camvid', help='Eventually you may be able to sepcify a coco file'),
-        'train_dataset': scfg.Value(None),
-        'vali_dataset': scfg.Value(None),
-
-        'arch': scfg.Value('unet', help='Network architecture code'),
-        'optim': scfg.Value('adam', help='Weight optimizer. Can be SGD, ADAM, ADAMW, etc..'),
-
-        'input_dims': scfg.Value((128, 128), help='Window size to input to the network'),
-        'input_overlap': scfg.Value(0.25, help='amount of overlap when creating a sliding window dataset'),
-
-        'batch_size': scfg.Value(4, help='number of items per batch'),
-        'bstep': scfg.Value(1, help='number of batches before a gradient descent step'),
-
-        'max_epoch': scfg.Value(140, help='Maximum number of epochs'),
-        'patience': scfg.Value(140, help='Maximum "bad" validation epochs before early stopping'),
-
-        'lr': scfg.Value(1e-3, help='Base learning rate'),
-        'decay':  scfg.Value(1e-5, help='Base weight decay'),
-
-        'focus': scfg.Value(2.0, help='focus for focal loss'),
-
-        'schedule': scfg.Value('step90', help=('Special coercable netharn code. Eg: onecycle50, step50, gamma')),
-
-        'init': scfg.Value('kaiming_normal', help='How to initialized weights. (can be a path to a pretrained model)'),
-        'pretrained': scfg.Path(help=('alternative way to specify a path to a pretrained model')),
-    }
-
-    def normalize(self):
-        if self['pretrained'] in ['null', 'None']:
-            self['pretrained'] = None
-
-        if self['pretrained'] is not None:
-            self['init'] = 'pretrained'
-
-
 def setup_coco_datasets():
     """
     TODO:
@@ -931,7 +954,7 @@ def setup_harn(cmdline=True, **kw):
             sampler,
             config['input_dims'],
             input_overlap=((tag == 'train') and config['input_overlap']),
-            augmenter=((tag == 'train') and config['augmenter']),
+            augment=((tag == 'train') and config['augment']),
         )
         for tag, sampler in samplers.items()
     }

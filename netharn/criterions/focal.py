@@ -288,6 +288,8 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
                  reduction=ELEMENTWISE_MEAN, ignore_index=-100):
         size_average, reduce, reduction = _backwards_compat_reduction_kw(
             size_average, reduce, reduction)
+        if isinstance(weight, list):
+            weight = torch.FloatTensor(weight)
         super(FocalLoss, self).__init__(weight=weight, reduction=reduction)
         self.focus = focus
         self.ignore_index = ignore_index
