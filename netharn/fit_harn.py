@@ -665,6 +665,15 @@ class ProgMixin(object):
         return Prog(*args, **kw)
 
     def _batch_msg(harn, metric_dict, batch_size, learn=False):
+        """
+        Args:
+            metric_dict (dict): metrics to be reported in the message
+            batch_size (int): size of the current batch
+            learn (bool): formats a message for train or vali/test.
+
+        Returns:
+            str : the message to be used in the progress bar
+        """
         parts = ['{}:{:.4g}'.format(k, v) for k, v in metric_dict.items()]
         if harn.config['prog_backend'] == 'progiter':
             if learn and harn.scheduler and getattr(harn.scheduler, '__batchaware__', False):
@@ -735,9 +744,21 @@ class LogMixin(object):
             pass
 
     def log(harn, msg):
+        """
+        Logs an info message. Alias of :func:LogMixin.info
+
+        Args:
+            msg (str): an info message to log
+        """
         harn.info(msg)
 
     def info(harn, msg):
+        """
+        Writes an info message to the logs
+
+        Args:
+            msg (str): an info message to log
+        """
         harn._ensure_prog_newline()
         if harn._log:
             try:
@@ -748,6 +769,12 @@ class LogMixin(object):
             print(msg)
 
     def error(harn, msg):
+        """
+        Writes an error message to the logs
+
+        Args:
+            msg (str): an error message to log
+        """
         harn._ensure_prog_newline()
         if harn._log:
             msg = strip_ansi(msg)
@@ -756,6 +783,12 @@ class LogMixin(object):
             print(msg)
 
     def warn(harn, msg):
+        """
+        Writes a warning message to the logs
+
+        Args:
+            msg (str): a warning message to log
+        """
         harn._ensure_prog_newline()
         if harn._log:
             msg = strip_ansi(msg)
@@ -764,6 +797,12 @@ class LogMixin(object):
             print(msg)
 
     def debug(harn, msg):
+        """
+        Writes a debug message to the logs
+
+        Args:
+            msg (str): a debug message to log
+        """
         if harn._log:
             msg = strip_ansi(six.text_type(msg))
             # Encode to prevent errors on windows terminals
@@ -838,6 +877,10 @@ class SnapshotMixin(object):
 
     @property
     def snapshot_dpath(harn):
+        """
+        Returns:
+            str : path to the snapshot directory
+        """
         # TODO: we should probably change the name of this directory to either
         # snapshots or checkpoints for simplicity.
         if harn.train_dpath is None:
@@ -852,6 +895,9 @@ class SnapshotMixin(object):
 
         Keeps `num_keep_recent` most recent, `num_keep_best` best, and one
         every `keep_freq` epochs.
+
+        Returns:
+            set: epoch numbers to remove
 
         Doctest:
             >>> import netharn as nh
@@ -919,6 +965,9 @@ class SnapshotMixin(object):
     def backtrack_weights(harn, epoch):
         """
         Reset the weights to a previous good state
+
+        Args:
+            epoch (int): the epoch to backtrack to
         """
         load_path = join(harn.snapshot_dpath, '_epoch_{:08d}.pt'.format(epoch))
         snapshot = harn.xpu.load(load_path)
@@ -1072,6 +1121,9 @@ class ScheduleMixin(object):
     def _current_lrs(harn):
         """
         Get the of distinct learning rates (usually only 1) currently in use
+
+        Returns:
+            List[float]: list of current learning rates
         """
         # optim_lrs = {group['lr'] for group in harn.optimizer.param_groups}
         optim_lrs = [group['lr'] for group in harn.optimizer.param_groups]
@@ -1127,6 +1179,10 @@ class ScheduleMixin(object):
         """
         helper function to change the learning rate that handles the way that
         different schedulers might be used.
+
+        Args:
+            improved (bool | None): if specified flags if the validation
+                metrics have improved (used by ReduceLROnPlateau scheduler)
         """
         epoch_that_just_finished = harn.epoch
         if harn.scheduler is None:
@@ -1198,6 +1254,14 @@ class CoreMixin(object):
         terminator criterion is satisfied. If the initialize step loaded a
         checkpointed that already met the termination criterion, then this will
         simply return.
+
+        Notes:
+            If harn.config['keyboard_debug'] is True, then pressing Ctrl+C
+            while this is running will result in an interactive prompt which
+            allows some amount of manual control over the training run.
+
+        Raises:
+            TrainingDiverged: if training fails due to numerical issues
 
         Returns:
             PathLike: deploy_fpath: the path to the standalone deployed model
@@ -1361,7 +1425,12 @@ class CoreMixin(object):
         return deploy_fpath
 
     def _export(harn):
-        """ Export the model topology to the train_dpath """
+        """
+        Export the model topology to the train_dpath
+
+        Returns:
+            str: path to the exported model topology
+        """
         # TODO: might be good to check for multiple model exports at this time
         harn.debug('exporting model topology')
         static_modpath = None
@@ -1383,6 +1452,9 @@ class CoreMixin(object):
         Packages the best validation (or most recent) weights with the exported
         model topology into a single-file model deployment that is "mostly"
         independent of the code used to train the model.
+
+        Returns:
+            str: path to the deploy zipfile.
         """
         harn._export()
         harn.debug('packaging deploying model')
@@ -1416,6 +1488,11 @@ class CoreMixin(object):
     def _run_tagged_epochs(harn, train_loader, vali_loader, test_loader):
         """
         Runs one epoch of train, validation, and testing
+
+        Args:
+            train_loader (torch.utils.data.DataLoader | None): train loader
+            vali_loader (torch.utils.data.DataLoader | None): vali loader
+            test_loader (torch.utils.data.DataLoader | None): test loader
         """
         if harn._check_termination():
             raise StopTraining()
@@ -1516,10 +1593,11 @@ class CoreMixin(object):
         evaluate the model on test / train / or validation data
 
         Args:
-            loader : the loader for your current data split (this will
-                usually be harn.loaders[tag]
+            loader (torch.utils.data.DataLoader):
+                the loader for your current data split (this will usually be
+                ``harn.loaders[tag]``)
 
-            tag : the label for the loader's data split
+            tag (str) : the label for the loader's data split
 
             learn (bool, default=False): if True, the weights of
                 harn.model are updated by harn.optimizer
@@ -1713,7 +1791,29 @@ class CoreMixin(object):
 
     @profiler.profile
     def _on_batch(harn, bx, batch, outputs, loss, loss_parts=None):
-        """ Internal function that prepares to call the `on_batch` callback. """
+        """
+        Internal function that prepares to call the
+        :func:CoreCallbacks.on_batch callback.
+
+        Args:
+            bx (int): the current batch index
+
+            batch (object): the current batch
+
+            outputs (object): the first result of :func:CoreCallbacks.run_batch
+                These are the raw network outputs.
+
+            loss (Tensor): the second result of :func:CoreCallbacks.run_batch
+                This is the batch loss computed by the criterion.
+
+            loss_parts (Dict[str, Tensor]): components of the loss to be
+                individually logged.
+
+        Returns:
+            Dict[str, float]: dictionary of logged metrics. This is the
+                union of the metrics returned by the user as well as addition
+                loss information added in this function.
+        """
         loss_value = float(loss.data.cpu().item())
         loss_value = harn._check_loss(loss_value)
 
@@ -1739,6 +1839,11 @@ class ChecksMixin(object):
 
     def _check_gradients(harn):
         """
+        Checks that the the accumulated gradients are all finite.
+
+        Raises:
+            TrainingDiverged: if checks fail
+
         Example:
             harn = ...
             all_grads = harn._check_gradients()
@@ -1756,6 +1861,12 @@ class ChecksMixin(object):
 
     @profiler.profile
     def _check_loss(harn, loss_value):
+        """
+        Checks that the the loss is not too large
+
+        Raises:
+            TrainingDiverged: if checks fail
+        """
         if not np.isfinite(loss_value):
             harn.warn('WARNING: got inf loss, setting loss to a large value')
             loss_value = harn.config['large_loss'] * 10
@@ -1768,6 +1879,12 @@ class ChecksMixin(object):
 
     @profiler.profile
     def _check_divergence(harn):
+        """
+        Checks that the model weights are all finite
+
+        Raises:
+            TrainingDiverged: if checks fail
+        """
         # Eventually we may need to remove
         # num_batches_tracked once 0.5.0 lands
         state = harn.model.module.state_dict()
@@ -1868,6 +1985,13 @@ class CoreCallbacks(object):
         ensure batch is in a standardized structure
 
         Overload Encouraged, but not always necessary
+
+        Args:
+            raw_batch (object): the raw batch generated by the loader
+
+        Returns:
+            object: batch - the prepared batch where relevant inputs have
+                been moved onto the appropriate XPU(s).
         """
         try:
             if isinstance(raw_batch, (tuple, list)):
@@ -1900,6 +2024,9 @@ class CoreCallbacks(object):
             You may return loss as a flat dictionary mapping string keys to
             tensors. In this case, the total loss will be the sum of the values
             and each loss component will be automatically logged.
+
+        Args:
+            batch (object): the current batch
 
         Returns:
             Tuple[object, Tensor|Dict]: (outputs, loss)
@@ -1975,6 +2102,13 @@ class CoreCallbacks(object):
         accumulated via moving averages into epoch measures.
 
         Overload Encouraged
+
+        Args:
+            batch (object): the current batch
+            outputs (object): the first result of :func:CoreCallbacks.run_batch
+                These are the raw network outputs.
+            loss (object): the second result of :func:CoreCallbacks.run_batch
+                This is the batch loss computed by the criterion.
 
         Returns:
             dict or None: dictionary of scalar batch measures
