@@ -300,7 +300,7 @@ def setup_harn(**kw):
     return harn
 
 
-def train_mnist():
+def main():
     harn = setup_harn()
     reset = ub.argflag('--reset')
 
@@ -330,4 +330,4 @@ if __name__ == '__main__':
 
         tensorboard --logdir ~/data/work/mnist/fit/nice
     """
-    train_mnist()
+    main()
