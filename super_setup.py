@@ -481,33 +481,33 @@ def make_netharn_registry():
 
         # The util libs
         CommonRepo(
-            name='kwarray', branch='dev/0.5.2', remote='computer-vision',
-            remotes={'computer-vision': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
+            name='kwarray', branch='dev/0.5.2', remote='public',
+            remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
         ),
         CommonRepo(
-            name='kwimage', branch='dev/0.5.2', remote='computer-vision',
-            remotes={'computer-vision': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
+            name='kwimage', branch='dev/0.5.2', remote='public',
+            remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
         ),
         CommonRepo(
-            name='kwplot', branch='dev/0.4.0', remote='computer-vision',
-            remotes={'computer-vision': 'git@gitlab.kitware.com:computer-vision/kwplot.git'},
+            name='kwplot', branch='dev/0.4.0', remote='public',
+            remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwplot.git'},
         ),
 
 
         # For example data and CLI
         CommonRepo(
-            name='scriptconfig', branch='dev/0.5.1', remote='utils',
-            remotes={'utils': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
+            name='scriptconfig', branch='dev/0.5.1', remote='public',
+            remotes={'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
         ),
         CommonRepo(
-            name='ndsampler', branch='dev/0.5.0', remote='computer-vision',
-            remotes={'computer-vision': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
+            name='ndsampler', branch='dev/0.5.0', remote='public',
+            remotes={'public': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
         ),
 
         # netharn - training harness
         CommonRepo(
-            name='netharn', branch='dev/0.5.2', remote='computer-vision',
-            remotes={'computer-vision': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
+            name='netharn', branch='dev/0.5.2', remote='public',
+            remotes={'public': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
         ),
     ]
     registery = RepoRegistry(repos)
