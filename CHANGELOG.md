@@ -7,8 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## Version 0.5.2
 
 ### Added
-
 * Rectify nonlinearity now supports more torch activations
+
+### Changed
+* Smoothing no longer applied to lr (learning rate) and momentum monitor plots
+
+### Fixed
+* Small issues in CIFAR Example
 
 
 ## Version 0.5.1

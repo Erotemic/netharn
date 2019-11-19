@@ -245,6 +245,9 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
             high = high_ if high is None else max(high_, high)
         return (low, high)
 
+    # Hack values that we don't apply smoothing to
+    HACK_NO_SMOOTH = ['lr', 'momentum']
+
     GROUP_LOSSES = True
     if GROUP_LOSSES:
         # Group all losses in one plot for comparison
@@ -268,7 +271,9 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
             xydata = ub.odict()
             for key in sorted(losses):
                 ydata = tb_data[key]['ydata']
-                ydata = smooth_curve(ydata, smoothing)
+
+                if key not in HACK_NO_SMOOTH:
+                    ydata = smooth_curve(ydata, smoothing)
 
                 try:
                     pos_ys = ydata[ydata > 0]

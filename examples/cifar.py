@@ -190,7 +190,8 @@ class CIFAR_FitHarn(nh.FitHarn):
             'pred_scores': pred_scores,
         }
         if true_cxs is not None:
-            hot = nh.criterions.focal.one_hot_embedding(true_cxs, class_probs.shape[1])
+            import kwarray
+            hot = kwarray.one_hot_embedding(true_cxs, class_probs.shape[1])
             true_probs = (hot * class_probs).sum(dim=1)
             decoded['true_scores'] = true_probs
         return decoded
@@ -198,7 +199,7 @@ class CIFAR_FitHarn(nh.FitHarn):
     def _draw_batch(harn, batch, decoded, limit=32):
         """
         CommandLine:
-            xdoctest -m ~/code/netharn/examples/cifar.py CIFAR_FitHarn._draw_batch --show --arch=wrn_22
+            xdoctest -m ~/code/netharn/examples/cifar.py CIFAR_FitHarn._draw_batch --show --arch=resnet50
 
         Example:
             >>> import sys
@@ -210,11 +211,12 @@ class CIFAR_FitHarn(nh.FitHarn):
             >>> decoded = harn._decode(outputs, batch['label'])
             >>> stacked = harn._draw_batch(batch, decoded, limit=42)
             >>> # xdoctest: +REQUIRES(--show)
-            >>> import netharn as nh
-            >>> nh.util.autompl()
-            >>> nh.util.imshow(stacked, colorspace='rgb', doclf=True)
-            >>> nh.util.show_if_requested()
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(stacked, colorspace='rgb', doclf=True)
+            >>> kwplot.show_if_requested()
         """
+        import kwimage
         inputs = batch['input']
         inputs = inputs[0:limit]
 
@@ -256,25 +258,25 @@ class CIFAR_FitHarn(nh.FitHarn):
             }
             color = 'dodgerblue' if pcx == tcx else 'orangered'
 
-            im_ = nh.util.draw_text_on_image(im_, pred_label, org=org1 - 2,
+            im_ = kwimage.draw_text_on_image(im_, pred_label, org=org1 - 2,
                                              color='white', **fontkw)
-            im_ = nh.util.draw_text_on_image(im_, true_label, org=org2 - 2,
+            im_ = kwimage.draw_text_on_image(im_, true_label, org=org2 - 2,
                                              color='white', **fontkw)
 
             for i in [-2, -1, 1, 2]:
                 for j in [-2, -1, 1, 2]:
-                    im_ = nh.util.draw_text_on_image(im_, pred_label, org=org1 + i,
+                    im_ = kwimage.draw_text_on_image(im_, pred_label, org=org1 + i,
                                                      color='black', **fontkw)
-                    im_ = nh.util.draw_text_on_image(im_, true_label, org=org2 + j,
+                    im_ = kwimage.draw_text_on_image(im_, true_label, org=org2 + j,
                                                      color='black', **fontkw)
 
-            im_ = nh.util.draw_text_on_image(im_, pred_label, org=org1,
+            im_ = kwimage.draw_text_on_image(im_, pred_label, org=org1,
                                              color=color, **fontkw)
-            im_ = nh.util.draw_text_on_image(im_, true_label, org=org2,
+            im_ = kwimage.draw_text_on_image(im_, true_label, org=org2,
                                              color='lawngreen', **fontkw)
             todraw.append(im_)
 
-        stacked = nh.util.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
+        stacked = kwimage.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
         return stacked
 
 
@@ -304,7 +306,6 @@ def setup_harn():
     from torchvision import transforms
 
     config = {
-
         # TODO: the fast.ai baseline
         # 'arch': ub.argval('--arch', default='wrn_22'),
         # 'schedule': ub.argval('--arch', default='onecycle'),

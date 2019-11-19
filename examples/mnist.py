@@ -4,9 +4,8 @@ fit_harness takes your hyperparams and
 applys standardized "state-of-the-art" training procedures
 
 But everything is overwritable.
-Experimentation and freedom to protype quickly is extremely important
-We do our best not to get in the way, just performing a jumping off
-point.
+Experimentation and freedom to protype quickly is extremely important.
+We do our best not to get in the way, just performing a jumping off point.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ubelt as ub
@@ -78,11 +77,12 @@ class MnistHarn(nh.FitHarn):
         true_labels = batch['label'].cpu().numpy()
 
         if harn.batch_index < 3:
+            import kwimage
             decoded = harn._decode(outputs, batch['label'])
             stacked = harn._draw_batch(batch, decoded)
             dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
             fpath = join(dpath, 'epoch_{}_batch_{}.jpg'.format(harn.epoch, harn.batch_index))
-            nh.util.imwrite(fpath, stacked)
+            kwimage.imwrite(fpath, stacked)
 
         acc = (true_labels == pred_labels).mean()
 
@@ -109,9 +109,6 @@ class MnistHarn(nh.FitHarn):
 
     def _draw_batch(harn, batch, decoded, limit=32):
         """
-        CommandLine:
-            xdoctest -m ~/code/netharn/examples/cifar.py CIFAR_FitHarn._draw_batch --show --arch=wrn_22
-
         Example:
             >>> import sys
             >>> sys.path.append('/home/joncrall/code/netharn/examples')
@@ -125,11 +122,13 @@ class MnistHarn(nh.FitHarn):
             >>> fpath = harn._draw_batch(bx, batch, decoded, limit=42)
             >>> print('fpath = {!r}'.format(fpath))
             >>> # xdoctest: +REQUIRES(--show)
-            >>> import netharn as nh
-            >>> nh.util.autompl()
-            >>> nh.util.imshow(fpath, colorspace='rgb', doclf=True)
-            >>> nh.util.show_if_requested()
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(fpath, colorspace='rgb', doclf=True)
+            >>> kwplot.show_if_requested()
         """
+        import kwimage
+        import kwplot
         inputs = batch['input']
         inputs = inputs[0:limit]
 
@@ -150,12 +149,12 @@ class MnistHarn(nh.FitHarn):
         todraw = []
         for im, pcx, tcx, probs in zip(inputs, pred_cxs, true_cxs, class_probs):
             im_ = im.transpose(1, 2, 0)
-            im_ = nh.util.convert_colorspace(im_, 'gray', 'rgb')
+            im_ = kwimage.convert_colorspace(im_, 'gray', 'rgb')
             im_ = np.ascontiguousarray(im_)
-            im_ = nh.util.draw_clf_on_image(im_, dset.classes, tcx, probs)
+            im_ = kwplot.draw_clf_on_image(im_, dset.classes, tcx, probs)
             todraw.append(im_)
 
-        stacked = nh.util.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
+        stacked = kwimage.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
         return stacked
 
 
@@ -255,28 +254,30 @@ def setup_harn(**kw):
         datasets=datasets,
         loaders=loaders,
         model=(MnistNet, dict(num_channels=1, classes=datasets['train'].classes)),
-        # optimizer=torch.optim.Adam,
+        # optimizer=torch.optim.AdamW,
         optimizer=(torch.optim.SGD, {'lr': 0.01, 'weight_decay': 3e-6}),
-        scheduler='ReduceLROnPlateau',
-        # scheduler=(nh.schedulers.ListedScheduler, {
-        #     'points': {
-        #         'lr': {
-        #             0   : 0.01,
-        #             10  : 0.10,
-        #             20  : 0.01,
-        #             40  : 0.0001,
-        #         },
-        #         'momentum': {
-        #             0   : 0.95,
-        #             10  : 0.85,
-        #             20  : 0.95,
-        #             40  : 0.99,
-        #         },
-        #         'weight_decay': {
-        #             0: 3e-6,
-        #         }
-        #     }
-        # }),
+        # scheduler='ReduceLROnPlateau',
+        scheduler=(nh.schedulers.ListedScheduler, {
+            'points': {
+                'lr': {
+                    0   : 0.01,
+                    2   : 0.05,
+                    10  : 0.10,
+                    20  : 0.01,
+                    40  : 0.0001,
+                },
+                'momentum': {
+                    0   : 0.95,
+                    10  : 0.85,
+                    20  : 0.95,
+                    40  : 0.99,
+                },
+                'weight_decay': {
+                    0: 3e-6,
+                }
+            },
+            'interpolation': 'linear',
+        }),
         criterion=torch.nn.CrossEntropyLoss,
         initializer=initializer,
         monitor=(nh.Monitor, {
