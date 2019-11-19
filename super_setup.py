@@ -254,9 +254,9 @@ class Repo(ub.NiceRepr):
             else:
                 repo.debug(ub.color_text('Ensuring {}'.format(repo), 'blue'))
 
-        if dry:
-            if not exists(repo.dpath):
-                repo.debug('NEED TO CLONE {}'.format(repo))
+        if not exists(repo.dpath):
+            repo.debug('NEED TO CLONE {}'.format(repo))
+            if dry:
                 return
 
         repo.ensure_clone()
@@ -266,13 +266,16 @@ class Repo(ub.NiceRepr):
         # Ensure all registered remotes exist
         for remote_name, remote_url in repo.remotes.items():
             try:
-                repo.pygit.remotes[remote_name]
+                remote = repo.pygit.remotes[remote_name]
+                have_urls = list(remote.urls)
+                if remote_url not in have_urls:
+                    print('WARNING: REMOTE NAME EXIST BUT URL IS NOT {}. '
+                          'INSTEAD GOT: {}'.format(remote_url, have_urls))
             except (IndexError):
                 try:
-                    if dry:
-                        print('NEED TO ADD REMOTE {}->{} FOR {}'.format(
-                            remote_name, remote_url, repo))
-                    else:
+                    print('NEED TO ADD REMOTE {}->{} FOR {}'.format(
+                        remote_name, remote_url, repo))
+                    if not dry:
                         repo._cmd('git remote add {} {}'.format(remote_name, remote_url))
                 except Exception:
                     if remote_name == repo.remote:
@@ -281,20 +284,8 @@ class Repo(ub.NiceRepr):
 
         # Ensure we are on the right branch
         if repo.branch != repo.pygit.active_branch.name:
-            if dry:
-                repo.debug('NEED TO SET BRANCH TO {} for {}'.format(repo.branch, repo))
-            else:
-                try:
-                    repo._cmd('git checkout {}'.format(repo.branch))
-                except Exception:
-                    repo._cmd('git fetch --all')
-                    repo._cmd('git checkout -b {} {}/{}'.format(repo.branch, repo.remote, repo.branch))
-
-        tracking_branch = repo.pygit.active_branch.tracking_branch()
-        if tracking_branch is None or tracking_branch.remote_name != repo.remote:
-            if dry:
-                repo.debug('NEED TO SET UPSTREAM FOR FOR {}'.format(repo))
-            else:
+            repo.debug('NEED TO SET BRANCH TO {} for {}'.format(repo.branch, repo))
+            if not dry:
                 try:
                     remote = repo.pygit.remotes[repo.remote]
                     if not remote.exists():
@@ -303,15 +294,50 @@ class Repo(ub.NiceRepr):
                     repo.debug('WARNING: remote={} does not exist'.format(remote))
                 else:
                     if remote.exists():
-                        try:
-                            repo._cmd('git branch --set-upstream-to={remote}/{branch} {branch}'.format(
-                                remote=repo.remote, branch=repo.branch
-                            ))
-                        except Exception:
-                            repo._cmd('git fetch --all')
-                            repo._cmd('git branch --set-upstream-to={remote}/{branch} {branch}'.format(
-                                remote=repo.remote, branch=repo.branch
-                            ))
+                        remote_branchnames = [ref.remote_head for ref in remote.refs]
+                        if repo.branch not in remote_branchnames:
+                            repo.info('Branch name not found in local remote. Attempting to fetch')
+                            repo._cmd('git fetch {}'.format(remote.name))
+                            # remote.fetch()
+
+                    repo._cmd('git checkout {}'.format(repo.branch))
+                    # try:
+                    #     repo._cmd('git checkout {}'.format(repo.branch))
+                    # except Exception:
+                    #     repo._cmd('git fetch --all')
+                    #     repo._cmd('git checkout -b {} {}/{}'.format(repo.branch, repo.remote, repo.branch))
+
+        tracking_branch = repo.pygit.active_branch.tracking_branch()
+        if tracking_branch is None or tracking_branch.remote_name != repo.remote:
+            repo.debug('NEED TO SET UPSTREAM FOR FOR {}'.format(repo))
+            if not dry:
+                try:
+                    remote = repo.pygit.remotes[repo.remote]
+                    if not remote.exists():
+                        raise IndexError
+                except IndexError:
+                    repo.debug('WARNING: remote={} does not exist'.format(remote))
+                else:
+                    if remote.exists():
+                        remote_branchnames = [ref.remote_head for ref in remote.refs]
+                        if repo.branch not in remote_branchnames:
+                            repo.info('Branch name not found in local remote. Attempting to fetch')
+                            remote.fetch()
+
+                        repo._cmd('git branch --set-upstream-to={remote}/{branch} {branch}'.format(
+                            remote=repo.remote, branch=repo.branch
+                        ))
+
+                        # try:
+                        #     repo._cmd('git branch --set-upstream-to={remote}/{branch} {branch}'.format(
+                        #         remote=repo.remote, branch=repo.branch
+                        #     ))
+                        # except Exception:
+                        #     # remote.fetch()
+                        #     repo._cmd('git fetch --all')
+                        #     repo._cmd('git branch --set-upstream-to={remote}/{branch} {branch}'.format(
+                        #         remote=repo.remote, branch=repo.branch
+                        #     ))
 
         # Print some status
         repo.debug(' * branch = {} -> {}'.format(
@@ -470,8 +496,8 @@ def make_netharn_registry():
 
         # For example data and CLI
         CommonRepo(
-            name='scriptconfig', branch='dev/0.5.1', remote='computer-vision',
-            remotes={'computer-vision': 'git@gitlab.kitware.com:computer-vision/scriptconfig.git'},
+            name='scriptconfig', branch='dev/0.5.1', remote='utils',
+            remotes={'utils': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
         ),
         CommonRepo(
             name='ndsampler', branch='dev/0.5.0', remote='computer-vision',
@@ -491,6 +517,11 @@ def make_netharn_registry():
 def main():
     import click
     registery = make_netharn_registry()
+
+    only = ub.argval('--only', default=None)
+    if only is not None:
+        only = only.split(',')
+        registery.repos = [repo for repo in registery.repos if repo.name in only]
 
     num_workers = int(ub.argval('--workers', default=8))
     if ub.argflag('--serial'):
@@ -513,6 +544,9 @@ def main():
     @cli_group.add_command
     @click.command('ensure', context_settings=default_context_settings)
     def ensure():
+        """
+        Ensure is the live run of "check".
+        """
         registery.apply('ensure', num_workers=num_workers)
 
     @cli_group.add_command
@@ -523,6 +557,9 @@ def main():
     @cli_group.add_command
     @click.command('check', context_settings=default_context_settings)
     def check():
+        """
+        Check is just a dry run of "ensure".
+        """
         registery.apply('check', num_workers=num_workers)
 
     @cli_group.add_command
