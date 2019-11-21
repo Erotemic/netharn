@@ -123,7 +123,7 @@ def parse_requirements(fname='requirements.txt'):
 
 def clean_repo(repodir, modname, rel_paths=[]):
     """
-    repodir = ub.truepath('~/code/netharn/')
+    repodir = ub.expandpath('~/code/netharn/')
     modname = 'netharn'
     rel_paths = [
         'netharn/util/nms/cpu_nms.c',
@@ -186,7 +186,7 @@ def clean_repo(repodir, modname, rel_paths=[]):
 
 def clean():
     """
-    __file__ = ub.truepath('~/code/netharn/setup.py')
+    __file__ = ub.expandpath('~/code/netharn/setup.py')
     """
     modname = 'netharn'
     repodir = dirname(__file__)

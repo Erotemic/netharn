@@ -56,7 +56,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
     """
     def __init__(self, devkit_dpath=None, split='train', years=[2007, 2012]):
         if devkit_dpath is None:
-            # ub.truepath('~/data/VOC/VOCdevkit')
+            # ub.expandpath('~/data/VOC/VOCdevkit')
             devkit_dpath = self.ensure_voc_data(years=years)
 
         self.devkit_dpath = devkit_dpath
@@ -139,7 +139,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
             >>> VOCDataset.ensure_voc_data()
         """
         if dpath is None:
-            dpath = ub.truepath('~/data/VOC')
+            dpath = ub.expandpath('~/data/VOC')
         devkit_dpath = join(dpath, 'VOCdevkit')
         # if force or not exists(devkit_dpath):
         ub.ensuredir(dpath)

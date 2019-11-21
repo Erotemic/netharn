@@ -74,7 +74,7 @@ def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
 
     """
     import ubelt as ub
-    # workdir = ub.truepath('~/work/foobar')
+    # workdir = ub.expandpath('~/work/foobar')
 
     print('Checking for dead / dangling sessions in your runs dir')
 
@@ -212,7 +212,7 @@ def _devcheck_manage_snapshots(workdir, recent=5, factor=10, dry=True):
         places where there is a significant change from a global perspective.
 
     # Specify your workdir
-    workdir = ub.truepath('~/work/voc_yolo2')
+    workdir = ub.expandpath('~/work/voc_yolo2')
     """
 
     USE_RANGE_HUERISTIC = True

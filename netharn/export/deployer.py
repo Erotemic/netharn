@@ -445,10 +445,10 @@ class DeployedModel(ub.NiceRepr):
 
         Ignore:
             from netharn.export.deployer import *
-            fcnn116 = ub.import_module_from_path(ub.truepath('~/remote/hermes/tmp/fcnn116.py'))
+            fcnn116 = ub.import_module_from_path(ub.expandpath('~/remote/hermes/tmp/fcnn116.py'))
             model = fcnn116.FCNN116()
             initkw = {}
-            snap_fpath = ub.truepath('~/remote/hermes/tmp/fcnn116.pt')
+            snap_fpath = ub.expandpath('~/remote/hermes/tmp/fcnn116.pt')
             train_info_fpath = None
             self = DeployedModel.custom(snap_fpath, model, initkw)
             zipfile = self.package(dpath)

@@ -346,7 +346,7 @@ def _save_requested(fpath_, save_parts):
     fig = plt.gcf()
     fig.dpi = dpi
 
-    fpath_strict = ub.truepath(fpath)
+    fpath_strict = ub.expandpath(fpath)
     CLIP_WHITE = ub.argflag('--clipwhite')
     from netharn import util
 
@@ -399,7 +399,7 @@ def _save_requested(fpath_, save_parts):
         savekw['dpi'] = dpi
         savekw['edgecolor'] = 'none'
         savekw['bbox_inches'] = extract_axes_extents(fig, combine=True)  # replaces need for clipwhite
-        absfpath_ = ub.truepath(fpath)
+        absfpath_ = ub.expandpath(fpath)
         fig.savefig(absfpath_, **savekw)
 
         if CLIP_WHITE:

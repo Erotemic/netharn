@@ -1,7 +1,7 @@
 # flake8: noqa
 import sys
 import ubelt as ub
-sys.path.append(ub.truepath('~/code/netharn/examples'))
+sys.path.append(ub.expandpath('~/code/netharn/examples'))
 from mnist_matching import setup_harn
 
 resnet_harn = setup_harn(arch='resnet').initialize()

@@ -1285,7 +1285,7 @@ class CoreMixin(object):
         if harn._tlog is not None:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
             harn.info('dont forget to start:\n'
-                      '    tensorboard --logdir ' + ub.compressuser(train_base))
+                      '    tensorboard --logdir ' + ub.shrinkuser(train_base))
 
         try:
             if harn._check_termination():
@@ -1416,7 +1416,7 @@ class CoreMixin(object):
             harn.info('harn.train_dpath = {!r}'.format(harn.train_dpath))
             harn.info('harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
             harn.info('view tensorboard results for this run via:\n'
-                      '    tensorboard --logdir ' + ub.compressuser(train_base))
+                      '    tensorboard --logdir ' + ub.shrinkuser(train_base))
 
         deploy_fpath = harn._deploy()
 

@@ -418,10 +418,10 @@ class RepoRegistry(ub.NiceRepr):
                     if cwd is None:
                         cwd = os.get_cwd()
                     if cwd != MY_CWD:
-                        print('cd ' + ub.compressuser(cwd))
+                        print('cd ' + ub.shrinkuser(cwd))
                         MY_CWD = cwd
                     print(cmd)
-            print('cd ' + ub.compressuser(ORIG_CWD))
+            print('cd ' + ub.shrinkuser(ORIG_CWD))
 
 
 def determine_code_dpath():
