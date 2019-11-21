@@ -3,10 +3,10 @@ import torch  # NOQA
 import torch.nn.functional as F
 import torch.nn.modules
 import kwarray
-from packaging import version
+from distutils.version import LooseVersion
 
 
-if version.parse(torch.__version__) < version.parse('1.0.0'):
+if LooseVersion(torch.__version__) < LooseVersion('1.0.0'):
     ELEMENTWISE_MEAN = 'elementwise_mean'
 else:
     ELEMENTWISE_MEAN = 'mean'
