@@ -489,7 +489,7 @@ def make_netharn_registry():
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
         ),
         CommonRepo(
-            name='kwplot', branch='dev/0.4.0', remote='public',
+            name='kwplot', branch='dev/0.4.1', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwplot.git'},
         ),
 
