@@ -71,14 +71,15 @@ def parse_requirements(fname='requirements.txt', with_version=False):
     import re
     require_fpath = fname
 
-    def parse_line(line):
+    def parse_line(line, base='.'):
         """
         Parse information from a line in a requirements text file
         """
         if line.startswith('-r '):
             # Allow specifying requirements in other files
-            target = line.split(' ')[1]
-            for info in parse_require_file(target):
+            new_fname = line.split(' ')[1]
+            new_fpath = join(base, new_fname)
+            for info in parse_require_file(new_fpath):
                 yield info
         else:
             info = {'line': line}
@@ -104,11 +105,12 @@ def parse_requirements(fname='requirements.txt', with_version=False):
             yield info
 
     def parse_require_file(fpath):
+        base = dirname(fpath)
         with open(fpath, 'r') as f:
             for line in f.readlines():
                 line = line.strip()
                 if line and not line.startswith('#'):
-                    for info in parse_line(line):
+                    for info in parse_line(line, base):
                         yield info
 
     def gen_packages_items():
