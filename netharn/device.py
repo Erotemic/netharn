@@ -5,7 +5,6 @@ An XPU is an abstracted (X) procesesing unit (PU) with a common API for running
 torch operations on a CPU, GPU, or many GPUs.
 """
 from __future__ import absolute_import, division, print_function
-import psutil
 import ubelt as ub
 import warnings
 import torch
@@ -410,6 +409,7 @@ class XPU(ub.NiceRepr):
             'used': 0,
         }
         if self._device_ids is None:
+            import psutil
             tup = psutil.virtual_memory()
             MB = 1 / 2 ** 20
             info['total'] += tup.total * MB
