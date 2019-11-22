@@ -56,8 +56,12 @@ def parse_requirements(fname='requirements.txt', with_version=False):
     Parse the package dependencies listed in a requirements file but strips
     specific versioning information.
 
-    TODO:
-        perhaps use https://github.com/davidfischer/requirements-parser instead
+    Args:
+        fname (str): path to requirements file
+        with_version (bool, default=False): if true include version specs
+
+    Returns:
+        List[str]: list of requirements items
 
     CommandLine:
         python -c "import setup; print(setup.parse_requirements())"
