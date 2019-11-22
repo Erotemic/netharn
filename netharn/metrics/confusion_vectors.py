@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import ubelt as ub
 import warnings
 from .functional import fast_confusion_matrix
@@ -151,6 +150,7 @@ class ConfusionVectors(object):
             sample_weight=data.get('weight', None)
         )
 
+        import pandas as pd
         cm = pd.DataFrame(matrix, index=list(self.classes),
                           columns=list(self.classes))
         if compress:

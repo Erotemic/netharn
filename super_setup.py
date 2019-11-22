@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Requirements:
-    pip install gitpython
+    pip install gitpython click ubelt
 """
 from os.path import exists
 from os.path import join

@@ -2,10 +2,8 @@
 import math
 import numpy as np
 import torch
-import torch.nn.functional as F
-import scipy
-import scipy.ndimage
 from netharn.layers import common
+import torch.nn.functional as F
 
 
 class Conv1d_pad(torch.nn.Conv1d, common.ModuleMixin):
@@ -137,6 +135,8 @@ class GaussianBlurNd(common.Module):
         if self.separable:
             # Calculate the 1d Gaussian kernel
             # Follow scipy.ndimage method closely
+            import scipy
+            import scipy.ndimage
             kernel1d = scipy.ndimage.filters._gaussian_kernel1d(sigma, order=0, radius=lw)[::-1]
             kernel1d = torch.from_numpy(np.ascontiguousarray(kernel1d))
 

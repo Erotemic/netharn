@@ -11,6 +11,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 * Smoothing no longer applied to lr (learning rate) and momentum monitor plots
+* pandas and scipy are now optional (in this package)
+* removed several old dependencies
 
 ### Fixed
 * Small issues in CIFAR Example

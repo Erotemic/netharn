@@ -51,7 +51,7 @@ def parse_description():
     return ''
 
 
-def parse_requirements(fname='requirements.txt'):
+def parse_requirements(fname='requirements.txt', with_version=False):
     """
     Parse the package dependencies listed in a requirements file but strips
     specific versioning information.
@@ -61,6 +61,7 @@ def parse_requirements(fname='requirements.txt'):
 
     CommandLine:
         python -c "import setup; print(setup.parse_requirements())"
+        python -c "import setup; print(chr(10).join(setup.parse_requirements(with_version=True)))"
     """
     from os.path import exists
     import re
@@ -75,28 +76,27 @@ def parse_requirements(fname='requirements.txt'):
             target = line.split(' ')[1]
             for info in parse_require_file(target):
                 yield info
-        elif line.startswith('-e '):
-            info = {}
-            info['package'] = line.split('#egg=')[1]
-            yield info
         else:
-            # Remove versioning from the package
-            pat = '(' + '|'.join(['>=', '==', '>']) + ')'
-            parts = re.split(pat, line, maxsplit=1)
-            parts = [p.strip() for p in parts]
+            info = {'line': line}
+            if line.startswith('-e '):
+                info['package'] = line.split('#egg=')[1]
+            else:
+                # Remove versioning from the package
+                pat = '(' + '|'.join(['>=', '==', '>']) + ')'
+                parts = re.split(pat, line, maxsplit=1)
+                parts = [p.strip() for p in parts]
 
-            info = {}
-            info['package'] = parts[0]
-            if len(parts) > 1:
-                op, rest = parts[1:]
-                if ';' in rest:
-                    # Handle platform specific dependencies
-                    # http://setuptools.readthedocs.io/en/latest/setuptools.html#declaring-platform-specific-dependencies
-                    version, platform_deps = map(str.strip, rest.split(';'))
-                    info['platform_deps'] = platform_deps
-                else:
-                    version = rest  # NOQA
-                info['version'] = (op, version)
+                info['package'] = parts[0]
+                if len(parts) > 1:
+                    op, rest = parts[1:]
+                    if ';' in rest:
+                        # Handle platform specific dependencies
+                        # http://setuptools.readthedocs.io/en/latest/setuptools.html#declaring-platform-specific-dependencies
+                        version, platform_deps = map(str.strip, rest.split(';'))
+                        info['platform_deps'] = platform_deps
+                    else:
+                        version = rest  # NOQA
+                    info['version'] = (op, version)
             yield info
 
     def parse_require_file(fpath):
@@ -107,17 +107,21 @@ def parse_requirements(fname='requirements.txt'):
                     for info in parse_line(line):
                         yield info
 
-    # This breaks on pip install, so check that it exists.
-    packages = []
-    if exists(require_fpath):
-        for info in parse_require_file(require_fpath):
-            package = info['package']
-            if not sys.version.startswith('3.4'):
-                # apparently package_deps are broken in 3.4
-                platform_deps = info.get('platform_deps')
-                if platform_deps is not None:
-                    package += ';' + platform_deps
-            packages.append(package)
+    def gen_packages_items():
+        if exists(require_fpath):
+            for info in parse_require_file(require_fpath):
+                parts = [info['package']]
+                if with_version and 'version' in info:
+                    parts.extend(info['version'])
+                if not sys.version.startswith('3.4'):
+                    # apparently package_deps are broken in 3.4
+                    platform_deps = info.get('platform_deps')
+                    if platform_deps is not None:
+                        parts.append(';' + platform_deps)
+                item = ''.join(parts)
+                yield item
+
+    packages = list(gen_packages_items())
     return packages
 
 

@@ -6,9 +6,6 @@ resizes images to a standard size.
 from os.path import exists
 from os.path import join
 import re
-import scipy
-import scipy.sparse
-import cv2
 import torch
 import glob
 import ubelt as ub
@@ -212,6 +209,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
 
     def _load_item(self, index, inp_size=None):
         # from netharn.models.yolo2.utils.yolo import _offset_boxes
+        import cv2
         image = self._load_image(index)
         annot = self._load_annotation(index)
 
@@ -232,12 +230,15 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
             return hwc, boxes, gt_classes
 
     def _load_image(self, index):
+        import cv2
         fpath = self.gpaths[index]
         imbgr = cv2.imread(fpath, flags=cv2.IMREAD_COLOR)
         imrgb_255 = cv2.cvtColor(imbgr, cv2.COLOR_BGR2RGB)
         return imrgb_255
 
     def _load_annotation(self, index):
+        import scipy
+        import scipy.sparse
         import xml.etree.ElementTree as ET
         fpath = self.apaths[index]
         tree = ET.parse(fpath)

@@ -4,7 +4,6 @@ import json
 import six
 import numpy as np
 import ubelt as ub
-import pandas as pd
 
 
 def walk_json(node):
@@ -101,7 +100,12 @@ def write_json(fpath, data):
     """
     Write human readable json files
     """
-    if isinstance(data, pd.DataFrame):
+    try:
+        import pandas as pd
+    except ImportError:
+        pd = None
+
+    if pd and isinstance(data, pd.DataFrame):
         # pretty pandas
         json_text = (json.dumps(json.loads(data.to_json()), indent=4))
     elif isinstance(data, dict):
