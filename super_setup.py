@@ -425,75 +425,86 @@ class Repo(ub.NiceRepr):
         # Ensure we have the right remote
         try:
             remote = repo.pygit.remotes[repo.remote]
-            if not remote.exists():
-                raise IndexError
-            else:
-                repo.debug('The requested remote={} name exists'.format(remote))
         except IndexError:
-            repo.debug('WARNING: remote={} does not exist'.format(remote))
-        else:
-            if remote.exists():
-                repo.debug('Requested remote does exists')
-                remote_branchnames = [ref.remote_head for ref in remote.refs]
-                if repo.branch not in remote_branchnames:
-                    repo.info('Branch name not found in local remote. Attempting to fetch')
-                    if dry:
-                        repo.info('dry run, not fetching')
-                    else:
-                        repo._cmd('git fetch {}'.format(remote.name))
-                        repo.info('Fetch was successful')
+            if not dry:
+                raise AssertionError('Something went wrong')
             else:
-                repo.debug('Requested remote does NOT exist')
+                remote = None
 
-        # Ensure the remote points to the right place
-        if repo.url not in list(remote.urls):
-            repo.debug('WARNING: The requested url={} disagrees with remote urls={}'.format(repo.url, list(remote.urls)))
-
-            if dry:
-                repo.info('Dry run, not updating remote url')
-            else:
-                repo.info('Updating remote url')
-                repo._cmd('git remote set-url {} {}'.format(repo.remote, repo.url))
-
-        # Ensure we are on the right branch
-        if repo.branch != repo.pygit.active_branch.name:
-            repo.debug('NEED TO SET BRANCH TO {} for {}'.format(repo.branch, repo))
+        if remote is not None:
             try:
-                repo._cmd('git checkout {}'.format(repo.branch))
-            except ShellException:
-                repo.debug('Checkout failed. Branch name might be ambiguous. Trying again')
-                repo._cmd('git checkout -b {} {}/{}'.format(repo.branch, repo.remote, repo.branch))
-
-        tracking_branch = repo.pygit.active_branch.tracking_branch()
-        if tracking_branch is None or tracking_branch.remote_name != repo.remote:
-            repo.debug('NEED TO SET UPSTREAM FOR FOR {}'.format(repo))
-
-            try:
-                remote = repo.pygit.remotes[repo.remote]
                 if not remote.exists():
                     raise IndexError
+                else:
+                    repo.debug('The requested remote={} name exists'.format(remote))
             except IndexError:
                 repo.debug('WARNING: remote={} does not exist'.format(remote))
             else:
                 if remote.exists():
+                    repo.debug('Requested remote does exists')
                     remote_branchnames = [ref.remote_head for ref in remote.refs]
                     if repo.branch not in remote_branchnames:
+                        repo.info('Branch name not found in local remote. Attempting to fetch')
                         if dry:
-                            repo.info('Branch name not found in local remote. Dry run, use ensure to attempt to fetch')
+                            repo.info('dry run, not fetching')
                         else:
-                            repo.info('Branch name not found in local remote. Attempting to fetch')
-                            repo._cmd('git fetch {}'.format(repo.remote))
+                            repo._cmd('git fetch {}'.format(remote.name))
+                            repo.info('Fetch was successful')
+                else:
+                    repo.debug('Requested remote does NOT exist')
 
-                            remote_branchnames = [ref.remote_head for ref in remote.refs]
-                            if repo.branch not in remote_branchnames:
-                                raise Exception('Branch name still does not exist')
+            # Ensure the remote points to the right place
+            if repo.url not in list(remote.urls):
+                repo.debug('WARNING: The requested url={} disagrees with remote urls={}'.format(repo.url, list(remote.urls)))
 
-                    if not dry:
-                        repo._cmd('git branch --set-upstream-to={remote}/{branch} {branch}'.format(
-                            remote=repo.remote, branch=repo.branch
-                        ))
-                    else:
-                        repo.info('Would attempt to set upstream')
+                if dry:
+                    repo.info('Dry run, not updating remote url')
+                else:
+                    repo.info('Updating remote url')
+                    repo._cmd('git remote set-url {} {}'.format(repo.remote, repo.url))
+
+            # Ensure we are on the right branch
+            if repo.branch != repo.pygit.active_branch.name:
+                repo.debug('NEED TO SET BRANCH TO {} for {}'.format(repo.branch, repo))
+                try:
+                    repo._cmd('git checkout {}'.format(repo.branch))
+                except ShellException:
+                    repo.debug('Checkout failed. Branch name might be ambiguous. Trying again')
+                    try:
+                        repo._cmd('git checkout -b {} {}/{}'.format(repo.branch, repo.remote, repo.branch))
+                    except ShellException:
+                        raise Exception('does the branch exist on the remote?')
+
+            tracking_branch = repo.pygit.active_branch.tracking_branch()
+            if tracking_branch is None or tracking_branch.remote_name != repo.remote:
+                repo.debug('NEED TO SET UPSTREAM FOR FOR {}'.format(repo))
+
+                try:
+                    remote = repo.pygit.remotes[repo.remote]
+                    if not remote.exists():
+                        raise IndexError
+                except IndexError:
+                    repo.debug('WARNING: remote={} does not exist'.format(remote))
+                else:
+                    if remote.exists():
+                        remote_branchnames = [ref.remote_head for ref in remote.refs]
+                        if repo.branch not in remote_branchnames:
+                            if dry:
+                                repo.info('Branch name not found in local remote. Dry run, use ensure to attempt to fetch')
+                            else:
+                                repo.info('Branch name not found in local remote. Attempting to fetch')
+                                repo._cmd('git fetch {}'.format(repo.remote))
+
+                                remote_branchnames = [ref.remote_head for ref in remote.refs]
+                                if repo.branch not in remote_branchnames:
+                                    raise Exception('Branch name still does not exist')
+
+                        if not dry:
+                            repo._cmd('git branch --set-upstream-to={remote}/{branch} {branch}'.format(
+                                remote=repo.remote, branch=repo.branch
+                            ))
+                        else:
+                            repo.info('Would attempt to set upstream')
 
         # Print some status
         repo.debug(' * branch = {} -> {}'.format(
@@ -643,6 +654,10 @@ def make_netharn_registry():
         CommonRepo(
             name='kwimage', branch='dev/0.5.2', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
+        ),
+        CommonRepo(
+            name='kwannot', branch='master', remote='public',
+            remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwannot.git'},
         ),
         CommonRepo(
             name='kwplot', branch='dev/0.4.1', remote='public',
