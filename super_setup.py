@@ -4,6 +4,7 @@
 Requirements:
     pip install gitpython click ubelt
 """
+import re
 from os.path import exists
 from os.path import join
 from os.path import dirname
@@ -47,6 +48,129 @@ def parse_version(package):
     visitor = VersionVisitor()
     visitor.visit(pt)
     return visitor.version
+
+
+class GitURL(object):
+    """
+    Represent and transform git urls between protocols defined in [3]_.
+
+    The code in GitURL is largely derived from [1]_ and [2]_.
+    Credit to @coala and @FriendCode.
+
+    Note:
+        while this code aims to suport protocols defined in [3]_, it is only
+        tested for specific use cases and therefore might need to be improved.
+
+    References:
+        .. [1] https://github.com/coala/git-url-parse
+        .. [2] https://github.com/FriendCode/giturlparse.py
+        .. [3] https://git-scm.com/docs/git-clone#URLS
+
+    Example:
+        >>> self = GitURL('git@gitlab.kitware.com:computer-vision/netharn.git')
+        >>> print(ub.repr2(self.parts()))
+        >>> print(self.format('ssh'))
+        >>> print(self.format('https'))
+        >>> self = GitURL('https://gitlab.kitware.com/computer-vision/netharn.git')
+        >>> print(ub.repr2(self.parts()))
+        >>> print(self.format('ssh'))
+        >>> print(self.format('https'))
+    """
+    SYNTAX_PATTERNS = {
+        # git allows for a url style syntax
+        'url': re.compile(r'(?P<transport>\w+://)'
+                          r'((?P<user>\w+[^@]*@))?'
+                          r'(?P<host>[a-z0-9_.-]+)'
+                          r'((?P<port>:[0-9]+))?'
+                          r'/(?P<path>.*\.git)'),
+        # git allows for ssh style syntax
+        'ssh': re.compile(r'(?P<user>\w+[^@]*@)'
+                          r'(?P<host>[a-z0-9_.-]+)'
+                          r':(?P<path>.*\.git)'),
+    }
+
+    r"""
+    Ignore:
+        # Helper to build the parse pattern regexes
+        def named(key, regex):
+            return '(?P<{}>{})'.format(key, regex)
+
+        def optional(pat):
+            return '({})?'.format(pat)
+
+        parse_patterns = {}
+        # Standard url format
+        transport = named('transport', r'\w+://')
+        user = named('user', r'\w+[^@]*@')
+        host = named('host', r'[a-z0-9_.-]+')
+        port = named('port', r':[0-9]+')
+        path = named('path', r'.*\.git')
+
+        pat = ''.join([transport, optional(user), host, optional(port), '/', path])
+        parse_patterns['url'] = pat
+
+        pat = ''.join([user, host, ':', path])
+        parse_patterns['ssh'] = pat
+        print(ub.repr2(parse_patterns))
+    """
+
+    def __init__(self, url):
+        self._url = url
+        self._parts = None
+
+    def parts(self):
+        """
+        Parses a GIT URL and returns an info dict.
+
+        Returns:
+            dict: info about the url
+
+        Raises:
+            Exception : if parsing fails
+        """
+        info = {
+            'syntax': '',
+            'host': '',
+            'user': '',
+            'port': '',
+            'path': None,
+            'transport': '',
+        }
+
+        for syntax, regex in self.SYNTAX_PATTERNS.items():
+            match = regex.search(self._url)
+            if match:
+                info['syntax'] = syntax
+                info.update(match.groupdict())
+                break
+        else:
+            raise Exception('Invalid URL {!r}'.format(self._url))
+
+        # change none to empty string
+        for k, v in info.items():
+            if v is None:
+                info[k] = ''
+        return info
+
+    def format(self, protocol):
+        """
+        Change the protocol of the git URL
+        """
+        parts = self.parts()
+        if protocol == 'ssh':
+            parts['user'] = 'git@'
+            url = ''.join([
+                parts['user'], parts['host'], ':', parts['path']
+            ])
+        else:
+            parts['transport'] = protocol + '://'
+            parts['port'] = ''
+            parts['user'] = ''
+            url = ''.join([
+                parts['transport'], parts['user'], parts['host'],
+                parts['port'], '/', parts['path']
+            ])
+        return url
 
 
 class Repo(ub.NiceRepr):
@@ -149,6 +273,16 @@ class Repo(ub.NiceRepr):
             raise ValueError('unknown kwargs = {}'.format(kwargs.keys()))
 
         repo._pygit = None
+
+    def set_protocol(self, protocol):
+        """
+        Changes the url protocol to either ssh or https
+
+        Args:
+            protocol (str): can be ssh or https
+        """
+        gurl = GitURL(self.url)
+        self.url = gurl.format(protocol)
 
     def info(repo, msg):
         repo._logged_lines.append(('INFO', 'INFO: ' + msg))
@@ -288,69 +422,78 @@ class Repo(ub.NiceRepr):
                         # Only error if the main remote is not available
                         raise
 
+        # Ensure we have the right remote
+        try:
+            remote = repo.pygit.remotes[repo.remote]
+            if not remote.exists():
+                raise IndexError
+            else:
+                repo.debug('The requested remote={} name exists'.format(remote))
+        except IndexError:
+            repo.debug('WARNING: remote={} does not exist'.format(remote))
+        else:
+            if remote.exists():
+                repo.debug('Requested remote does exists')
+                remote_branchnames = [ref.remote_head for ref in remote.refs]
+                if repo.branch not in remote_branchnames:
+                    repo.info('Branch name not found in local remote. Attempting to fetch')
+                    if dry:
+                        repo.info('dry run, not fetching')
+                    else:
+                        repo._cmd('git fetch {}'.format(remote.name))
+                        repo.info('Fetch was successful')
+            else:
+                repo.debug('Requested remote does NOT exist')
+
+        # Ensure the remote points to the right place
+        if repo.url not in list(remote.urls):
+            repo.debug('WARNING: The requested url={} disagrees with remote urls={}'.format(repo.url, list(remote.urls)))
+
+            if dry:
+                repo.info('Dry run, not updating remote url')
+            else:
+                repo.info('Updating remote url')
+                repo._cmd('git remote set-url {} {}'.format(repo.remote, repo.url))
+
         # Ensure we are on the right branch
         if repo.branch != repo.pygit.active_branch.name:
             repo.debug('NEED TO SET BRANCH TO {} for {}'.format(repo.branch, repo))
-            if not dry:
-                try:
-                    remote = repo.pygit.remotes[repo.remote]
-                    if not remote.exists():
-                        raise IndexError
-                except IndexError:
-                    repo.debug('WARNING: remote={} does not exist'.format(remote))
-                else:
-                    if remote.exists():
-                        repo.debug('Requested remote does exists')
-                        remote_branchnames = [ref.remote_head for ref in remote.refs]
-                        if repo.branch not in remote_branchnames:
-                            repo.info('Branch name not found in local remote. Attempting to fetch')
-                            repo._cmd('git fetch {}'.format(remote.name))
-                            repo.info('Fetch was successful')
-                    else:
-                        repo.debug('Requested remote does NOT exist')
-
-                    try:
-                        repo._cmd('git checkout {}'.format(repo.branch))
-                    except ShellException:
-                        repo.debug('Checkout failed. Branch name might be ambiguous. Trying again')
-                        repo._cmd('git checkout -b {} {}/{}'.format(repo.branch, repo.remote, repo.branch))
-
-                    # try:
-                    #     repo._cmd('git checkout {}'.format(repo.branch))
-                    # except Exception:
-                    #     repo._cmd('git fetch --all')
+            try:
+                repo._cmd('git checkout {}'.format(repo.branch))
+            except ShellException:
+                repo.debug('Checkout failed. Branch name might be ambiguous. Trying again')
+                repo._cmd('git checkout -b {} {}/{}'.format(repo.branch, repo.remote, repo.branch))
 
         tracking_branch = repo.pygit.active_branch.tracking_branch()
         if tracking_branch is None or tracking_branch.remote_name != repo.remote:
             repo.debug('NEED TO SET UPSTREAM FOR FOR {}'.format(repo))
-            if not dry:
-                try:
-                    remote = repo.pygit.remotes[repo.remote]
-                    if not remote.exists():
-                        raise IndexError
-                except IndexError:
-                    repo.debug('WARNING: remote={} does not exist'.format(remote))
-                else:
-                    if remote.exists():
-                        remote_branchnames = [ref.remote_head for ref in remote.refs]
-                        if repo.branch not in remote_branchnames:
-                            repo.info('Branch name not found in local remote. Attempting to fetch')
-                            remote.fetch()
 
+            try:
+                remote = repo.pygit.remotes[repo.remote]
+                if not remote.exists():
+                    raise IndexError
+            except IndexError:
+                repo.debug('WARNING: remote={} does not exist'.format(remote))
+            else:
+                if remote.exists():
+                    remote_branchnames = [ref.remote_head for ref in remote.refs]
+                    if repo.branch not in remote_branchnames:
+                        if dry:
+                            repo.info('Branch name not found in local remote. Dry run, use ensure to attempt to fetch')
+                        else:
+                            repo.info('Branch name not found in local remote. Attempting to fetch')
+                            repo._cmd('git fetch {}'.format(repo.remote))
+
+                            remote_branchnames = [ref.remote_head for ref in remote.refs]
+                            if repo.branch not in remote_branchnames:
+                                raise Exception('Branch name still does not exist')
+
+                    if not dry:
                         repo._cmd('git branch --set-upstream-to={remote}/{branch} {branch}'.format(
                             remote=repo.remote, branch=repo.branch
                         ))
-
-                        # try:
-                        #     repo._cmd('git branch --set-upstream-to={remote}/{branch} {branch}'.format(
-                        #         remote=repo.remote, branch=repo.branch
-                        #     ))
-                        # except Exception:
-                        #     # remote.fetch()
-                        #     repo._cmd('git fetch --all')
-                        #     repo._cmd('git branch --set-upstream-to={remote}/{branch} {branch}'.format(
-                        #         remote=repo.remote, branch=repo.branch
-                        #     ))
+                    else:
+                        repo.info('Would attempt to set upstream')
 
         # Print some status
         repo.debug(' * branch = {} -> {}'.format(
@@ -539,6 +682,18 @@ def main():
     num_workers = int(ub.argval('--workers', default=8))
     if ub.argflag('--serial'):
         num_workers = 0
+
+    protocol = ub.argval('--protocol', None)
+    if ub.argflag('--https'):
+        protocol = 'https'
+    if ub.argflag('--http'):
+        protocol = 'http'
+    if ub.argflag('--ssh'):
+        protocol = 'ssh'
+
+    if protocol is not None:
+        for repo in registery.repos:
+            repo.set_protocol(protocol)
 
     default_context_settings = {
         'help_option_names': ['-h', '--help'],
