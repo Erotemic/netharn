@@ -12,6 +12,12 @@ import ubelt as ub
 import functools
 
 
+class ShellException(Exception):
+    """
+    Raised when shell returns a non-zero error code
+    """
+
+
 class DirtyRepoError(Exception):
     """
     If the repo is in an unexpected state, its very easy to break things using
@@ -179,7 +185,7 @@ class Repo(ub.NiceRepr):
                 repo.debug(info['err'])
 
         if info['ret'] != 0:
-            raise Exception(ub.repr2(info))
+            raise ShellException(ub.repr2(info))
         return info
 
     @property
@@ -228,7 +234,7 @@ class Repo(ub.NiceRepr):
         fmtkw['sha1'] = repo._cmd('git rev-parse HEAD', verbose=0)['out'].strip()
         try:
             fmtkw['tag'] = repo._cmd('git describe --tags', verbose=0)['out'].strip() + ','
-        except Exception:
+        except ShellException:
             fmtkw['tag'] = '<None>,'
         fmtkw['branch'] = repo.pygit.active_branch.name + ','
         fmtkw['repo'] = repo.name + ','
@@ -277,7 +283,7 @@ class Repo(ub.NiceRepr):
                         remote_name, remote_url, repo))
                     if not dry:
                         repo._cmd('git remote add {} {}'.format(remote_name, remote_url))
-                except Exception:
+                except ShellException:
                     if remote_name == repo.remote:
                         # Only error if the main remote is not available
                         raise
@@ -294,18 +300,25 @@ class Repo(ub.NiceRepr):
                     repo.debug('WARNING: remote={} does not exist'.format(remote))
                 else:
                     if remote.exists():
+                        repo.debug('Requested remote does exists')
                         remote_branchnames = [ref.remote_head for ref in remote.refs]
                         if repo.branch not in remote_branchnames:
                             repo.info('Branch name not found in local remote. Attempting to fetch')
                             repo._cmd('git fetch {}'.format(remote.name))
-                            # remote.fetch()
+                            repo.info('Fetch was successful')
+                    else:
+                        repo.debug('Requested remote does NOT exist')
 
-                    repo._cmd('git checkout {}'.format(repo.branch))
+                    try:
+                        repo._cmd('git checkout {}'.format(repo.branch))
+                    except ShellException:
+                        repo.debug('Checkout failed. Branch name might be ambiguous. Trying again')
+                        repo._cmd('git checkout -b {} {}/{}'.format(repo.branch, repo.remote, repo.branch))
+
                     # try:
                     #     repo._cmd('git checkout {}'.format(repo.branch))
                     # except Exception:
                     #     repo._cmd('git fetch --all')
-                    #     repo._cmd('git checkout -b {} {}/{}'.format(repo.branch, repo.remote, repo.branch))
 
         tracking_branch = repo.pygit.active_branch.tracking_branch()
         if tracking_branch is None or tracking_branch.remote_name != repo.remote:
