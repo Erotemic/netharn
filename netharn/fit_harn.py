@@ -145,9 +145,9 @@ from netharn.exceptions import (StopTraining, CannotResume, TrainingDiverged,
 
 from netharn import util
 from netharn.util import profiler
+from netharn.util import strip_ansi
 
 from netharn import export
-from xdoctest.utils import strip_ansi
 
 try:
     import tensorboard_logger

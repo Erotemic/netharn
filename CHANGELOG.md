@@ -19,6 +19,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Small `imgaug` issue in `examples/sseg_camvid.py` and `examples/segmentation.py`
 * FitHarn no longer fails when loaders are missing batch sizes
 * Fixed windows issue in `util_zip.zopen`.
+* Fixed runtime dependency on `strip_ansi` from xdoctest.
 
 
 ## Version 0.5.1
