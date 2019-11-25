@@ -1,9 +1,17 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import collections
-import pandas as pd
 import ubelt as ub
 import numpy as np
+
+
+def _isnull(v):
+    try:
+        import pandas as pd
+    except Exception:
+        return v is None or np.isnan(v)
+    else:
+        return pd.isnull(v)
 
 
 class MovingAve(ub.NiceRepr):
@@ -108,7 +116,7 @@ class CumMovingAve(MovingAve):
 
     def update(self, other):
         for k, v in other.items():
-            if pd.isnull(v):
+            if _isnull(v):
                 if self.nan_method == 'ignore':
                     continue
                 elif self.nan_method == 'zero':
@@ -167,7 +175,7 @@ class WindowedMovingAve(MovingAve):
 
     def update(self, other):
         for k, v in other.items():
-            if pd.isnull(v):
+            if _isnull(v):
                 v = 0
             if k not in self.totals:
                 self.history[k] = collections.deque()
@@ -285,7 +293,7 @@ class ExpMovingAve(MovingAve):
         """
         alpha = self.alpha
         for k, v in other.items():
-            if pd.isnull(v):
+            if _isnull(v):
                 v = 0
             if self.correct_bias:
                 if k not in self.means:

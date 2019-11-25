@@ -147,9 +147,17 @@ class SegmentationDataset(torch.utils.data.Dataset):
         if self.augmenter:
             augdet = self.augmenter.to_deterministic()
             imdata = augdet.augment_image(imdata)
-            cidx_segmap_oi = imgaug.SegmentationMapOnImage(cidx_segmap, cidx_segmap.shape, nb_classes=len(self.classes))
-            cidx_segmap_oi = augdet.augment_segmentation_maps([cidx_segmap_oi])[0]
-            cidx_segmap = cidx_segmap_oi.arr.argmax(axis=2)
+            if hasattr(imgaug, 'SegmentationMapsOnImage'):
+                # Oh imgaug, stop breaking.
+                cidx_segmap_oi = imgaug.SegmentationMapsOnImage(cidx_segmap, cidx_segmap.shape)
+                cidx_segmap_oi = augdet.augment_segmentation_maps(cidx_segmap_oi)
+                assert cidx_segmap_oi.arr.shape[2] == 1
+                cidx_segmap = cidx_segmap_oi.arr[..., 0]
+                cidx_segmap = np.ascontiguousarray(cidx_segmap)
+            else:
+                cidx_segmap_oi = imgaug.SegmentationMapOnImage(cidx_segmap, cidx_segmap.shape, nb_classes=len(self.classes))
+                cidx_segmap_oi = augdet.augment_segmentation_maps([cidx_segmap_oi])[0]
+                cidx_segmap = cidx_segmap_oi.arr.argmax(axis=2)
 
         im_chw = torch.FloatTensor(
             imdata.transpose(2, 0, 1).astype(np.float32) / 255.)
@@ -360,6 +368,12 @@ class SegmentationHarn(nh.FitHarn):
 
             true_img = kwimage.ensure_uint255(true_img)
             pred_img = kwimage.ensure_uint255(pred_img)
+
+            true_img = kwimage.draw_text_on_image(
+                true_img, 'true', org=(0, 0), valign='top', color='blue')
+
+            pred_img = kwimage.draw_text_on_image(
+                pred_img, 'pred', org=(0, 0), valign='top', color='blue')
 
             item_img = kwimage.stack_images([pred_img, true_img], axis=1)
             batch_imgs.append(item_img)

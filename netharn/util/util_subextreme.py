@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
-import scipy.signal
 import ubelt as ub  # NOQA
 
 
@@ -106,6 +105,7 @@ def _hist_argmaxima(hist, centers=None, maxima_thresh=None):
     """
     # FIXME: Not handling general cases
     # [0] index because argrelmaxima returns a tuple
+    import scipy.signal
     argmaxima_ = scipy.signal.argrelextrema(hist, np.greater)[0]
     if len(argmaxima_) == 0:
         argmaxima_ = hist.argmax()

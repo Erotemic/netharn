@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import ubelt as ub
 from netharn.metrics.detections import _ave_precision
 from netharn.metrics.detections import detection_confusions
@@ -193,6 +192,7 @@ def _devcheck_voc_consistency2():
         Check how cocoeval works
         https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py
     """
+    import pandas as pd
     from netharn.metrics.detections import DetectionMetrics
     xdata = []
     ydatas = ub.ddict(list)
@@ -270,6 +270,7 @@ def _devcheck_voc_consistency():
         Check how cocoeval works
         https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py
     """
+    import pandas as pd
     import netharn as nh
     # method = 'voc2012'
     method = 'voc2007'

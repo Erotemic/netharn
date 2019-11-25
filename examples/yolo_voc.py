@@ -88,7 +88,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         Example:
             >>> # DISABLE_DOCTSET
             >>> import sys, ubelt
-            >>> sys.path.append(ubelt.truepath('~/code/netharn/examples'))
+            >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
             >>> from yolo_voc import *
             >>> self = YoloVOCDataset(split='train')
             >>> index = 7
@@ -109,7 +109,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         Example:
             >>> # DISABLE_DOCTSET
             >>> import sys, ubelt
-            >>> sys.path.append(ubelt.truepath('~/code/netharn/examples'))
+            >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
             >>> from yolo_voc import *
             >>> self = YoloVOCDataset(split='test')
             >>> index = 0
@@ -769,7 +769,7 @@ def setup_yolo_harness(bsize=16, workers=0):
 
     hyper = nh.HyperParams(**{
         'nice': nice,
-        'workdir': ub.truepath('~/work/voc_yolo2'),
+        'workdir': ub.expandpath('~/work/voc_yolo2'),
 
         'datasets': datasets,
         'loaders': loaders,

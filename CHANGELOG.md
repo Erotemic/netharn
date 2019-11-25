@@ -3,6 +3,25 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
+
+## Version 0.5.2
+
+### Added
+* Rectify nonlinearity now supports more torch activations
+
+### Changed
+* Smoothing no longer applied to lr (learning rate) and momentum monitor plots
+* pandas and scipy are now optional (in this package)
+* removed several old dependencies
+
+### Fixed
+* Small issues in CIFAR Example
+* Small `imgaug` issue in `examples/sseg_camvid.py` and `examples/segmentation.py`
+* FitHarn no longer fails when loaders are missing batch sizes
+* Fixed windows issue in `util_zip.zopen`.
+* Fixed runtime dependency on `strip_ansi` from xdoctest.
+
+
 ## Version 0.5.1
 
 ### Changed

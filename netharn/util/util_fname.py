@@ -266,8 +266,8 @@ def align_paths(paths1, paths2):
 
     Speed:
         >>> import ubelt as ub
-        >>> paths1 = [ub.truepath('~/foo/{:04d}/{:04d}').format(i, j) for i in range(2) for j in range(10000)]
-        >>> paths2 = [ub.truepath('~/bar/{:04d}/{:04d}').format(i, j) for i in range(2) for j in range(10000)]
+        >>> paths1 = [ub.expandpath('~/foo/{:04d}/{:04d}').format(i, j) for i in range(2) for j in range(10000)]
+        >>> paths2 = [ub.expandpath('~/bar/{:04d}/{:04d}').format(i, j) for i in range(2) for j in range(10000)]
         >>> np.random.shuffle(paths2)
         >>> aligned = align_paths(paths1, paths2)
 

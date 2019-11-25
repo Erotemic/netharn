@@ -202,7 +202,7 @@ def ensure_voc_data(dpath=None, force=False, years=[2007, 2012]):
         >>> devkit_dpath = ensure_voc_data()
     """
     if dpath is None:
-        dpath = ub.truepath('~/data/VOC')
+        dpath = ub.expandpath('~/data/VOC')
     devkit_dpath = join(dpath, 'VOCdevkit')
     # if force or not exists(devkit_dpath):
     ub.ensuredir(dpath)

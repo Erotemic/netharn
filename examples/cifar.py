@@ -41,6 +41,7 @@ CommandLine:
     python examples/cifar.py --gpu=1,2 --arch=resnet50 --lr=0.003 --schedule=onecycle --optim=adamw
 
 """
+import sys
 from os.path import join
 import numpy as np
 import ubelt as ub
@@ -100,6 +101,17 @@ class CIFAR_FitHarn(nh.FitHarn):
         outputs = harn.model(inputs)
         loss = harn.criterion(outputs, labels)
         return outputs, loss
+
+    # def backpropogate(harn, bx, batch, loss):
+    #     """
+    #     Note: this function usually does not need to be overloaded,
+    #     but you can if you want to. The actual base implementation is
+    #     slightly more nuanced. For details see:
+    #     :func:netharn.fit_harn.CoreCallbacks.backpropogate
+    #     """
+    #     loss.backward()
+    #     harn.optimizer.step()
+    #     harn.optimizer.zero_grad()
 
     def on_batch(harn, batch, outputs, loss):
         """
@@ -190,7 +202,8 @@ class CIFAR_FitHarn(nh.FitHarn):
             'pred_scores': pred_scores,
         }
         if true_cxs is not None:
-            hot = nh.criterions.focal.one_hot_embedding(true_cxs, class_probs.shape[1])
+            import kwarray
+            hot = kwarray.one_hot_embedding(true_cxs, class_probs.shape[1])
             true_probs = (hot * class_probs).sum(dim=1)
             decoded['true_scores'] = true_probs
         return decoded
@@ -198,7 +211,7 @@ class CIFAR_FitHarn(nh.FitHarn):
     def _draw_batch(harn, batch, decoded, limit=32):
         """
         CommandLine:
-            xdoctest -m ~/code/netharn/examples/cifar.py CIFAR_FitHarn._draw_batch --show --arch=wrn_22
+            xdoctest -m ~/code/netharn/examples/cifar.py CIFAR_FitHarn._draw_batch --show --arch=resnet50
 
         Example:
             >>> import sys
@@ -210,11 +223,12 @@ class CIFAR_FitHarn(nh.FitHarn):
             >>> decoded = harn._decode(outputs, batch['label'])
             >>> stacked = harn._draw_batch(batch, decoded, limit=42)
             >>> # xdoctest: +REQUIRES(--show)
-            >>> import netharn as nh
-            >>> nh.util.autompl()
-            >>> nh.util.imshow(stacked, colorspace='rgb', doclf=True)
-            >>> nh.util.show_if_requested()
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(stacked, colorspace='rgb', doclf=True)
+            >>> kwplot.show_if_requested()
         """
+        import kwimage
         inputs = batch['input']
         inputs = inputs[0:limit]
 
@@ -256,25 +270,25 @@ class CIFAR_FitHarn(nh.FitHarn):
             }
             color = 'dodgerblue' if pcx == tcx else 'orangered'
 
-            im_ = nh.util.draw_text_on_image(im_, pred_label, org=org1 - 2,
+            im_ = kwimage.draw_text_on_image(im_, pred_label, org=org1 - 2,
                                              color='white', **fontkw)
-            im_ = nh.util.draw_text_on_image(im_, true_label, org=org2 - 2,
+            im_ = kwimage.draw_text_on_image(im_, true_label, org=org2 - 2,
                                              color='white', **fontkw)
 
             for i in [-2, -1, 1, 2]:
                 for j in [-2, -1, 1, 2]:
-                    im_ = nh.util.draw_text_on_image(im_, pred_label, org=org1 + i,
+                    im_ = kwimage.draw_text_on_image(im_, pred_label, org=org1 + i,
                                                      color='black', **fontkw)
-                    im_ = nh.util.draw_text_on_image(im_, true_label, org=org2 + j,
+                    im_ = kwimage.draw_text_on_image(im_, true_label, org=org2 + j,
                                                      color='black', **fontkw)
 
-            im_ = nh.util.draw_text_on_image(im_, pred_label, org=org1,
+            im_ = kwimage.draw_text_on_image(im_, pred_label, org=org1,
                                              color=color, **fontkw)
-            im_ = nh.util.draw_text_on_image(im_, true_label, org=org2,
+            im_ = kwimage.draw_text_on_image(im_, true_label, org=org2,
                                              color='lawngreen', **fontkw)
             todraw.append(im_)
 
-        stacked = nh.util.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
+        stacked = kwimage.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
         return stacked
 
 
@@ -303,13 +317,9 @@ def setup_harn():
     import torchvision
     from torchvision import transforms
 
+    # Note that most netharn training scripts will use scriptconfig instead of
+    # this more explicit approach.
     config = {
-
-        # TODO: the fast.ai baseline
-        # 'arch': ub.argval('--arch', default='wrn_22'),
-        # 'schedule': ub.argval('--arch', default='onecycle'),
-        # 'lr': float(ub.argval('--lr', default=0.003)),
-
         # A conservative traditional baseline
         'arch': ub.argval('--arch', default='resnet50'),
         'lr': float(ub.argval('--lr', default=0.1)),
@@ -402,6 +412,7 @@ def setup_harn():
                         transform=transform_test),
     }
     if True:
+        # Create a test train split
         learn = datasets['train']
         indices = np.arange(len(learn))
         indices = nh.util.shuffle(indices, rng=0)
@@ -410,7 +421,7 @@ def setup_harn():
         datasets['train'] = torch.utils.data.Subset(learn, indices[num_vali:])
 
     # For some reason the torchvision objects do not make the category names
-    # easilly available. We set them here for ease of use.
+    # easily available. We set them here for ease of use.
     reduction = int(ub.argval('--reduction', default=1))
     for key, dset in datasets.items():
         dset.categories = categories
@@ -554,7 +565,7 @@ def setup_harn():
 
     # Notice that arguments to hyperparameters are typically specified as a
     # tuple of (type, Dict), where the dictionary are the keyword arguments
-    # that can be used to instanciate an instance of that class. While
+    # that can be used to instantiate an instance of that class. While
     # this may be slightly awkward, it enables netharn to track hyperparameters
     # more effectively. Note that it is possible to simply pass an already
     # constructed instance of a class, but this causes information loss.
@@ -562,11 +573,13 @@ def setup_harn():
         # Datasets must be preconstructed
         datasets=datasets,
         nice='cifar10_' + config['arch'],
-        # Loader preconstructed
+        # Loader may be preconstructed
         loaders=loaders,
         workdir=config['workdir'],
         xpu=xpu,
         # The 6 major hyper components are best specified as a Tuple[type, dict]
+        # However, in recent releases of netharn, these may be preconstructed
+        # as well.
         model=model_,
         optimizer=optimizer_,
         scheduler=scheduler_,
@@ -585,6 +598,12 @@ def setup_harn():
             # Specify anything else that is special about your hyperparams here
             # Especially if you make a custom_batch_runner
         },
+        # These extra arguments are recorded in the train_info.json but do
+        # not contribute to the hyperparameter hash.
+        extra={
+            'config': ub.repr2(config.asdict()),
+            'argv': sys.argv,
+        }
     )
 
     # Creating an instance of a Fitharn object is typically fast.
@@ -605,7 +624,7 @@ def main():
     if ub.argval(('--vd', '--view-directory')):
         ub.startfile(harn.train_dpath)
 
-    # This starts the main loop which will run until a the monitor's terminator
+    # This starts the main loop which will run until the monitor's terminator
     # criterion is satisfied. If the initialize step loaded a checkpointed that
     # already met the termination criterion, then this will simply return.
     deploy_fpath = harn.run()

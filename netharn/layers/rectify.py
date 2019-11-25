@@ -26,14 +26,7 @@ def rectify_nonlinearity(key=ub.NoParam, dim=2):
         key = 'relu'
 
     if isinstance(key, six.string_types):
-        if key == 'relu':
-            key = {'type': 'relu'}
-        elif key == 'relu6':
-            key = {'type': 'relu6'}
-        elif key == 'leaky_relu':
-            key = {'type': 'leaky_relu', 'negative_slope': 1e-2}
-        else:
-            raise KeyError(key)
+        key = {'type': key}
     elif isinstance(key, dict):
         key = key.copy()
     else:
@@ -47,6 +40,12 @@ def rectify_nonlinearity(key=ub.NoParam, dim=2):
         cls = torch.nn.LeakyReLU
     elif noli_type == 'relu':
         cls = torch.nn.ReLU
+    elif noli_type == 'elu':
+        cls = torch.nn.ELU
+    elif noli_type == 'celu':
+        cls = torch.nn.CELU
+    elif noli_type == 'selu':
+        cls = torch.nn.SELU
     elif noli_type == 'relu6':
         cls = torch.nn.ReLU6
     else:
@@ -54,9 +53,14 @@ def rectify_nonlinearity(key=ub.NoParam, dim=2):
     return cls(**kw)
 
 
-def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
+def rectify_normalizer(in_channels, key=ub.NoParam, dim=2, **kwargs):
     """
     Allows dictionary based specification of a normalizing layer
+
+    Args:
+        in_channels (int): number of input channels
+        dim (int): dimensionality
+        **kwargs: extra args
 
     Example:
         >>> rectify_normalizer(8)
@@ -82,16 +86,7 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
         key = 'batch'
 
     if isinstance(key, six.string_types):
-        if key == 'batch':
-            key = {'type': 'batch'}
-        elif key == 'syncbatch':
-            key = {'type': 'syncbatch'}
-        elif key == 'group':
-            key = {'type': 'group', 'num_groups': ('gcd', min(in_channels, 32))}
-        elif key == 'batch+group':
-            key = {'type': 'batch+group'}
-        else:
-            raise KeyError(key)
+        key = {'type': key}
     elif isinstance(key, dict):
         key = key.copy()
     else:
@@ -116,6 +111,9 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
         cls = torch.nn.SyncBatchNorm
     elif norm_type == 'group':
         in_channels_key = 'num_channels'
+        if key.get('num_groups') is None:
+            key['num_groups'] = ('gcd', min(in_channels, 32))
+
         if isinstance(key['num_groups'], tuple):
             if key['num_groups'][0] == 'gcd':
                 key['num_groups'] = gcd(
@@ -134,7 +132,17 @@ def rectify_normalizer(in_channels, key=ub.NoParam, dim=2):
         raise KeyError('unknown type: {}'.format(key))
     assert in_channels_key not in key
     key[in_channels_key] = in_channels
-    return cls(**key)
+
+    try:
+        import copy
+        kw = copy.copy(key)
+        kw.update(kwargs)
+        return cls(**kw)
+    except Exception:
+        # Ignore kwargs
+        import warnings
+        warnings.warn('kwargs ignored in rectify normalizer')
+        return cls(**key)
 
 
 def rectify_conv(dim=2):

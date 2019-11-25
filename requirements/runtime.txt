@@ -1,15 +1,9 @@
-# Misc
-# ====
-pandas >= 0.23.3
 torchvision >= 0.2.1
 six >= 1.11.0
 torch >= 1.0.0
-numpy >= 1.14.5
-scipy >= 1.2.1
-ubelt >= 0.8.2
-progiter >= 0.0.2
+numpy >= 1.9.0
+ubelt >= 0.8.4
 parse >= 1.8.4
-packaging >= 17.1
 pyflakes >= 1.6.0
 astunparse >= 1.6.1
 pygtrie >= 2.2
@@ -21,7 +15,4 @@ kwarray >= 0.4.0
 kwimage >= 0.4.0
 kwplot >= 0.4.0
 
-
-# Python 2.7 Only
-# ====================
 qualname>=0.1.0;python_version < '3.0' 

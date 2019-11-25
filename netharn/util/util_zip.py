@@ -124,7 +124,7 @@ class zopen(ub.NiceRepr):
         _handle = None
         if exists(self.fpath):
             _handle = open(self.fpath, self.mode)
-        elif '.zip/' in self.fpath:
+        elif '.zip/' in self.fpath or '.zip' + os.path.sep in self.fpath:
             fpath = self.fpath
             archivefile, internal = split_archive(fpath)
             myzip = zipfile.ZipFile(archivefile, 'r')

@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import warnings
-import scipy as sp
 import numpy as np
-import pandas as pd
 import ubelt as ub
 
 
@@ -65,6 +63,7 @@ def classification_report(y_true, y_pred, target_names=None,
         >>>     rs.append(report)
         >>> import plottool as pt
         >>> pt.qtensure()
+        >>> import pandas as pd
         >>> df = pd.DataFrame(rs).drop(['raw'], axis=1)
         >>> delta = df.subtract(df['target'], axis=0)
         >>> sqrd_error = np.sqrt((delta ** 2).sum(axis=0))
@@ -73,6 +72,8 @@ def classification_report(y_true, y_pred, target_names=None,
         >>> ys = df.to_dict(orient='list')
         >>> pt.multi_plot(ydata_list=ys)
     """
+    import pandas as pd
+    import scipy as sp
     import sklearn.metrics
     from sklearn.preprocessing import LabelEncoder
 
@@ -351,6 +352,7 @@ def ovr_classification_report(mc_y_true, mc_probs, target_names=None,
         2 0.8000 0.8693 0.2623 0.2652 0.1602        5  0.2778
 
     """
+    import pandas as pd
     import sklearn.metrics
 
     if metrics is None:

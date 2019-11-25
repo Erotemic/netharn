@@ -44,7 +44,7 @@ from .util_io import (read_arr, read_h5arr, write_arr, write_h5arr,)
 from .util_iter import (roundrobin,)
 from .util_json import (LossyJSONEncoder, NumpyEncoder, read_json, walk_json,
                         write_json,)
-from .util_misc import (SupressPrint, FlatIndexer)
+from .util_misc import (SupressPrint, FlatIndexer, strip_ansi)
 from .util_resources import (ensure_ulimit,)
 from .util_slider import (SlidingIndexDataset, SlidingSlices, SlidingWindow,
                           Stitcher,)
@@ -138,7 +138,7 @@ __all__ = ['ArrayAPI', 'BatchNormContext', 'Boxes', 'CacheStamp', 'Color',
            'subpixel_translate', 'torch_ravel_multi_index', 'trainable_layers',
            'uniform', 'uniform32', 'util_dataframe', 'walk_json',
            'warp_points', 'warp_tensor', 'wide_strides_1d', 'write_arr',
-           'write_h5arr', 'write_json', 'zopen', 'FlatIndexer']
+           'write_h5arr', 'write_json', 'zopen', 'FlatIndexer', 'strip_ansi']
 # </AUTOGEN_INIT>
 
 

@@ -3,10 +3,10 @@ import torch  # NOQA
 import torch.nn.functional as F
 import torch.nn.modules
 import kwarray
-from packaging import version
+from distutils.version import LooseVersion
 
 
-if version.parse(torch.__version__) < version.parse('1.0.0'):
+if LooseVersion(torch.__version__) < LooseVersion('1.0.0'):
     ELEMENTWISE_MEAN = 'elementwise_mean'
 else:
     ELEMENTWISE_MEAN = 'mean'
@@ -288,6 +288,8 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
                  reduction=ELEMENTWISE_MEAN, ignore_index=-100):
         size_average, reduce, reduction = _backwards_compat_reduction_kw(
             size_average, reduce, reduction)
+        if isinstance(weight, list):
+            weight = torch.FloatTensor(weight)
         super(FocalLoss, self).__init__(weight=weight, reduction=reduction)
         self.focus = focus
         self.ignore_index = ignore_index

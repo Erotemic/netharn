@@ -504,7 +504,7 @@ def setup_sampler(config):
     if config['dbname'] == 'ggr2':
         print('Creating torch CocoDataset')
 
-        root = ub.truepath('~/data/')
+        root = ub.expandpath('~/data/')
         print('root = {!r}'.format(root))
 
         train_dset = ndsampler.CocoDataset(
@@ -527,7 +527,7 @@ def setup_sampler(config):
     if config['dbname'] == 'ggr2-revised':
         print('Creating torch CocoDataset')
 
-        root = ub.truepath('~/data/ggr2.coco.revised')
+        root = ub.expandpath('~/data/ggr2.coco.revised')
         print('root = {!r}'.format(root))
 
         train_dset = ndsampler.CocoDataset(

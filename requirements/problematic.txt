@@ -1,1 +1,2 @@
 # These are optional requirements that are problematic when installing via pip
+pycocotools

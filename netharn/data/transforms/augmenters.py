@@ -88,7 +88,7 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
 
     Ignore:
         >>> from netharn.data.transforms.augmenters import *
-        >>> lnpre = ub.import_module_from_path(ub.truepath('~/code/lightnet/lightnet/data/transform/_preprocess.py'))
+        >>> lnpre = ub.import_module_from_path(ub.expandpath('~/code/lightnet/lightnet/data/transform/_preprocess.py'))
         >>> self = lnpre.HSVShift(0.1, 1.5, 1.5)
         >>> from PIL import Image
         >>> img = demodata_hsv_image()
