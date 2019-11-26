@@ -253,7 +253,7 @@ stages:
 # ---------------
 # Python 3.7 Jobs
 
-build/cp37-cp37m-universal:
+build/py2.py3-none-any:
     <<: 
         - *build_template
     image:
@@ -271,13 +271,13 @@ test_basic/cp37-cp37m-universal:
     image:
         python:3.7
 
-gpgsign/cp37-cp37m-universal:
+gpgsign/py2.py3-none-any:
     <<: 
         - *gpgsign_template
     image:
         python:3.7
 
-deploy/cp37-cp37m-universal:
+deploy/py2.py3-none-any:
     <<: 
         - *deploy_template
     image:
