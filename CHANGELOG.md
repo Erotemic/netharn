@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.5.3
 
+### Added
+* Add `tensorboard_groups` to config
+
 
 ## Version 0.5.2 - Release 2019-Nov-25
 
