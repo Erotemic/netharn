@@ -11,7 +11,7 @@ makes no sense to write them from scratch for each new project.
 """
 
 
-def _dump_monitor_tensorboard(harn, mode='epoch'):
+def _dump_monitor_tensorboard(harn, mode='epoch', special_groupers=['loss']):
     """
     Dumps PNGs to disk visualizing tensorboard scalars.
     Also dumps pickles to disk containing the same information.
@@ -48,6 +48,7 @@ def _dump_monitor_tensorboard(harn, mode='epoch'):
 
     tb_data['meta'] = {
         'nice': harn.hyper.nice,
+        'special_groupers': special_groupers,
     }
 
     out_dpath = ub.ensuredir((train_dpath, 'monitor', 'tensorboard'))
@@ -162,7 +163,7 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
         >>> import ubelt as ub
         >>> out_dpath = ub.expandpath('~/work/project/fit/nice/nicename/monitor/tensorboard/')
         >>> out_dpath = ub.argval('--out_dpath', default=out_dpath)
-        >>> mode = 'epoch'
+        >>> mode = 'iter'
         >>> fpath = join(out_dpath, 'tb_data.json')
         >>> tb_data = json.load(open(fpath, 'r'))
         >>> _dump_measures(tb_data,  out_dpath)
@@ -205,6 +206,7 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
 
     meta = tb_data.get('meta', {})
     nice = meta.get('nice', '?nice?')
+    special_groupers = meta.get('special_groupers', ['loss'])
 
     fig = kwplot.figure(fnum=1)
 
@@ -240,7 +242,28 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
         """
         low, high = None, None
         for ydata in ydatas:
-            low_, high_ = np.percentile(ydata, [5, 95])
+            q1 = 0.05
+            q2 = 0.95
+            low_, high_ = np.quantile(ydata, [q1, q2])
+
+            # Extrapolate how big the entire span should be based on inliers
+            inner_q = q2 - q1
+            inner_extent = high_ - low_
+            extrap_total_extent = inner_extent  / inner_q
+
+            # amount of padding to add to either side
+            missing_p1 = q1
+            missing_p2 = 1 - q2
+            frac1 = missing_p1 / (missing_p2 + missing_p1)
+            frac2 = missing_p2 / (missing_p2 + missing_p1)
+            missing_extent = extrap_total_extent - inner_extent
+
+            pad1 = missing_extent * frac1
+            pad2 = missing_extent * frac2
+
+            low_ = low_ - pad1
+            high_ = high_ + pad2
+
             low = low_ if low is None else min(low_, low)
             high = high_ if high is None else max(high_, high)
         return (low, high)
@@ -248,17 +271,22 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
     # Hack values that we don't apply smoothing to
     HACK_NO_SMOOTH = ['lr', 'momentum']
 
+    def tag_grouper(k):
+        # parts = ['train_epoch', 'vali_epoch', 'test_epoch']
+        # parts = [p.replace('epoch', 'mode') for p in parts]
+        parts = [p + mode for p in ['train_', 'vali_', 'test_']]
+        for p in parts:
+            if p in k:
+                return p.split('_')[0]
+        return 'unknown'
+
     GROUP_LOSSES = True
+    GROUP_AND_INDIVIDUAL = False
+    INDIVIDUAL_PLOTS = True
+    GROUP_SPECIAL = True
+
     if GROUP_LOSSES:
         # Group all losses in one plot for comparison
-        def tag_grouper(k):
-            # parts = ['train_epoch', 'vali_epoch', 'test_epoch']
-            # parts = [p.replace('epoch', 'mode') for p in parts]
-            parts = [p + mode for p in ['train_', 'vali_', 'test_']]
-            for p in parts:
-                if p in k:
-                    return p.split('_')[0]
-            return 'unknown'
         loss_keys = [k for k in keys if 'loss' in k]
         tagged_losses = ub.group_items(loss_keys, tag_grouper)
         tagged_losses.pop('unknown', None)
@@ -268,14 +296,16 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
         for tag, losses in tagged_losses.items():
 
             min_abs_y = .01
+            min_y = 0
             xydata = ub.odict()
             for key in sorted(losses):
                 ydata = tb_data[key]['ydata']
 
-                if key not in HACK_NO_SMOOTH:
+                if HACK_NO_SMOOTH not in key.split('_'):
                     ydata = smooth_curve(ydata, smoothing)
 
                 try:
+                    min_y = min(min_y, ydata.min())
                     pos_ys = ydata[ydata > 0]
                     min_abs_y = min(min_abs_y, pos_ys.min())
                 except Exception:
@@ -283,11 +313,12 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
 
                 xydata[key] = (tb_data[key]['xdata'], ydata)
 
+            kw['ymin'] = min_y
+
             if ignore_outliers:
                 low, kw['ymax'] = inlier_ylim([t[1] for t in xydata.values()])
 
             yscales = ['symlog', 'linear']
-
             for yscale in yscales:
                 fig.clf()
                 ax = fig.gca()
@@ -302,12 +333,47 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
                 ax.figure.savefig(fpath)
 
         # don't dump losses individually if we dump them in a group
-        GROUP_AND_INDIVIDUAL = False
         if not GROUP_AND_INDIVIDUAL:
             keys.difference_update(set(loss_keys))
             # print('keys = {!r}'.format(keys))
 
-    INDIVIDUAL_PLOTS = True
+    if GROUP_SPECIAL:
+        tag_groups = ub.group_items(keys, tag_grouper)
+        tag_groups.pop('unknown', None)
+        # Group items matching these strings
+        kw = {}
+        for tag, tag_keys in tag_groups.items():
+            for groupname in special_groupers:
+                group_keys = [k for k in tag_keys if groupname in k.split('_')]
+                if len(group_keys) > 1:
+                    # Gather data for this group
+                    xydata = ub.odict()
+                    for key in sorted(group_keys):
+                        ydata = tb_data[key]['ydata']
+                        if HACK_NO_SMOOTH not in key.split('_'):
+                            ydata = smooth_curve(ydata, smoothing)
+                        xydata[key] = (tb_data[key]['xdata'], ydata)
+
+                    if ignore_outliers:
+                        low, kw['ymax'] = inlier_ylim([t[1] for t in xydata.values()])
+
+                    yscales = ['linear']
+                    for yscale in yscales:
+                        fig.clf()
+                        ax = fig.gca()
+                        title = nice + '\n' + tag + '_' + mode + ' ' + groupname
+                        kwplot.multi_plot(xydata=xydata, ylabel=groupname, xlabel=mode,
+                                          yscale=yscale, title=title, fnum=1, ax=ax,
+                                          **kw)
+                        if yscale == 'symlog':
+                            ax.set_yscale('symlog', linthreshy=min_abs_y)
+                        fname = '_'.join([tag, mode, 'group-' + groupname, yscale]) + '.png'
+                        fpath = join(out_dpath, fname)
+                        ax.figure.savefig(fpath)
+
+                    if not GROUP_AND_INDIVIDUAL:
+                        keys.difference_update(set(group_keys))
+
     if INDIVIDUAL_PLOTS:
         # print('keys = {!r}'.format(keys))
         for key in keys:
@@ -321,7 +387,7 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
                 kw['ymin'] = 0.0
                 kw['ymax'] = 1.0
             elif any(m.lower() in key.lower() for m in y0_measures):
-                kw['ymin'] = 0.0
+                kw['ymin'] = min(0.0, ydata.min())
                 if ignore_outliers:
                     low, kw['ymax'] = inlier_ylim([ydata])
 

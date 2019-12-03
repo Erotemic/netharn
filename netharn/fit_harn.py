@@ -1563,7 +1563,8 @@ class CoreMixin(object):
             try:
                 # Perhaps dump tensorboard metrics to png / pickle?
                 from netharn.mixins import _dump_monitor_tensorboard
-                _dump_monitor_tensorboard(harn, mode)
+                _dump_monitor_tensorboard(harn, mode,
+                                          harn.config['tensorboard_groups'])
             except Exception as ex:
                 harn.warn('Failed to dump tensorboard: {}'.format(repr(ex)))
 
@@ -1750,7 +1751,9 @@ class CoreMixin(object):
                                 if harn.config['eager_dump_tensorboard']:
                                     # Dump tensorboard metrics to png / pickle.
                                     from netharn.mixins import _dump_monitor_tensorboard
-                                    _dump_monitor_tensorboard(harn, 'iter')
+                                    _dump_monitor_tensorboard(
+                                        harn, 'iter',
+                                        harn.config['tensorboard_groups'])
 
                         prog.update(display_interval)
                         if use_tqdm:
@@ -2354,6 +2357,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
 
             # If True, logs tensorboard within inner iteration (experimental)
             'eager_dump_tensorboard': False,
+            'tensorboard_groups': ['loss'],  # patterns to be grouped in tensorboard
 
             # Set this to a list of modules that the final standalone deployed
             # zipfile should not depend on. The exporter will expand any code
