@@ -461,16 +461,16 @@ class MixinCocoExtras(object):
                     'num': 11,
                 },
                 'images': {
-                    'pixels': '67d741fefc8...',
-                    'json': 'd52eeb0c4...',
+                    'pixels': '...',
+                    'json': '...',
                     'num': 3,
                 },
                 'categories': {
-                    'json': '9a92615e2b...',
+                    'json': '...',
                     'num': 7,
                 },
             }
-            self.hashid = 'b45256273...
+            self.hashid = '...
 
         Doctest:
             >>> self = CocoDataset.demo()

@@ -462,6 +462,10 @@ class BinaryConfusionVectors(object):
     def roc(self, fp_cutoff=None):
         import sklearn
         import sklearn.metrics  # NOQA
+        try:
+            from sklearn.metrics._ranking import _binary_clf_curve
+        except ImportError:
+            from sklearn.metrics.ranking import _binary_clf_curve
         data = self.data
         y_true = data['is_true']
         y_score = data['pred_score']
@@ -479,7 +483,7 @@ class BinaryConfusionVectors(object):
         realneg_total = ((1 - data['is_true']) * data['weight']).sum()
         nsupport = data['weight'].sum()
 
-        fp_count, tp_count, count_thresholds = sklearn.metrics.ranking._binary_clf_curve(
+        fp_count, tp_count, count_thresholds = _binary_clf_curve(
             y_true, y_score, pos_label=1, sample_weight=sample_weight)
 
         if len(count_thresholds) > 0 and count_thresholds[-1] == 0:
