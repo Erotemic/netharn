@@ -9,8 +9,18 @@ from os.path import exists
 from os.path import join
 from os.path import dirname
 from os.path import abspath
-import ubelt as ub
-import functools
+try:
+    import ubelt as ub
+    import click
+    import git as gitpython
+    import functools
+except ImportError as ex:
+    print('ex = {!r}'.format(ex))
+    print('!!!!!!!!!')
+    print('NEED TO INSTALL SUPER SETUP DEPENDENCIES. RUN:')
+    print('pip install -r requirements/super_setup.txt')
+    print('!!!!!!!!!')
+    raise
 
 
 class ShellException(Exception):
