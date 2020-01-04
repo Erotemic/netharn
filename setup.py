@@ -214,7 +214,8 @@ def clean():
     clean_repo(repodir, modname, rel_paths)
 
 
-version = parse_version('netharn/__init__.py')  # needs to be a global var for git tags
+VERSION = version = parse_version('netharn/__init__.py')  # needs to be a global var for git tags
+NAME = 'netharn'
 
 if __name__ == '__main__':
     if 'clean' in sys.argv:
@@ -222,8 +223,8 @@ if __name__ == '__main__':
         # sys.exit(0)
 
     setup(
-        name='netharn',
-        version=version,
+        name=NAME,
+        version=VERSION,
         author='Jon Crall',
         author_email='jon.crall@kitware.com',
         url='https://gitlab.kitware.com/computer-vision/netharn',
