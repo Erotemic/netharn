@@ -6,6 +6,22 @@ mkinit netharn --noattrs
 """
 __version__ = '0.5.3'
 
+try:
+    # PIL 7.0.0 removed PIL_VERSION, which breaks torchvision, monkey patch it
+    # back in.
+    import PIL
+    PIL.PILLOW_VERSION = PIL.__version__
+except AttributeError:
+    pass
+
+
+# patch for imgaug
+try:
+    import numpy as np
+    np.random.bit_generator = np.random._bit_generator
+except AttributeError:
+    pass
+
 from netharn.api import (
     Initializer, Optimizer, Criterion, Loaders, Scheduler, Dynamics,
     configure_hacks, configure_workdir,
