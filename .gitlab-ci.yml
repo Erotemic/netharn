@@ -67,14 +67,14 @@ stages:
     before_script:
         - python -V  # Print out python version for debugging
         - export PYVER=$(python -c "import sys; print('{}{}'.format(*sys.version_info[0:2]))")
-        - pip install virtualenv
+        - pip install --progress-bar off virtualenv
         - virtualenv venv$PYVER
         - source venv$PYVER/bin/activate
-        - pip install pip -U
-        - pip install pip setuptools -U
+        - pip install --progress-bar off pip -U
+        - pip install --progress-bar off pip setuptools -U
         - python -V  # Print out python version for debugging
-        - pip install -r requirements.txt
-        - pip install .  
+        - pip install --progress-bar off -r requirements.txt
+        - pip install .
 
     script: 
         - ./run_tests.py
