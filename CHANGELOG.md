@@ -9,6 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 * Add `tensorboard_groups` to config
 
+### Fixed
+* Reworked `remove_comments_and_docstrings`, so it always produces valid code.
+
 
 ## Version 0.5.2 - Release 2019-Nov-25
 
