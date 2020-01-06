@@ -398,7 +398,7 @@ class DeployedModel(ub.NiceRepr):
         >>> # small library changes it often changes, so we are permissive
         >>> # with this got/want test
         >>> print('model.__module__ = {!r}'.format(model.__module__))
-        model.__module__ = 'deploy_ToyNet2d_..._000_.../ToyNet2d_...'
+        model.__module__ = 'deploy_ToyNet2d_..._.../ToyNet2d_...'
 
         model.__module__ = 'deploy_ToyNet2d_mhuhweia_000_.../ToyNet2d_...'
 
