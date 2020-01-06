@@ -34,7 +34,8 @@ class Monitor(ub.NiceRepr):
     Attributes:
         minimize (List[str]): measures where a lower is better
         maximize (List[str]): measures where a higher is better
-        smoothing (float): smoothness factor for the moving averages
+        smoothing (float): smoothness factor for the moving averages.
+           Currently 0.6, we may change the default to 0.0 in the future.
         max_epoch (int, default=1000): number of epochs to stop after
         patience (int, default=None): if specified, the number of epochs
             to wait before quiting if the quality metrics are not improving.
@@ -55,7 +56,7 @@ class Monitor(ub.NiceRepr):
         >>> monitor.show()
     """
 
-    def __init__(monitor, minimize=['loss'], maximize=[], smoothing=.6,
+    def __init__(monitor, minimize=['loss'], maximize=[], smoothing=0.6,
                  patience=None, max_epoch=1000, min_lr=None):
 
         # Internal attributes
