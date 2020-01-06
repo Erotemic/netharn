@@ -101,8 +101,9 @@ class Monitor(ub.NiceRepr):
         max_epoch = config.get('max_epoch', 100)
         return (cls, {
             'minimize': ['loss'],
-            'patience': config.get('patience', max_epoch),
             'max_epoch': max_epoch,
+            'patience': config.get('patience', max_epoch),
+            'min_lr': config.get('min_lr', None),
         })
 
     def show(monitor):
