@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 * Add `tensorboard_groups` to config
+* Add `min_lr` to Monitor
 
 ### Fixed
 * Reworked `remove_comments_and_docstrings`, so it always produces valid code.

@@ -1526,7 +1526,8 @@ class CoreMixin(object):
         if vali_loader and harn.check_interval('vali', harn.epoch):
             vali_metrics = harn._run_epoch(vali_loader, tag='vali',
                                            learn=False)
-            improved = harn.monitor.update(harn.epoch, vali_metrics)
+            lr = max(harn._current_lrs())
+            improved = harn.monitor.update(harn.epoch, vali_metrics, lr)
             harn._update_main_prog_desc()
 
         # Run test epoch; never use test results to guide training

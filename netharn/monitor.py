@@ -24,7 +24,7 @@ def demodata_monitor():
     return monitor
 
 
-class Monitor(object):
+class Monitor(ub.NiceRepr):
     """
     Monitors an instance of FitHarn as it trains. Makes sure that measurements
     of quality (e.g. loss, accuracy, AUC, mAP, etc...) on the validation
@@ -38,6 +38,8 @@ class Monitor(object):
         max_epoch (int, default=1000): number of epochs to stop after
         patience (int, default=None): if specified, the number of epochs
             to wait before quiting if the quality metrics are not improving.
+        min_lr (float): If specified stop learning after lr drops beyond this
+            point
 
     Example:
         >>> # simulate loss going down and then overfitting
@@ -54,7 +56,7 @@ class Monitor(object):
     """
 
     def __init__(monitor, minimize=['loss'], maximize=[], smoothing=.6,
-                 patience=None, max_epoch=1000):
+                 patience=None, max_epoch=1000, min_lr=None):
 
         # Internal attributes
         monitor._ewma = util.ExpMovingAve(alpha=1 - smoothing)
@@ -64,6 +66,8 @@ class Monitor(object):
         monitor._is_good = []
 
         # Bookkeeping
+        monitor._current_lr = None
+        monitor._current_epoch = None
         monitor._best_raw_metrics = None
         monitor._best_smooth_metrics = None
         monitor._best_epoch = None
@@ -76,6 +80,15 @@ class Monitor(object):
         # early stopping
         monitor.patience = patience
         monitor.max_epoch = max_epoch
+        monitor.min_lr = min_lr
+
+    def __nice__(self):
+        import ubelt as ub
+        return ub.repr2({
+            'patience': self.patience,
+            'max_epoch': self.max_epoch,
+            'min_lr': self.min_lr,
+        }, nl=0)
 
     @classmethod
     def coerce(cls, config, **kw):
@@ -145,7 +158,7 @@ class Monitor(object):
         """
         return monitor.__setstate__(state)
 
-    def update(monitor, epoch, _raw_metrics):
+    def update(monitor, epoch, _raw_metrics, lr=None):
         """
         Informs the monitor about quality measurements for a particular epoch.
 
@@ -162,11 +175,33 @@ class Monitor(object):
                 True if the model has quality of the validation metrics have
                 improved.
 
+        Example:
+            >>> from netharn.monitor import *  # NOQA
+            >>> import netharn as nh
+            >>> rng = np.random.RandomState(0)
+            >>> monitor = Monitor(minimize=['loss'], min_lr=1e-5)
+            >>> for epoch in range(200):
+            >>>     _raw_metrics = {'loss': rng.rand(), 'miou': rng.rand()}
+            >>>     lr = 1.0 / (10 ** max(1, epoch))
+            >>>     monitor.update(epoch, _raw_metrics, lr)
+            >>>     term_reason = monitor.is_done()
+            >>>     if term_reason:
+            >>>         print('MONITOR IS DONE. BREAK')
+            >>>         break
+            >>> print(monitor.is_done())
+            >>> assert monitor._current_lr <= monitor.min_lr
+            >>> print('monitor = {!r}'.format(monitor))
         """
         monitor._epochs.append(epoch)
         monitor._raw_metrics.append(_raw_metrics)
         monitor._ewma.update(_raw_metrics)
         # monitor.other_data.append(other)
+
+        if epoch is not None:
+            monitor._current_epoch = epoch
+
+        if lr is not None:
+            monitor._current_lr = lr
 
         _smooth_metrics = monitor._ewma.average()
         monitor._smooth_metrics.append(_smooth_metrics.copy())
@@ -236,18 +271,26 @@ class Monitor(object):
         Returns True if the termination criterion is satisfied
 
         Returns:
-            bool: if training should be stopped
+            bool | str: False if training should continue, otherwise returns a
+                string indicating the reason training should be stopped.
 
         Example:
             >>> from netharn.monitor import *
             >>> Monitor().is_done()
             False
-            >>> Monitor(patience=0).is_done()
-            True
+            >>> print(Monitor(patience=0).is_done())
+            Validation set is not improving, terminating ...
         """
-        if monitor.patience is None:
-            return False
-        return monitor._n_bad_epochs >= monitor.patience
+        if monitor.max_epoch is not None and monitor._current_epoch is not None:
+            if monitor._current_epoch >= monitor.max_epoch:
+                return 'Maximum harn.epoch reached, terminating ...'
+        if monitor.min_lr is not None and monitor._current_lr is not None:
+            if monitor._current_lr <= monitor.min_lr:
+                return 'Minimum lr reached, terminating ...'
+        if monitor.patience is not None and monitor._n_bad_epochs is not None:
+            if monitor._n_bad_epochs >= monitor.patience:
+                return 'Validation set is not improving, terminating ...'
+        return False
 
     def message(monitor, ansi=True):
         """
