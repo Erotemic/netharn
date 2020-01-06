@@ -2377,6 +2377,11 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             # Ensure we always keep a snapshot every `freq` epochs
             'keep_freq': 20,
         }
+
+        # This variable should be used to store your custom script
+        # configuration
+        harn.script_config = {}
+
         harn.current_tag = None
 
         # Private internal state
