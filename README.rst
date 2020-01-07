@@ -4,6 +4,8 @@ NetHarn - a PyTorch Network Harness
 
 |GitlabCIPipeline| |GitlabCICoverage| |Pypi| |Downloads| 
 
+The main webpage for this project is: https://gitlab.kitware.com/computer-vision/netharn
+
 NAME:
     NetHarn (pronounced "net-harn")
 FRAMEWORK:
