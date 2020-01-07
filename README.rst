@@ -54,9 +54,6 @@ KNOWN BUGS:
    * The YOLO example gets to about 70% mAP (using Girshik's mAP code) whereas we should be hitting 74-76%
 AUTHORS COMMENTS:
    * My MNIST, CIFAR, and VOC examples will download the data as needed.
-   * I'm hoping we can publicly release a few privately developed features.
-     They would take a non-trivial amount of developer time to reproduce. These
-     features mostly have to do with exporting / deploying fit models.
    * My CIFAR example for ResNet50 achieves 95.72% accuracy, outperforming the
      best DPN92 result (95.16%) that I'm aware of.
      This result seems real, I do not believe I've made an error in measurement
@@ -67,12 +64,8 @@ AUTHORS COMMENTS:
    * I reimplemented the CocoAPI (see nh.data.coco_api), because I had some
      (probably minor) issue with the original implementation. I've extended it
      quite a bit, and I'd recommend using it.
-   * My metric-learning example requires code that is not publicly available
-     :(, so only those with access to a copy of the ibeis software more recent than
-     is more
-     recent than July 2017
-     more recent
-     than 2017) can use it without modification.
+   * My metric-learning example requires code requires the ibeis software:
+     `https://github.com/Erotemic/ibeis`.
 DEPENDENCIES:
     * torch
     * numpy
