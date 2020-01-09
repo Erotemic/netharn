@@ -262,7 +262,8 @@ class ExtraMixins(object):
             https://github.com/pytorch/pytorch/issues/1355
         """
         import cv2
-        n_workers = max(loader.num_workers for loader in harn.loaders.values())
+        n_workers = max(loader.num_workers for loader in harn.loaders.values()
+                        if loader is not None)
         if n_workers > 1:
             n_threads = cv2.getNumThreads()
             if n_threads > 1:
@@ -1317,6 +1318,7 @@ class CoreMixin(object):
             harn._run_metrics = {
                 tag: util.WindowedMovingAve(window=len(loader))
                 for tag, loader in harn.loaders.items()
+                if loader is not None
             }
 
             harn._check_thread_safety()
