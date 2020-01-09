@@ -201,6 +201,7 @@ class Repo(ub.NiceRepr):
         url (URI): where the primary location is
 
     Example:
+        >>> # xdoctest: +SKIP
         >>> # Here is a simple example referencing ubelt
         >>> from super_setup import *
         >>> import ubelt as ub
