@@ -70,7 +70,7 @@ class DescriptorNetwork(layers.Module):
             >>> input_shape = (4, 3, 32, 32)
             >>> self = DescriptorNetwork(input_shape=input_shape)
             >>> nh.OutputShapeFor(self)._check_consistency(input_shape)
-            {'dvecs': (4, 128)}
+            {'dvecs': (4, 1024)}
         """
         import netharn as nh
         super(DescriptorNetwork, self).__init__()

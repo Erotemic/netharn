@@ -15,7 +15,9 @@ class MultiLayerPerceptronNd(common.Module):
     Args:
         dim (int): specify if the data is 0, 1, 2, 3, or 4 dimensional.
         in_channels (int):
-        hidden_channels (List[int]):
+        hidden_channels (List[int]): or an int specifying the number of hidden
+            layers (we choose the channel size to linearly interpolate between
+            input and output channels)
         out_channels (int):
         dropout (float, default=0): amount of dropout to use
         norm (str, default='batch'): type of normalization layer (e.g. batch or group)
@@ -38,12 +40,12 @@ class MultiLayerPerceptronNd(common.Module):
         >>> print('shape.hidden = {}'.format(ub.repr2(shape.hidden, nl=1)))
         shape = (1, 2, 7)
         shape.hidden = {
-            'hidden0': {'conv': (1, 86, 7), 'norm': (1, 86, 7), 'noli': (1, 86, 7)},
-            'dropout0': (1, 86, 7),
-            'hidden1': {'conv': (1, 44, 7), 'norm': (1, 44, 7), 'noli': (1, 44, 7)},
-            'dropout1': (1, 44, 7),
-            'hidden2': {'conv': (1, 2, 7), 'norm': (1, 2, 7), 'noli': (1, 2, 7)},
-            'dropout2': (1, 2, 7),
+            'hidden0': {'conv': (1, 96, 7), 'norm': (1, 96, 7), 'noli': (1, 96, 7)},
+            'dropout0': (1, 96, 7),
+            'hidden1': {'conv': (1, 65, 7), 'norm': (1, 65, 7), 'noli': (1, 65, 7)},
+            'dropout1': (1, 65, 7),
+            'hidden2': {'conv': (1, 34, 7), 'norm': (1, 34, 7), 'noli': (1, 34, 7)},
+            'dropout2': (1, 34, 7),
             'output': (1, 2, 7),
         }
         >>> import netharn as nh
@@ -82,8 +84,6 @@ class MultiLayerPerceptronNd(common.Module):
             n = hidden_channels
             hidden_channels = np.linspace(in_channels, out_channels, n + 1,
                                           endpoint=False)[1:]
-            print('n = {!r}'.format(n))
-            print('hidden_channels = {!r}'.format(hidden_channels))
             hidden_channels = hidden_channels.round().astype(np.int).tolist()
         self._hidden_channels = hidden_channels
 
