@@ -5,13 +5,22 @@ from netharn.layers import conv_norm
 
 class MultiLayerPerceptronNd(common.Module):
     """
+    A multi-layer perceptron network for n dimensional data
+
+    Choose the number and size of the hidden layers, number of output channels,
+    wheather to user residual connections or not, nonlinearity, normalization,
+    dropout, and more.
+
     Args:
+        dim (int): specify if the data is 0, 1, 2, 3, or 4 dimensional.
         in_channels (int):
         hidden_channels (List[int]):
         out_channels (int):
-
-    CommandLine:
-        xdoctest -m netharn.layers.perceptron MultiLayerPerceptronNd
+        dropout (float, default=0): amount of dropout to use
+        norm (str): type of normalization layer (e.g. batch or group)
+        residual (bool, default=False):
+            if true includes a resitual skip connection between inputs and
+            outputs.
 
     Example:
         >>> from netharn.layers.perceptron import *
@@ -42,22 +51,6 @@ class MultiLayerPerceptronNd(common.Module):
         >>> print(self)
         >>> input_shape = (None, 128)
         >>> print(ub.repr2(self.output_shape_for(input_shape).hidden, nl=-1))
-        {
-            'hidden0': {
-                'conv': (None, 256),
-                'norm': (None, 256),
-                'noli': (None, 256)
-            },
-            'dropout0': (None, 256),
-            'hidden1': {
-                'conv': (None, 64),
-                'norm': (None, 64),
-                'noli': (None, 64)
-            },
-            'dropout1': (None, 64),
-            'output': (None, 2),
-            'skip': (None, 2)
-        }
 
     Example:
         >>> from netharn.layers.perceptron import *
@@ -67,15 +60,10 @@ class MultiLayerPerceptronNd(common.Module):
         >>> print(self)
         >>> input_shape = (None, 128)
         >>> print(ub.repr2(self.output_shape_for(input_shape).hidden, nl=-1))
-
-    Ignore:
-        >>> from netharn.layers.perceptron import *  # NOQA
-        >>> closer = nh.export.closer.Closer()
-        >>> closer.add_dynamic(MultiLayerPerceptronNd)
-        >>> print(closer.current_sourcecode())
     """
     def __init__(self, dim, in_channels, hidden_channels, out_channels,
                  bias=True, dropout=0, noli='relu', norm=None, residual=False):
+
         super(MultiLayerPerceptronNd, self).__init__()
         dropout_cls = rectify.rectify_dropout(dim)
         conv_cls = rectify.rectify_conv(dim=dim)
