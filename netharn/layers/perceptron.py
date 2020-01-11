@@ -1,6 +1,7 @@
 from netharn.layers import common
 from netharn.layers import rectify
 from netharn.layers import conv_norm
+import numpy as np
 
 
 class MultiLayerPerceptronNd(common.Module):
@@ -17,15 +18,19 @@ class MultiLayerPerceptronNd(common.Module):
         hidden_channels (List[int]):
         out_channels (int):
         dropout (float, default=0): amount of dropout to use
-        norm (str): type of normalization layer (e.g. batch or group)
+        norm (str, default='batch'): type of normalization layer (e.g. batch or group)
+        noli (str, default='relu'): type of nonlinearity
         residual (bool, default=False):
             if true includes a resitual skip connection between inputs and
             outputs.
 
+    CommandLine:
+        xdoctest -m ~/code/netharn/netharn/layers/perceptron.py MultiLayerPerceptronNd:0
+
     Example:
         >>> from netharn.layers.perceptron import *
         >>> import ubelt as ub
-        >>> self = MultiLayerPerceptronNd(1, 128, [256, 64], out_channels=2)
+        >>> self = MultiLayerPerceptronNd(dim=1, in_channels=128, hidden_channels=3, out_channels=2)
         >>> print(self)
         MultiLayerPerceptronNd...
         >>> shape = self.output_shape_for([1, 128, 7])
@@ -33,15 +38,18 @@ class MultiLayerPerceptronNd(common.Module):
         >>> print('shape.hidden = {}'.format(ub.repr2(shape.hidden, nl=1)))
         shape = (1, 2, 7)
         shape.hidden = {
-            'hidden0': {'conv': (1, 256, 7), 'noli': (1, 256, 7)},
-            'dropout0': (1, 256, 7),
-            'hidden1': {'conv': (1, 64, 7), 'noli': (1, 64, 7)},
-            'dropout1': (1, 64, 7),
+            'hidden0': {'conv': (1, 86, 7), 'norm': (1, 86, 7), 'noli': (1, 86, 7)},
+            'dropout0': (1, 86, 7),
+            'hidden1': {'conv': (1, 44, 7), 'norm': (1, 44, 7), 'noli': (1, 44, 7)},
+            'dropout1': (1, 44, 7),
+            'hidden2': {'conv': (1, 2, 7), 'norm': (1, 2, 7), 'noli': (1, 2, 7)},
+            'dropout2': (1, 2, 7),
             'output': (1, 2, 7),
         }
         >>> import netharn as nh
         >>> nh.OutputShapeFor(self)._check_consistency([1, 128, 7])
         (1, 2, 7)
+        >>> print('self._hidden_channels = {!r}'.format(self._hidden_channels))
 
     Example:
         >>> from netharn.layers.perceptron import *
@@ -62,14 +70,22 @@ class MultiLayerPerceptronNd(common.Module):
         >>> print(ub.repr2(self.output_shape_for(input_shape).hidden, nl=-1))
     """
     def __init__(self, dim, in_channels, hidden_channels, out_channels,
-                 bias=True, dropout=0, noli='relu', norm=None, residual=False):
+                 bias=True, dropout=0, noli='relu', norm='batch',
+                 residual=False):
 
         super(MultiLayerPerceptronNd, self).__init__()
         dropout_cls = rectify.rectify_dropout(dim)
         conv_cls = rectify.rectify_conv(dim=dim)
         curr_in = in_channels
-        if hidden_channels is None:
-            hidden_channels = []
+
+        if isinstance(hidden_channels, int):
+            n = hidden_channels
+            hidden_channels = np.linspace(in_channels, out_channels, n + 1,
+                                          endpoint=False)[1:]
+            print('n = {!r}'.format(n))
+            print('hidden_channels = {!r}'.format(hidden_channels))
+            hidden_channels = hidden_channels.round().astype(np.int).tolist()
+        self._hidden_channels = hidden_channels
 
         hidden = self.hidden = common.Sequential()
         for i, curr_out in enumerate(hidden_channels):

@@ -9,6 +9,30 @@ class DescriptorNetwork(layers.Module):
     """
     Produces resnet50 + MLP descriptors
 
+    Args:
+        input_shape (Tuple): expected shape of inputs
+        desc_size (int): output descriptor dimensionality
+        hidden_channels (List[int]): number of channels in hidden layer
+        out_channels (int): number of output channels / classes
+        dropout (float, default=0): amount of dropout to use
+        norm (str, default='batch'): type of normalization layer (e.g. batch or group)
+        noli (str, default='relu'): type of nonlinearity
+        residual (bool, default=False):
+            if true includes a resitual skip connection between inputs and
+            outputs.
+
+    CommandLine:
+        xdoctest -m ~/code/netharn/netharn/models/descriptor_network.py DescriptorNetwork --gpu
+        xdoctest -m ~/code/netharn/netharn/models/descriptor_network.py DescriptorNetwork:0
+
+    Example:
+        >>> from netharn.models.descriptor_network import *
+        >>> input_shape = (4, 512, 32, 32)
+        >>> self = DescriptorNetwork(input_shape=input_shape)
+        >>> print(self)
+        >>> shape = self.output_shape_for(input_shape)
+        >>> print(ub.repr2(shape.hidden.shallow(2), nl=-1))
+
     Example:
         >>> # xdoctest: +REQUIRES(--gpu)
         >>> from netharn.models.descriptor_network import *
@@ -33,9 +57,9 @@ class DescriptorNetwork(layers.Module):
             }
         }
     """
-    def __init__(self, branch=None, input_shape=(1, 3, 416, 416),
-                 norm_desc=False, desc_size=128,
-                 hidden_channels=[]):
+    def __init__(self, branch='resnet50', input_shape=(1, 3, 416, 416),
+                 norm_desc=False, desc_size=1024, hidden_channels=3, dropout=0,
+                 norm='batch', noli='relu', residual=False, bias=False):
         """
         Note:
             * i have found norm_desc to be generally unhelpful.
@@ -52,7 +76,8 @@ class DescriptorNetwork(layers.Module):
         super(DescriptorNetwork, self).__init__()
 
         pretrained = True
-        if branch is None:
+
+        if branch is None or branch == 'resnet50':
             self.branch = torchvision.models.resnet50(pretrained=pretrained)
         else:
             self.branch = branch
@@ -77,10 +102,10 @@ class DescriptorNetwork(layers.Module):
                 bias=prev.bias,
             )
             if pretrained:
-                nh.initializers.nninit_base.load_partial_state(
+                nh.initializers.functional.load_partial_state(
                     self.branch.conv1,
                     prev.state_dict(),
-                    initializer=nh.initializers.KaimingNormal(),
+                    leftover=nh.initializers.KaimingNormal(),
                     verbose=0,
                 )
 
@@ -127,10 +152,9 @@ class DescriptorNetwork(layers.Module):
 
         # Replace the final linear layer with an MLP head
         self.branch.fc = layers.MultiLayerPerceptronNd(
-            dim=0, in_channels=pool_channels,
-            hidden_channels=hidden_channels,
-            out_channels=desc_size, bias=False,
-            norm=None, noli='relu', residual=False)
+            dim=0, in_channels=pool_channels, hidden_channels=hidden_channels,
+            out_channels=desc_size, bias=bias, dropout=dropout, norm=norm,
+            noli=noli, residual=residual)
 
     def _debug_hidden(self, input_shape, n=5):
         """
