@@ -248,7 +248,7 @@ def setup_harn(**kw):
     # They nh.HyperParams object keeps track of and helps log all declarative
     # info related to training a model.
     hyper = nh.hyperparams.HyperParams(
-        nice='mnist',
+        nice='my-mnist-demo',
         xpu=xpu,
         workdir=workdir,
         datasets=datasets,
@@ -290,6 +290,9 @@ def setup_harn(**kw):
     )
 
     harn = MnistHarn(hyper=hyper)
+    harn.config.update({
+        'keyboard_debug': True,
+    })
 
     # Set how often vali / test will be run
     harn.intervals.update({

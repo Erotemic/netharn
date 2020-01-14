@@ -457,7 +457,7 @@ class SegmentationConfig(scfg.Config):
     Default configuration for setting up a training session
     """
     default = {
-        'nice': scfg.Path('untitled', help='A human readable tag that is "nice" for humans'),
+        'nice': scfg.Value('untitled', help='A human readable tag that is "nice" for humans'),
         'workdir': scfg.Path('~/work/sseg', help='Dump all results in your workdir'),
 
         'workers': scfg.Value(0, help='number of parallel dataloading jobs'),

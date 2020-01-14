@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 * Reworked `remove_comments_and_docstrings`, so it always produces valid code.
+* `nh.XPU` classmethods now work correctly for inheriting classes
 
 
 ## Version 0.5.2 - Release 2019-Nov-25

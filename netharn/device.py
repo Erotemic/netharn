@@ -245,16 +245,7 @@ class XPU(ub.NiceRepr):
     of = from_data  # alias
 
     @classmethod
-    def coerce(cls, item, **kwargs):
-        """
-        Converts objects of many different types into an XPU.
-
-        I think I like this name better than cast, not sure
-        """
-        return cls.cast(item, **kwargs)
-
-    @classmethod
-    def cast(xpu, item, check=True, **kwargs):
+    def coerce(XPU, item, check=True, **kwargs):
         """
         Converts objects of many different types into an XPU.
 
@@ -316,6 +307,13 @@ class XPU(ub.NiceRepr):
                 ValueError
         except Exception as ex:
             raise ValueError('cannot cast to XPU. item={!r}. Caused by: {!r}'.format(item, ex))
+
+    @classmethod
+    def cast(xpu, item, check=True, **kwargs):
+        """
+        Deprecated, use XPU.coerce instead.
+        """
+        return xpu.coerce(item, **kwargs)
 
     def __eq__(xpu, other):
         """

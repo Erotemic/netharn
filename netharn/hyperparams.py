@@ -75,12 +75,39 @@ def _hash_data(data):
     return ub.hash_data(data, hasher='sha512', base='abc', types=True)
 
 
-def _ensure_json_serializable(dict_):
+def _ensure_json_serializable(dict_, normalize_containers=False):
     """
     Convert numpy and tuples into lists
+
+    Args:
+        normalize_containers (bool, default=False):
+            if True, normalizes dict containers to be standard python
+            structures.
+
+    Example:
+        >>> from netharn.hyperparams import *  # NOQA
+        >>> from netharn.hyperparams import _hash_data, _ensure_json_serializable
+        >>> data = ub.ddict(lambda: int)
+        >>> data['foo'] = ub.ddict(lambda: int)
+        >>> data['bar'] = np.array([1, 2, 3])
+        >>> data['foo']['a'] = 1
+        >>> data['foo']['b'] = torch.FloatTensor([1, 2, 3])
+        >>> result = _ensure_json_serializable(data, normalize_containers=True)
+        >>> assert type(result) is dict
     """
     import copy
     dict_ = copy.deepcopy(dict_)
+
+    def _norm_container(c):
+        if isinstance(c, dict):
+            # Cast to a normal dictionary
+            if isinstance(c, OrderedDict):
+                if type(c) is not OrderedDict:
+                    c = OrderedDict(c)
+            else:
+                if type(c) is not dict:
+                    c = dict(c)
+        return c
 
     # inplace convert any ndarrays to lists
     def _walk_json(data, prefix=[]):
@@ -136,9 +163,17 @@ def _ensure_json_serializable(dict_):
             elif hasattr(value, '__json__'):
                 new_value = value.__json__()
                 to_convert.append((root, key, new_value))
+            elif normalize_containers:
+                if isinstance(value, dict):
+                    new_value = _norm_container(value)
+                    to_convert.append((root, key, new_value))
 
     for root, key, new_value in to_convert:
         _convert(dict_, root, key, new_value)
+
+    if normalize_containers:
+        # normalize the outer layer
+        dict_ = _norm_container(dict_)
     return dict_
 
 
@@ -601,7 +636,7 @@ class HyperParams(object):
 
     def make_xpu(hyper):
         """ Instanciate the criterion defined by the hyperparams """
-        xpu = device.XPU.cast(hyper.xpu)
+        xpu = device.XPU.coerce(hyper.xpu)
         return xpu
 
     def make_monitor(hyper):
