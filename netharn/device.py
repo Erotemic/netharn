@@ -313,7 +313,10 @@ class XPU(ub.NiceRepr):
         """
         Deprecated, use XPU.coerce instead.
         """
-        return xpu.coerce(item, **kwargs)
+        import warnings
+        warnings.warn('XPU.cast is deprecated, use XPU.coerce instead',
+                      DeprecationWarning)
+        return xpu.coerce(item, check=check, **kwargs)
 
     def __eq__(xpu, other):
         """

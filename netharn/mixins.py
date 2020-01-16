@@ -11,7 +11,8 @@ makes no sense to write them from scratch for each new project.
 """
 
 
-def _dump_monitor_tensorboard(harn, mode='epoch', special_groupers=['loss']):
+def _dump_monitor_tensorboard(harn, mode='epoch', special_groupers=['loss'],
+                              serial=False):
     """
     Dumps PNGs to disk visualizing tensorboard scalars.
     Also dumps pickles to disk containing the same information.
@@ -39,7 +40,6 @@ def _dump_monitor_tensorboard(harn, mode='epoch', special_groupers=['loss']):
     import six
     from six.moves import cPickle as pickle
 
-    serial = False
     harn.debug('Plotting tensorboard data. serial={}, mode={}'.format(serial, mode))
 
     train_dpath = harn.train_dpath
@@ -117,7 +117,8 @@ def _dump_monitor_tensorboard(harn, mode='epoch', special_groupers=['loss']):
                 proc.start()
                 harn._internal_procs[mode][proc.pid] = proc
             else:
-                harn.warn('NOT DOING MPL DRAW')
+                if 0:
+                    harn.warn('NOT DOING MPL DRAW')
     else:
         func(*args)
 

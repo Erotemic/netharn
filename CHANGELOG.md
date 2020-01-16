@@ -9,10 +9,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 * Add `tensorboard_groups` to config
 * Add `min_lr` to Monitor
+* Add `harn.iter_index`, new property which tracks the number iterations
 
 ### Fixed
 * Reworked `remove_comments_and_docstrings`, so it always produces valid code.
 * `nh.XPU` classmethods now work correctly for inheriting classes
+* Iteration indexes are now correct in tensorboard.
+
+### Changed
+* `nh.XPU.cast` will now throw deprecation warnings use `nh.XPU.coerce` instead.
+* `harn.config` is deprecated using `harn.preferences` instead.
+* Progress display now counts epochs starting from 1, so the final epoch will
+  read `({harn.epoch + 1})/({harn.monitor.max_epoch})`. The internal `harn.epoch` is still 0-based.
 
 
 ## Version 0.5.2 - Release 2019-Nov-25
