@@ -22,7 +22,7 @@ Example:
     >>>     'datasets'    : datasets,
     >>>     'nice'        : 'demo',
     >>>     'loaders'     : {'batch_size': 64},
-    >>>     'xpu'         : nh.XPU.cast('auto'),
+    >>>     'xpu'         : nh.XPU.coerce('auto'),
     >>>     # --- Algorithm Second
     >>>     'model'       : (nh.models.ToyNet2d, {}),
     >>>     'optimizer'   : (nh.optimizers.SGD, {
@@ -836,7 +836,7 @@ class HyperParams(object):
             >>>     'nice'        : 'demo',
             >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/demo'),
             >>>     'loaders'     : {'batch_size': 64},
-            >>>     'xpu'         : nh.XPU.cast('auto'),
+            >>>     'xpu'         : nh.XPU.coerce('auto'),
             >>>     # --- Algorithm Second
             >>>     'model'       : (nh.models.ToyNet2d, {}),
             >>>     'optimizer'   : (nh.optimizers.SGD, {

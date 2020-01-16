@@ -661,7 +661,7 @@ def setup_yolo_harness(bsize=16, workers=0):
         >>> harn.initialize()
     """
 
-    xpu = nh.XPU.cast('argv')
+    xpu = nh.XPU.coerce('argv')
 
     nice = ub.argval('--nice', default='Yolo2Baseline')
     batch_size = int(ub.argval('--batch_size', default=bsize))

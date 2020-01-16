@@ -253,14 +253,14 @@ class XPU(ub.NiceRepr):
             item : special string, int, list, or None
 
         Example:
-            >>> assert XPU.cast('0', check=False) == XPU(0, check=False)
-            >>> assert XPU.cast('0,1,2', check=False) == XPU([0, 1, 2], check=False)
-            >>> assert XPU.cast('2,3,4', check=False) == XPU([2, 3, 4], check=False)
-            >>> assert XPU.cast('gpus=2,3,4', check=False) == XPU([2, 3, 4], check=False)
-            >>> assert XPU.cast([0, 1], check=False) == XPU([0, 1], check=False)
-            >>> assert XPU.cast(torch.Tensor()) == XPU(None)
-            >>> assert XPU.cast(None) == XPU(None)
-            >>> assert XPU.cast('auto', check=False) is not None
+            >>> assert XPU.coerce('0', check=False) == XPU(0, check=False)
+            >>> assert XPU.coerce('0,1,2', check=False) == XPU([0, 1, 2], check=False)
+            >>> assert XPU.coerce('2,3,4', check=False) == XPU([2, 3, 4], check=False)
+            >>> assert XPU.coerce('gpus=2,3,4', check=False) == XPU([2, 3, 4], check=False)
+            >>> assert XPU.coerce([0, 1], check=False) == XPU([0, 1], check=False)
+            >>> assert XPU.coerce(torch.Tensor()) == XPU(None)
+            >>> assert XPU.coerce(None) == XPU(None)
+            >>> assert XPU.coerce('auto', check=False) is not None
         """
         try:
             if item is None:
@@ -385,14 +385,14 @@ class XPU(ub.NiceRepr):
         """
         Example:
             >>> from netharn.device import *
-            >>> print(ub.repr2(XPU.cast(None).memory()))
+            >>> print(ub.repr2(XPU.coerce(None).memory()))
             {
                 'available': ...,
                 'total': ...,
                 'used': ...,
             }
             >>> # xdoctest: +REQUIRES(--cuda)
-            >>> print(ub.repr2(XPU.cast(0).memory()))
+            >>> print(ub.repr2(XPU.coerce(0).memory()))
             {
                 'available': ...,
                 'total': ...,

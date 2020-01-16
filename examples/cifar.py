@@ -338,7 +338,7 @@ def setup_harn():
         'deterministic': False,
 
     }
-    xpu = nh.XPU.cast(config['xpu'])
+    xpu = nh.XPU.coerce(config['xpu'])
 
     # The work directory is where all intermediate results are dumped.
     ub.ensuredir(config['workdir'])

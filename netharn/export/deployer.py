@@ -28,7 +28,7 @@ Example:
     >>> hyper = nh.HyperParams(**{
     >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/tests/deploy'),
     >>>     'nice'        : 'deploy_demo',
-    >>>     'xpu'         : nh.XPU.cast('cpu'),
+    >>>     'xpu'         : nh.XPU.coerce('cpu'),
     >>>     'datasets'    : {
     >>>         'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
     >>>         'test':  nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
@@ -613,7 +613,7 @@ class DeployedModel(ub.NiceRepr):
         import netharn as nh
         import torch
         if not isinstance(xpu, nh.XPU):
-            xpu = nh.XPU.cast(xpu)
+            xpu = nh.XPU.coerce(xpu)
 
         if isinstance(deployed, six.string_types):
             deployed = nh.export.DeployedModel(deployed)
@@ -712,7 +712,7 @@ def _demodata_toy_harn():
     hyper = nh.HyperParams(**{
         'workdir'     : ub.ensure_app_cache_dir('netharn/tests/deploy'),
         'nice'        : 'deploy_demo_static',
-        'xpu'         : nh.XPU.cast('cpu'),
+        'xpu'         : nh.XPU.coerce('cpu'),
         'datasets'    : {'train': nh.data.ToyData2d(size=3, rng=0)},
         'loaders'     : {'batch_size': 64},
         'model'       : (nh.models.ToyNet2d, {}),

@@ -980,7 +980,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
 
         >>> # xdoctest: +REQUIRES(--slow)
         >>> import netharn as nh
-        >>> xpu = nh.XPU.cast('auto')
+        >>> xpu = nh.XPU.coerce('auto')
         >>> module = xpu.move(torchvision.models.vgg11_bn().features)
         >>> inputs = xpu.move(torch.rand(1, 3, 224, 224))
         >>> emperical_field = effective_receptive_feild(module, inputs)
@@ -994,7 +994,7 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         >>> kwplot.imshow(emperical_field['impact'], doclf=True)
 
     Ignore:
-        >>> xpu = nh.XPU.cast('auto')
+        >>> xpu = nh.XPU.coerce('auto')
         >>> module = xpu.move(torchvision.models.resnet50())
         >>> inputs = xpu.move(torch.rand(8, 3, 224, 224))
         >>> emperical_field = effective_receptive_feild(module, inputs)
