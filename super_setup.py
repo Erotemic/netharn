@@ -337,7 +337,6 @@ class Repo(ub.NiceRepr):
     # @ub.memoize_property
     def pygit(repo):
         """ pip install gitpython """
-        import git as gitpython
         if repo._pygit is None:
             repo._pygit = gitpython.Repo(repo.dpath)
         return repo._pygit
@@ -663,7 +662,7 @@ def make_netharn_registry():
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
         ),
         CommonRepo(
-            name='kwimage', branch='dev/0.5.6', remote='public',
+            name='kwimage', branch='dev/0.5.7', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
         ),
         CommonRepo(
@@ -697,7 +696,6 @@ def make_netharn_registry():
 
 
 def main():
-    import click
     registery = make_netharn_registry()
 
     only = ub.argval('--only', default=None)
