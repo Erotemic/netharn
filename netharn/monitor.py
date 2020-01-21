@@ -94,7 +94,22 @@ class Monitor(ub.NiceRepr):
     @classmethod
     def coerce(cls, config, **kw):
         """
-        Accepts keywords 'max_epoch' and 'patience'
+        Coerce args to create a Monitor object from a configuration dictionary.
+        Accepts keywords 'max_epoch', 'patience', and 'min_lr'.
+
+        Returns:
+            Tuple[type, dict]: returns the monitor class and its initkw.
+
+        Example:
+            >>> config = {'min_lr': 1e-5}
+            >>> cls, initkw = Monitor.coerce(config)
+            >>> print('initkw = {}'.format(ub.repr2(initkw, nl=1)))
+            initkw = {
+                'max_epoch': 100,
+                'min_lr': 1e-05,
+                'minimize': ['loss'],
+                'patience': 100,
+            }
         """
         from netharn.api import _update_defaults
         config = _update_defaults(config, kw)

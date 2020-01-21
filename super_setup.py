@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
 # -*- coding: utf-8 -*-
 """
 Requirements:
@@ -696,6 +697,7 @@ def make_netharn_registry():
 
 
 def main():
+
     registery = make_netharn_registry()
 
     only = ub.argval('--only', default=None)
@@ -778,4 +780,11 @@ def main():
 
 
 if __name__ == '__main__':
+    """
+    For autocomplete you must run in bash
+
+    eval "$(_SUPER_SETUP_COMPLETE=source super_setup.py)"
+    """
+    # import click_completion
+    # click_completion.init()
     main()
