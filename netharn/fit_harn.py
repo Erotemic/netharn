@@ -1566,9 +1566,6 @@ class CoreMixin(object):
                 harn.cleanup_snapshots()
 
         terminate_flag = harn._check_termination()
-        print('\n\nterminate_flag = {!r}'.format(terminate_flag))
-        print('harn._tlog = {!r}'.format(harn._tlog))
-        print('harn.preferences = {!r}'.format(harn.preferences))
 
         if harn._tlog is not None:
             if not harn.preferences['eager_dump_tensorboard']:
@@ -1582,7 +1579,6 @@ class CoreMixin(object):
                 from netharn.mixins import _dump_monitor_tensorboard
                 # If we are about to stop, then force serial mode
                 serial = terminate_flag
-                print('serial = {!r}'.format(serial))
                 _dump_monitor_tensorboard(
                     harn, mode, harn.preferences['tensorboard_groups'],
                     serial=serial)
@@ -2026,11 +2022,17 @@ class CoreCallbacks(object):
                 been moved onto the appropriate XPU(s).
 
         Notes:
-            In the future the default behavior of this may change to simply
+            In the future the default behavior of this will change to simply
             return the raw batch without moving to the XPU. This may be
             necessary to support distributed training.
         """
         batch = raw_batch
+        import warnings
+        warnings.warn(
+            'The behavior of prepare_batch will change in the future. '
+            'The new behavior will be a simple no-op '
+            'For maximum compatibility override prepare_batch.',
+            DeprecationWarning)
         try:
             if isinstance(raw_batch, (tuple, list)):
                 batch_inputs, batch_labels = raw_batch

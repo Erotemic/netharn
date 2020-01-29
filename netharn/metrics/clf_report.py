@@ -241,6 +241,9 @@ def classification_report(y_true, y_pred, target_names=None,
         # print('mcc_combo2 = %r' % (mcc_combo2,))
         # print('mcc_combo3 = %r' % (mcc_combo3,))
 
+    if len(target_names) > len(perclass_data['precision']):
+        target_names = target_names[:len(perclass_data['precision'])]
+
     index = pd.Index(target_names, name='class')
 
     perclass_df = pd.DataFrame(perclass_data, index=index)

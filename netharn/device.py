@@ -387,6 +387,7 @@ class XPU(ub.NiceRepr):
     def memory(self):
         """
         Example:
+            >>> # xdoctest: +REQUIRES(module:psutil)
             >>> from netharn.device import *
             >>> print(ub.repr2(XPU.coerce(None).memory()))
             {
@@ -410,7 +411,12 @@ class XPU(ub.NiceRepr):
             'used': 0,
         }
         if self._device_ids is None:
-            import psutil
+            try:
+                import psutil
+            except ImportError:
+                import warnings
+                warnings.warn('using XPU.memory on the CPU requires psutil')
+                raise
             tup = psutil.virtual_memory()
             MB = 1 / 2 ** 20
             info['total'] += tup.total * MB

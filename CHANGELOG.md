@@ -21,6 +21,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `harn.config` is deprecated using `harn.preferences` instead.
 * Progress display now counts epochs starting from 1, so the final epoch will
   read `({harn.epoch + 1})/({harn.monitor.max_epoch})`. The internal `harn.epoch` is still 0-based.
+* Made `psutil` dependency optional.
 
 
 ## Version 0.5.2 - Release 2019-Nov-25

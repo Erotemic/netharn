@@ -4,7 +4,7 @@ import warnings
 from .functional import fast_confusion_matrix
 
 
-class ConfusionVectors(object):
+class ConfusionVectors(ub.NiceRepr):
     """
     Stores information used to construct a confusion matrix. This includes
     corresponding vectors of predicted labels, true labels, sample weights,
@@ -51,6 +51,9 @@ class ConfusionVectors(object):
         self.data = data
         self.classes = classes
         self.probs = probs
+
+    def __nice__(self):
+        return self.data.__nice__()
 
     @classmethod
     def from_arrays(ConfusionVectors, true, pred=None, score=None, weight=None,
@@ -337,11 +340,16 @@ class ConfusionVectors(object):
                     'is_true': y_group['true'] == cx,
 
                     'pred_score': y_group['score'],
-                    'weight': y_group['weight'],
-                    'txs': y_group['txs'],
-                    'pxs': y_group['pxs'],
-                    'gid': y_group['gid'],
+                    # 'weight': y_group.get('weight', 1.0),
+                    # 'txs': y_group['txs'],
+                    # 'pxs': y_group['pxs'],
+                    # 'gid': y_group['gid'],
                 }
+
+                extra = ub.dict_isect(y_group._data, [
+                    'txs', 'pxs', 'gid', 'weight'])
+                bin_data.update(extra)
+
                 bin_data = kwarray.DataFrameArray(bin_data)
                 bin_cfsn = BinaryConfusionVectors(bin_data, cx, classes)
             cx_to_binvecs[cx] = bin_cfsn
@@ -349,14 +357,27 @@ class ConfusionVectors(object):
         ovr_cfns = OneVsRestConfusionVectors(cx_to_binvecs, self.classes)
         return ovr_cfns
 
+    def classification_report(self):
+        from netharn.metrics import clf_report
+        report = clf_report.classification_report(
+            y_true=self.data['true'],
+            y_pred=self.data['pred'],
+            sample_weight=self.data.get('weight', None),
+            target_names=list(self.classes),
+        )
+        return report
 
-class OneVsRestConfusionVectors(object):
+
+class OneVsRestConfusionVectors(ub.NiceRepr):
     """
     Container for multiple one-vs-rest confusion vectors
     """
     def __init__(self, cx_to_binvecs, classes):
         self.cx_to_binvecs = cx_to_binvecs
         self.classes = classes
+
+    def __nice__(self):
+        return ub.repr2(ub.map_vals(len, self.cx_to_binvecs))
 
     def keys(self):
         return self.cx_to_binvecs.keys()
@@ -387,7 +408,7 @@ class OneVsRestConfusionVectors(object):
         }
 
 
-class BinaryConfusionVectors(object):
+class BinaryConfusionVectors(ub.NiceRepr):
     """
     Stores information about a binary classification problem.
     This is always with respect to a specific class, which is given
@@ -412,23 +433,36 @@ class BinaryConfusionVectors(object):
         self.cx = cx
         self.classes = classes
 
+    def __nice__(self):
+        return self.data.__nice__()
+
+    def __len__(self):
+        return len(self.data)
+
     @ub.memoize_method
     def precision_recall(self):
         import sklearn
         import sklearn.metrics  # NOQA
         data = self.data
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message='invalid .* true_divide')
-            ap = sklearn.metrics.average_precision_score(
-                y_true=data['is_true'].astype(np.uint8),
-                y_score=data['pred_score'],
-                sample_weight=data['weight'],
-            )
-            prec, rec, thresholds = sklearn.metrics.precision_recall_curve(
-                y_true=data['is_true'].astype(np.uint8),
-                probas_pred=data['pred_score'],
-                sample_weight=data['weight'],
-            )
+
+        if len(self) == 0:
+            ap = np.nan
+            prec = [np.nan]
+            rec = [np.nan]
+            thresholds = [np.nan]
+        else:
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', message='invalid .* true_divide')
+                ap = sklearn.metrics.average_precision_score(
+                    y_true=data['is_true'].astype(np.uint8),
+                    y_score=data['pred_score'],
+                    sample_weight=data._data.get('weight', None),
+                )
+                prec, rec, thresholds = sklearn.metrics.precision_recall_curve(
+                    y_true=data['is_true'].astype(np.uint8),
+                    probas_pred=data['pred_score'],
+                    sample_weight=data._data.get('weight', None),
+                )
 
         # FIXME
         # USING true == pred IS WRONG.
@@ -437,9 +471,13 @@ class BinaryConfusionVectors(object):
 
         # Get the total weight (typically number of) positive and negative
         # examples of this class
-        realpos_total = (data['is_true'] * data['weight']).sum()
-        realneg_total = ((1 - data['is_true']) * data['weight']).sum()
-        nsupport = data['weight'].sum()
+        weight = data._data.get('weight', 1.0)
+        realpos_total = (data['is_true'] * weight).sum()
+        realneg_total = ((1 - data['is_true']) * weight).sum()
+        if data._data.get('weight', None) is not None:
+            nsupport = data['weight'].sum()
+        else:
+            nsupport = len(data['is_true'])
 
         prs_info = {
             'ap': ap,
@@ -469,7 +507,7 @@ class BinaryConfusionVectors(object):
         data = self.data
         y_true = data['is_true']
         y_score = data['pred_score']
-        sample_weight = data['weight']
+        sample_weight = data._data.get('weight', None)
 
         # y_true[y_true == -1] = 0
 
@@ -479,12 +517,20 @@ class BinaryConfusionVectors(object):
 
         # Get the total weight (typically number of) positive and negative
         # examples of this class
-        realpos_total = (data['is_true'] * data['weight']).sum()
-        realneg_total = ((1 - data['is_true']) * data['weight']).sum()
-        nsupport = data['weight'].sum()
+        realpos_total = (data['is_true'] * data._data.get('weight', 1)).sum()
+        realneg_total = ((1 - data['is_true']) * data._data.get('weight', 1)).sum()
+        if sample_weight is None:
+            nsupport = len(self)
+        else:
+            nsupport = sample_weight.sum()
 
-        fp_count, tp_count, count_thresholds = _binary_clf_curve(
-            y_true, y_score, pos_label=1, sample_weight=sample_weight)
+        if len(self) == 0:
+            fp_count = np.array([np.nan])
+            tp_count = np.array([np.nan])
+            count_thresholds = np.array([np.nan])
+        else:
+            fp_count, tp_count, count_thresholds = _binary_clf_curve(
+                y_true, y_score, pos_label=1, sample_weight=sample_weight)
 
         if len(count_thresholds) > 0 and count_thresholds[-1] == 0:
             # Chop off the last entry where it will jump

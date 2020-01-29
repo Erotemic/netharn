@@ -7,7 +7,6 @@ parse >= 1.8.4
 pyflakes >= 1.6.0
 astunparse >= 1.6.1
 pygtrie >= 2.2
-psutil >= 5.4.7
 imgaug >= 0.2.6
 
 # NOTE: in the future kwimage and kwplot may become optional
