@@ -1,7 +1,8 @@
 import numpy as np
 import ubelt as ub
 import warnings
-from .functional import fast_confusion_matrix
+from scriptconfig.dict_like import DictLike
+from netharn.metrics.functional import fast_confusion_matrix
 
 
 class ConfusionVectors(ub.NiceRepr):
@@ -358,22 +359,36 @@ class ConfusionVectors(ub.NiceRepr):
             elif mode == 1:
                 # More VOC-like, not hierarcy friendly
 
-                flags1 = data['pred'] == cx
-                flags2 = data['true'] == cx
-                flags = flags1 | flags2
+                if self.probs is not None:
+                    # We know the actual score predicted for this category in
+                    # this case.
+                    is_true = self.data['true'] == cx
+                    pred_score = self.probs[:, cx]
+                else:
+                    import warnings
+                    warnings.warn(
+                        'Binarize ovr is only approximate if not all probabilities are known')
+                    # If we don't know the probabilities for non-predicted
+                    # categories then we have to guess.
+                    is_true = self.data['true'] == cx
 
-                y_group = data.compress(flags)
+                    # do we know the actual predicted score for this category?
+                    score_is_unknown = data['pred'] != cx
+                    pred_score = data['score'].copy()
+
+                    # These scores were for a different class, so assume
+                    # other classes were predicted with a uniform prior
+                    apporx_score = (1 - pred_score[score_is_unknown]) / (len(classes) - 1)
+                    pred_score[score_is_unknown] = apporx_score
 
                 bin_data = {
-                    # NOTE: THIS USED TO CHECK IF PRED==TRUE BUT
-                    # IT REALLY NEEDS TO KNOW IF TRUE IS THE LABEL OF INTEREST
-                    # 'is_true': y_group['pred'] == y_group['true'],
-                    'is_true': y_group['true'] == cx,
-
-                    'pred_score': y_group['score'],
+                    # is_true denotes if the true class of the item is the
+                    # category of interest.
+                    'is_true': is_true,
+                    'pred_score': pred_score,
                 }
 
-                extra = ub.dict_isect(y_group._data, [
+                extra = ub.dict_isect(data._data, [
                     'txs', 'pxs', 'gid', 'weight'])
                 bin_data.update(extra)
 
@@ -391,16 +406,21 @@ class ConfusionVectors(ub.NiceRepr):
         ovr_cfns = OneVsRestConfusionVectors(cx_to_binvecs, self.classes)
         return ovr_cfns
 
-    def classification_report(self):
+    def classification_report(self, verbose=0):
         """
         Build a classification report with various metrics.
         """
         from netharn.metrics import clf_report
+        y_true = self.data['true']
+        y_pred = self.data['pred']
+        sample_weight = self.data.get('weight', None)
+        target_names = list(self.classes)
         report = clf_report.classification_report(
-            y_true=self.data['true'],
-            y_pred=self.data['pred'],
-            sample_weight=self.data.get('weight', None),
-            target_names=list(self.classes),
+            y_true=y_true,
+            y_pred=y_pred,
+            sample_weight=sample_weight,
+            target_names=target_names,
+            verbose=verbose,
         )
         return report
 
@@ -419,7 +439,7 @@ class OneVsRestConfusionVectors(ub.NiceRepr):
 
     def __nice__(self):
         # return ub.repr2(ub.map_vals(len, self.cx_to_binvecs))
-        return ub.repr2(self.cx_to_binvecs)
+        return ub.repr2(self.cx_to_binvecs, strvals=True)
 
     def keys(self):
         return self.cx_to_binvecs.keys()
@@ -427,9 +447,11 @@ class OneVsRestConfusionVectors(ub.NiceRepr):
     def __getitem__(self, cx):
         return self.cx_to_binvecs[cx]
 
-    def precision_recall(self):
-        perclass = {cx: binvecs.precision_recall()
-                    for cx, binvecs in self.cx_to_binvecs.items()}
+    def precision_recall(self, **kwargs):
+        perclass = PerClass_PR_Result({
+            cx: binvecs.precision_recall(**kwargs)
+            for cx, binvecs in self.cx_to_binvecs.items()
+        })
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', message='Mean of empty slice')
             mAP = np.nanmean([item['ap'] for item in perclass.values()])
@@ -438,9 +460,11 @@ class OneVsRestConfusionVectors(ub.NiceRepr):
             'perclass': perclass,
         }
 
-    def roc(self):
-        perclass = {cx: binvecs.roc()
-                    for cx, binvecs in self.cx_to_binvecs.items()}
+    def roc(self, **kwargs):
+        perclass = PerClass_ROC_Result({
+            cx: binvecs.roc(**kwargs)
+            for cx, binvecs in self.cx_to_binvecs.items()
+        })
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', message='Mean of empty slice')
             mAUC = np.nanmean([item['auc'] for item in perclass.values()])
@@ -531,13 +555,13 @@ class BinaryConfusionVectors(ub.NiceRepr):
         return ub.repr2({
             'catname': self.catname,
             'data': self.data.__nice__(),
-        }, nl=0)
+        }, nl=0, strvals=True)
 
     def __len__(self):
         return len(self.data)
 
     # @ub.memoize_method
-    def precision_recall(self, stabalize_thresh=8):
+    def precision_recall(self, stabalize_thresh=7, stabalize_pad=7):
         """
         Example:
             >>> self = BinaryConfusionVectors.demo(n=11)
@@ -584,7 +608,7 @@ class BinaryConfusionVectors(ub.NiceRepr):
                 # add dummy data to stabalize the computation
                 if sample_weight is None:
                     sample_weight = np.ones(len(self))
-                npad = 7
+                npad = stabalize_pad
                 y_true, y_score, sample_weight = _stabalilze_data(
                     y_true, y_score, sample_weight, npad=npad)
 
@@ -592,7 +616,6 @@ class BinaryConfusionVectors(ub.NiceRepr):
                 'y_true': y_true,
                 'sample_weight': sample_weight,
             }
-
 
             # print('metric_kw = {}'.format(ub.repr2(metric_kw, nl=1)))
             # print('y_score = {!r}'.format(y_score))
@@ -637,7 +660,7 @@ class BinaryConfusionVectors(ub.NiceRepr):
         return PR_Result(prs_info)
 
     # @ub.memoize_method
-    def roc(self, fp_cutoff=None, stabalize_thresh=7):
+    def roc(self, fp_cutoff=None, stabalize_thresh=7, stabalize_pad=7):
         """
         Example:
             >>> self = BinaryConfusionVectors.demo(n=0)
@@ -666,7 +689,7 @@ class BinaryConfusionVectors(ub.NiceRepr):
                 # add dummy data to stabalize the computation
                 if sample_weight is None:
                     sample_weight = np.ones(len(self))
-                npad = 7
+                npad = stabalize_pad
                 y_true, y_score, sample_weight = _stabalilze_data(
                     y_true, y_score, sample_weight, npad=npad)
 
@@ -705,6 +728,12 @@ class BinaryConfusionVectors(ub.NiceRepr):
         # Cutoff the curves at a comparable point
         if fp_cutoff is None:
             fp_cutoff = np.inf
+        elif isinstance(fp_cutoff, str):
+            if fp_cutoff == 'num_true':
+                fp_cutoff = int(np.ceil(realpos_total))
+            else:
+                raise KeyError(fp_cutoff)
+
         idxs = np.where(fp_count > fp_cutoff)[0]
         if len(idxs) == 0:
             idx = len(fp_count)
@@ -759,7 +788,6 @@ class BinaryConfusionVectors(ub.NiceRepr):
         return ROC_Result(roc_info)
 
 
-from scriptconfig.dict_like import DictLike
 class DictProxy(DictLike):
     """
     Allows an object to proxy the behavior of a dict attribute
@@ -772,7 +800,6 @@ class DictProxy(DictLike):
 
     def keys(self):
         return self.proxy.keys()
-
 
 
 class ROC_Result(ub.NiceRepr, DictProxy):
@@ -801,9 +828,9 @@ class ROC_Result(ub.NiceRepr, DictProxy):
             'realpos_total': self['realpos_total'],
             'realneg_total': self['realneg_total'],
             'catname': self['node'],
-        })
+        }, nl=0, precision=4, strvals=True)
 
-    def draw(self):
+    def draw(self, **kw):
         """
         Example:
             >>> from netharn.metrics.confusion_vectors import *  # NOQA
@@ -814,8 +841,9 @@ class ROC_Result(ub.NiceRepr, DictProxy):
             >>> self.draw()
             >>> kwplot.show_if_requested()
         """
-        from netharn.metrics.drawing import draw_roc
-        return draw_roc(self)
+        from netharn.metrics import drawing
+        return drawing.draw_roc(self, **kw)
+
 
 class PR_Result(ub.NiceRepr, DictProxy):
     """
@@ -843,11 +871,39 @@ class PR_Result(ub.NiceRepr, DictProxy):
             'realpos_total': self['realpos_total'],
             'realneg_total': self['realneg_total'],
             'catname': self['node'],
-        })
+        }, nl=0, precision=4, strvals=True)
 
-    def draw(self):
-        from netharn.metrics.drawing import draw_peritem_prcurve
-        return draw_peritem_prcurve(self)
+    def draw(self, **kw):
+        from netharn.metrics import drawing
+        return drawing.draw_peritem_prcurve(self, **kw)
+
+
+class PerClass_ROC_Result(ub.NiceRepr, DictProxy):
+    """
+    """
+    def __init__(self, cx_to_roc):
+        self.proxy = cx_to_roc
+
+    def __nice__(self):
+        return ub.repr2(self.proxy, nl=2, strvals=True)
+
+    def draw(self, **kw):
+        from netharn.metrics import drawing
+        return drawing.draw_perclass_roc(self, **kw)
+
+
+class PerClass_PR_Result(ub.NiceRepr, DictProxy):
+    """
+    """
+    def __init__(self, cx_to_pr):
+        self.proxy = cx_to_pr
+
+    def __nice__(self):
+        return ub.repr2(self.proxy, nl=2, strvals=True)
+
+    def draw(self, **kw):
+        from netharn.metrics import drawing
+        return drawing.draw_perclass_prcurve(self, **kw)
 
 
 def _stabalilze_data(y_true, y_score, sample_weight, npad=7):
@@ -871,4 +927,3 @@ def _stabalilze_data(y_true, y_score, sample_weight, npad=7):
     y_score = np.hstack([y_score, pad_score])
     sample_weight = np.hstack([sample_weight, pad_weight])
     return y_true, y_score, sample_weight
-

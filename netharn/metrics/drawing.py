@@ -3,7 +3,7 @@ import ubelt as ub
 import warnings
 
 
-def draw_roc(roc_info, prefix='', fnum=1):
+def draw_roc(roc_info, prefix='', fnum=1, **kw):
     """
     NOTE: There needs to be enough negative examples for using ROC
     to make any sense!
@@ -35,7 +35,6 @@ def draw_roc(roc_info, prefix='', fnum=1):
 
     title = prefix + 'AUC*: {:.4f}'.format(auc)
     xscale = 'linear'
-    figtitle = None
     falsepos_total = fp_count[-1]
 
     ax = kwplot.multi_plot(
@@ -46,13 +45,17 @@ def draw_roc(roc_info, prefix='', fnum=1):
         title=title, xscale=xscale,
         ylim=(0, 1), ypad=1e-2,
         xlim=(0, 1), xpad=1e-2,
-        figtitle=figtitle, fnum=fnum)
+        fnum=fnum, **kw)
 
     return ax
 
 
-def draw_perclass_roc(cx_to_rocinfo, classes, prefix=''):
+def draw_perclass_roc(cx_to_rocinfo, classes=None, prefix='', fnum=1,
+                      fp_axis='count', **kw):
     """
+
+    fp_axis can be count or rate
+
                 cx_to_rocinfo = roc_perclass
     """
     import kwplot
@@ -67,37 +70,54 @@ def draw_perclass_roc(cx_to_rocinfo, classes, prefix=''):
         warnings.filterwarnings('ignore', 'Mean of empty slice', RuntimeWarning)
         mAUC = np.nanmean([item['auc'] for item in cx_to_rocinfo.values()])
 
+    if fp_axis == 'count':
+        xlabel = 'FP-count'
+    elif fp_axis == 'rate':
+        xlabel = 'FPR'
+    else:
+        raise KeyError(fp_axis)
+
     for cx in cxs:
         peritem = cx_to_rocinfo[cx]
-        catname = classes[cx]
+
+        if isinstance(cx, int):
+            catname = classes[cx]
+        else:
+            catname = cx
+
         auc = peritem['auc']
 
         tpr = peritem['tpr']
-        fp_count = peritem['fp_count']
 
         nsupport = int(peritem['nsupport'])
         if 'realpos_total' in peritem:
             z = peritem['realpos_total']
             if abs(z - int(z)) < 1e-8:
-                label = 'auc={:0.2f}: {} ({:d}/{:d})'.format(auc, catname, int(peritem['realpos_total']), nsupport)
+                label = 'auc={:0.2f}: {} ({:d}/{:d})'.format(auc, catname, int(peritem['realpos_total']), round(nsupport, 2))
             else:
-                label = 'auc={:0.2f}: {} ({}/{:d})'.format(auc, catname, peritem['realpos_total'], nsupport)
+                label = 'auc={:0.2f}: {} ({}/{:d})'.format(auc, catname, round(peritem['realpos_total'], 2), round(nsupport, 2))
         else:
-            label = 'auc={:0.2f}: {} ({:d})'.format(auc, catname, nsupport)
-        xydata[label] = (fp_count, tpr)
+            label = 'auc={:0.2f}: {} ({:d})'.format(auc, catname, round(nsupport, 2))
+
+        if fp_axis == 'count':
+            fp_count = peritem['fp_count']
+            xydata[label] = (fp_count, tpr)
+        elif fp_axis == 'rate':
+            fpr = peritem['fpr']
+            xydata[label] = (fpr, tpr)
 
     ax = kwplot.multi_plot(
-        xydata=xydata, fnum=1,
+        xydata=xydata, fnum=fnum,
         ylim=(0, 1), xpad=0.01, ypad=0.01,
-        xlabel='FP-count', ylabel='TPR',
+        xlabel=xlabel, ylabel='TPR',
         title=prefix + 'perclass mAUC={:.4f}'.format(mAUC),
         legend_loc='lower right',
-        color='distinct', linestyle='cycle', marker='cycle',
+        color='distinct', linestyle='cycle', marker='cycle', **kw
     )
     return ax
 
 
-def draw_perclass_prcurve(cx_to_peritem, classes, prefix=''):
+def draw_perclass_prcurve(cx_to_peritem, classes=None, prefix='', fnum=1, **kw):
     """
     Example:
         >>> # xdoctest: +REQUIRES(module:ndsampler)
@@ -124,7 +144,10 @@ def draw_perclass_prcurve(cx_to_peritem, classes, prefix=''):
     xydata = ub.odict()
     for cx in cxs:
         peritem = cx_to_peritem[cx]
-        catname = classes[cx]
+        if isinstance(cx, int):
+            catname = classes[cx]
+        else:
+            catname = cx
         ap = peritem['ap']
         if 'pr' in peritem:
             pr = peritem['pr']
@@ -152,7 +175,7 @@ def draw_perclass_prcurve(cx_to_peritem, classes, prefix=''):
             if abs(z - int(z)) < 1e-8:
                 label = 'ap={:0.2f}: {} ({:d}/{:d})'.format(ap, catname, int(peritem['realpos_total']), nsupport)
             else:
-                label = 'ap={:0.2f}: {} ({}/{:d})'.format(ap, catname, peritem['realpos_total'], nsupport)
+                label = 'ap={:0.2f}: {} ({}/{:d})'.format(ap, catname, round(peritem['realpos_total'], 2), nsupport)
         else:
             label = 'ap={:0.2f}: {} ({:d})'.format(ap, catname, nsupport)
         xydata[label] = (recall, precision)
@@ -162,18 +185,20 @@ def draw_perclass_prcurve(cx_to_peritem, classes, prefix=''):
         mAP = np.nanmean(aps)
 
     ax = kwplot.multi_plot(
-        xydata=xydata, doclf=True, fnum=1,
+        xydata=xydata, fnum=fnum,
         xlim=(0, 1), ylim=(0, 1), xpad=0.01, ypad=0.01,
         xlabel='recall', ylabel='precision',
         title=prefix + 'perclass mAP={:.4f}'.format(mAP),
         legend_loc='lower right',
-        color='distinct', linestyle='cycle', marker='cycle',
+        color='distinct', linestyle='cycle', marker='cycle', **kw
     )
     return ax
 
 
-def draw_peritem_prcurve(peritem, prefix='', fnum=1):
+def draw_peritem_prcurve(peritem, prefix='', fnum=1, **kw):
     """
+    TODO: rename to draw prcurve. Just draws a single pr curve.
+
     Example:
         >>> # xdoctest: +REQUIRES(module:ndsampler)
         >>> # xdoctest: +REQUIRES(module:kwplot)
@@ -226,6 +251,6 @@ def draw_peritem_prcurve(peritem, prefix='', fnum=1):
         xlabel='recall', ylabel='precision',
         title=prefix + 'peritem AP={:.4f}'.format(ap),
         legend_loc='lower right',
-        color='distinct', linestyle='cycle', marker='cycle',
+        color='distinct', linestyle='cycle', marker='cycle', **kw
     )
     return ax

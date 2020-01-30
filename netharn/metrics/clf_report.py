@@ -61,8 +61,9 @@ def classification_report(y_true, y_pred, target_names=None,
         >>>     y_pred = testdata_ypred(y_true, p_wrong, rng)
         >>>     report = classification_report(y_true, y_pred, verbose='hack')
         >>>     rs.append(report)
-        >>> import plottool as pt
-        >>> pt.qtensure()
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
         >>> import pandas as pd
         >>> df = pd.DataFrame(rs).drop(['raw'], axis=1)
         >>> delta = df.subtract(df['target'], axis=0)
@@ -70,7 +71,7 @@ def classification_report(y_true, y_pred, target_names=None,
         >>> print('Error')
         >>> print(sqrd_error.sort_values())
         >>> ys = df.to_dict(orient='list')
-        >>> pt.multi_plot(ydata_list=ys)
+        >>> kwplot.multi_plot(ydata_list=ys)
     """
     import pandas as pd
     import scipy as sp
@@ -97,7 +98,8 @@ def classification_report(y_true, y_pred, target_names=None,
     # Pred data is on the cols.
 
     cm = sklearn.metrics.confusion_matrix(
-        y_true_, y_pred_, sample_weight=sample_weight)
+        y_true_, y_pred_, sample_weight=sample_weight,
+        labels=np.arange(len(target_names)))
     confusion = cm  # NOQA
 
     k = len(cm)  # number of classes
@@ -116,33 +118,50 @@ def classification_report(y_true, y_pred, target_names=None,
     # number of true negatives per class
     n_fps = (cm - np.diagflat(np.diag(cm))).sum(axis=0)
 
-    tprs = n_tps / real_total  # true pos rate (recall)
-    tpas = n_tps / pred_total  # true pos accuracy (precision)
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', message='invalid .* true_divide')
+        warnings.filterwarnings('ignore', message='divide by zero')
 
-    unused = (real_total + pred_total) == 0
+        tprs = n_tps / real_total  # true pos rate (recall)
+        tpas = n_tps / pred_total  # true pos accuracy (precision)
 
-    fprs = n_fps / n_neg  # false pose rate
-    fprs[unused] = np.nan
+        unused = (real_total + pred_total) == 0
 
-    rprob = real_total / N
-    pprob = pred_total / N
+        fprs = n_fps / n_neg  # false pose rate
+        fprs[unused] = np.nan
 
-    if len(cm) == 2:
-        [[A, B],
-         [C, D]] = cm
-        (A * D - B * C) / np.sqrt((A + C) * (B + D) * (A + B) * (C + D))
+        rprob = real_total / N
+        pprob = pred_total / N
 
-    # bookmaker is analogous to recall, but unbiased by class frequency
-    rprob_mat = np.tile(rprob, [k, 1]).T - (1 - np.eye(k))
-    bmcm = cm.T / rprob_mat
-    bms = np.sum(bmcm.T, axis=0) / N
+        # if len(cm) == 2:
+        #     [[A, B],
+        #      [C, D]] = cm
+        #     (A * D - B * C) / np.sqrt((A + C) * (B + D) * (A + B) * (C + D))
 
-    # markedness is analogous to precision, but unbiased by class frequency
-    pprob_mat = np.tile(pprob, [k, 1]).T - (1 - np.eye(k))
-    mkcm = cm / pprob_mat
-    mks = np.sum(mkcm.T, axis=0) / N
+        # bookmaker is analogous to recall, but unbiased by class frequency
+        rprob_mat = np.tile(rprob, [k, 1]).T - (1 - np.eye(k))
+        bmcm = cm.T / rprob_mat
+        bms = np.sum(bmcm.T, axis=0) / N
 
-    mccs = np.sign(bms) * np.sqrt(np.abs(bms * mks))
+        # markedness is analogous to precision, but unbiased by class frequency
+        pprob_mat = np.tile(pprob, [k, 1]).T - (1 - np.eye(k))
+        mkcm = cm / pprob_mat
+        mks = np.sum(mkcm.T, axis=0) / N
+
+        mccs = np.sign(bms) * np.sqrt(np.abs(bms * mks))
+
+        import scipy
+        # https://en.wikipedia.org/wiki/F1_score
+        # f1_scores = scipy.stats.hmean(np.hstack([
+        #     tpas[:, None],
+        #     tprs[:, None]
+        # ]), axis=1)
+        f1_scores = 2 * (tpas * tprs) / (tpas + tprs)
+        g1_scores = scipy.stats.gmean(np.hstack([
+            tpas[:, None],
+            tprs[:, None]
+        ]), axis=1)
 
     perclass_data = ub.odict([
         ('precision', tpas),
@@ -151,6 +170,8 @@ def classification_report(y_true, y_pred, target_names=None,
         ('markedness', mks),
         ('bookmaker', bms),
         ('mcc', mccs),
+        ('f1', f1_scores),
+        ('g1', g1_scores),
         ('support', real_total),
     ])
 
@@ -178,7 +199,9 @@ def classification_report(y_true, y_pred, target_names=None,
         # ('mcc', np.sign(bm) * np.sqrt(np.abs(bm * mk))),
         ('mcc', mcc_combo),
         # np.sign(bm) * np.sqrt(np.abs(bm * mk))),
-        ('support', real_total.sum())
+        ('f1', np.nanmean(f1_scores)),
+        ('g1', np.nanmean(g1_scores)),
+        ('support', real_total.sum()),
     ])
 
     # Not sure how to compute this. Should it agree with the sklearn impl?
@@ -241,8 +264,8 @@ def classification_report(y_true, y_pred, target_names=None,
         # print('mcc_combo2 = %r' % (mcc_combo2,))
         # print('mcc_combo3 = %r' % (mcc_combo3,))
 
-    if len(target_names) > len(perclass_data['precision']):
-        target_names = target_names[:len(perclass_data['precision'])]
+    # if len(target_names) > len(perclass_data['precision']):
+    #     target_names = target_names[:len(perclass_data['precision'])]
 
     index = pd.Index(target_names, name='class')
 
