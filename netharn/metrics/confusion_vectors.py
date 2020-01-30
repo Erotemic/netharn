@@ -568,31 +568,16 @@ class BinaryConfusionVectors(ub.NiceRepr):
                 # add dummy data to stabalize the computation
                 if sample_weight is None:
                     sample_weight = np.ones(len(self))
-
                 npad = 7
-                min_score = y_score.min()
-                max_score = y_score.max()
-
-                if max_score <= 1.0 and min_score >= 0.0:
-                    max_score = 1.0
-                    min_score = 0.0
-
-                pad_true = np.ones(npad, dtype=np.uint8)
-                pad_true[:npad // 2] = 0
-
-                pad_score = np.linspace(min_score, max_score, num=npad,
-                                        endpoint=True)
-                pad_weight = np.exp(np.linspace(2.7, .01, npad))
-                pad_weight /= pad_weight.sum()
-
-                y_true = np.hstack([y_true, pad_true])
-                y_score = np.hstack([y_score, pad_score])
-                sample_weight = np.hstack([sample_weight, pad_weight])
+                y_true, y_score, sample_weight = _stabalilze_data(
+                    y_true, y_score, sample_weight, npad=npad)
 
             metric_kw = {
                 'y_true': y_true,
                 'sample_weight': sample_weight,
             }
+
+
             # print('metric_kw = {}'.format(ub.repr2(metric_kw, nl=1)))
             # print('y_score = {!r}'.format(y_score))
             with warnings.catch_warnings():
@@ -633,10 +618,20 @@ class BinaryConfusionVectors(ub.NiceRepr):
                 'cx': self.cx,
                 'node': self.classes[self.cx],
             })
-        return prs_info
+        return PR_Result(prs_info)
 
     @ub.memoize_method
-    def roc(self, fp_cutoff=None):
+    def roc(self, fp_cutoff=None, stabalize_thresh=7):
+        """
+        Example:
+            >>> self = BinaryConfusionVectors.demo(n=0)
+            >>> print('roc = {}'.format(ub.repr2(self.roc())))
+            >>> self = BinaryConfusionVectors.demo(n=1, p_true=0.5, p_error=0.5)
+            >>> print('roc = {}'.format(ub.repr2(self.roc())))
+            >>> self = BinaryConfusionVectors.demo(n=3, p_true=0.5, p_error=0.5)
+            >>> print('roc = {}'.format(ub.repr2(self.roc())))
+
+        """
         import sklearn
         import sklearn.metrics  # NOQA
         try:
@@ -644,9 +639,27 @@ class BinaryConfusionVectors(ub.NiceRepr):
         except ImportError:
             from sklearn.metrics.ranking import _binary_clf_curve
         data = self.data
-        y_true = data['is_true']
+
+        y_true = data['is_true'].astype(np.uint8)
         y_score = data['pred_score']
         sample_weight = data._data.get('weight', None)
+
+        npad = 0
+        if len(self) > 0:
+            if len(self) <= stabalize_thresh:
+                # add dummy data to stabalize the computation
+                if sample_weight is None:
+                    sample_weight = np.ones(len(self))
+                npad = 7
+                y_true, y_score, sample_weight = _stabalilze_data(
+                    y_true, y_score, sample_weight, npad=npad)
+
+        if sample_weight is None:
+            weight = 1
+            nsupport = len(y_true) - bool(npad)
+        else:
+            weight = sample_weight
+            nsupport = sample_weight.sum() - bool(npad)
 
         # y_true[y_true == -1] = 0
 
@@ -656,12 +669,8 @@ class BinaryConfusionVectors(ub.NiceRepr):
 
         # Get the total weight (typically number of) positive and negative
         # examples of this class
-        realpos_total = (data['is_true'] * data._data.get('weight', 1)).sum()
-        realneg_total = ((1 - data['is_true']) * data._data.get('weight', 1)).sum()
-        if sample_weight is None:
-            nsupport = len(self)
-        else:
-            nsupport = sample_weight.sum()
+        realpos_total = (y_true * weight).sum()
+        realneg_total = ((1 - y_true) * weight).sum()
 
         if len(self) == 0:
             fp_count = np.array([np.nan])
@@ -731,4 +740,89 @@ class BinaryConfusionVectors(ub.NiceRepr):
                 'cx': self.cx,
                 'node': self.classes[self.cx],
             })
-        return roc_info
+        return ROC_Result(roc_info)
+
+
+from scriptconfig.dict_like import DictLike
+class DictProxy(DictLike):
+    """
+    Allows an object to proxy the behavior of a dict attribute
+    """
+    def __getitem__(self, key):
+        return self.proxy[key]
+
+    def __setitem__(self, key, value):
+        self.proxy[key] = value
+
+    def keys(self):
+        return self.proxy.keys()
+
+
+
+class ROC_Result(ub.NiceRepr, DictProxy):
+    """
+    Example:
+        >>> self = BinaryConfusionVectors.demo(n=3, p_true=0.5, p_error=0.5).roc()
+        >>> print('self = {!r}'.format(self))
+    """
+    def __init__(self, roc_info):
+        self.proxy = roc_info
+
+    @property
+    def catname(self):
+        return self['node']
+
+    def __nice__(self):
+        return ub.repr2({
+            'auc': self['auc'],
+            'nsupport': self['nsupport'],
+            'realpos_total': self['realpos_total'],
+            'realneg_total': self['realneg_total'],
+            'catname': self['node'],
+        })
+
+class PR_Result(ub.NiceRepr, DictProxy):
+    """
+    Example:
+        >>> self = BinaryConfusionVectors.demo(n=3, p_true=0.5, p_error=0.5).precision_recall()
+        >>> print('self = {!r}'.format(self))
+    """
+    def __init__(self, roc_info):
+        self.proxy = roc_info
+
+    @property
+    def catname(self):
+        return self['node']
+
+    def __nice__(self):
+        return ub.repr2({
+            'ap': self['ap'],
+            'nsupport': self['nsupport'],
+            'realpos_total': self['realpos_total'],
+            'realneg_total': self['realneg_total'],
+            'catname': self['node'],
+        })
+
+
+def _stabalilze_data(y_true, y_score, sample_weight, npad=7):
+    npad = 7
+    min_score = y_score.min()
+    max_score = y_score.max()
+
+    if max_score <= 1.0 and min_score >= 0.0:
+        max_score = 1.0
+        min_score = 0.0
+
+    pad_true = np.ones(npad, dtype=np.uint8)
+    pad_true[:npad // 2] = 0
+
+    pad_score = np.linspace(min_score, max_score, num=npad,
+                            endpoint=True)
+    pad_weight = np.exp(np.linspace(2.7, .01, npad))
+    pad_weight /= pad_weight.sum()
+
+    y_true = np.hstack([y_true, pad_true])
+    y_score = np.hstack([y_score, pad_score])
+    sample_weight = np.hstack([sample_weight, pad_weight])
+    return y_true, y_score, sample_weight
+
