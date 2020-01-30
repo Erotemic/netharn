@@ -601,7 +601,7 @@ def setup_harn():
         # These extra arguments are recorded in the train_info.json but do
         # not contribute to the hyperparameter hash.
         extra={
-            'config': ub.repr2(config.asdict()),
+            'config': ub.repr2(config.to_dict()),
             'argv': sys.argv,
         }
     )
