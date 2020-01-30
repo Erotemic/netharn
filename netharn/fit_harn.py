@@ -574,7 +574,7 @@ class InitializeMixin(object):
             if harn.initializer.__class__.__name__ == 'LSUV':
                 harn.debug('calling hacked LSUV initializer')
                 #hack LSUV needs a batch of data to run
-                with util.grad_context(False):
+                with torch.set_grad_enabled(False):
                     loader = harn.loaders['train']
                     input, labels = next(iter(loader))
                     data = harn.xpu.move(input)
@@ -822,7 +822,7 @@ class LogMixin(object):
         """
         if harn._tlog:
             harn._tlog.log_value(key, value, n_iter)
-        harn.debug('log_value({}, {}, {}'.format(key, value, n_iter))
+        harn.debug('log_value({}, {}, {})'.format(key, value, n_iter))
 
     def log_histogram(harn, key, value, n_iter):
         """
@@ -1675,7 +1675,7 @@ class CoreMixin(object):
 
         if isinstance(prog, ub.ProgIter):
             prog.begin()
-        with util.grad_context(learn):
+        with torch.set_grad_enabled(learn):
             harn.debug('Making batch iterator')
 
             n_trys_remain = 3
