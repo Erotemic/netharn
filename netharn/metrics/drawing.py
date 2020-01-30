@@ -3,7 +3,7 @@ import ubelt as ub
 import warnings
 
 
-def draw_roc(roc_info, prefix=''):
+def draw_roc(roc_info, prefix='', fnum=1):
     """
     NOTE: There needs to be enough negative examples for using ROC
     to make any sense!
@@ -46,7 +46,7 @@ def draw_roc(roc_info, prefix=''):
         title=title, xscale=xscale,
         ylim=(0, 1), ypad=1e-2,
         xlim=(0, 1), xpad=1e-2,
-        figtitle=figtitle, fnum=1, doclf=True)
+        figtitle=figtitle, fnum=fnum)
 
     return ax
 
@@ -87,7 +87,7 @@ def draw_perclass_roc(cx_to_rocinfo, classes, prefix=''):
         xydata[label] = (fp_count, tpr)
 
     ax = kwplot.multi_plot(
-        xydata=xydata, doclf=True, fnum=1,
+        xydata=xydata, fnum=1,
         ylim=(0, 1), xpad=0.01, ypad=0.01,
         xlabel='FP-count', ylabel='TPR',
         title=prefix + 'perclass mAUC={:.4f}'.format(mAUC),
@@ -172,7 +172,7 @@ def draw_perclass_prcurve(cx_to_peritem, classes, prefix=''):
     return ax
 
 
-def draw_peritem_prcurve(peritem, prefix=''):
+def draw_peritem_prcurve(peritem, prefix='', fnum=1):
     """
     Example:
         >>> # xdoctest: +REQUIRES(module:ndsampler)
@@ -221,7 +221,7 @@ def draw_peritem_prcurve(peritem, prefix=''):
         label = 'ap={:0.2f}: ({:d})'.format(ap, nsupport)
 
     ax = kwplot.multi_plot(
-        xdata=recall, ydata=precision, doclf=True, fnum=1, label=label,
+        xdata=recall, ydata=precision, fnum=fnum, label=label,
         xlim=(0, 1), ylim=(0, 1), xpad=0.01, ypad=0.01,
         xlabel='recall', ylabel='precision',
         title=prefix + 'peritem AP={:.4f}'.format(ap),

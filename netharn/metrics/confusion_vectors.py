@@ -487,21 +487,37 @@ class BinaryConfusionVectors(ub.NiceRepr):
         self.classes = classes
 
     @classmethod
-    def demo(cls, n=10, p_true=0.5, p_error=0.3, rng=None):
+    def demo(cls, n=10, p_true=0.5, p_error=0.2, rng=None):
         """
         Create random data for tests
+
+        Example:
+            >>> cfsn = BinaryConfusionVectors.demo(n=1000, p_error=0.1)
+            >>> print(cfsn.data._pandas())
+            >>> roc_info = cfsn.roc()
+            >>> pr_info = cfsn.precision_recall()
+            >>> print('roc_info = {!r}'.format(roc_info))
+            >>> print('pr_info = {!r}'.format(pr_info))
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.figure(fnum=1, pnum=(1, 2, 1))
+            >>> pr_info.draw()
+            >>> kwplot.figure(fnum=1, pnum=(1, 2, 2))
+            >>> roc_info.draw()
         """
         import kwarray
         rng = kwarray.ensure_rng(rng)
         score = rng.rand(n)
 
         data = kwarray.DataFrameArray({
-            'is_true': score > p_true,
+            'is_true': (score > p_true).astype(np.uint8),
             'pred_score': score,
         })
 
-        flags = rng.rand() > p_error
-        data['is_true'][flags] = ~data['is_true'][flags]
+        flags = rng.rand(n) < p_error
+        print('flags = {!r}'.format(flags.sum()))
+        data['is_true'][flags] = 1 - data['is_true'][flags]
 
         classes = ['c1', 'c2', 'c3']
         self = cls(data, cx=1, classes=classes)
@@ -520,7 +536,7 @@ class BinaryConfusionVectors(ub.NiceRepr):
     def __len__(self):
         return len(self.data)
 
-    @ub.memoize_method
+    # @ub.memoize_method
     def precision_recall(self, stabalize_thresh=8):
         """
         Example:
@@ -620,7 +636,7 @@ class BinaryConfusionVectors(ub.NiceRepr):
             })
         return PR_Result(prs_info)
 
-    @ub.memoize_method
+    # @ub.memoize_method
     def roc(self, fp_cutoff=None, stabalize_thresh=7):
         """
         Example:
@@ -638,8 +654,8 @@ class BinaryConfusionVectors(ub.NiceRepr):
             from sklearn.metrics._ranking import _binary_clf_curve
         except ImportError:
             from sklearn.metrics.ranking import _binary_clf_curve
-        data = self.data
 
+        data = self.data
         y_true = data['is_true'].astype(np.uint8)
         y_score = data['pred_score']
         sample_weight = data._data.get('weight', None)
@@ -762,8 +778,14 @@ class DictProxy(DictLike):
 class ROC_Result(ub.NiceRepr, DictProxy):
     """
     Example:
-        >>> self = BinaryConfusionVectors.demo(n=3, p_true=0.5, p_error=0.5).roc()
+        >>> self = BinaryConfusionVectors.demo(n=300, p_true=0.1, p_error=0.5).roc()
         >>> print('self = {!r}'.format(self))
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> kwplot.figure(fnum=1, doclf=1)
+        >>> self.draw()
+        >>> kwplot.show_if_requested()
     """
     def __init__(self, roc_info):
         self.proxy = roc_info
@@ -781,11 +803,31 @@ class ROC_Result(ub.NiceRepr, DictProxy):
             'catname': self['node'],
         })
 
+    def draw(self):
+        """
+        Example:
+            >>> from netharn.metrics.confusion_vectors import *  # NOQA
+            >>> self = BinaryConfusionVectors.demo(n=100).roc()
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> self.draw()
+            >>> kwplot.show_if_requested()
+        """
+        from netharn.metrics.drawing import draw_roc
+        return draw_roc(self)
+
 class PR_Result(ub.NiceRepr, DictProxy):
     """
     Example:
-        >>> self = BinaryConfusionVectors.demo(n=3, p_true=0.5, p_error=0.5).precision_recall()
+        >>> from netharn.metrics.confusion_vectors import *  # NOQA
+        >>> self = BinaryConfusionVectors.demo(n=100, p_error=0.5).precision_recall()
         >>> print('self = {!r}'.format(self))
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> self.draw()
+        >>> kwplot.show_if_requested()
     """
     def __init__(self, roc_info):
         self.proxy = roc_info
@@ -802,6 +844,10 @@ class PR_Result(ub.NiceRepr, DictProxy):
             'realneg_total': self['realneg_total'],
             'catname': self['node'],
         })
+
+    def draw(self):
+        from netharn.metrics.drawing import draw_peritem_prcurve
+        return draw_peritem_prcurve(self)
 
 
 def _stabalilze_data(y_true, y_score, sample_weight, npad=7):
