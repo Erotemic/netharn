@@ -19,7 +19,7 @@ def draw_roc(roc_info, prefix='', fnum=1, **kw):
         >>> cfsn_vecs = dmet.confusion_vectors(compat='mutex', prioritize='iou', bias=0)
         >>> print(cfsn_vecs.data._pandas().sort_values('score'))
         >>> classes = cfsn_vecs.classes
-        >>> roc_info = cfsn_vecs.binarize_ovr().roc()['perclass'][1]
+        >>> roc_info = ub.peek(cfsn_vecs.binarize_ovr().roc()['perclass'].values())
         >>> # xdoctest: +REQUIRES(--show)
         >>> import kwplot
         >>> kwplot.autompl()

@@ -1,6 +1,6 @@
-torchvision >= 0.2.1
-six >= 1.11.0
 torch >= 1.0.0
+torchvision >= 0.2.0
+six >= 1.11.0
 numpy >= 1.9.0
 ubelt >= 0.8.4
 parse >= 1.8.4
@@ -10,6 +10,7 @@ pygtrie >= 2.2
 imgaug >= 0.2.6
 
 # NOTE: in the future kwimage and kwplot may become optional
+scriptconfig >= 0.4.0
 kwarray >= 0.4.0
 kwimage >= 0.4.0
 kwplot >= 0.4.0

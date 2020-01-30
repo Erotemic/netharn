@@ -267,7 +267,7 @@ class ConfusionVectors(ub.NiceRepr):
             >>> self = ConfusionVectors.demo()
             >>> print('self = {!r}'.format(self))
             >>> catname_to_binvecs = self.binarize_ovr(keyby='name')
-            >>> print('catname_to_binvecs = {!r}'.format(cx_to_binvecs))
+            >>> print('catname_to_binvecs = {!r}'.format(catname_to_binvecs))
 
         Notes:
             Consider we want to measure how well we can classify beagles.
