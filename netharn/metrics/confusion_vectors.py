@@ -1,10 +1,11 @@
 import numpy as np
 import ubelt as ub
 import warnings
-from .functional import fast_confusion_matrix
+from scriptconfig.dict_like import DictLike
+from netharn.metrics.functional import fast_confusion_matrix
 
 
-class ConfusionVectors(object):
+class ConfusionVectors(ub.NiceRepr):
     """
     Stores information used to construct a confusion matrix. This includes
     corresponding vectors of predicted labels, true labels, sample weights,
@@ -51,6 +52,29 @@ class ConfusionVectors(object):
         self.data = data
         self.classes = classes
         self.probs = probs
+
+    def __nice__(self):
+        return self.data.__nice__()
+
+    @classmethod
+    def demo(self):
+        """
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> self = ConfusionVectors.demo()
+            >>> print('self = {!r}'.format(self))
+            >>> cx_to_binvecs = self.binarize_ovr()
+            >>> print('cx_to_binvecs = {!r}'.format(cx_to_binvecs))
+        """
+        from netharn.metrics import DetectionMetrics
+        dmet = DetectionMetrics.demo(
+            nimgs=10, nboxes=(0, 10), n_fp=(0, 1), nclasses=3)
+        # print('dmet = {!r}'.format(dmet))
+        self = dmet.confusion_vectors()
+        self.data._data = ub.dict_isect(self.data._data, [
+            'true', 'pred', 'score', 'weight',
+        ])
+        return self
 
     @classmethod
     def from_arrays(ConfusionVectors, true, pred=None, score=None, weight=None,
@@ -226,15 +250,24 @@ class ConfusionVectors(object):
         binvecs = BinaryConfusionVectors(bin_data)
         return binvecs
 
-    def binarize_ovr(self, mode=1):
+    def binarize_ovr(self, mode=1, keyby='name'):
         """
         Transforms self into one-vs-rest BinaryConfusionVectors for each category.
 
         Args:
             mode (int): 0 for heirarchy aware or 1 for voc like
+            keyby : can be cx or name
 
         Returns:
+            OneVsRestConfusionVectors: which behaves like
             Dict[int, BinaryConfusionVectors]: cx_to_binvecs
+
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> self = ConfusionVectors.demo()
+            >>> print('self = {!r}'.format(self))
+            >>> catname_to_binvecs = self.binarize_ovr(keyby='name')
+            >>> print('catname_to_binvecs = {!r}'.format(catname_to_binvecs))
 
         Notes:
             Consider we want to measure how well we can classify beagles.
@@ -284,8 +317,10 @@ class ConfusionVectors(object):
                 continue
 
             if mode == 0:
-                # NOTE: THIS CALCLUATION MIGHT BE WRONG. MANY OTHERS
-                # IN THIS FILE WERE, AND I HAVENT CHECKED THIS ONE YET
+                import warnings
+                warnings.warn(
+                    'THIS CALCLUATION MIGHT BE WRONG. MANY OTHERS '
+                    'IN THIS FILE WERE, AND I HAVENT CHECKED THIS ONE YET')
 
                 # Lookup original probability predictions for the class of interest
                 new_scores = self.probs[:, cx]
@@ -324,39 +359,87 @@ class ConfusionVectors(object):
             elif mode == 1:
                 # More VOC-like, not hierarcy friendly
 
-                flags1 = data['pred'] == cx
-                flags2 = data['true'] == cx
-                flags = flags1 | flags2
+                if self.probs is not None:
+                    # We know the actual score predicted for this category in
+                    # this case.
+                    is_true = self.data['true'] == cx
+                    pred_score = self.probs[:, cx]
+                else:
+                    import warnings
+                    warnings.warn(
+                        'Binarize ovr is only approximate if not all probabilities are known')
+                    # If we don't know the probabilities for non-predicted
+                    # categories then we have to guess.
+                    is_true = self.data['true'] == cx
 
-                y_group = data.compress(flags)
+                    # do we know the actual predicted score for this category?
+                    score_is_unknown = data['pred'] != cx
+                    pred_score = data['score'].copy()
+
+                    # These scores were for a different class, so assume
+                    # other classes were predicted with a uniform prior
+                    apporx_score = (1 - pred_score[score_is_unknown]) / (len(classes) - 1)
+                    pred_score[score_is_unknown] = apporx_score
 
                 bin_data = {
-                    # NOTE: THIS USED TO CHECK IF PRED==TRUE BUT
-                    # IT REALLY NEEDS TO KNOW IF TRUE IS THE LABEL OF INTEREST
-                    # 'is_true': y_group['pred'] == y_group['true'],
-                    'is_true': y_group['true'] == cx,
-
-                    'pred_score': y_group['score'],
-                    'weight': y_group['weight'],
-                    'txs': y_group['txs'],
-                    'pxs': y_group['pxs'],
-                    'gid': y_group['gid'],
+                    # is_true denotes if the true class of the item is the
+                    # category of interest.
+                    'is_true': is_true,
+                    'pred_score': pred_score,
                 }
+
+                extra = ub.dict_isect(data._data, [
+                    'txs', 'pxs', 'gid', 'weight'])
+                bin_data.update(extra)
+
                 bin_data = kwarray.DataFrameArray(bin_data)
                 bin_cfsn = BinaryConfusionVectors(bin_data, cx, classes)
             cx_to_binvecs[cx] = bin_cfsn
 
+        if keyby == 'cx':
+            cx_to_binvecs = cx_to_binvecs
+        elif keyby == 'name':
+            cx_to_binvecs = ub.map_keys(self.classes, cx_to_binvecs)
+        else:
+            raise KeyError(keyby)
+
         ovr_cfns = OneVsRestConfusionVectors(cx_to_binvecs, self.classes)
         return ovr_cfns
 
+    def classification_report(self, verbose=0):
+        """
+        Build a classification report with various metrics.
+        """
+        from netharn.metrics import clf_report
+        y_true = self.data['true']
+        y_pred = self.data['pred']
+        sample_weight = self.data.get('weight', None)
+        target_names = list(self.classes)
+        report = clf_report.classification_report(
+            y_true=y_true,
+            y_pred=y_pred,
+            sample_weight=sample_weight,
+            target_names=target_names,
+            verbose=verbose,
+        )
+        return report
 
-class OneVsRestConfusionVectors(object):
+
+class OneVsRestConfusionVectors(ub.NiceRepr):
     """
-    Container for multiple one-vs-rest confusion vectors
+    Container for multiple one-vs-rest binary confusion vectors
+
+    Attributes:
+        cx_to_binvecs
+        classes
     """
     def __init__(self, cx_to_binvecs, classes):
         self.cx_to_binvecs = cx_to_binvecs
         self.classes = classes
+
+    def __nice__(self):
+        # return ub.repr2(ub.map_vals(len, self.cx_to_binvecs))
+        return ub.repr2(self.cx_to_binvecs, strvals=True)
 
     def keys(self):
         return self.cx_to_binvecs.keys()
@@ -364,9 +447,11 @@ class OneVsRestConfusionVectors(object):
     def __getitem__(self, cx):
         return self.cx_to_binvecs[cx]
 
-    def precision_recall(self):
-        perclass = {cx: binvecs.precision_recall()
-                    for cx, binvecs in self.cx_to_binvecs.items()}
+    def precision_recall(self, **kwargs):
+        perclass = PerClass_PR_Result({
+            cx: binvecs.precision_recall(**kwargs)
+            for cx, binvecs in self.cx_to_binvecs.items()
+        })
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', message='Mean of empty slice')
             mAP = np.nanmean([item['ap'] for item in perclass.values()])
@@ -375,9 +460,11 @@ class OneVsRestConfusionVectors(object):
             'perclass': perclass,
         }
 
-    def roc(self):
-        perclass = {cx: binvecs.roc()
-                    for cx, binvecs in self.cx_to_binvecs.items()}
+    def roc(self, **kwargs):
+        perclass = PerClass_ROC_Result({
+            cx: binvecs.roc(**kwargs)
+            for cx, binvecs in self.cx_to_binvecs.items()
+        })
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', message='Mean of empty slice')
             mAUC = np.nanmean([item['auc'] for item in perclass.values()])
@@ -387,7 +474,7 @@ class OneVsRestConfusionVectors(object):
         }
 
 
-class BinaryConfusionVectors(object):
+class BinaryConfusionVectors(ub.NiceRepr):
     """
     Stores information about a binary classification problem.
     This is always with respect to a specific class, which is given
@@ -398,13 +485,24 @@ class BinaryConfusionVectors(object):
         `pred_score` - the predicted probability of class `classes[cx]`, and
         `weight` - sample weight of the example
 
-    Ignore:
-        {'is_true': {0: True, 1: True, 2: False, 3: False, 4: False, 5: False, 6: False, 7: False},
-        'pred_score': {0: 0.979, 1: 0.97035, 2: 0.88388, 3: 0.7680, 4: 0.435, 5: 0.2763, 6: 0.1799, 7: 0.0},
-        'weight': {0: 0.9, 1: 0.9, 2: 1.0, 3: 1.0, 4: 1.0, 5: 1.0, 6: 1.0, 7: 0.9},
-        'txs': {0: 2, 1: 0, 2: -1, 3: -1, 4: -1, 5: -1, 6: -1, 7: 1},
-        'pxs': {0: 1, 1: 0, 2: 2, 3: 3, 4: 6, 5: 5, 6: 4, 7: -1},
-        'gid': {0: 61, 1: 61, 2: 61, 3: 61, 4: 61, 5: 61, 6: 61, 7: 61}}
+    Example:
+        >>> self = BinaryConfusionVectors.demo(n=10)
+        >>> print('self = {!r}'.format(self))
+        >>> print('pr = {}'.format(ub.repr2(self.precision_recall())))
+        >>> print('roc = {}'.format(ub.repr2(self.roc())))
+
+        >>> self = BinaryConfusionVectors.demo(n=0)
+        >>> print('pr = {}'.format(ub.repr2(self.precision_recall())))
+        >>> print('roc = {}'.format(ub.repr2(self.roc())))
+
+        >>> self = BinaryConfusionVectors.demo(n=1)
+        >>> print('pr = {}'.format(ub.repr2(self.precision_recall())))
+        >>> print('roc = {}'.format(ub.repr2(self.roc())))
+
+        >>> self = BinaryConfusionVectors.demo(n=2)
+        >>> print('self = {!r}'.format(self))
+        >>> print('pr = {}'.format(ub.repr2(self.precision_recall())))
+        >>> print('roc = {}'.format(ub.repr2(self.roc())))
     """
 
     def __init__(self, data, cx=None, classes=None):
@@ -412,23 +510,121 @@ class BinaryConfusionVectors(object):
         self.cx = cx
         self.classes = classes
 
-    @ub.memoize_method
-    def precision_recall(self):
+    @classmethod
+    def demo(cls, n=10, p_true=0.5, p_error=0.2, rng=None):
+        """
+        Create random data for tests
+
+        Example:
+            >>> cfsn = BinaryConfusionVectors.demo(n=1000, p_error=0.1)
+            >>> print(cfsn.data._pandas())
+            >>> roc_info = cfsn.roc()
+            >>> pr_info = cfsn.precision_recall()
+            >>> print('roc_info = {!r}'.format(roc_info))
+            >>> print('pr_info = {!r}'.format(pr_info))
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.figure(fnum=1, pnum=(1, 2, 1))
+            >>> pr_info.draw()
+            >>> kwplot.figure(fnum=1, pnum=(1, 2, 2))
+            >>> roc_info.draw()
+        """
+        import kwarray
+        rng = kwarray.ensure_rng(rng)
+        score = rng.rand(n)
+
+        data = kwarray.DataFrameArray({
+            'is_true': (score > p_true).astype(np.uint8),
+            'pred_score': score,
+        })
+
+        flags = rng.rand(n) < p_error
+        print('flags = {!r}'.format(flags.sum()))
+        data['is_true'][flags] = 1 - data['is_true'][flags]
+
+        classes = ['c1', 'c2', 'c3']
+        self = cls(data, cx=1, classes=classes)
+        return self
+
+    @property
+    def catname(self):
+        return self.classes[self.cx]
+
+    def __nice__(self):
+        return ub.repr2({
+            'catname': self.catname,
+            'data': self.data.__nice__(),
+        }, nl=0, strvals=True)
+
+    def __len__(self):
+        return len(self.data)
+
+    # @ub.memoize_method
+    def precision_recall(self, stabalize_thresh=7, stabalize_pad=7):
+        """
+        Example:
+            >>> self = BinaryConfusionVectors.demo(n=11)
+            >>> print('precision_recall = {}'.format(ub.repr2(self.precision_recall())))
+            >>> self = BinaryConfusionVectors.demo(n=7)
+            >>> print('precision_recall = {}'.format(ub.repr2(self.precision_recall())))
+            >>> self = BinaryConfusionVectors.demo(n=5)
+            >>> print('precision_recall = {}'.format(ub.repr2(self.precision_recall())))
+            >>> self = BinaryConfusionVectors.demo(n=3)
+            >>> print('precision_recall = {}'.format(ub.repr2(self.precision_recall())))
+            >>> self = BinaryConfusionVectors.demo(n=2)
+            >>> print('precision_recall = {}'.format(ub.repr2(self.precision_recall())))
+            >>> self = BinaryConfusionVectors.demo(n=1)
+            >>> print('precision_recall = {}'.format(ub.repr2(self.precision_recall())))
+
+            >>> self = BinaryConfusionVectors.demo(n=0)
+            >>> print('precision_recall = {}'.format(ub.repr2(self.precision_recall())))
+
+            >>> self = BinaryConfusionVectors.demo(n=1, p_true=0.5, p_error=0.5)
+            >>> print('precision_recall = {}'.format(ub.repr2(self.precision_recall())))
+
+
+            >>> self = BinaryConfusionVectors.demo(n=3, p_true=0.5, p_error=0.5)
+            >>> print('precision_recall = {}'.format(ub.repr2(self.precision_recall())))
+
+        """
         import sklearn
         import sklearn.metrics  # NOQA
         data = self.data
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message='invalid .* true_divide')
-            ap = sklearn.metrics.average_precision_score(
-                y_true=data['is_true'].astype(np.uint8),
-                y_score=data['pred_score'],
-                sample_weight=data['weight'],
-            )
-            prec, rec, thresholds = sklearn.metrics.precision_recall_curve(
-                y_true=data['is_true'].astype(np.uint8),
-                probas_pred=data['pred_score'],
-                sample_weight=data['weight'],
-            )
+
+        y_true = data['is_true'].astype(np.uint8)
+        y_score = data['pred_score']
+        sample_weight = data._data.get('weight', None)
+
+        npad = 0
+        if len(self) == 0:
+            ap = np.nan
+            prec = [np.nan]
+            rec = [np.nan]
+            thresholds = [np.nan]
+
+        else:
+            if len(self) <= stabalize_thresh:
+                # add dummy data to stabalize the computation
+                if sample_weight is None:
+                    sample_weight = np.ones(len(self))
+                npad = stabalize_pad
+                y_true, y_score, sample_weight = _stabalilze_data(
+                    y_true, y_score, sample_weight, npad=npad)
+
+            metric_kw = {
+                'y_true': y_true,
+                'sample_weight': sample_weight,
+            }
+
+            # print('metric_kw = {}'.format(ub.repr2(metric_kw, nl=1)))
+            # print('y_score = {!r}'.format(y_score))
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', message='invalid .* true_divide')
+                ap = sklearn.metrics.average_precision_score(
+                    y_score=y_score, **metric_kw)
+                prec, rec, thresholds = sklearn.metrics.precision_recall_curve(
+                    probas_pred=y_score, **metric_kw)
 
         # FIXME
         # USING true == pred IS WRONG.
@@ -437,13 +633,18 @@ class BinaryConfusionVectors(object):
 
         # Get the total weight (typically number of) positive and negative
         # examples of this class
-        realpos_total = (data['is_true'] * data['weight']).sum()
-        realneg_total = ((1 - data['is_true']) * data['weight']).sum()
-        nsupport = data['weight'].sum()
+        if sample_weight is None:
+            weight = 1
+            nsupport = len(y_true) - bool(npad)
+        else:
+            weight = sample_weight
+            nsupport = sample_weight.sum() - bool(npad)
+
+        realpos_total = (y_true * weight).sum()
+        realneg_total = ((1 - y_true) * weight).sum()
 
         prs_info = {
             'ap': ap,
-            # 'pr': (prec, rec),
             'ppv': prec,   # (positive predictive value) == (precision)
             'tpr': rec,    # (true positive rate) == (recall)
             'thresholds': thresholds,
@@ -456,16 +657,48 @@ class BinaryConfusionVectors(object):
                 'cx': self.cx,
                 'node': self.classes[self.cx],
             })
-        return prs_info
+        return PR_Result(prs_info)
 
-    @ub.memoize_method
-    def roc(self, fp_cutoff=None):
+    # @ub.memoize_method
+    def roc(self, fp_cutoff=None, stabalize_thresh=7, stabalize_pad=7):
+        """
+        Example:
+            >>> self = BinaryConfusionVectors.demo(n=0)
+            >>> print('roc = {}'.format(ub.repr2(self.roc())))
+            >>> self = BinaryConfusionVectors.demo(n=1, p_true=0.5, p_error=0.5)
+            >>> print('roc = {}'.format(ub.repr2(self.roc())))
+            >>> self = BinaryConfusionVectors.demo(n=3, p_true=0.5, p_error=0.5)
+            >>> print('roc = {}'.format(ub.repr2(self.roc())))
+
+        """
         import sklearn
         import sklearn.metrics  # NOQA
+        try:
+            from sklearn.metrics._ranking import _binary_clf_curve
+        except ImportError:
+            from sklearn.metrics.ranking import _binary_clf_curve
+
         data = self.data
-        y_true = data['is_true']
+        y_true = data['is_true'].astype(np.uint8)
         y_score = data['pred_score']
-        sample_weight = data['weight']
+        sample_weight = data._data.get('weight', None)
+
+        npad = 0
+        if len(self) > 0:
+            if len(self) <= stabalize_thresh:
+                # add dummy data to stabalize the computation
+                if sample_weight is None:
+                    sample_weight = np.ones(len(self))
+                npad = stabalize_pad
+                y_true, y_score, sample_weight = _stabalilze_data(
+                    y_true, y_score, sample_weight, npad=npad)
+
+        if sample_weight is None:
+            weight = 1
+            nsupport = len(y_true) - bool(npad)
+        else:
+            weight = sample_weight
+            nsupport = sample_weight.sum() - bool(npad)
 
         # y_true[y_true == -1] = 0
 
@@ -475,12 +708,16 @@ class BinaryConfusionVectors(object):
 
         # Get the total weight (typically number of) positive and negative
         # examples of this class
-        realpos_total = (data['is_true'] * data['weight']).sum()
-        realneg_total = ((1 - data['is_true']) * data['weight']).sum()
-        nsupport = data['weight'].sum()
+        realpos_total = (y_true * weight).sum()
+        realneg_total = ((1 - y_true) * weight).sum()
 
-        fp_count, tp_count, count_thresholds = sklearn.metrics.ranking._binary_clf_curve(
-            y_true, y_score, pos_label=1, sample_weight=sample_weight)
+        if len(self) == 0:
+            fp_count = np.array([np.nan])
+            tp_count = np.array([np.nan])
+            count_thresholds = np.array([np.nan])
+        else:
+            fp_count, tp_count, count_thresholds = _binary_clf_curve(
+                y_true, y_score, pos_label=1, sample_weight=sample_weight)
 
         if len(count_thresholds) > 0 and count_thresholds[-1] == 0:
             # Chop off the last entry where it will jump
@@ -491,6 +728,12 @@ class BinaryConfusionVectors(object):
         # Cutoff the curves at a comparable point
         if fp_cutoff is None:
             fp_cutoff = np.inf
+        elif isinstance(fp_cutoff, str):
+            if fp_cutoff == 'num_true':
+                fp_cutoff = int(np.ceil(realpos_total))
+            else:
+                raise KeyError(fp_cutoff)
+
         idxs = np.where(fp_count > fp_cutoff)[0]
         if len(idxs) == 0:
             idx = len(fp_count)
@@ -542,4 +785,145 @@ class BinaryConfusionVectors(object):
                 'cx': self.cx,
                 'node': self.classes[self.cx],
             })
-        return roc_info
+        return ROC_Result(roc_info)
+
+
+class DictProxy(DictLike):
+    """
+    Allows an object to proxy the behavior of a dict attribute
+    """
+    def __getitem__(self, key):
+        return self.proxy[key]
+
+    def __setitem__(self, key, value):
+        self.proxy[key] = value
+
+    def keys(self):
+        return self.proxy.keys()
+
+
+class ROC_Result(ub.NiceRepr, DictProxy):
+    """
+    Example:
+        >>> self = BinaryConfusionVectors.demo(n=300, p_true=0.1, p_error=0.5).roc()
+        >>> print('self = {!r}'.format(self))
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> kwplot.figure(fnum=1, doclf=1)
+        >>> self.draw()
+        >>> kwplot.show_if_requested()
+    """
+    def __init__(self, roc_info):
+        self.proxy = roc_info
+
+    @property
+    def catname(self):
+        return self['node']
+
+    def __nice__(self):
+        return ub.repr2({
+            'auc': self['auc'],
+            'nsupport': self['nsupport'],
+            'realpos_total': self['realpos_total'],
+            'realneg_total': self['realneg_total'],
+            'catname': self['node'],
+        }, nl=0, precision=4, strvals=True)
+
+    def draw(self, **kw):
+        """
+        Example:
+            >>> from netharn.metrics.confusion_vectors import *  # NOQA
+            >>> self = BinaryConfusionVectors.demo(n=100).roc()
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> self.draw()
+            >>> kwplot.show_if_requested()
+        """
+        from netharn.metrics import drawing
+        return drawing.draw_roc(self, **kw)
+
+
+class PR_Result(ub.NiceRepr, DictProxy):
+    """
+    Example:
+        >>> from netharn.metrics.confusion_vectors import *  # NOQA
+        >>> self = BinaryConfusionVectors.demo(n=100, p_error=0.5).precision_recall()
+        >>> print('self = {!r}'.format(self))
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> self.draw()
+        >>> kwplot.show_if_requested()
+    """
+    def __init__(self, roc_info):
+        self.proxy = roc_info
+
+    @property
+    def catname(self):
+        return self['node']
+
+    def __nice__(self):
+        return ub.repr2({
+            'ap': self['ap'],
+            'nsupport': self['nsupport'],
+            'realpos_total': self['realpos_total'],
+            'realneg_total': self['realneg_total'],
+            'catname': self['node'],
+        }, nl=0, precision=4, strvals=True)
+
+    def draw(self, **kw):
+        from netharn.metrics import drawing
+        return drawing.draw_peritem_prcurve(self, **kw)
+
+
+class PerClass_ROC_Result(ub.NiceRepr, DictProxy):
+    """
+    """
+    def __init__(self, cx_to_roc):
+        self.proxy = cx_to_roc
+
+    def __nice__(self):
+        return ub.repr2(self.proxy, nl=2, strvals=True)
+
+    def draw(self, **kw):
+        from netharn.metrics import drawing
+        return drawing.draw_perclass_roc(self, **kw)
+
+
+class PerClass_PR_Result(ub.NiceRepr, DictProxy):
+    """
+    """
+    def __init__(self, cx_to_pr):
+        self.proxy = cx_to_pr
+
+    def __nice__(self):
+        return ub.repr2(self.proxy, nl=2, strvals=True)
+
+    def draw(self, **kw):
+        from netharn.metrics import drawing
+        return drawing.draw_perclass_prcurve(self, **kw)
+
+
+def _stabalilze_data(y_true, y_score, sample_weight, npad=7):
+    npad = 7
+    min_score = y_score.min()
+    max_score = y_score.max()
+
+    if max_score <= 1.0 and min_score >= 0.0:
+        max_score = 1.0
+        min_score = 0.0
+
+    pad_true = np.ones(npad, dtype=np.uint8)
+    pad_true[:npad // 2] = 0
+
+    pad_score = np.linspace(min_score, max_score, num=npad,
+                            endpoint=True)
+    pad_weight = np.exp(np.linspace(2.7, .01, npad))
+    pad_weight /= pad_weight.sum()
+
+    y_true = np.hstack([y_true, pad_true])
+    y_score = np.hstack([y_score, pad_score])
+    sample_weight = np.hstack([sample_weight, pad_weight])
+    return y_true, y_score, sample_weight

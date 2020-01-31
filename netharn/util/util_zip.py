@@ -149,7 +149,7 @@ class zopen(ub.NiceRepr):
                     raise KeyError(self.mode)
                 self._zfpath = archivefile
         if _handle is None:
-            raise IOError('file does not exist')
+            raise IOError('file {!r} does not exist'.format(self.fpath))
         self._handle = _handle
 
     def __enter__(self):

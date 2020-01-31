@@ -245,16 +245,7 @@ class XPU(ub.NiceRepr):
     of = from_data  # alias
 
     @classmethod
-    def coerce(cls, item, **kwargs):
-        """
-        Converts objects of many different types into an XPU.
-
-        I think I like this name better than cast, not sure
-        """
-        return cls.cast(item, **kwargs)
-
-    @classmethod
-    def cast(xpu, item, check=True, **kwargs):
+    def coerce(XPU, item, check=True, **kwargs):
         """
         Converts objects of many different types into an XPU.
 
@@ -262,14 +253,14 @@ class XPU(ub.NiceRepr):
             item : special string, int, list, or None
 
         Example:
-            >>> assert XPU.cast('0', check=False) == XPU(0, check=False)
-            >>> assert XPU.cast('0,1,2', check=False) == XPU([0, 1, 2], check=False)
-            >>> assert XPU.cast('2,3,4', check=False) == XPU([2, 3, 4], check=False)
-            >>> assert XPU.cast('gpus=2,3,4', check=False) == XPU([2, 3, 4], check=False)
-            >>> assert XPU.cast([0, 1], check=False) == XPU([0, 1], check=False)
-            >>> assert XPU.cast(torch.Tensor()) == XPU(None)
-            >>> assert XPU.cast(None) == XPU(None)
-            >>> assert XPU.cast('auto', check=False) is not None
+            >>> assert XPU.coerce('0', check=False) == XPU(0, check=False)
+            >>> assert XPU.coerce('0,1,2', check=False) == XPU([0, 1, 2], check=False)
+            >>> assert XPU.coerce('2,3,4', check=False) == XPU([2, 3, 4], check=False)
+            >>> assert XPU.coerce('gpus=2,3,4', check=False) == XPU([2, 3, 4], check=False)
+            >>> assert XPU.coerce([0, 1], check=False) == XPU([0, 1], check=False)
+            >>> assert XPU.coerce(torch.Tensor()) == XPU(None)
+            >>> assert XPU.coerce(None) == XPU(None)
+            >>> assert XPU.coerce('auto', check=False) is not None
         """
         try:
             if item is None:
@@ -316,6 +307,16 @@ class XPU(ub.NiceRepr):
                 ValueError
         except Exception as ex:
             raise ValueError('cannot cast to XPU. item={!r}. Caused by: {!r}'.format(item, ex))
+
+    @classmethod
+    def cast(xpu, item, check=True, **kwargs):
+        """
+        Deprecated, use XPU.coerce instead.
+        """
+        import warnings
+        warnings.warn('XPU.cast is deprecated, use XPU.coerce instead',
+                      DeprecationWarning)
+        return xpu.coerce(item, check=check, **kwargs)
 
     def __eq__(xpu, other):
         """
@@ -386,15 +387,16 @@ class XPU(ub.NiceRepr):
     def memory(self):
         """
         Example:
+            >>> # xdoctest: +REQUIRES(module:psutil)
             >>> from netharn.device import *
-            >>> print(ub.repr2(XPU.cast(None).memory()))
+            >>> print(ub.repr2(XPU.coerce(None).memory()))
             {
                 'available': ...,
                 'total': ...,
                 'used': ...,
             }
             >>> # xdoctest: +REQUIRES(--cuda)
-            >>> print(ub.repr2(XPU.cast(0).memory()))
+            >>> print(ub.repr2(XPU.coerce(0).memory()))
             {
                 'available': ...,
                 'total': ...,
@@ -409,7 +411,12 @@ class XPU(ub.NiceRepr):
             'used': 0,
         }
         if self._device_ids is None:
-            import psutil
+            try:
+                import psutil
+            except ImportError:
+                import warnings
+                warnings.warn('using XPU.memory on the CPU requires psutil')
+                raise
             tup = psutil.virtual_memory()
             MB = 1 / 2 ** 20
             info['total'] += tup.total * MB
@@ -681,7 +688,7 @@ def find_unused_gpu(min_memory=0):
     return None
 
 
-def gpu_info():
+def gpu_info(new_mode=False):
     """
     Run nvidia-smi and parse output
 
@@ -704,16 +711,7 @@ def gpu_info():
         >>> print('gpus = {}'.format(ub.repr2(gpus, nl=3)))
         >>> assert len(gpus) == torch.cuda.device_count()
     """
-    try:
-        result = ub.cmd('nvidia-smi')
-        if result['ret'] != 0:
-            warnings.warn('Problem running nvidia-smi.')
-            return None
-    except Exception:
-        warnings.warn('Could not run nvidia-smi.')
-        return {}
-
-    lines = result['out'].splitlines()
+    pass
 
     """
     Ignore:
@@ -729,110 +727,202 @@ def gpu_info():
         name
         count
 
+        nvidia-smi  -h
         nvidia-smi  --help-query-compute-apps
         nvidia-smi  --help-query-gpu
+
+        nvidia-smi --help-query-accounted-apps
+        nvidia-smi --help-query-supported-clocks
+        nvidia-smi --help-query-retired-pages
+        nvidia-smi --query-accounted-apps="pid" --format=csv
 
         nvidia-smi  --query-gpu="index,memory.total,memory.used,memory.free,count,name,gpu_uuid" --format=csv
         nvidia-smi  --query-compute-apps="pid,name,gpu_uuid,used_memory" --format=csv
     """
 
-    gpu_lines = []
-    proc_lines = []
-    current = None
+    if new_mode:
 
-    state = '0_gpu_read'
+        def _query_nvidia_smi(mode, fields):
+            """
+            Runs nvidia smi in query mode
 
-    for line in lines:
-        if current is None:
-            # Signals the start of GPU info
-            if line.startswith('|====='):
-                current = []
-        else:
-            if state == '0_gpu_read':
-                if len(line.strip()) == 0:
-                    # End of GPU info
-                    state = '1_proc_read'
-                    current = None
-                elif line.startswith('+----'):
-                    # Move to the next GPU
-                    gpu_lines.append(current)
+            Args:
+                mode (str): the query cli flag to pass to nvidia-smi
+                fields (List[str]): csv header fields to query
+
+            Returns:
+                List[Dict[str, str]]: parsed csv output
+            """
+            header = ','.join(fields)
+            cmd_fmtstr = 'nvidia-smi --{mode}="{header}" --format=csv,noheader'
+            info = ub.cmd(cmd_fmtstr.format(mode=mode, header=header))
+            if info['ret'] != 0:
+                raise Exception('unable to call nvidia-smi')
+            rows = []
+            for line in info['out'].split('\n'):
+                line = line.strip()
+                if line:
+                    parts = [p.strip() for p in line.split(',')]
+                    row = ub.dzip(fields, parts)
+                    rows.append(row)
+            return rows
+
+        fields = ['index', 'memory.total', 'memory.used', 'memory.free',
+                  'count', 'name', 'gpu_uuid']
+        mode = 'query-gpu'
+        gpu_rows = _query_nvidia_smi(mode, fields)
+
+        fields = ['pid', 'name', 'gpu_uuid', 'used_memory']
+        mode = 'query-compute-apps'
+        proc_rows = _query_nvidia_smi(mode, fields)
+
+        # Coerce into the old-style format for backwards compatibility
+        gpus = {}
+        for row in gpu_rows:
+            gpu = row.copy()
+            num = int(gpu['index'])
+            gpu['num'] = num
+            gpu['mem_used'] = float(gpu['memory.used'].strip().replace('MiB', ''))
+            gpu['mem_total'] = float(gpu['memory.total'].strip().replace('MiB', ''))
+            gpu['mem_avail'] = gpu['mem_total'] - gpu['mem_used']
+            gpu['procs'] = []
+            gpus[num] = gpu
+
+        gpu_uuid_to_num = {g['gpu_uuid']: gpu['num'] for g in gpus.values()}
+
+        for row in proc_rows:
+            # Give each GPU info on which processes are using it
+            proc = row.copy()
+            proc['type'] = 'C'
+            proc['gpu_num'] = gpu_uuid_to_num[proc['gpu_uuid']]
+            num = proc['gpu_num']
+            gpus[num]['procs'].append(proc)
+
+        for gpu in gpus.values():
+            # Let each GPU know how many processes are currently using it
+            num_compute_procs = 0
+            # num_graphics_procs = 0
+            for proc in gpu['procs']:
+                if proc['type'] == 'C':
+                    num_compute_procs += 1
+                # elif proc['type'] == 'G':
+                #     num_graphics_procs += 1
+                else:
+                    raise NotImplementedError(proc['type'])
+
+            # NOTE calling nvidia-smi in query mode does not seem to have
+            # support for getting info about graphics procs.
+            gpu['num_compute_procs'] = num_compute_procs
+            # gpu['num_graphics_procs'] = num_graphics_procs
+    else:
+        try:
+            result = ub.cmd('nvidia-smi')
+            if result['ret'] != 0:
+                warnings.warn('Problem running nvidia-smi.')
+                return None
+        except Exception:
+            warnings.warn('Could not run nvidia-smi.')
+            return {}
+
+        lines = result['out'].splitlines()
+
+        gpu_lines = []
+        proc_lines = []
+        current = None
+
+        state = '0_gpu_read'
+
+        for line in lines:
+            if current is None:
+                # Signals the start of GPU info
+                if line.startswith('|====='):
                     current = []
-                else:
-                    current.append(line)
-            elif state == '1_proc_read':
-                if line.startswith('+----'):
-                    # Move to the next GPU
-                    # End of proc info
-                    state = 'terminate'
-                    break
-                else:
-                    proc_lines.append(line)
             else:
-                raise AssertionError(state)
+                if state == '0_gpu_read':
+                    if len(line.strip()) == 0:
+                        # End of GPU info
+                        state = '1_proc_read'
+                        current = None
+                    elif line.startswith('+----'):
+                        # Move to the next GPU
+                        gpu_lines.append(current)
+                        current = []
+                    else:
+                        current.append(line)
+                elif state == '1_proc_read':
+                    if line.startswith('+----'):
+                        # Move to the next GPU
+                        # End of proc info
+                        state = 'terminate'
+                        break
+                    else:
+                        proc_lines.append(line)
+                else:
+                    raise AssertionError(state)
 
-    def parse_gpu_lines(lines):
-        line1 = lines[0]
-        line2 = lines[1]
-        gpu = {}
-        gpu['name'] = ' '.join(line1.split('|')[1].split()[1:-1])
-        gpu['num'] = int(' '.join(line1.split('|')[1].split()[0]))
+        def parse_gpu_lines(lines):
+            line1 = lines[0]
+            line2 = lines[1]
+            gpu = {}
+            gpu['name'] = ' '.join(line1.split('|')[1].split()[1:-1])
+            gpu['num'] = int(' '.join(line1.split('|')[1].split()[0]))
 
-        mempart = line2.split('|')[2].strip()
-        part1, part2 = mempart.split('/')
-        gpu['mem_used'] = float(part1.strip().replace('MiB', ''))
-        gpu['mem_total'] = float(part2.strip().replace('MiB', ''))
-        gpu['mem_avail'] = gpu['mem_total'] - gpu['mem_used']
-        return gpu
+            mempart = line2.split('|')[2].strip()
+            part1, part2 = mempart.split('/')
+            gpu['mem_used'] = float(part1.strip().replace('MiB', ''))
+            gpu['mem_total'] = float(part2.strip().replace('MiB', ''))
+            gpu['mem_avail'] = gpu['mem_total'] - gpu['mem_used']
+            return gpu
 
-    def parse_proc_line(line):
-        inner = '|'.join(line.split('|')[1:-1])
-        parts = [p.strip() for p in inner.split(' ')]
-        parts = [p for p in parts if p]
+        def parse_proc_line(line):
+            inner = '|'.join(line.split('|')[1:-1])
+            parts = [p.strip() for p in inner.split(' ')]
+            parts = [p for p in parts if p]
 
-        index = int(parts[0])
-        pid = int(parts[1])
-        proc_type = str(parts[2])
-        proc_name = str(parts[3])
-        used_mem = float(parts[4].replace('MiB', ''))
+            index = int(parts[0])
+            pid = int(parts[1])
+            proc_type = str(parts[2])
+            proc_name = str(parts[3])
+            used_mem = float(parts[4].replace('MiB', ''))
 
-        proc = {
-            'gpu_num': index,
-            'pid': pid,
-            'type': proc_type,
-            'name': proc_name,
-            'used_mem': used_mem,
-        }
-        return proc
+            proc = {
+                'gpu_num': index,
+                'pid': pid,
+                'type': proc_type,
+                'name': proc_name,
+                'used_mem': used_mem,
+            }
+            return proc
 
-    gpus = {}
-    for num, lines in enumerate(gpu_lines):
-        gpu = parse_gpu_lines(lines)
-        assert num == gpu['num'], (
-            'nums ({}, {}) do not agree. probably a parsing error'.format(num, gpu['num']))
-        assert num not in gpus, (
-            'Multiple GPUs labeled as num {}. Probably a parsing error'.format(num))
-        gpus[num] = gpu
-        gpus[num]['procs'] = []
+        gpus = {}
+        for num, lines in enumerate(gpu_lines):
+            gpu = parse_gpu_lines(lines)
+            assert num == gpu['num'], (
+                'nums ({}, {}) do not agree. probably a parsing error'.format(num, gpu['num']))
+            assert num not in gpus, (
+                'Multiple GPUs labeled as num {}. Probably a parsing error'.format(num))
+            gpus[num] = gpu
+            gpus[num]['procs'] = []
 
-    for line in proc_lines:
-        # Give each GPU info on which processes are using it
-        proc = parse_proc_line(line)
-        num = proc['gpu_num']
-        gpus[num]['procs'].append(proc)
+        for line in proc_lines:
+            # Give each GPU info on which processes are using it
+            proc = parse_proc_line(line)
+            num = proc['gpu_num']
+            gpus[num]['procs'].append(proc)
 
-    for gpu in gpus.values():
-        # Let each GPU know how many processes are currently using it
-        num_compute_procs = 0
-        num_graphics_procs = 0
-        for proc in gpu['procs']:
-            if proc['type'] == 'C':
-                num_compute_procs += 1
-            elif proc['type'] == 'G':
-                num_graphics_procs += 1
-            else:
-                raise NotImplementedError(proc['type'])
-        gpu['num_compute_procs'] = num_compute_procs
-        gpu['num_graphics_procs'] = num_graphics_procs
+        for gpu in gpus.values():
+            # Let each GPU know how many processes are currently using it
+            num_compute_procs = 0
+            num_graphics_procs = 0
+            for proc in gpu['procs']:
+                if proc['type'] == 'C':
+                    num_compute_procs += 1
+                elif proc['type'] == 'G':
+                    num_graphics_procs += 1
+                else:
+                    raise NotImplementedError(proc['type'])
+            gpu['num_compute_procs'] = num_compute_procs
+            gpu['num_graphics_procs'] = num_graphics_procs
 
     return gpus
 

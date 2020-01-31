@@ -9,3 +9,6 @@ This document contains a list of work that development items that need to be add
     - [ ] Make sure we can close ourself. 
     - [ ] Allow `harn.config` to specify other classes to export (besides the model itself)
     - [ ] Need to make the closer generally robust. 
+
+- [ ] Run one validation batch after every training batch in the first epoch to
+  see how a single set of validation examples evolve.

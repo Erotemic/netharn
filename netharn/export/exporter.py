@@ -42,7 +42,7 @@ from . import closer
 __all__ = ['export_model_code']
 
 
-__pt_export_version__ = '0.5.0'
+__pt_export_version__ = '0.5.1'
 
 
 def export_model_code(dpath, model, initkw=None, export_modules=[]):
@@ -210,17 +210,35 @@ def remove_comments_and_docstrings(source):
         >>> want = ub.codeblock(
             '''
             def foo():
-
+                pass
                 test = [
                     'The spaces before this string do not get a token'
                 ]''').splitlines()
         >>> got = [o.rstrip() for o in out.splitlines()]
         >>> assert got == want
 
+
+        >>> source = ub.codeblock(
+            '''
+            def foo():
+                " docstring "
+            ''')
+        >>> out = remove_comments_and_docstrings(source)
+        >>> print(out)
+        >>> source = ub.codeblock(
+            '''
+            class foo():
+                r{qqq}
+                docstring
+                {qqq}
+            ''').format(qqq='"' * 3)
+        >>> out = remove_comments_and_docstrings(source)
+        >>> print(out)
+
     """
     source = ub.ensure_unicode(source)
     io_obj = io.StringIO(source)
-    out = ''
+    output_parts = []
     prev_toktype = tokenize.INDENT
     last_lineno = -1
     last_col = 0
@@ -237,7 +255,7 @@ def remove_comments_and_docstrings(source):
         if start_line > last_lineno:
             last_col = 0
         if start_col > last_col:
-            out += (' ' * (start_col - last_col))
+            output_parts.append((' ' * (start_col - last_col)))
         # Remove comments:
         if token_type == tokenize.COMMENT:
             pass
@@ -255,15 +273,22 @@ def remove_comments_and_docstrings(source):
                     # Catch whole-module docstrings:
                     if start_col > 0:
                         # Unlabelled indentation means we're inside an operator
-                        out += token_string
+                        output_parts.append(token_string)
                     # Note regarding the INDENT token: The tokenize module does
                     # not label indentation inside of an operator (parens,
                     # brackets, and curly braces) as actual indentation.
+            else:
+                # NOTE: simply removing docstrings may create invalid code
+                # in cases where the only body is a docstring (e.g. a
+                # custom exception). Insert a pass to prevent this.  It
+                # would be nice to detect when this is necessary.
+                output_parts.append('pass')
         else:
-            out += token_string
+            output_parts.append(token_string)
         prev_toktype = token_type
         last_col = end_col
         last_lineno = end_line
+    out = ''.join(output_parts)
     return out
 
 
@@ -290,6 +315,7 @@ def hash_code(sourcecode):
     """
     # Strip docstrings before making a parse tree
     sourcecode = ub.ensure_unicode(sourcecode)
+
     stripped = remove_comments_and_docstrings(sourcecode)
 
     # Also remove pytorch_export version info (not sure if correct?)

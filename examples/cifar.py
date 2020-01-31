@@ -338,7 +338,7 @@ def setup_harn():
         'deterministic': False,
 
     }
-    xpu = nh.XPU.cast(config['xpu'])
+    xpu = nh.XPU.coerce(config['xpu'])
 
     # The work directory is where all intermediate results are dumped.
     ub.ensuredir(config['workdir'])
@@ -601,7 +601,7 @@ def setup_harn():
         # These extra arguments are recorded in the train_info.json but do
         # not contribute to the hyperparameter hash.
         extra={
-            'config': ub.repr2(config.asdict()),
+            'config': ub.repr2(dict(config)),
             'argv': sys.argv,
         }
     )

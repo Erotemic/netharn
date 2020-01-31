@@ -43,6 +43,10 @@ def _truncated_roc(y_df, bg_idx=-1, fp_cutoff=None):
     Computes truncated ROC info
     """
     import sklearn
+    try:
+        from sklearn.metrics._ranking import _binary_clf_curve
+    except ImportError:
+        from sklearn.metrics.ranking import _binary_clf_curve
     y_true = (y_df['true'] == y_df['pred'])
     y_score = y_df['score']
     sample_weight = y_df['weight']
@@ -54,7 +58,7 @@ def _truncated_roc(y_df, bg_idx=-1, fp_cutoff=None):
     # This will let different runs be more comparable
     realpos_total = sample_weight[(y_df['txs'] >= 0)].sum()
 
-    fp_count, tp_count, count_thresholds = sklearn.metrics.ranking._binary_clf_curve(
+    fp_count, tp_count, count_thresholds = _binary_clf_curve(
         y_true, y_score, pos_label=1, sample_weight=sample_weight)
 
     if len(count_thresholds) > 0 and count_thresholds[-1] == 0:

@@ -177,6 +177,8 @@ class Pretrained(api.Initializer, ub.NiceRepr):
 
         if 'model_state_dict' in model_state_dict:
             model_state_dict = model_state_dict['model_state_dict']
+        elif 'state_dict' in model_state_dict:
+            model_state_dict = model_state_dict['state_dict']
         elif 'weights' in model_state_dict:
             model_state_dict = model_state_dict['weights']
         else:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
 # -*- coding: utf-8 -*-
 """
 Requirements:
@@ -9,8 +10,18 @@ from os.path import exists
 from os.path import join
 from os.path import dirname
 from os.path import abspath
-import ubelt as ub
-import functools
+try:
+    import ubelt as ub
+    import click
+    import git as gitpython
+    import functools
+except ImportError as ex:
+    print('ex = {!r}'.format(ex))
+    print('!!!!!!!!!')
+    print('NEED TO INSTALL SUPER SETUP DEPENDENCIES. RUN:')
+    print('pip install -r requirements/super_setup.txt')
+    print('!!!!!!!!!')
+    raise
 
 
 class ShellException(Exception):
@@ -191,6 +202,7 @@ class Repo(ub.NiceRepr):
         url (URI): where the primary location is
 
     Example:
+        >>> # xdoctest: +SKIP
         >>> # Here is a simple example referencing ubelt
         >>> from super_setup import *
         >>> import ubelt as ub
@@ -326,7 +338,6 @@ class Repo(ub.NiceRepr):
     # @ub.memoize_property
     def pygit(repo):
         """ pip install gitpython """
-        import git as gitpython
         if repo._pygit is None:
             repo._pygit = gitpython.Repo(repo.dpath)
         return repo._pygit
@@ -648,36 +659,36 @@ def make_netharn_registry():
 
         # The util libs
         CommonRepo(
-            name='kwarray', branch='dev/0.5.2', remote='public',
+            name='kwarray', branch='dev/0.5.4', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
         ),
         CommonRepo(
-            name='kwimage', branch='dev/0.5.2', remote='public',
+            name='kwimage', branch='dev/0.5.8', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
         ),
+        # CommonRepo(
+        #     name='kwannot', branch='dev/0.1.0', remote='public',
+        #     remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwannot.git'},
+        # ),
         CommonRepo(
-            name='kwannot', branch='master', remote='public',
-            remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwannot.git'},
-        ),
-        CommonRepo(
-            name='kwplot', branch='dev/0.4.1', remote='public',
+            name='kwplot', branch='dev/0.4.3', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwplot.git'},
         ),
 
 
         # For example data and CLI
         CommonRepo(
-            name='scriptconfig', branch='dev/0.5.1', remote='public',
+            name='scriptconfig', branch='dev/0.5.3', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
         ),
         CommonRepo(
-            name='ndsampler', branch='dev/0.5.1', remote='public',
+            name='ndsampler', branch='dev/0.5.2', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
         ),
 
         # netharn - training harness
         CommonRepo(
-            name='netharn', branch='dev/0.5.2', remote='public',
+            name='netharn', branch='dev/0.5.3', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
         ),
     ]
@@ -686,7 +697,7 @@ def make_netharn_registry():
 
 
 def main():
-    import click
+
     registery = make_netharn_registry()
 
     only = ub.argval('--only', default=None)
@@ -769,4 +780,11 @@ def main():
 
 
 if __name__ == '__main__':
+    """
+    For autocomplete you must run in bash
+
+    eval "$(_SUPER_SETUP_COMPLETE=source super_setup.py)"
+    """
+    # import click_completion
+    # click_completion.init()
     main()

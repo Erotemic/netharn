@@ -128,7 +128,7 @@ def train():
     import torchvision
     from torchvision import transforms
 
-    xpu = nh.XPU.cast('argv')
+    xpu = nh.XPU.coerce('argv')
     config = {
         'lr': float(ub.argval('--lr', default=0.1)),
         'batch_size': int(ub.argval('--batch_size', default=64)),

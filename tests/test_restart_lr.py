@@ -30,7 +30,7 @@ def test_restart_lr():
         'nice'        : 'restart_lr',
         'workdir'     : ub.ensure_app_cache_dir('netharn/test/restart_lr'),
         'loaders'     : {'batch_size': 64},
-        'xpu'         : nh.XPU.cast('cpu'),
+        'xpu'         : nh.XPU.coerce('cpu'),
         # --- algorithm second
         'model'       : (nh.models.ToyNet2d, {}),
         'optimizer'   : (nh.optimizers.SGD, {'lr': 99}),

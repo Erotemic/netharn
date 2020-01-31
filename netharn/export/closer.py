@@ -917,3 +917,38 @@ class ImportVisitor(ast.NodeVisitor, ub.NiceRepr):
                                  modname=visitor.modname,
                                  native_modname=abs_modname,
                                  type='ImportFrom')
+
+
+def _closefile(fpath, modnames):
+    """
+    An api to remove dependencies from code by "closing" them.
+
+    CommandLine:
+        xdoctest -m ~/code/netharn/netharn/export/closer.py _closefile
+        xdoctest -m netharn.export.closer _closefile --fpath=~/code/boltons/tests/test_cmdutils.py --modnames=ubelt,
+
+    Example:
+        >>> # SCRIPT
+        >>> # ENTRYPOINT
+        >>> import scriptconfig as scfg
+        >>> config = scfg.quick_cli({
+        >>>     'fpath': scfg.Path(None),
+        >>>     'modnames': scfg.Value([]),
+        >>> })
+        >>> fpath = config['fpath'] = ub.expandpath('~/code/boltons/tests/test_cmdutils.py')
+        >>> modnames = config['modnames'] = ['ubelt']
+        >>> _closefile(**config)
+    """
+    from xdoctest import static_analysis as static
+    modpath = fpath
+    expand_names = modnames
+    source = open(fpath, 'r').read()
+    calldefs = static.parse_calldefs(source, fpath)
+    calldefs.pop('__doc__', None)
+
+    closer = Closer()
+    for key in calldefs.keys():
+        closer.add_static(key, modpath)
+    closer.expand(expand_names)
+    #print(ub.repr2(closer.body_defs, si=1))
+    print(closer.current_sourcecode())

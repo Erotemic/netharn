@@ -89,8 +89,13 @@ def number_of_parameters(model, trainable=True):
 class grad_context(object):
     """
     Context manager for controlling if autograd is enabled.
+
+    DEPRECATED use ``torch.set_grad_enabled`` instead
     """
     def __init__(self, flag):
+        import warnings
+        warnings.warn('Deprecated use torch.set_grad_enabled instead',
+                      DeprecationWarning)
         if tuple(map(int, torch.__version__.split('.')[0:2])) < (0, 4):
             self.prev = None
             self.flag = flag
