@@ -218,6 +218,35 @@ stages:
 ### JOBS ###
 # Define the actual jobs
 
+# ---------------
+# Python 3.8 Jobs
+
+build/cp38-cp38-linux:
+    <<: 
+        - *build_template
+    image:
+        python:3.8
+
+test_full/cp38-cp38-linux:
+    <<: 
+        - *test_full_template
+    image:
+        python:3.8
+
+
+# for universal builds we only need to gpg sign once
+gpgsign/cp38-cp38-linux:
+    <<: 
+        - *gpgsign_template
+    image:
+        python:3.8
+
+deploy/cp38-cp38-linux:
+    <<: 
+        - *deploy_template
+    image:
+        python:3.8
+
 
 # ---------------
 # Python 3.7 Jobs

@@ -663,10 +663,10 @@ def make_netharn_registry():
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
         ),
         CommonRepo(
-            name='kwimage', branch='dev/0.5.8', remote='public',
+            name='kwimage', branch='dev/0.6.0', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
         ),
-        # CommonRepo(
+        # CommonRepo(  # TODO
         #     name='kwannot', branch='dev/0.1.0', remote='public',
         #     remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwannot.git'},
         # ),
@@ -678,17 +678,17 @@ def make_netharn_registry():
 
         # For example data and CLI
         CommonRepo(
-            name='scriptconfig', branch='dev/0.5.3', remote='public',
+            name='scriptconfig', branch='dev/0.5.4', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
         ),
         CommonRepo(
-            name='ndsampler', branch='dev/0.5.2', remote='public',
+            name='ndsampler', branch='dev/0.5.2.1', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
         ),
 
         # netharn - training harness
         CommonRepo(
-            name='netharn', branch='dev/0.5.3', remote='public',
+            name='netharn', branch='dev/0.5.4', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
         ),
     ]
