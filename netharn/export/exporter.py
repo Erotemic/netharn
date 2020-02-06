@@ -303,15 +303,21 @@ def hash_code(sourcecode):
     Returns:
         str: hashid: 128 character (512 byte) hash of the normalized input
 
+    Notes:
+        The return value of this function is based on the AST parse tree, which
+        might change between different version of Python. However, within the
+        same version of Python, the results should be consistent.
+
+    CommandLine:
+        xdoctest -m /home/joncrall/code/netharn/netharn/export/exporter.py hash_code
+
     Example:
-        >>> print(hash_code('x = 1')[0:8])
-        93d321be
-        >>> print(hash_code('x=1 # comments and spaces dont matter')[0:8])
-        93d321be
-        >>> print(hash_code('\nx=1')[0:8])
-        93d321be
-        >>> print(hash_code('x=2')[0:8])
-        6949c223
+        >>> hashid1 = (hash_code('x = 1')[0:8])
+        >>> hashid2 = (hash_code('x=1 # comments and spaces dont matter')[0:8])
+        >>> hashid3 = (hash_code('\nx=1')[0:8])
+        >>> assert ub.allsame([hashid1, hashid2, hashid3])
+        >>> hashid4 = hash_code('x=2')[0:8]
+        >>> assert hashid1 != hashid4
     """
     # Strip docstrings before making a parse tree
     sourcecode = ub.ensure_unicode(sourcecode)
