@@ -924,22 +924,44 @@ def gpu_info(new_mode=True):
             num = proc['gpu_num']
             gpus[num]['procs'].append(proc)
 
+        WITH_GPU_PROCS = False
+        if WITH_GPU_PROCS:
+            # Hacks in gpu-procs if enabled
+            import re
+            info = ub.cmd('nvidia-smi pmon -c 1')
+            for line in info['out'].split('\n'):
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    parts = re.split(r'\s+', line, maxsplit=7)
+                    if parts[1] != '-':
+                        header = [
+                            'gpu_num', 'pid', 'type', 'sm', 'mem', 'enc',
+                            'dec', 'name']
+                        proc = ub.dzip(header, parts)
+                        proc['gpu_num'] = int(proc['gpu_num'])
+                        if proc['type'] == 'G':
+                            gpu = gpus[proc['gpu_num']]
+                            gpu['procs'].append(proc)
+                            proc['gpu_uuid'] = gpu['gpu_uuid']
+
         for gpu in gpus.values():
             # Let each GPU know how many processes are currently using it
             num_compute_procs = 0
-            # num_graphics_procs = 0
+            num_graphics_procs = 0
             for proc in gpu['procs']:
                 if proc['type'] == 'C':
                     num_compute_procs += 1
-                # elif proc['type'] == 'G':
-                #     num_graphics_procs += 1
+                elif proc['type'] == 'G':
+                    num_graphics_procs += 1
                 else:
                     raise NotImplementedError(proc['type'])
 
             # NOTE calling nvidia-smi in query mode does not seem to have
             # support for getting info about graphics procs.
             gpu['num_compute_procs'] = num_compute_procs
-            # gpu['num_graphics_procs'] = num_graphics_procs
+            if WITH_GPU_PROCS:
+                gpu['num_graphics_procs'] = num_graphics_procs
+
     else:
         # This is the original implementation of this function. It parses the
         # direct output of nvidia smi, it is prone to failure if the format of
