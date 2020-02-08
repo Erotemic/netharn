@@ -671,7 +671,9 @@ if __name__ == '__main__':
 
         python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0
 
-        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=step-3-6-50 --lr=0.1 --init=cls
+        # This next command requires a bit more compute
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=step-3-6-50 --lr=0.1 --init=cls --batch_size=2718
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=ReduceLROnPlateau-p4-c6 --lr=0.1 --init=cls --batch_size=2719 --workers=4
 
         python -m netharn.examples.cifar.py --gpu=0 --arch=densenet121
         # Train on two GPUs with a larger batch size
