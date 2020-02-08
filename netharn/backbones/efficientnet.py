@@ -190,12 +190,36 @@ class EfficientNet(layers.AnalyticModule):
         672
     """
 
-    def __init__(self, blocks_args=None, global_params=None, noli='swish'):
+    def __init__(self, blocks_args=None, global_params=None):
         super(EfficientNet, self).__init__()
         assert isinstance(blocks_args, list), 'blocks_args should be a list'
         assert len(blocks_args) > 0, 'block args must be greater than 0'
         self._global_params = global_params
         self._blocks_args = blocks_args
+
+        # Handle class specification
+        import ndsampler
+        import ubelt as ub
+        classes = self._global_params.classes
+        if classes is None:
+            classes = self._global_params['num_classes']
+        self.classes = ndsampler.CategoryTree.coerce(classes)
+
+        keys = self._global_params._fields
+        vals = list(self._global_params)
+        tmp = ub.dzip(keys, vals, cls=ub.odict)
+        tmp['num_classes'] = len(self.classes)
+        tmp['classes'] = self.classes.__json__()
+        self._global_params = type(global_params)(**tmp)
+
+        # import ubelt as ub
+        # print(ub.repr2(self._global_params._asdict(), nl=-4))
+        # print(ub.repr2(self._global_params._asdict()))
+
+        self._initkw = {
+            'blocks_args': self._blocks_args,
+            'global_params': self._global_params,
+        }
 
         self.model_name = None
 
@@ -248,15 +272,16 @@ class EfficientNet(layers.AnalyticModule):
         self._avg_pooling = nn.AdaptiveAvgPool2d(1)
         self._dropout = nn.Dropout(self._global_params.dropout_rate)
         self._fc = nn.Linear(out_channels, self._global_params.num_classes)
+        noli = 'swish'
         self._swish = layers.rectify_nonlinearity(noli, dim=2)
 
     def round_filters(self, filters):
         """ Calculate and round number of filters based on depth multiplier. """
-        multiplier = self.global_params.width_coefficient
+        multiplier = self._global_params.width_coefficient
         if not multiplier:
             return filters
-        divisor = self.global_params.depth_divisor
-        min_depth = self.global_params.min_depth
+        divisor = self._global_params.depth_divisor
+        min_depth = self._global_params.min_depth
         filters *= multiplier
         min_depth = min_depth or divisor
         new_filters = max(min_depth, int(filters + divisor / 2) // divisor * divisor)
@@ -496,7 +521,8 @@ class Details(object):
     GlobalParams = collections.namedtuple('GlobalParams', [
         'batch_norm_momentum', 'batch_norm_epsilon', 'dropout_rate',
         'num_classes', 'width_coefficient', 'depth_coefficient',
-        'depth_divisor', 'min_depth', 'drop_connect_rate', 'image_size'])
+        'depth_divisor', 'min_depth', 'drop_connect_rate', 'image_size',
+        'classes'])
 
     # Change namedtuple defaults
     GlobalParams.__new__.__defaults__ = (None,) * len(GlobalParams._fields)
@@ -533,6 +559,7 @@ class Details(object):
             depth_divisor=8,
             min_depth=None,
             image_size=image_size,
+            classes=None,
         )
 
         return blocks_args, global_params

@@ -8,12 +8,7 @@ import os
 import torch
 import ubelt as ub
 import kwarray
-# import numpy as np
-# import torch
-# import netharn as nh
-# import ubelt as ub
 import scriptconfig as scfg
-# from os.path import join
 from netharn.models.yolo2 import multiscale_batch_sampler  # NOQA
 from netharn.models.yolo2 import yolo2
 
@@ -44,8 +39,7 @@ class DetectFitConfig(scfg.Config):
         'input_dims': scfg.Value((256, 256), help='size to '),
         'normalize_inputs': scfg.Value(False, help='if True, precompute training mean and std for data whitening'),
 
-        # 'augment': scfg.Value('simple', help='key indicating augmentation strategy', choices=['complex', 'simple']),
-        'augment': scfg.Value(None, help='key indicating augmentation strategy', choices=['complex', 'simple', None]),
+        'augment': scfg.Value('simple', help='key indicating augmentation strategy', choices=['complex', 'simple', None]),
 
         'ovthresh': 0.5,
 
@@ -113,7 +107,6 @@ class DetectDataset(torch.utils.data.Dataset):
         self.multi_scale_out_size = self.multi_scale_inp_size // self.factor
 
         import imgaug.augmenters as iaa
-        # import imgaug.parameters as iap
 
         self.augmenter = None
         if not augment:
@@ -152,14 +145,9 @@ class DetectDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         """
-        CommandLine:
-            python ~/code/netharn/examples/yolo_voc.py YoloVOCDataset.__getitem__ --show
 
         Example:
             >>> # DISABLE_DOCTSET
-            >>> import sys, ubelt
-            >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
-            >>> from object_detection import *  # NOQA
             >>> self = DetectDataset.demo(backend='npy')
             >>> index = 0
             >>> item = self[index]
@@ -288,8 +276,6 @@ class DetectDataset(torch.utils.data.Dataset):
     def make_loader(self, batch_size=16, num_workers=0, shuffle=False,
                     pin_memory=False, resize_rate=10, drop_last=False):
         """
-        CommandLine:
-            python ~/code/netharn/examples/yolo_voc.py YoloVOCDataset.make_loader
 
         Example:
             >>> # DISABLE_DOCTSET
@@ -367,14 +353,8 @@ class DetectHarn(nh.FitHarn):
         Args:
             batch: item returned by the loader
 
-        CommandLine:
-            python ~/code/netharn/examples/yolo_voc.py YoloHarn.run_batch
-
         Example:
             >>> # DISABLE_DOCTSET
-            >>> import sys, ubelt
-            >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
-            >>> from object_detection import *  # NOQA
             >>> harn = setup_harn(bsize=2)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'vali')
@@ -398,9 +378,6 @@ class DetectHarn(nh.FitHarn):
     def on_batch(harn, batch, outputs, losses):
         """
         custom callback
-
-        CommandLine:
-            python ~/code/netharn/examples/yolo_voc.py YoloHarn.on_batch --gpu=0 --show
 
         Example:
             >>> # DISABLE_DOCTSET
@@ -539,14 +516,8 @@ class DetectHarn(nh.FitHarn):
         """
         custom callback
 
-        CommandLine:
-            python ~/code/netharn/examples/yolo_voc.py YoloHarn.on_epoch
-
         Example:
             >>> # DISABLE_DOCTSET
-            >>> import sys, os
-            >>> sys.path.append(os.path.expanduser('~/code/netharn/examples'))
-            >>> from yolo_voc import *
             >>> harn = setup_harn(bsize=4)
             >>> harn.initialize()
             >>> weights_fpath = yolo2.demo_voc_weights()
@@ -692,8 +663,6 @@ class DetectHarn(nh.FitHarn):
 def setup_harn(cmdline=True, **kw):
     """
     Ignore:
-        >>> import sys, ubelt
-        >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
         >>> from object_detection import *  # NOQA
         >>> cmdline = False
         >>> kw = {
@@ -906,13 +875,13 @@ if __name__ == '__main__':
 
     CommandLine:
         # Uses defaults with demo data
-        python ~/code/netharn/examples/object_detection.py
+        python -m netharn.examples.object_detection
 
         python ~/code/netharn/examples/grab_voc.py
 
-        python ~/code/netharn/examples/object_detection.py --datasets=special:voc
+        python -m netharn.examples.object_detection --datasets=special:voc
 
-        python ~/code/netharn/examples/object_detection.py \
+        python -m netharn.examples.object_detection \
             --nice=voc-detection-demo \
             --train_dataset=~/data/VOC/voc-trainval.mscoco.json \
             --vali_dataset=~/data/VOC/voc-test-2007.mscoco.json \

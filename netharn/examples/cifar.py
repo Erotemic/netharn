@@ -480,7 +480,17 @@ def setup_harn():
             )
         )
 
-    model_ = available_architectures[config['arch']]
+    if config['arch'].startswith('efficientnet'):
+        # Directly create the model instance...
+        # (as long as it has an `_initkw` attribute)
+        from netharn.backbones import efficientnet
+        model_ = efficientnet.EfficientNet.from_name(
+            config['arch'], override_params={
+                'classes': len(categories),
+            }
+        )
+    else:
+        model_ = available_architectures[config['arch']]
 
     # Note there are lots of different initializers including a special
     # pretrained initializer.
@@ -633,7 +643,9 @@ def main():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m netharn.-m netharn.examples.cifar --gpu=0 --arch=resnet50
+        python -m netharn.examples.cifar --gpu=0 --arch=resnet50
+
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0
 
         python -m netharn.examples.cifar.py --gpu=0 --arch=densenet121
         # Train on two GPUs with a larger batch size
