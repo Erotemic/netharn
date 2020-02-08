@@ -141,7 +141,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
         heatmap = self._sample_to_sseg_heatmap(sample)
 
         heatmap = heatmap.numpy()
-        heatmap.data['class_idx'] = heatmap.data['class_idx'].astype(np.int)
+        heatmap.data['class_idx'] = heatmap.data['class_idx'].astype(np.int32)
         cidx_segmap = heatmap.data['class_idx']
 
         if self.augmenter:
@@ -602,7 +602,7 @@ def _precompute_class_weights(dset, workers=0, mode='median-idf'):
 def setup_harn(cmdline=True, **kw):
     """
     CommandLine:
-        xdoctest -m ~/code/netharn/examples/segmentation.py setup_harn
+        xdoctest -m -m netharn.examples.segmentation setup_harn
 
     Example:
         >>> import sys, ubelt
@@ -773,25 +773,34 @@ def main():
 if __name__ == '__main__':
     """
     CommandLine:
-        python ~/code/netharn/examples/segmentation.py --workers=4 --xpu=0 --nice=demo1
 
-        python ~/code/netharn/examples/segmentation.py --workers=4 --xpu=0 --batch_size=4 --lr=1e-5 --nice=demo1 --input_dims=196,196 --datasets=shapes128
-        --workers=4 --xpu=0 --batch_size=4 --lr=1e-5 --nice=demo2 --input_dims=224,224 --datasets=shapes512 --optim=sgd --bstep=8
+        conda install gdal
 
-        python ~/code/netharn/examples/segmentation.py --workers=4 --xpu=0 --nice=camvid_wip2 \
-            --train_dataset=/home/joncrall/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
-            --vali_dataset=/home/joncrall/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
+        python -m netharn.examples.segmentation \
+                --nice=shapes_demo --datasets=shapes128 \
+                --workers=0 --xpu=0
+
+        # You can use MS-COCO files to learn to segment your own data To
+        # demonstrate grab the CamVid dataset (the following script also
+        # transforms camvid into the MS-COCO format)
+
+        python -m netharn.data.grab_camvid  # Download MS-COCO files
+
+        python -m netharn.examples.segmentation --workers=4 --xpu=0 --nice=camvid_deeplab \
+            --train_dataset=$HOME/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
+            --vali_dataset=$HOME/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
             --schedule=step-90-120 --arch=deeplab --batch_size=8 --lr=1e-5 --input_dims=224,224 --optim=sgd --bstep=8
 
-        python ~/code/netharn/examples/segmentation.py --workers=4 --xpu=auto --nice=camvid_psp_wip \
+        python -m netharn.examples.segmentation --workers=4 --xpu=auto --nice=camvid_psp_wip \
             --train_dataset=$HOME/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
             --vali_dataset=$HOME/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
             --schedule=step-90-120 --arch=psp --batch_size=6 --lr=1e-3 --input_dims=512,512 --optim=sgd --bstep=1
 
-        python ~/code/netharn/examples/segmentation.py --workers=4 --xpu=auto --nice=camvid_psp_wip_fine \
+        # Note you would need to change the path to a pretrained network
+        python -m netharn.examples.segmentation --workers=4 --xpu=auto --nice=camvid_psp_wip_fine \
             --train_dataset=$HOME/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
             --vali_dataset=$HOME/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
-            --pretrained=/home/joncrall/work/sseg/fit/runs/camvid_psp_wip/fowjplca/deploy_SegmentationModel_fowjplca_134_CZARGB.zip \
+            --pretrained=$HOME/work/sseg/fit/runs/camvid_psp_wip/fowjplca/deploy_SegmentationModel_fowjplca_134_CZARGB.zip \
             --schedule=step-90-120 --arch=psp --batch_size=6 --lr=1e-2 --input_dims=512,512 --optim=sgd --bstep=8
     """
     main()

@@ -6,10 +6,6 @@ import ubelt as ub
 
 def _devcheck_sample_full_image():
     """
-    import sys, ubelt
-    sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
-    from grab_camvid import *  # NOQA
-    from grab_camvid import _devcheck_sampler, _define_camvid_class_hierarcy
     """
     import kwimage
     import numpy as np
@@ -160,9 +156,6 @@ def grab_camvid_sampler():
         ndsampler.CocoSampler: sampler
 
     Example:
-        >>> import sys, ubelt
-        >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
-        >>> from grab_camvid import *
         >>> sampler = grab_camvid_sampler()
         >>> print('sampler = {!r}'.format(sampler))
         >>> # sampler.load_sample()
@@ -179,9 +172,6 @@ def grab_camvid_sampler():
 def grab_coco_camvid():
     """
     Example:
-        >>> import sys, ubelt
-        >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
-        >>> from grab_camvid import *
         >>> dset = grab_coco_camvid()
         >>> print('dset = {!r}'.format(dset))
         >>> # xdoctest: +REQUIRES(--show)
@@ -297,9 +287,6 @@ def convert_camvid_raw_to_coco(camvid_raw_info):
     use ndsampler's COCO backend).
 
     Example:
-        >>> import sys, ubelt
-        >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
-        >>> from grab_camvid import *  # NOQA
         >>> camvid_raw_info = grab_raw_camvid()
         >>> # test with a reduced set of data
         >>> del camvid_raw_info['img_paths'][2:]
@@ -611,7 +598,6 @@ def main():
         ~/.cache/netharn/camvid/camvid-master/camvid-vali.mscoco.json
         ~/.cache/netharn/camvid/camvid-master/camvid-test.mscoco.json
     """
-    from grab_camvid import grab_coco_camvid, grab_camvid_train_test_val_splits
     coco_dset = grab_coco_camvid()
 
     # Use the same train/test/vali splits used in segnet
@@ -633,6 +619,6 @@ def main():
 if __name__ == '__main__':
     """
     CommandLine:
-        python ~/code/netharn/examples/grab_camvid.py
+        python -m netharn.data.grab_camvid
     """
     main()

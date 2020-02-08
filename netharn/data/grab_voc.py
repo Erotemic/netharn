@@ -192,13 +192,7 @@ def ensure_voc_data(dpath=None, force=False, years=[2007, 2012]):
     """
     Download the Pascal VOC 2007 data if it does not already exist.
 
-    CommandLine:
-        python -m netharn.data.voc VOCDataset.ensure_voc_data
-
     Example:
-        >>> import sys, ubelt
-        >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
-        >>> from grab_voc import *  # NOQA
         >>> devkit_dpath = ensure_voc_data()
     """
     if dpath is None:
@@ -237,6 +231,6 @@ def main():
 if __name__ == '__main__':
     """
     CommandLine:
-        python ~/code/netharn/examples/grab_voc.py
+        python -m netharn.data.grab_voc
     """
     main()

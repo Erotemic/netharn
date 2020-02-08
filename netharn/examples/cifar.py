@@ -638,7 +638,7 @@ def main():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python examples/cifar.py --gpu=0 --arch=resnet50
+        python -m netharn.examples.cifar --gpu=0 --arch=resnet50
 
         python examples/cifar.py --gpu=0 --arch=densenet121
         # Train on two GPUs with a larger batch size

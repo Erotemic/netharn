@@ -275,7 +275,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
 
     @classmethod
     def demo(cls, **kwargs):
-        from grab_camvid import grab_coco_camvid
+        from netharn.data.grab_camvid import grab_coco_camvid
         import ndsampler
         dset = grab_coco_camvid()
         sampler = ndsampler.CocoSampler(dset, workdir=None, backend='npy')
@@ -477,7 +477,7 @@ def evaluate_network(sampler, eval_config):
         >>> do_draw = True
         >>> evaluate_network(sampler, deployed, out_dpath, do_draw)
     """
-    from grab_camvid import rgb_to_cid
+    from netharn.data.grab_camvid import rgb_to_cid
     coco_dset = sampler.dset
     classes = sampler.classes
 
@@ -784,7 +784,7 @@ def setup_coco_datasets():
         - [ ] Do proper train / validation split
         - [ ] Allow custom train / validation split
     """
-    from grab_camvid import grab_coco_camvid, grab_camvid_train_test_val_splits
+    from netharn.data.grab_camvid import grab_coco_camvid, grab_camvid_train_test_val_splits
     coco_dset = grab_coco_camvid()
 
     # Use the same train/test/vali splits used in segnet
@@ -1075,29 +1075,23 @@ def main():
 if __name__ == '__main__':
     """
     CommandLine:
-        cd ~/code/netharn/examples/
-        python sseg_camvid.py --workers=4 --xpu=0 --batch_size=2 --lr=1e-3 --nice=expt1 --input_dims=196,196
 
-        python sseg_camvid.py --workers=4 --xpu=0 --batch_size=8 --lr=1e-3 --nice=camvid_augment_v1 --input_dims=256,256 --augment=simple
+        python -m netharn.examples.sseg_camvid \
+                --nice=camvid_segnet --arch=segnet --init=cls \
+                --workers=4 --xpu=auto  \
+                --batch_size=16 --lr=1e-3 \
+                --input_dims=64,64
 
-        python sseg_camvid.py --workers=8 --xpu=auto --batch_size=16 --lr=1e-3 --nice=camvid_augment_log_med_weight_v1 --input_dims=256,256 --augment=simple --class_weights=log-median-idf
-        python sseg_camvid.py --workers=8 --xpu=auto --batch_size=16 --lr=1e-3 --nice=camvid_augment_med_weight_v1 --input_dims=256,256 --augment=simple --class_weights=median-idf
+        python -m netharn.examples.sseg_camvid \
+                --nice=camvid_psp --arch=psp --init=cls \
+                --workers=4 --xpu=auto  \
+                --batch_size=16 --lr=1e-3 \
+                --input_dims=64,64
 
-
-        python ~/code/netharn/examples/sseg_camvid.py --workers=4 --xpu=0 --batch_size=6 --lr=1e-3 --nice=camvid_augment_weight_v1 --input_dims=200,200 --augment=simple --class_weights=log-median-idf --pretrained=/home/joncrall/work/camvid/fit/runs/camvid_augment_weight_v1/eivcadxj/best_snapshot.pt
-        python ~/code/netharn/examples/sseg_camvid.py --workers=7 --xpu=0 --batch_size=6 --lr=1e-3 --nice=camvid_augment_weight_v2 --input_dims=200,200 --augment=simple --class_weights=log-median-idf --pretrained=/home/joncrall/work/camvid/fit/nice/camvid_augment_weight_v1/best_snapshot.pt
-
-
-        python ~/code/netharn/examples/sseg_camvid.py --workers=4 --xpu=auto --batch_size=16 --lr=1e-3 --nice=segnet_v1 --input_dims=256,256 --augment=simple --class_weights=median-idf --arch=segnet --init=cls
-
-        python ~/code/netharn/examples/sseg_camvid.py --workers=6 --xpu=auto --batch_size=6 --lr=1e-3 --nice=test_psp \
-                --input_overlap=0.25 --input_dims=64,64 --augment=simple --class_weights=log-median-idf --arch=psp --init=noop
-
-        python ~/code/netharn/examples/sseg_camvid.py --workers=6 --xpu=auto --batch_size=8 --lr=1e-3 --nice=test_deeplab \
-                --input_dims=128,128 --augment=simple --class_weights=log-median-idf --arch=deeplab
-
-
-        python ~/code/netharn/examples/sseg_camvid.py --workers=6 --xpu=auto --batch_size=4 --bstep=4 --lr=1e-4 --decay=1e-5 --nice=test_psp2 \
-                --input_overlap=0.5 --input_dims=256,256 --augment=simple --class_weights=median-idf --arch=psp --init=kaiming_normal
-    """
+        python -m netharn.examples.sseg_camvid \
+                --nice=camvid_deeplab --arch=deeplab --init=cls \
+                --workers=4 --xpu=auto  \
+                --batch_size=16 --lr=1e-3 \
+                --input_dims=64,64
+        """
     main()

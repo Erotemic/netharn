@@ -5,11 +5,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.5.4
 
+### Added
+* EfficientNet backbone and Swish activation
+
 ### Fixed 
 * Handle "No running processes found" case in `XPU.coerce('auto')`
 
 ### Changed 
 * Using new mode in `gpu_info`, this is more stable
+* Examples are now in the netharn.examples directory, which means you can run
+  them without having to git clone netharn.
+* Moved data grabbers into netharn.data
+* Moved unfinished examples to dev
 
 
 ## Version 0.5.3
