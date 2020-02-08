@@ -321,6 +321,9 @@ def setup_harn():
         'schedule': ub.argval('--schedule', default='step250'),
         'optim': ub.argval('--optim', default='sgd'),
 
+        'pretrained': ub.argval('--pretrained', default=None),
+        'init': ub.argval('--init', default='noop'),
+
         'batch_size': int(ub.argval('--batch_size', default=64)),
 
         'workers': int(ub.argval('--workers', default=2)),
@@ -487,18 +490,32 @@ def setup_harn():
     if config['arch'].startswith('efficientnet'):
         # Directly create the model instance...
         # (as long as it has an `_initkw` attribute)
-        from netharn.backbones import efficientnet
-        model_ = efficientnet.EfficientNet.from_name(
-            config['arch'], override_params={
-                'classes': len(categories),
-            }
-        )
+        from netharn.models import efficientnet
+
+        if config['init'] == 'cls':
+            model_ = efficientnet.EfficientNet.from_pretrained(
+                config['arch'], override_params={
+                    'classes': len(categories),
+                }
+            )
+            print('pretrained cls init')
+        else:
+            model_ = efficientnet.EfficientNet.from_name(
+                config['arch'], override_params={
+                    'classes': len(categories),
+                }
+            )
     else:
         model_ = available_architectures[config['arch']]
 
-    # Note there are lots of different initializers including a special
-    # pretrained initializer.
-    initializer_ = (nh.initializers.KaimingNormal, {'param': 0, 'mode': 'fan_in'})
+    if config['init'] in ['cls', 'noop']:
+        initializer_ = (nh.initializers.NoOp, {})
+    if config['init'] == 'kaiming':
+        initializer_ = (nh.initializers.KaimingNormal, {'param': 0, 'mode': 'fan_in'})
+    else:
+        # Note there are lots of different initializers including a special
+        # pretrained initializer.
+        initializer_ = nh.api.Initializer.coerce(config)
 
     if config['schedule'] == 'step250':
         scheduler_ = (nh.schedulers.ListedLR, {
@@ -572,7 +589,8 @@ def setup_harn():
             'amsgrad': False,
         })
     else:
-        raise KeyError(config['optim'])
+        optimizer_ = nh.api.Optimizer.coerce(config)
+        # raise KeyError(config['optim'])
 
     # Notice that arguments to hyperparameters are typically specified as a
     # tuple of (type, Dict), where the dictionary are the keyword arguments
@@ -652,6 +670,8 @@ if __name__ == '__main__':
         python -m netharn.examples.cifar --gpu=0 --arch=resnet50
 
         python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0
+
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=step-3-6-50 --lr=0.1 --init=cls
 
         python -m netharn.examples.cifar.py --gpu=0 --arch=densenet121
         # Train on two GPUs with a larger batch size

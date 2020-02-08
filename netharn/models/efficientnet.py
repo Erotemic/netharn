@@ -1,5 +1,5 @@
 """
-Implementation taken from [1]_.
+Implementation slightly modified from [1]_.
 
 
 References:
@@ -334,7 +334,7 @@ class EfficientNet(layers.AnalyticModule):
         return self
 
     @classmethod
-    def from_pretrained(cls, model_name, advprop=False, num_classes=1000, in_channels=3):
+    def from_pretrained(cls, model_name, advprop=False, override_params=None, in_channels=3):
         """
         Initialize the model from a pretrained state
 
@@ -345,7 +345,10 @@ class EfficientNet(layers.AnalyticModule):
             >>> inputs = torch.rand(1, 3, 224, 224)
             >>> outputs = model.forward(inputs)
         """
-        self = cls.from_name(model_name, override_params={'num_classes': num_classes})
+        if override_params is None:
+            override_params = {}
+        self = cls.from_name(model_name, override_params=override_params)
+        num_classes = len(self.classes)
         Details.load_pretrained_weights(
             self, model_name, load_fc=(num_classes == 1000), advprop=advprop)
         if in_channels != 3:
