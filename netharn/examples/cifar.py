@@ -320,6 +320,7 @@ def setup_harn():
         'lr': float(ub.argval('--lr', default=0.1)),
         'schedule': ub.argval('--schedule', default='step250'),
         'optim': ub.argval('--optim', default='sgd'),
+        'num_vali': int(ub.argval('--num_vali', default=300)),
 
         'pretrained': ub.argval('--pretrained', default=None),
         'init': ub.argval('--init', default='noop'),
@@ -409,7 +410,8 @@ def setup_harn():
         'test': DATASET(root=config['workdir'], train=False,
                         transform=transform_test),
     }
-    if True:
+
+    if config['num_vali']:
         # Create a test train split
         learn = datasets['train']
         learn_copy = DATASET(root=config['workdir'], train=True,
@@ -417,7 +419,7 @@ def setup_harn():
 
         indices = np.arange(len(learn))
         indices = nh.util.shuffle(indices, rng=0)
-        num_vali = 300
+        num_vali = config['num_vali']
 
         datasets['vali'] = torch.utils.data.Subset(learn_copy, indices[:num_vali])
         datasets['train'] = torch.utils.data.Subset(learn, indices[num_vali:])
@@ -684,7 +686,7 @@ if __name__ == '__main__':
         # This next command requires a bit more compute
         python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=step-3-6-50 --lr=0.1 --init=cls --batch_size=2718
 
-        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=step-3-3 --lr=0.1 --init=cls --batch_size=2718 --workers=2
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=step-3-3-3 --lr=0.1 --init=cls --batch_size=2718 --workers=2 --num_vali=0
 
         python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=ReduceLROnPlateau-p3-c6 --lr=0.1 --init=cls --batch_size=2719 --workers=4
 
