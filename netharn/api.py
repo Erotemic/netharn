@@ -300,7 +300,7 @@ class Scheduler(object):
                         continue
                     if part.startswith('f'):
                         kw['factor'] = float(part[1:])
-                    if part.startswith('p'):
+                    elif part.startswith('p'):
                         kw['patience'] = int(part[1:])
                     elif part.startswith('c'):
                         kw['cooldown'] = int(part[1:])

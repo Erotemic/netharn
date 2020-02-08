@@ -342,10 +342,12 @@ def setup_harn():
     # The work directory is where all intermediate results are dumped.
     ub.ensuredir(config['workdir'])
 
-    # Take care of random seeding and ensuring appropriate determinisim
-    torch.manual_seed((config['seed'] + 0) % int(2 ** 32 - 1))
-    random.seed((config['seed'] + 2360097502) % int(2 ** 32 - 1))
-    np.random.seed((config['seed'] + 893874269) % int(2 ** 32 - 1))
+    if config['deterministic']:
+        # Take care of random seeding and ensuring appropriate determinisim
+        torch.manual_seed((config['seed'] + 0) % int(2 ** 32 - 1))
+        random.seed((config['seed'] + 2360097502) % int(2 ** 32 - 1))
+        np.random.seed((config['seed'] + 893874269) % int(2 ** 32 - 1))
+
     if torch.backends.cudnn.enabled:
         # TODO: ensure the CPU mode is also deterministic
         torch.backends.cudnn.deterministic = config['deterministic']
@@ -587,8 +589,15 @@ def setup_harn():
         optimizer_ = (nh.optimizers.AdamW, {
             'lr': config['lr'],
             'betas': (0.9, 0.999),
-            'weight_decay': 0,
+            'weight_decay': 1e-5,
             'amsgrad': False,
+        })
+    elif config['optim'] == 'rmsprop':
+        optimizer_ = (torch.optim.RMSprop, {
+            'lr': config['lr'],
+            'alpha': 0.9,
+            'momentum': 0.9,
+            'weight_decay': 1e-5,
         })
     else:
         optimizer_ = nh.api.Optimizer.coerce(config)
@@ -612,6 +621,7 @@ def setup_harn():
         # However, in recent releases of netharn, these may be preconstructed
         # as well.
         model=model_,
+        dynamics=nh.api.Dynamics.coerce(config),
         optimizer=optimizer_,
         scheduler=scheduler_,
         monitor=(nh.Monitor, {
@@ -686,12 +696,16 @@ if __name__ == '__main__':
         # This next command requires a bit more compute
         python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=step-3-6-50 --lr=0.1 --init=cls --batch_size=2718
 
-        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=step-3-3-3 --lr=0.1 --init=cls --batch_size=2718 --workers=2 --num_vali=0
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar3 --schedule=step-3-6-12-16 --lr=0.256 --init=cls --batch_size=3000 --workers=2 --num_vali=0 --optim=rmsprop
 
-        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=ReduceLROnPlateau-p3-c6 --lr=0.1 --init=cls --batch_size=2719 --workers=4
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar3 --schedule=onecycle70 --lr=0.01  --init=cls --batch_size=3000 --workers=2 --num_vali=0 --optim=sgd --datasets=cifar100
+
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=ReduceLROnPlateau-p1-c1-f.9 --lr=0.1 --init=cls --batch_size=2719 --workers=4 --optim=sgd --datasets=cifar100
 
         python -m netharn.examples.cifar.py --gpu=0 --arch=densenet121
         # Train on two GPUs with a larger batch size
         python -m netharn.examples.cifar.py --arch=dpn92 --batch_size=256 --gpu=0,1
     """
+    import seaborn
+    seaborn.set()
     main()
