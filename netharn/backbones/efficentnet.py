@@ -16,10 +16,6 @@ import collections
 from functools import partial
 from torch.utils import model_zoo
 
-########################################################################
-############### HELPERS FUNCTIONS FOR MODEL ARCHITECTURE ###############
-########################################################################
-
 
 class Conv2dDynamicSamePadding(nn.Conv2d):
     """ 2D Convolutions like TensorFlow, for a dynamic image size """
@@ -79,13 +75,13 @@ class Conv2dStaticSamePadding(nn.Conv2d):
 # Model definition
 ##################
 
-class MBConvBlock(layers.Module):
+class MBConvBlock(layers.AnalyticModule):
     """
     Mobile Inverted Residual Bottleneck Block
 
     Args:
-        block_args (namedtuple): BlockArgs, see above
-        global_params (namedtuple): GlobalParam, see above
+        block_args (BlockArgs): see above
+        global_params (GlobalParam): see above
 
     Attributes:
         has_se (bool): Whether the block contains a Squeeze and Excitation layer.
@@ -172,13 +168,13 @@ class MBConvBlock(layers.Module):
         return output
 
 
-class EfficientNet(layers.Module):
+class EfficientNet(layers.AnalyticModule):
     """
     An EfficientNet model. Most easily loaded with the .from_name or .from_pretrained methods
 
     Args:
-        blocks_args (list): A list of BlockArgs to construct blocks
-        global_params (namedtuple): A set of GlobalParams shared between blocks
+        blocks_args (List[BlockArgs]): arguments for each block
+        global_params (GlobalParams): shared between blocks
 
     Example:
         >>> model = EfficientNet.from_name('efficientnet-b0')
@@ -348,20 +344,6 @@ class Details(object):
     """
 
     # Parameters for the entire model (stem, all blocks, and head)
-    GlobalParams = collections.namedtuple('GlobalParams', [
-        'batch_norm_momentum', 'batch_norm_epsilon', 'dropout_rate',
-        'num_classes', 'width_coefficient', 'depth_coefficient',
-        'depth_divisor', 'min_depth', 'drop_connect_rate', 'image_size'])
-
-    # Parameters for an individual model block
-    BlockArgs = collections.namedtuple('BlockArgs', [
-        'kernel_size', 'num_repeat', 'input_filters', 'output_filters',
-        'expand_ratio', 'id_skip', 'stride', 'se_ratio'])
-
-    # Change namedtuple defaults
-    GlobalParams.__new__.__defaults__ = (None,) * len(GlobalParams._fields)
-    BlockArgs.__new__.__defaults__ = (None,) * len(BlockArgs._fields)
-
     url_map = {
         'efficientnet-b0': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b0-355c32eb.pth',
         'efficientnet-b1': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b1-f1951068.pth',
@@ -399,8 +381,13 @@ class Details(object):
             raise ValueError('model_name should be one of: ' + ', '.join(valid_models))
 
     @classmethod
-    def _get_model_params(cls, model_name, override_params):
-        """ Get the block args and global params for a given model """
+    def _get_model_params(cls, model_name, override_params=None):
+        """
+        Get the block args and global params for a given model
+
+        Example:
+            Details._get_model_params('efficientnet-b0')
+        """
         if model_name.startswith('efficientnet'):
             w, d, s, p = Details._named_params(model_name)
             # note: all models have drop connect rate = 0.2
@@ -471,6 +458,12 @@ class Details(object):
             se_ratio=float(options['se']) if 'se' in options else None,
             stride=[int(options['s'][0])])
 
+    # Parameters for an individual model block
+    BlockArgs = collections.namedtuple('BlockArgs', [
+        'kernel_size', 'num_repeat', 'input_filters', 'output_filters',
+        'expand_ratio', 'id_skip', 'stride', 'se_ratio'])
+    BlockArgs.__new__.__defaults__ = (None,) * len(BlockArgs._fields)
+
     @staticmethod
     def encode(blocks_args):
         """
@@ -499,6 +492,14 @@ class Details(object):
         if block.id_skip is False:
             args.append('noskip')
         return '_'.join(args)
+
+    GlobalParams = collections.namedtuple('GlobalParams', [
+        'batch_norm_momentum', 'batch_norm_epsilon', 'dropout_rate',
+        'num_classes', 'width_coefficient', 'depth_coefficient',
+        'depth_divisor', 'min_depth', 'drop_connect_rate', 'image_size'])
+
+    # Change namedtuple defaults
+    GlobalParams.__new__.__defaults__ = (None,) * len(GlobalParams._fields)
 
     @staticmethod
     def build_efficientnet_params(width_coefficient=None,
