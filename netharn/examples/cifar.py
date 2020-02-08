@@ -409,10 +409,14 @@ def setup_harn():
     if True:
         # Create a test train split
         learn = datasets['train']
+        learn_copy = DATASET(root=config['workdir'], train=True,
+                             transform=transform_test)
+
         indices = np.arange(len(learn))
         indices = nh.util.shuffle(indices, rng=0)
         num_vali = 300
-        datasets['vali'] = torch.utils.data.Subset(learn, indices[:num_vali])
+
+        datasets['vali'] = torch.utils.data.Subset(learn_copy, indices[:num_vali])
         datasets['train'] = torch.utils.data.Subset(learn, indices[num_vali:])
 
     # For some reason the torchvision objects do not make the category names
@@ -549,7 +553,9 @@ def setup_harn():
             }
         })
     else:
-        raise KeyError(config['schedule'])
+        # A bit of netharn magic, read docs for coerce
+        scheduler_ = nh.api.Scheduler.coerce(config)
+        # raise KeyError(config['schedule'])
 
     if config['optim'] == 'sgd':
         optimizer_ = (torch.optim.SGD, {
