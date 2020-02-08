@@ -638,6 +638,16 @@ def setup_harn():
     # Creating an instance of a Fitharn object is typically fast.
     harn = CIFAR_FitHarn(hyper=hyper)
     harn.preferences['prog_backend'] = 'progiter'
+    harn.preferences['keyboard_debug'] = True
+    harn.preferences['eager_dump_tensorboard'] = True
+    harn.preferences['tensorboard_groups'] = ['loss']
+
+    harn.intervals.update({
+        'vali': 1,
+        'test': 10,
+    })
+
+    harn.script_config = config
     return harn
 
 
@@ -673,7 +683,7 @@ if __name__ == '__main__':
 
         # This next command requires a bit more compute
         python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=step-3-6-50 --lr=0.1 --init=cls --batch_size=2718
-        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=ReduceLROnPlateau-p4-c6 --lr=0.1 --init=cls --batch_size=2719 --workers=4
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=ReduceLROnPlateau-p3-c6 --lr=0.1 --init=cls --batch_size=2719 --workers=4
 
         python -m netharn.examples.cifar.py --gpu=0 --arch=densenet121
         # Train on two GPUs with a larger batch size
