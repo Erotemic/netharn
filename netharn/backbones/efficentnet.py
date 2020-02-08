@@ -21,51 +21,6 @@ from torch.utils import model_zoo
 ########################################################################
 
 
-def round_filters(filters, global_params):
-    """ Calculate and round number of filters based on depth multiplier. """
-    multiplier = global_params.width_coefficient
-    if not multiplier:
-        return filters
-    divisor = global_params.depth_divisor
-    min_depth = global_params.min_depth
-    filters *= multiplier
-    min_depth = min_depth or divisor
-    new_filters = max(min_depth, int(filters + divisor / 2) // divisor * divisor)
-    if new_filters < 0.9 * filters:  # prevent rounding by more than 10%
-        new_filters += divisor
-    return int(new_filters)
-
-
-def round_repeats(repeats, global_params):
-    """ Round number of filters based on depth multiplier. """
-    multiplier = global_params.depth_coefficient
-    if not multiplier:
-        return repeats
-    return int(math.ceil(multiplier * repeats))
-
-
-def drop_connect(inputs, p, training):
-    """ Drop connect. """
-    if not training:
-        return inputs
-    batch_size = inputs.shape[0]
-    keep_prob = 1 - p
-    random_tensor = keep_prob
-    random_tensor += torch.rand([batch_size, 1, 1, 1], dtype=inputs.dtype, device=inputs.device)
-    binary_tensor = torch.floor(random_tensor)
-    output = inputs / keep_prob * binary_tensor
-    return output
-
-
-def get_same_padding_conv2d(image_size=None):
-    """ Chooses static padding if you have specified an image size, and dynamic padding otherwise.
-        Static padding is necessary for ONNX exporting of models. """
-    if image_size is None:
-        return Conv2dDynamicSamePadding
-    else:
-        return partial(Conv2dStaticSamePadding, image_size=image_size)
-
-
 class Conv2dDynamicSamePadding(nn.Conv2d):
     """ 2D Convolutions like TensorFlow, for a dynamic image size """
 
@@ -83,6 +38,15 @@ class Conv2dDynamicSamePadding(nn.Conv2d):
         if pad_h > 0 or pad_w > 0:
             x = F.pad(x, [pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2])
         return F.conv2d(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+
+    @classmethod
+    def forsize(cls, image_size=None):
+        """ Chooses static padding if you have specified an image size, and dynamic padding otherwise.
+            Static padding is necessary for ONNX exporting of models. """
+        if image_size is None:
+            return Conv2dDynamicSamePadding
+        else:
+            return partial(Conv2dStaticSamePadding, image_size=image_size)
 
 
 class Conv2dStaticSamePadding(nn.Conv2d):
@@ -136,7 +100,7 @@ class MBConvBlock(layers.Module):
         self.id_skip = block_args.id_skip  # skip connection and drop connect
 
         # Get static or dynamic convolution depending on image size
-        Conv2d = get_same_padding_conv2d(image_size=global_params.image_size)
+        Conv2d = Conv2dDynamicSamePadding.forsize(image_size=global_params.image_size)
 
         # Expansion phase
         inp = self._block_args.input_filters  # number of input channels
@@ -191,9 +155,21 @@ class MBConvBlock(layers.Module):
         input_filters, output_filters = self._block_args.input_filters, self._block_args.output_filters
         if self.id_skip and self._block_args.stride == 1 and input_filters == output_filters:
             if drop_connect_rate:
-                x = drop_connect(x, p=drop_connect_rate, training=self.training)
+                x = self.drop_connect(x, p=drop_connect_rate)
             x = x + inputs  # skip connection
         return x
+
+    def drop_connect(self, inputs, p):
+        """ Drop connect. """
+        if not self.training:
+            return inputs
+        batch_size = inputs.shape[0]
+        keep_prob = 1 - p
+        random_tensor = keep_prob
+        random_tensor += torch.rand([batch_size, 1, 1, 1], dtype=inputs.dtype, device=inputs.device)
+        binary_tensor = torch.floor(random_tensor)
+        output = inputs / keep_prob * binary_tensor
+        return output
 
 
 class EfficientNet(layers.Module):
@@ -228,7 +204,7 @@ class EfficientNet(layers.Module):
         self.model_name = None
 
         # Get static or dynamic convolution depending on image size
-        Conv2d = get_same_padding_conv2d(image_size=global_params.image_size)
+        Conv2d = Conv2dDynamicSamePadding.forsize(image_size=global_params.image_size)
 
         # Batch norm parameters
         bn_mom = 1 - self._global_params.batch_norm_momentum
@@ -236,9 +212,17 @@ class EfficientNet(layers.Module):
 
         # Stem
         in_channels = 3  # rgb
-        out_channels = round_filters(32, self._global_params)  # number of output channels
+        out_channels = self.round_filters(32)  # number of output channels
         self._conv_stem = Conv2d(in_channels, out_channels, kernel_size=3, stride=2, bias=False)
         self._bn0 = nn.BatchNorm2d(num_features=out_channels, momentum=bn_mom, eps=bn_eps)
+
+        multiplier = global_params.depth_coefficient
+
+        def round_repeats(repeats, multiplier):
+            """ Round number of filters based on depth multiplier. """
+            if not multiplier:
+                return repeats
+            return int(math.ceil(multiplier * repeats))
 
         # Build blocks
         self._blocks = nn.ModuleList([])
@@ -246,9 +230,9 @@ class EfficientNet(layers.Module):
 
             # Update block input and output filters based on depth multiplier.
             block_args = block_args._replace(
-                input_filters=round_filters(block_args.input_filters, self._global_params),
-                output_filters=round_filters(block_args.output_filters, self._global_params),
-                num_repeat=round_repeats(block_args.num_repeat, self._global_params)
+                input_filters=self.round_filters(block_args.input_filters),
+                output_filters=self.round_filters(block_args.output_filters),
+                num_repeat=round_repeats(block_args.num_repeat, multiplier)
             )
 
             # The first block needs to take care of stride and filter size increase.
@@ -260,7 +244,7 @@ class EfficientNet(layers.Module):
 
         # Head
         in_channels = block_args.output_filters  # output of final block
-        out_channels = round_filters(1280, self._global_params)
+        out_channels = self.round_filters(1280)
         self._conv_head = Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
         self._bn1 = nn.BatchNorm2d(num_features=out_channels, momentum=bn_mom, eps=bn_eps)
 
@@ -269,6 +253,20 @@ class EfficientNet(layers.Module):
         self._dropout = nn.Dropout(self._global_params.dropout_rate)
         self._fc = nn.Linear(out_channels, self._global_params.num_classes)
         self._swish = layers.rectify_nonlinearity(noli, dim=2)
+
+    def round_filters(self, filters):
+        """ Calculate and round number of filters based on depth multiplier. """
+        multiplier = self.global_params.width_coefficient
+        if not multiplier:
+            return filters
+        divisor = self.global_params.depth_divisor
+        min_depth = self.global_params.min_depth
+        filters *= multiplier
+        min_depth = min_depth or divisor
+        new_filters = max(min_depth, int(filters + divisor / 2) // divisor * divisor)
+        if new_filters < 0.9 * filters:  # prevent rounding by more than 10%
+            new_filters += divisor
+        return int(new_filters)
 
     def extract_features(self, inputs):
         """ Returns output of the final convolution layer """
@@ -330,8 +328,8 @@ class EfficientNet(layers.Module):
         Details.load_pretrained_weights(
             self, model_name, load_fc=(num_classes == 1000), advprop=advprop)
         if in_channels != 3:
-            Conv2d = get_same_padding_conv2d(image_size=self._global_params.image_size)
-            out_channels = round_filters(32, self._global_params)
+            Conv2d = Conv2dDynamicSamePadding.forsize(image_size=self._global_params.image_size)
+            out_channels = self.round_filters(32)
             self._conv_stem = Conv2d(in_channels, out_channels, kernel_size=3, stride=2, bias=False)
         return self
 
