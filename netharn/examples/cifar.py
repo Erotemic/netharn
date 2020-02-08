@@ -495,14 +495,14 @@ def setup_harn():
         if config['init'] == 'cls':
             model_ = efficientnet.EfficientNet.from_pretrained(
                 config['arch'], override_params={
-                    'classes': len(categories),
+                    'classes': categories,
                 }
             )
             print('pretrained cls init')
         else:
             model_ = efficientnet.EfficientNet.from_name(
                 config['arch'], override_params={
-                    'classes': len(categories),
+                    'classes': categories,
                 }
             )
     else:
