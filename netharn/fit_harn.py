@@ -333,7 +333,10 @@ class InitializeMixin(object):
                         shutil.move(train_info_fpath, backup_fpath)
                     util.write_json(train_info_fpath, harn.train_info)
             else:
-                util.write_json(train_info_fpath, harn.train_info)
+                try:
+                    util.write_json(train_info_fpath, harn.train_info)
+                except Exception as ex:
+                    harn.warn('Unable to write train info ex = {!r}'.format(ex))
 
         harn._setup_loggers(overwrite=overwrite)
 
@@ -1089,7 +1092,11 @@ class SnapshotCallbacks(object):
             harn.debug('loaded monitor_state_dict')
 
         if 'optimizer_state_dict' in snapshot_state:
+            # NOTE: IF YOU CREATE AN OPTIMIZER WITH A DIFFERENT ORDER OF THE
+            # PARAMS INSIDE THE PARAM GROUP THIS WILL FAIL.
+            # https://discuss.pytorch.org/t/loading-a-saved-model-for-continue-training/17244/4
             harn.optimizer.load_state_dict(snapshot_state['optimizer_state_dict'])
+            harn.optimizer.zero_grad()
             harn.debug('loaded optimizer_state_dict')
 
         if 'scheduler_state_dict' in snapshot_state:

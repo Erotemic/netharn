@@ -409,6 +409,11 @@ class ConfusionVectors(ub.NiceRepr):
     def classification_report(self, verbose=0):
         """
         Build a classification report with various metrics.
+
+        Example:
+            >>> from netharn.metrics.confusion_vectors import *  # NOQA
+            >>> self = ConfusionVectors.demo()
+            >>> report = self.classification_report(verbose=1)
         """
         from netharn.metrics import clf_report
         y_true = self.data['true']

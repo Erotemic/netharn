@@ -18,6 +18,7 @@ def rectify_nonlinearity(key=ub.NoParam, dim=2):
         LeakyReLU(negative_slope=0.01...)
         >>> rectify_nonlinearity(None)
         None
+        >>> rectify_nonlinearity('swish')
     """
     if key is None:
         return None
@@ -48,6 +49,10 @@ def rectify_nonlinearity(key=ub.NoParam, dim=2):
         cls = torch.nn.SELU
     elif noli_type == 'relu6':
         cls = torch.nn.ReLU6
+    elif noli_type == 'swish':
+        from netharn.layers.swish import Swish
+        kw.pop('inplace', None)
+        cls = Swish
     else:
         raise KeyError('unknown type: {}'.format(kw))
     return cls(**kw)

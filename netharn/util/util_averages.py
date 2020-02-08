@@ -381,6 +381,9 @@ class RunningStats(object):
         return std
 
     def simple(run, axis=None):
+        """
+        Returns summary statistics over all cells
+        """
         assert run.n > 0, 'no stats exist'
         maxi    = run.raw_max.max(axis=axis, keepdims=True)
         mini    = run.raw_min.min(axis=axis, keepdims=True)
@@ -404,6 +407,9 @@ class RunningStats(object):
         return info
 
     def detail(run):
+        """
+        Returns per-cell statistics
+        """
         total = run.raw_total
         squares = run.raw_squares
         maxi = run.raw_max
