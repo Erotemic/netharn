@@ -45,7 +45,7 @@ Example:
     >>>     'monitor'     : (nh.Monitor, {'max_epoch': 3,}),
     >>> })
     >>> harn = nh.FitHarn(hyper)
-    >>> harn.config['use_tensorboard'] = False
+    >>> harn.preferences['use_tensorboard'] = False
     >>> harn.initialize(reset='delete')
     >>> harn.run()
     --- STEP 1: TRAIN A MODEL ---
@@ -722,7 +722,7 @@ def _demodata_toy_harn():
         'monitor'     : (nh.Monitor, {'max_epoch': 1}),
     })
     harn = nh.FitHarn(hyper)
-    harn.config['use_tensorboard'] = False
+    harn.preferences['use_tensorboard'] = False
     return harn
 
 

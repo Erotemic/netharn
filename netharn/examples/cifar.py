@@ -1,6 +1,7 @@
 """
-The examples/cifar.py is probably the most clear example of what netharn is and
-what it's trying to do / not do.
+The :mod:`netharn.examples.cifar` is a clear dataset-specific example of what
+netharn is and it's trying to do / not do. For a dataset-agnostic example see
+:mod:`netharn.examples.segmentation`.
 
 The basic idea is make an object that inherits from nh.FitHarn. This is our
 harness object. It will contain the hyperparameters as well as the learning
@@ -35,10 +36,10 @@ let the developer focus on the important parts.
 
 
 CommandLine:
-    python examples/cifar.py --gpu=0 --arch=resnet50
-    python examples/cifar.py --gpu=0 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
-    python examples/cifar.py --gpu=1,2,3 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw --batch_size=1800
-    python examples/cifar.py --gpu=1,2 --arch=resnet50 --lr=0.003 --schedule=onecycle --optim=adamw
+    python -m netharn.examples.cifar.py --gpu=0 --arch=resnet50
+    python -m netharn.examples.cifar.py --gpu=0 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
+    python -m netharn.examples.cifar.py --gpu=1,2,3 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw --batch_size=1800
+    python -m netharn.examples.cifar.py --gpu=1,2 --arch=resnet50 --lr=0.003 --schedule=onecycle --optim=adamw
 
 """
 import sys
@@ -210,13 +211,7 @@ class CIFAR_FitHarn(nh.FitHarn):
 
     def _draw_batch(harn, batch, decoded, limit=32):
         """
-        CommandLine:
-            xdoctest -m ~/code/netharn/examples/cifar.py CIFAR_FitHarn._draw_batch --show --arch=resnet50
-
         Example:
-            >>> import sys
-            >>> sys.path.append('/home/joncrall/code/netharn/examples')
-            >>> from cifar import *
             >>> harn = setup_harn().initialize()
             >>> batch = harn._demo_batch(0, tag='test')
             >>> outputs, loss = harn.run_batch(batch)
@@ -310,8 +305,8 @@ def setup_harn():
     DPN92       |    95.16%  |         95.410% |  94.92%  |
 
     CommandLine:
-        python examples/cifar.py --gpu=0 --arch=resnet50 --optim=sgd --schedule=step250 --lr=0.1 --vd
-        python examples/cifar.py --gpu=0 --arch=wrn_22 --optim=sgd --schedule=step250 --lr=0.1 --vd
+        python -m netharn.examples.cifar.py --gpu=0 --arch=resnet50 --optim=sgd --schedule=step250 --lr=0.1 --vd
+        python -m netharn.examples.cifar.py --gpu=0 --arch=wrn_22 --optim=sgd --schedule=step250 --lr=0.1 --vd
     """
     import random
     import torchvision
@@ -608,7 +603,7 @@ def setup_harn():
 
     # Creating an instance of a Fitharn object is typically fast.
     harn = CIFAR_FitHarn(hyper=hyper)
-    harn.config['prog_backend'] = 'progiter'
+    harn.preferences['prog_backend'] = 'progiter'
     return harn
 
 
@@ -638,10 +633,10 @@ def main():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m netharn.examples.cifar --gpu=0 --arch=resnet50
+        python -m netharn.-m netharn.examples.cifar --gpu=0 --arch=resnet50
 
-        python examples/cifar.py --gpu=0 --arch=densenet121
+        python -m netharn.examples.cifar.py --gpu=0 --arch=densenet121
         # Train on two GPUs with a larger batch size
-        python examples/cifar.py --arch=dpn92 --batch_size=256 --gpu=0,1
+        python -m netharn.examples.cifar.py --arch=dpn92 --batch_size=256 --gpu=0,1
     """
     main()

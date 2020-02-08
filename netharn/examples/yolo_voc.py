@@ -828,11 +828,11 @@ def setup_yolo_harness(bsize=16, workers=0):
     })
     print('max_epoch = {!r}'.format(max_epoch))
     harn = YoloHarn(hyper=hyper)
-    harn.config['prog_backend'] = 'progiter'
+    harn.preferences['prog_backend'] = 'progiter'
     harn.intervals['log_iter_train'] = None
     harn.intervals['log_iter_test'] = None
     harn.intervals['log_iter_vali'] = None
-    harn.config['large_loss'] = 1000  # tell netharn when to check for divergence
+    harn.preferences['large_loss'] = 1000  # tell netharn when to check for divergence
     return harn
 
 

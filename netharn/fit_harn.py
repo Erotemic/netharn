@@ -2453,7 +2453,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
     @property
     def config(harn):
         import warnings
-        warnings.warn('harn.config is deprecated, use harn.preferences instead',
+        warnings.warn('harn.preferences is deprecated, use harn.preferences instead',
                       DeprecationWarning)
         return harn.preferences
 

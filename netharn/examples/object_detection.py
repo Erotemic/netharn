@@ -878,7 +878,7 @@ def setup_harn(cmdline=True, **kw):
     print('hyper = {!r}'.format(hyper))
     print('make harn')
     harn = DetectHarn(hyper=hyper)
-    harn.config.update({
+    harn.preferences.update({
         'num_keep': 2,
         'keep_freq': 30,
         'export_modules': ['netharn'],  # TODO
