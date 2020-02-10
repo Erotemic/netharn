@@ -176,12 +176,13 @@ class Optimizer(object):
         key = config.get('optimizer', config.get('optim', 'sgd')).lower()
         lr = config.get('learning_rate', config.get('lr', 3e-3))
         decay = config.get('weight_decay', config.get('decay', 0))
+        momentum = config.get('momentum', 0.9)
         # TODO: allow for "discriminative fine-tuning"
         if key == 'sgd':
             optim_ = (torch.optim.SGD, {
                 'lr': lr,
                 'weight_decay': decay,
-                'momentum': 0.9,
+                'momentum': momentum,
                 'nesterov': True,
             })
         elif key == 'adam':
@@ -199,25 +200,70 @@ class Optimizer(object):
                 optim_ = (nh.optimizers.AdamW, {
                     'lr': lr,
                 })
+        elif key == 'rmsprop':
+            optim_ = (torch.optim.RMSprop, {
+                'lr': lr,
+                'weight_decay': decay,
+                'momentum': momentum,
+                'alpha': 0.9,
+            })
         else:
             raise KeyError(key)
         return optim_
 
 
 class Dynamics(object):
+    """
+    Dynamics are essentially configurations of "tricks" that can be used for
+    training deep networks.
+    """
 
     @staticmethod
     def coerce(config={}, **kw):
         """
-        Accepts keywords 'bstep'
+        Kwargs:
+            bstep / batch_step,
+                Controls how many batches to process before taking a step in the
+                gradient direction. Effectively simulates a batch_size that is
+                `bstep` times bigger.
+
+            grad_norm_max:
+                clips gradients to a max value (mmdet likes to use 35 for this)
+
+            grad_norm_type:
+                p-norm to use if clipping grads.
+
+            warmup_iters: EXPERIMENTAL
+
+            warmup_ratio: EXPERIMENTAL
+
+        Example:
+            >>> print(Dynamics.coerce({'bstep': 2}))
+            >>> print(Dynamics.coerce({'batch_step': 3}))
+            >>> print(Dynamics.coerce({'grad_norm_max': 35}))
         """
-        _update_defaults(config, kw)
-        return {
-            # Controls how many batches to process before taking a step in the
-            # gradient direction. Effectively simulates a batch_size that is
-            # `bstep` times bigger.
-            'batch_step': config.get('bstep', 1),
+        config = _update_defaults(config, kw)
+        _default_dynamics = {
+            'batch_step': 1,        # simulates larger batch sizes
+            'grad_norm_max': None,  # clips gradients to a max value (mmdet likes to use 35 for this)
+            'grad_norm_type': 2,    # p-norm to use if clipping grads.
+
+            'warmup_iters': 0,          # CURRENTLY HACKED AND EXPERIMENTAL
+            'warmup_ratio': 1.0 / 3.0,  # CURRENTLY HACKED AND EXPERIMENTAL
         }
+        _aliases = {
+            'batch_step': ['bstep'],
+        }
+        dynamics_ = {}
+        for primary_key, default_value in _default_dynamics.items():
+            value = default_value
+            _keys = [primary_key] + _aliases.get(primary_key, [])
+            for alias_key in _keys:
+                if alias_key in config:
+                    value = config.get(alias_key, default_value)
+                    break
+            dynamics_[primary_key] = value
+        return dynamics_
 
 
 class Scheduler(object):

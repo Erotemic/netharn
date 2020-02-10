@@ -478,6 +478,9 @@ class OneVsRestConfusionVectors(ub.NiceRepr):
             'perclass': perclass,
         }
 
+    def ovr_classification_report(self):
+        raise NotImplementedError
+
 
 class BinaryConfusionVectors(ub.NiceRepr):
     """

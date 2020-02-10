@@ -293,7 +293,8 @@ class EfficientNet(layers.AnalyticModule):
         """ Returns output of the final convolution layer """
 
         # Stem
-        x = self._swish(self._bn0(self._conv_stem(inputs)))
+        x = self._conv_stem(inputs)
+        x = self._swish(self._bn0(x))
 
         # Blocks
         for idx, block in enumerate(self._blocks):

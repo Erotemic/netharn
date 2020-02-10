@@ -50,6 +50,58 @@ import torch
 import os
 import pickle
 import netharn as nh
+import scriptconfig as scfg
+
+
+class CIFARConfig(scfg.Config):
+    """
+    This is the default configuration for running the CIFAR training script.
+
+    Defaults can be modified via passing command line arguments, specifing a
+    json configuration file, or using python kwargs.
+
+    Note that scriptconfig is not necessary to use netharn, but it does make it
+    easy to specify a default configuration and modify.
+    """
+    default = {
+        'nice': scfg.Value('untitled', help='A human readable tag that is "nice" for humans'),
+        'workdir': scfg.Path('~/work/cifar', help='Dump all results in your workdir'),
+
+        'workers': scfg.Value(2, help='number of parallel dataloading jobs'),
+        'xpu': scfg.Value('argv', help='See netharn.XPU for details. can be cpu/gpu/cuda0/0,1,2,3)'),
+
+        'dataset': scfg.Value('cifar10', choices=['cifar10', 'cifar100'],
+                              help='which cifar network to use'),
+        'num_vali': scfg.Value(0, help='number of validation examples'),
+
+        'arch': scfg.Value('resnet50', help='Network architecture code'),
+        'optim': scfg.Value('sgd', help='Weight optimizer. Can be SGD, ADAM, ADAMW, etc..'),
+
+        # 'input_dims': scfg.Value((224, 224), help='Window size to input to the network'),
+
+        'batch_size': scfg.Value(64, help='number of items per batch'),
+
+        'max_epoch': scfg.Value(350, help='Maximum number of epochs'),
+        'patience': scfg.Value(350, help='Maximum "bad" validation epochs before early stopping'),
+
+        'lr': scfg.Value(1e-1, help='Base learning rate'),
+        'decay':  scfg.Value(5e-4, help='Base weight decay'),
+
+        'schedule': scfg.Value('simplestep', help=('Special coercable netharn code. Eg: onecycle50, step50, gamma')),
+
+        'init': scfg.Value('cls', help='How to initialized weights. (can be a path to a pretrained model)'),
+        'pretrained': scfg.Path(help=('alternative way to specify a path to a pretrained model')),
+
+        'deterministic': scfg.Value(False, help='run deterministically'),
+        'seed': scfg.Value(137852547, help='seed for determinism'),
+    }
+
+    def normalize(self):
+        if self['pretrained'] in ['null', 'None']:
+            self['pretrained'] = None
+
+        if self['pretrained'] is not None:
+            self['init'] = 'pretrained'
 
 
 class CIFAR_FitHarn(nh.FitHarn):
@@ -127,7 +179,6 @@ class CIFAR_FitHarn(nh.FitHarn):
         """
         y_pred = outputs.data.max(dim=1)[1].cpu().numpy()
         y_true = batch['label'].data.cpu().numpy()
-        probs = outputs.data.cpu().numpy()
 
         bx = harn.bxs[harn.current_tag]
         if bx < 3:
@@ -135,8 +186,10 @@ class CIFAR_FitHarn(nh.FitHarn):
             stacked = harn._draw_batch(batch, decoded)
             dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
             fpath = join(dpath, 'batch_{}_epoch_{}.jpg'.format(bx, harn.epoch))
-            nh.util.imwrite(fpath, stacked)
+            import kwimage
+            kwimage.imwrite(fpath, stacked)
 
+        probs = outputs.softmax(dim=1).data.cpu().numpy()
         harn._accum_confusion_vectors['y_true'].append(y_true)
         harn._accum_confusion_vectors['y_pred'].append(y_pred)
         harn._accum_confusion_vectors['probs'].append(probs)
@@ -158,32 +211,44 @@ class CIFAR_FitHarn(nh.FitHarn):
             >>> harn._demo_epoch('vali')
         """
         from netharn.metrics import clf_report
-
         dset = harn.datasets[harn.current_tag]
-        target_names = dset.categories
 
         probs = np.vstack(harn._accum_confusion_vectors['probs'])
         y_true = np.hstack(harn._accum_confusion_vectors['y_true'])
         y_pred = np.hstack(harn._accum_confusion_vectors['y_pred'])
 
+        # _pred = probs.argmax(axis=1)
+        # assert np.all(_pred == y_pred)
+
+        # from netharn.metrics import confusion_vectors
+        # cfsn_vecs = confusion_vectors.ConfusionVectors.from_arrays(
+        #     true=y_true, pred=y_pred, probs=probs, classes=dset.categories)
+        # report = cfsn_vecs.classification_report()
+        # combined_report = report['metrics'].loc['combined'].to_dict()
+
+        # ovr_cfsn = cfsn_vecs.binarize_ovr()
         # Compute multiclass metrics (new way!)
-        report = clf_report.ovr_classification_report(
+        target_names = dset.categories
+        ovr_report = clf_report.ovr_classification_report(
             y_true, probs, target_names=target_names, metrics=[
                 'auc', 'ap', 'mcc', 'brier'
             ])
 
         # percent error really isn't a great metric, but its standard.
         errors = (y_true != y_pred)
-        acc = 1 - errors.mean()
-        percent_error = (1 - acc) * 100
+        acc = 1.0 - errors.mean()
+        percent_error = (1.0 - acc) * 100
 
         metrics_dict = ub.odict()
-        metrics_dict['ave_brier'] = report['ave']['brier']
-        metrics_dict['ave_mcc'] = report['ave']['mcc']
-        metrics_dict['ave_auc'] = report['ave']['auc']
-        metrics_dict['ave_ap'] = report['ave']['ap']
+        metrics_dict['ave_brier'] = ovr_report['ave']['brier']
+        metrics_dict['ave_mcc'] = ovr_report['ave']['mcc']
+        metrics_dict['ave_auc'] = ovr_report['ave']['auc']
+        metrics_dict['ave_ap'] = ovr_report['ave']['ap']
         metrics_dict['percent_error'] = percent_error
         metrics_dict['acc'] = acc
+
+        print('harn.current_tag = {!r}'.format(harn.current_tag))
+        print('acc = {!r}'.format(acc))
 
         # Clear confusion vectors accumulator for the next epoch
         harn._accum_confusion_vectors = {
@@ -305,38 +370,17 @@ def setup_harn():
     DPN92       |    95.16%  |         95.410% |  94.92%  |
 
     CommandLine:
-        python -m netharn.examples.cifar.py --gpu=0 --arch=resnet50 --optim=sgd --schedule=step250 --lr=0.1 --vd
-        python -m netharn.examples.cifar.py --gpu=0 --arch=wrn_22 --optim=sgd --schedule=step250 --lr=0.1 --vd
+        python -m netharn.examples.cifar --gpu=0 --arch=resnet50 --optim=sgd --schedule=simplestep --lr=0.1
+        python -m netharn.examples.cifar --gpu=0 --arch=wrn_22 --optim=sgd --schedule=simplestep --lr=0.1
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --optim=sgd --schedule=simplestep --lr=0.01
     """
     import random
     import torchvision
     from torchvision import transforms
 
-    # Note that most netharn training scripts will use scriptconfig instead of
-    # this more explicit approach.
-    config = {
-        # A conservative traditional baseline
-        'arch': ub.argval('--arch', default='resnet50'),
-        'lr': float(ub.argval('--lr', default=0.1)),
-        'schedule': ub.argval('--schedule', default='step250'),
-        'optim': ub.argval('--optim', default='sgd'),
-        'num_vali': int(ub.argval('--num_vali', default=300)),
+    # Create an instance of the CIFAR config and allow command line args
+    config = CIFARConfig(cmdline=True)
 
-        'pretrained': ub.argval('--pretrained', default=None),
-        'init': ub.argval('--init', default='noop'),
-
-        'batch_size': int(ub.argval('--batch_size', default=64)),
-
-        'workers': int(ub.argval('--workers', default=2)),
-        'xpu': ub.argval('--xpu', default='argv'),
-
-        'dataset': ub.argval('--dataset', default='cifar10'),
-        'workdir': ub.expandpath(ub.argval('--workdir', default='~/work/cifar')),
-
-        'seed': int(ub.argval('--seed', default=137852547)),
-        'deterministic': False,
-
-    }
     xpu = nh.XPU.coerce(config['xpu'])
 
     # The work directory is where all intermediate results are dumped.
@@ -419,8 +463,9 @@ def setup_harn():
         learn_copy = DATASET(root=config['workdir'], train=True,
                              transform=transform_test)
 
+        import kwarray
         indices = np.arange(len(learn))
-        indices = nh.util.shuffle(indices, rng=0)
+        indices = kwarray.shuffle(indices, rng=0)
         num_vali = config['num_vali']
 
         datasets['vali'] = torch.utils.data.Subset(learn_copy, indices[:num_vali])
@@ -514,14 +559,14 @@ def setup_harn():
 
     if config['init'] in ['cls', 'noop']:
         initializer_ = (nh.initializers.NoOp, {})
-    if config['init'] == 'kaiming':
+    if config['init'] == 'kaiming_normal':
         initializer_ = (nh.initializers.KaimingNormal, {'param': 0, 'mode': 'fan_in'})
     else:
         # Note there are lots of different initializers including a special
         # pretrained initializer.
         initializer_ = nh.api.Initializer.coerce(config)
 
-    if config['schedule'] == 'step250':
+    if config['schedule'] == 'simplestep':
         scheduler_ = (nh.schedulers.ListedLR, {
             'points': {
                 0: config['lr'],
@@ -574,14 +619,15 @@ def setup_harn():
             }
         })
     else:
-        # A bit of netharn magic, read docs for coerce
+        # The netharn API can construct a scheduler from standard keys in a
+        # configuration dictionary. There is a bit of magic involved. Read docs
+        # for coerce for more details.
         scheduler_ = nh.api.Scheduler.coerce(config)
-        # raise KeyError(config['schedule'])
 
     if config['optim'] == 'sgd':
         optimizer_ = (torch.optim.SGD, {
             'lr': config['lr'],
-            'weight_decay': 5e-4,
+            'weight_decay': config['decay'],
             'momentum': 0.9,
             'nesterov': True,
         })
@@ -589,19 +635,14 @@ def setup_harn():
         optimizer_ = (nh.optimizers.AdamW, {
             'lr': config['lr'],
             'betas': (0.9, 0.999),
-            'weight_decay': 1e-5,
+            'weight_decay': config['decay'],
             'amsgrad': False,
         })
-    elif config['optim'] == 'rmsprop':
-        optimizer_ = (torch.optim.RMSprop, {
-            'lr': config['lr'],
-            'alpha': 0.9,
-            'momentum': 0.9,
-            'weight_decay': 1e-5,
-        })
     else:
+        # The netharn API can construct an optimizer from standard keys in a
+        # configuration dictionary. There is a bit of magic involved. Read docs
+        # for coerce for more details.
         optimizer_ = nh.api.Optimizer.coerce(config)
-        # raise KeyError(config['optim'])
 
     # Notice that arguments to hyperparameters are typically specified as a
     # tuple of (type, Dict), where the dictionary are the keyword arguments
@@ -612,7 +653,7 @@ def setup_harn():
     hyper = nh.HyperParams(
         # Datasets must be preconstructed
         datasets=datasets,
-        nice='cifar10_' + config['arch'],
+        nice=config['nice'],
         # Loader may be preconstructed
         loaders=loaders,
         workdir=config['workdir'],
@@ -621,13 +662,13 @@ def setup_harn():
         # However, in recent releases of netharn, these may be preconstructed
         # as well.
         model=model_,
-        dynamics=nh.api.Dynamics.coerce(config),
         optimizer=optimizer_,
         scheduler=scheduler_,
+        dynamics=nh.api.Dynamics.coerce(config),
         monitor=(nh.Monitor, {
             'minimize': ['loss'],
-            'patience': 350,
-            'max_epoch': 350,
+            'patience': config['patience'],
+            'max_epoch': config['max_epoch'],
         }),
         initializer=initializer_,
         criterion=(torch.nn.CrossEntropyLoss, {}),
@@ -672,9 +713,6 @@ def main():
     # pre-existing checkpoint that we can restart from.
     harn.initialize()
 
-    if ub.argval(('--vd', '--view-directory')):
-        ub.startfile(harn.train_dpath)
-
     # This starts the main loop which will run until the monitor's terminator
     # criterion is satisfied. If the initialize step loaded a checkpointed that
     # already met the termination criterion, then this will simply return.
@@ -689,7 +727,8 @@ def main():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m netharn.examples.cifar --gpu=0 --arch=resnet50
+        python -m netharn.examples.cifar --gpu=0 --arch=resnet50 --num_vali=0
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --num_vali=0
 
         python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0
 
@@ -700,7 +739,7 @@ if __name__ == '__main__':
 
         python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar3 --schedule=onecycle70 --lr=0.01  --init=cls --batch_size=3000 --workers=2 --num_vali=0 --optim=sgd --datasets=cifar100
 
-        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=ReduceLROnPlateau-p1-c1-f.9 --lr=0.1 --init=cls --batch_size=2719 --workers=4 --optim=sgd --datasets=cifar100
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=ReduceLROnPlateau-p1-c1-f0.9 --lr=0.1 --init=cls --batch_size=2719 --workers=4 --optim=sgd --datasets=cifar100
 
         python -m netharn.examples.cifar.py --gpu=0 --arch=densenet121
         # Train on two GPUs with a larger batch size

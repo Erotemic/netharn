@@ -262,6 +262,8 @@ class XPU(ub.NiceRepr):
             >>> assert XPU.coerce(None) == XPU(None)
             >>> assert XPU.coerce('auto', check=False) is not None
         """
+        if isinstance(item, dict):
+            item = item['xpu']  # allow coercion from a configuration dict
         try:
             if item is None:
                 return XPU(item, check=check)
@@ -306,7 +308,9 @@ class XPU(ub.NiceRepr):
             else:
                 ValueError
         except Exception as ex:
-            raise ValueError('cannot cast to XPU. item={!r}. Caused by: {!r}'.format(item, ex))
+            raise ValueError(
+                'cannot cast to XPU. item={!r}. Caused by: {!r}'.format(
+                    item, ex))
 
     @classmethod
     def cast(xpu, item, check=True, **kwargs):

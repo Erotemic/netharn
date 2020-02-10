@@ -612,7 +612,7 @@ class InitializeMixin(object):
         for load_path in reversed(prev_states):
             try:
                 harn.load_snapshot(load_path)
-            except (RuntimeError, EOFError):
+            except (RuntimeError, EOFError, Exception):
                 harn.info('Failed to load {}. Skiping.'.format(load_path))
                 harn.info('NOTE: This will sometimes cause torch to crash. Delete the skipped file if it does')
             else:
