@@ -202,7 +202,7 @@ class EfficientNet(layers.AnalyticModule):
         import ubelt as ub
         classes = self._global_params.classes
         if classes is None:
-            classes = self._global_params['num_classes']
+            classes = self._global_params.num_classes
         self.classes = ndsampler.CategoryTree.coerce(classes)
 
         keys = self._global_params._fields
@@ -290,8 +290,18 @@ class EfficientNet(layers.AnalyticModule):
         return int(new_filters)
 
     def extract_features(self, inputs):
-        """ Returns output of the final convolution layer """
+        """
+        Returns output of the final convolution layer
 
+        Note that predefined arches downsample by a factor of about 32x
+
+        Example:
+            >>> from netharn.models.efficientnet import *  # NOQA
+            >>> self = EfficientNet.from_name('efficientnet-b0')
+            >>> self = self.train(False)
+            >>> inputs = torch.rand(1, 3, 32, 32)
+            >>> x = self.extract_features(inputs)
+        """
         # Stem
         x = self._conv_stem(inputs)
         x = self._swish(self._bn0(x))
@@ -307,6 +317,43 @@ class EfficientNet(layers.AnalyticModule):
         x = self._swish(self._bn1(self._conv_head(x)))
 
         return x
+
+    def _analytic_forward(self, inputs, _OutputFor, _Output, _Hidden,
+                          **kwargs):
+        """
+        Example:
+            >>> from netharn.models.efficientnet import *  # NOQA
+            >>> self = EfficientNet.from_name('efficientnet-b0')
+            >>> kwargs = self._analytic_shape_kw()
+            >>> globals().update(kwargs)
+            >>> inputs = (1, 3, 224, 224)
+        """
+        hidden = _Hidden()
+
+        # NEEDS MORE BACKEND WORK
+
+        bs = inputs.size(0)
+
+        x = inputs
+        x = hidden['_conv_stem'] = _OutputFor(self._conv_stem)(x)
+        x = hidden['_swish1'] = _OutputFor(self._swish)(x)
+
+        for idx, block in enumerate(self._blocks):
+            drop_connect_rate = self._global_params.drop_connect_rate
+            if drop_connect_rate:
+                drop_connect_rate *= float(idx) / len(self._blocks)
+            x = hidden['block_{}'.format(idx)] = _OutputFor(block)(
+                x, drop_connect_rate=drop_connect_rate)
+
+        x = hidden['_swish2'] = _OutputFor(self._swish)(x)
+
+        # Pooling and final linear layer
+        x = _OutputFor(self._avg_pooling)(x)
+        x = _OutputFor(x.view)(bs, -1)
+        x = _OutputFor(self._dropout)(x)
+        x = _OutputFor(self._fc)(x)
+        outputs = _Output.coerce(x, hidden)
+        return outputs
 
     def forward(self, inputs):
         """
@@ -327,15 +374,19 @@ class EfficientNet(layers.AnalyticModule):
     # TODO: Analytic forward
 
     @classmethod
-    def from_name(cls, model_name, override_params=None):
+    def from_name(EfficientNet, model_name, override_params=None):
+        """
+            >>> model_name = 'efficientnet-b0'
+            >>> override_params = None
+        """
         Details._check_model_name_is_valid(model_name)
         blocks_args, global_params = Details._get_model_params(model_name, override_params)
-        self = cls(blocks_args, global_params)
+        self = EfficientNet(blocks_args, global_params)
         self.model_name = model_name
         return self
 
     @classmethod
-    def from_pretrained(cls, model_name, advprop=False, override_params=None, in_channels=3):
+    def from_pretrained(EfficientNet, model_name, advprop=False, override_params=None, in_channels=3):
         """
         Initialize the model from a pretrained state
 
@@ -348,7 +399,7 @@ class EfficientNet(layers.AnalyticModule):
         """
         if override_params is None:
             override_params = {}
-        self = cls.from_name(model_name, override_params=override_params)
+        self = EfficientNet.from_name(model_name, override_params=override_params)
         num_classes = len(self.classes)
         Details.load_pretrained_weights(
             self, model_name, load_fc=(num_classes == 1000), advprop=advprop)

@@ -248,6 +248,7 @@ class ExtraMixins(object):
         loader = harn.loaders[tag]
         harn.current_tag = tag
         for bx, batch in enumerate(iter(loader)):
+            print('batch = {!r}'.format(batch['im']))
             if bx >= index:
                 break
         if raw:

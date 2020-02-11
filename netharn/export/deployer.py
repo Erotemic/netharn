@@ -442,18 +442,6 @@ class DeployedModel(ub.NiceRepr):
             >>> self = DeployedModel.custom(snap_fpath, model, initkw)
             >>> dpath = ub.ensure_app_cache_dir('netharn', 'tests/_package_custom')
             >>> self.package(dpath)
-
-        Ignore:
-            from netharn.export.deployer import *
-            fcnn116 = ub.import_module_from_path(ub.expandpath('~/remote/hermes/tmp/fcnn116.py'))
-            model = fcnn116.FCNN116()
-            initkw = {}
-            snap_fpath = ub.expandpath('~/remote/hermes/tmp/fcnn116.pt')
-            train_info_fpath = None
-            self = DeployedModel.custom(snap_fpath, model, initkw)
-            zipfile = self.package(dpath)
-
-            loaded = DeployedModel(zipfile).load_model()
         """
         if isinstance(model, six.string_types):
             model_fpath = model
@@ -663,7 +651,8 @@ class DeployedModel(ub.NiceRepr):
             deployed = DeployedModel(None)
             deployed._model = arg
         elif isinstance(arg, six.string_types):
-            # handle the case where we are given a weights file in a snapshot directory
+            # handle the case where we are given a weights file
+            # use heuristics try and determine model topology
             if arg.endswith('.pt'):
                 snap_fpath = arg
                 dpath_cands = []
