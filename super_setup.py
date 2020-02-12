@@ -406,7 +406,7 @@ class Repo(ub.NiceRepr):
                 repo.debug(ub.color_text('Ensuring {}'.format(repo), 'blue'))
 
         if not exists(repo.dpath):
-            repo.debug('NEED TO CLONE {}'.format(repo))
+            repo.debug('NEED TO CLONE {}: {}'.format(repo, repo.url))
             if dry:
                 return
 

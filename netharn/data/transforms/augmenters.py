@@ -484,6 +484,8 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         dsize = tuple(embed_size)
         # Choose INTER_AREA if we are shrinking the image
         interpolation = cv2.INTER_AREA if sf.sum() < 2 else cv2.INTER_CUBIC
+        if any(d < 0 for d in dsize):
+            raise ValueError('dsize={} must be non-negative'.format(dsize))
         scaled = cv2.resize(img, dsize, interpolation=interpolation)
 
         border = self.border.draw_sample()

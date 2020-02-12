@@ -59,7 +59,7 @@ class FlatIndexer(ub.NiceRepr):
         return cls(lens)
 
     def __len__(self):
-        return self.cums[-1]
+        return self.cums[-1] if len(self.cums) else 0
 
     def unravel(self, index):
         """
