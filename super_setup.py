@@ -61,7 +61,7 @@ def parse_version(package):
     return visitor.version
 
 
-class GitURL(object):
+class GitURL(ub.NiceRepr):
     """
     Represent and transform git urls between protocols defined in [3]_.
 
@@ -128,6 +128,9 @@ class GitURL(object):
     def __init__(self, url):
         self._url = url
         self._parts = None
+
+    def __nice__(self):
+        return self._url
 
     def parts(self):
         """
@@ -477,14 +480,18 @@ class Repo(ub.NiceRepr):
             # Ensure we are on the right branch
             if repo.branch != repo.pygit.active_branch.name:
                 repo.debug('NEED TO SET BRANCH TO {} for {}'.format(repo.branch, repo))
-                try:
-                    repo._cmd('git checkout {}'.format(repo.branch))
-                except ShellException:
-                    repo.debug('Checkout failed. Branch name might be ambiguous. Trying again')
+                if dry:
+                    repo.info('Dry run, not setting branch')
+                else:
                     try:
-                        repo._cmd('git checkout -b {} {}/{}'.format(repo.branch, repo.remote, repo.branch))
+                        repo._cmd('git checkout {}'.format(repo.branch))
                     except ShellException:
-                        raise Exception('does the branch exist on the remote?')
+                        repo.debug('Checkout failed. Branch name might be ambiguous. Trying again')
+                        try:
+                            repo._cmd('git fetch {}'.format(remote.name))
+                            repo._cmd('git checkout -b {} {}/{}'.format(repo.branch, repo.remote, repo.branch))
+                        except ShellException:
+                            raise Exception('does the branch exist on the remote?')
 
             tracking_branch = repo.pygit.active_branch.tracking_branch()
             if tracking_branch is None or tracking_branch.remote_name != repo.remote:
@@ -716,6 +723,30 @@ def main():
         protocol = 'http'
     if ub.argflag('--ssh'):
         protocol = 'ssh'
+
+    HACK_PROTOCOL = True
+    if HACK_PROTOCOL:
+        if protocol is None:
+            # Try to determine if you are using ssh or https and default to that
+            main_repo = None
+            for repo in registery.repos:
+                if repo.name == 'netharn':
+                    main_repo = repo
+                    break
+            assert main_repo is not None
+            for remote in repo.pygit.remotes:
+                for url in list(remote.urls):
+                    gurl1 = GitURL(url)
+                    gurl2 = GitURL(repo.url)
+                    if gurl2.parts()['path'] == gurl1.parts()['path']:
+                        if gurl1.parts()['syntax'] == 'ssh':
+                            protocol = 'ssh'
+                        else:
+                            protocol = 'https'
+                        break
+                if protocol is not None:
+                    print('Found default protocol = {}'.format(protocol))
+                    break
 
     if protocol is not None:
         for repo in registery.repos:
