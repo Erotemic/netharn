@@ -423,7 +423,9 @@ class Repo(ub.NiceRepr):
                 remote = repo.pygit.remotes[remote_name]
                 have_urls = list(remote.urls)
                 if remote_url not in have_urls:
-                    print('WARNING: REMOTE NAME EXIST BUT URL IS NOT {}. '
+                    # TODO supress this warning if its just a git vs https
+                    # thing using GitURL
+                    print('WARNING: REMOTE NAME EXISTS BUT URL IS NOT {}. '
                           'INSTEAD GOT: {}'.format(remote_url, have_urls))
             except (IndexError):
                 try:
