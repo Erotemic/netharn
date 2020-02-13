@@ -351,19 +351,37 @@ class Scheduler(object):
                     elif part.startswith('c'):
                         kw['cooldown'] = int(part[1:])
                     else:
-                        raise ValueError('unknown ReduceLROnPlateau part')
+                        raise ValueError('unknown {} part'.format(prefix))
             except Exception:
-                raise ValueError('Unable to parse ReduceLROnPlateau '
-                                 'specs: {}'.format(suffix))
+                raise ValueError('Unable to parse {} specs: {}'.format(
+                    prefix, suffix))
 
             scheduler_ = (torch.optim.lr_scheduler.ReduceLROnPlateau, kw)
             return scheduler_
 
-        if key.lower() == 'Exponential'.lower():
-            scheduler_ = (nh.schedulers.Exponential, {
+        prefix = 'Exponential'.lower()
+        if key.lower().startswith(prefix):
+            # Allow specification of scheduler params
+            suffix = key[len(prefix):]
+            parts = suffix.split('-')
+            kw = {
                 'gamma': config.get('gamma', 0.1),
                 'stepsize': config.get('stepsize', 100),
-            })
+            }
+            try:
+                for part in parts:
+                    if not part:
+                        continue
+                    if part.startswith('g'):
+                        kw['gamma'] = float(part[1:])
+                    elif part.startswith('s'):
+                        kw['stepsize'] = int(part[1:])
+                    else:
+                        raise ValueError('unknown {} part'.format(prefix))
+            except Exception:
+                raise ValueError('Unable to parse {} specs: {}'.format(
+                    prefix, suffix))
+            scheduler_ = (nh.schedulers.Exponential, kw)
             return scheduler_
 
         raise KeyError(key)
