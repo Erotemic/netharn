@@ -193,6 +193,7 @@ def ensure_voc_data(dpath=None, force=False, years=[2007, 2012]):
     Download the Pascal VOC 2007 data if it does not already exist.
 
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> devkit_dpath = ensure_voc_data()
     """
     if dpath is None:

@@ -156,6 +156,7 @@ def grab_camvid_sampler():
         ndsampler.CocoSampler: sampler
 
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> sampler = grab_camvid_sampler()
         >>> print('sampler = {!r}'.format(sampler))
         >>> # sampler.load_sample()
@@ -172,6 +173,7 @@ def grab_camvid_sampler():
 def grab_coco_camvid():
     """
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> dset = grab_coco_camvid()
         >>> print('dset = {!r}'.format(dset))
         >>> # xdoctest: +REQUIRES(--show)
@@ -287,6 +289,7 @@ def convert_camvid_raw_to_coco(camvid_raw_info):
     use ndsampler's COCO backend).
 
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> camvid_raw_info = grab_raw_camvid()
         >>> # test with a reduced set of data
         >>> del camvid_raw_info['img_paths'][2:]

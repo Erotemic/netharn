@@ -72,7 +72,11 @@ class SegmentationDataset(torch.utils.data.Dataset):
     Efficient loader for training on a sementic segmentation dataset
 
     Example:
+        >>> # DISABLE_DOCTEST
         >>> #input_dims = (224, 224)
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
+        >>> import ndsampler
+        >>> sampler = ndsampler.CocoSampler.demo('shapes')
         >>> input_dims = (512, 512)
         >>> self = dset = SegmentationDataset(sampler, input_dims)
         >>> output = self[10]
@@ -172,6 +176,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         """
         Example:
+            >>> # DISABLE_DOCTEST
             >>> self = SegmentationDataset.demo(augment=True)
             >>> output = self[10]
             >>> # xdoctest: +REQUIRES(--show)
