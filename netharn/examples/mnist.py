@@ -110,6 +110,7 @@ class MnistHarn(nh.FitHarn):
     def _draw_batch(harn, batch, decoded, limit=32):
         """
         Example:
+            >>> # xdoctest: +REQUIRES(--download)
             >>> harn = setup_harn().initialize()
             >>> #
             >>> batch = harn._demo_batch(0, tag='test')

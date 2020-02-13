@@ -46,6 +46,7 @@ Example:
     >>> })
     >>> harn = nh.FitHarn(hyper)
     >>> harn.preferences['use_tensorboard'] = False
+    >>> harn.intervals['test'] = 1
     >>> harn.initialize(reset='delete')
     >>> harn.run()
     --- STEP 1: TRAIN A MODEL ---
@@ -54,7 +55,6 @@ Example:
     ......
     Symlink: .../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww -> .../.cache/netharn/tests/deploy/fit/nice/deploy_demo
     ......
-    INFO: Initializing tensorboard (dont forget to start the tensorboard server)
     INFO: Model has 824 parameters
     INFO: Mounting ToyNet2d model on CPU
     INFO: Exported model topology to .../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/ToyNet2d_2a3f49.py
@@ -64,8 +64,6 @@ Example:
     INFO: Snapshots will save to harn.snapshot_dpath = '.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/torch_snapshots'
     INFO: ARGV:
         .../.local/conda/envs/py36/bin/python .../.local/conda/envs/py36/bin/ipython
-    INFO: dont forget to start:
-        tensorboard --logdir ~/.cache/netharn/tests/deploy/fit/nice
     INFO: === begin training 0 / 3 : deploy_demo ===
     epoch lr:0.01 │ vloss is unevaluated 0/3... rate=0 Hz, eta=?, total=0:00:00, wall=19:32 EST
     train loss:0.717 │ 100.00% of 64x8... rate=2093.02 Hz, eta=0:00:00, total=0:00:00, wall=19:32 EST

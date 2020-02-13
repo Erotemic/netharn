@@ -475,7 +475,7 @@ class InitializeMixin(object):
             # - [ ] setup an alternative database to record epoch measures for
             # plotting if tensorboard is not available.
             harn._tlog = None
-            if tensorboard_logger:
+            if tensorboard_logger is None:
                 harn.warn('Tensorboard is not available')
             else:
                 harn.debug('Tensorboard is disabled')

@@ -75,7 +75,7 @@ def _hash_data(data):
     return ub.hash_data(data, hasher='sha512', base='abc', types=True)
 
 
-def _ensure_json_serializable(dict_, normalize_containers=False):
+def _ensure_json_serializable(dict_, normalize_containers=False, verbose=0):
     """
     Convert numpy and tuples into lists
 
@@ -142,7 +142,8 @@ def _ensure_json_serializable(dict_, normalize_containers=False):
         d[key] = new_value
 
     to_convert = []
-    for root, level in ub.ProgIter(_walk_json(dict_), desc='walk json'):
+    for root, level in ub.ProgIter(_walk_json(dict_), desc='walk json',
+                                   verbose=verbose):
         for key, value in level.items():
             if isinstance(value, tuple):
                 # Convert tuples on the fly so they become mutable

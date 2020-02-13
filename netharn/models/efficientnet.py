@@ -21,7 +21,7 @@ class Conv2dDynamicSamePadding(nn.Conv2d):
     """ 2D Convolutions like TensorFlow, for a dynamic image size """
 
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1, bias=True):
-        super().__init__(in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
+        super(Conv2dDynamicSamePadding, self).__init__(in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
         self.stride = self.stride if len(self.stride) == 2 else [self.stride[0]] * 2
 
     def forward(self, x):
@@ -49,7 +49,7 @@ class Conv2dStaticSamePadding(nn.Conv2d):
     """ 2D Convolutions like TensorFlow, for a fixed image size"""
 
     def __init__(self, in_channels, out_channels, kernel_size, image_size=None, **kwargs):
-        super().__init__(in_channels, out_channels, kernel_size, **kwargs)
+        super(Conv2dStaticSamePadding, self).__init__(in_channels, out_channels, kernel_size, **kwargs)
         self.stride = self.stride if len(self.stride) == 2 else [self.stride[0]] * 2
 
         # Calculate padding based on image size and save it
@@ -390,9 +390,9 @@ class EfficientNet(layers.AnalyticModule):
         """
         Initialize the model from a pretrained state
 
-
         Example:
-            >>> from efficentnet import *  # NOQA
+            >>> # xdoctest: +REQUIRES(--download)
+            >>> from netharn.models.efficentnet import *  # NOQA
             >>> model = EfficientNet.from_pretrained('efficientnet-b0')
             >>> inputs = torch.rand(1, 3, 224, 224)
             >>> outputs = model.forward(inputs)

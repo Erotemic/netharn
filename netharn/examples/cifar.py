@@ -111,6 +111,7 @@ class CIFAR_FitHarn(nh.FitHarn):
     to our particular problem and dataset.
 
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> from cifar import *
         >>> harn = setup_harn().initialize()
         >>> batch = harn._demo_batch(0, tag='vali')
@@ -206,6 +207,7 @@ class CIFAR_FitHarn(nh.FitHarn):
             run relatively few times.
 
         Example:
+            >>> # xdoctest: +REQUIRES(--download)
             >>> harn = setup_harn().initialize()
             >>> harn._demo_epoch('vali')
         """
@@ -259,6 +261,7 @@ class CIFAR_FitHarn(nh.FitHarn):
     def _draw_batch(harn, batch, outputs, limit=32):
         """
         Example:
+            >>> # xdoctest: +REQUIRES(--download)
             >>> from netharn.examples.cifar import *  # NOQA
             >>> harn = setup_harn().initialize()
             >>> batch = harn._demo_batch(0, tag='test')

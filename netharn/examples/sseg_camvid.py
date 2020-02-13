@@ -78,6 +78,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
     Efficient loader for training on a sementic segmentation dataset
 
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> sampler = grab_camvid_sampler()
         >>> #input_dims = (224, 224)
         >>> input_dims = (512, 512)
@@ -180,6 +181,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         """
         Example:
+            >>> # xdoctest: +REQUIRES(--download)
             >>> self = SegmentationDataset.demo(augment='complex')
             >>> item = self[10]
             >>> # xdoctest: +REQUIRES(--show)
@@ -303,6 +305,7 @@ class SegmentationHarn(nh.FitHarn):
         How to compute a forward pass through the network and compute loss
 
         Example:
+            >>> # xdoctest: +REQUIRES(--download)
             >>> kw = {'workers': 0, 'xpu': 'cpu', 'batch_size': 2}
             >>> harn = setup_harn(cmdline=False, **kw).initialize()
             >>> batch = harn._demo_batch(tag='train')
@@ -377,6 +380,7 @@ class SegmentationHarn(nh.FitHarn):
     def _draw_batch_preds(harn, batch, outputs, lim=16):
         """
         Example:
+            >>> # xdoctest: +REQUIRES(--download)
             >>> kw = {'workers': 0, 'xpu': 'cpu', 'batch_size': 8}
             >>> harn = setup_harn(cmdline=False, **kw).initialize()
             >>> batch = harn._demo_batch(tag='train')
@@ -639,6 +643,7 @@ class SegmentationPredictor(object):
     Wraps a pretrained model and allows prediction on full images
 
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> deployed = ub.expandpath('/home/joncrall/work/camvid/fit/runs/camvid_augment_weight_v2/otavqgrp/deploy_UNet_otavqgrp_089_FOAUOG.zip')
         >>> full_rgb = kwimage.grab_test_image('astro')
         >>> self = SegmentationPredictor(deployed)
@@ -742,6 +747,7 @@ class PredSlidingWindowDataset(torch_data.Dataset, ub.NiceRepr):
     This is used for prediction and evaluation
 
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> import kwimage
         >>> image = kwimage.grab_test_image('astro')
         >>> slider = nh.util.SlidingWindow(image.shape[0:2], (64, 64))
@@ -846,6 +852,7 @@ def _cached_class_frequency(dset):
 def _precompute_class_weights(dset, mode='median-idf'):
     """
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> import sys, ubelt
         >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
         >>> from sseg_camvid import *  # NOQA
@@ -919,6 +926,7 @@ def _precompute_class_weights(dset, mode='median-idf'):
 def setup_harn(cmdline=True, **kw):
     """
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> import sys, ubelt
         >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
         >>> from sseg_camvid import *  # NOQA
