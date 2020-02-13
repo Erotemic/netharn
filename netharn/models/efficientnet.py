@@ -177,6 +177,7 @@ class EfficientNet(layers.AnalyticModule):
         global_params (GlobalParams): shared between blocks
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
         >>> model = EfficientNet.from_name('efficientnet-b0')
         >>> print(model.number_of_parameters())
         >>> print(model.get_image_size())
@@ -296,6 +297,7 @@ class EfficientNet(layers.AnalyticModule):
         Note that predefined arches downsample by a factor of about 32x
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> from netharn.models.efficientnet import *  # NOQA
             >>> self = EfficientNet.from_name('efficientnet-b0')
             >>> self = self.train(False)
@@ -322,6 +324,7 @@ class EfficientNet(layers.AnalyticModule):
                           **kwargs):
         """
         Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> from netharn.models.efficientnet import *  # NOQA
             >>> self = EfficientNet.from_name('efficientnet-b0')
             >>> kwargs = self._analytic_shape_kw()
@@ -376,6 +379,8 @@ class EfficientNet(layers.AnalyticModule):
     @classmethod
     def from_name(EfficientNet, model_name, override_params=None):
         """
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> model_name = 'efficientnet-b0'
             >>> override_params = None
         """
@@ -392,6 +397,7 @@ class EfficientNet(layers.AnalyticModule):
 
         Example:
             >>> # xdoctest: +REQUIRES(--download)
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> from netharn.models.efficentnet import *  # NOQA
             >>> model = EfficientNet.from_pretrained('efficientnet-b0')
             >>> inputs = torch.rand(1, 3, 224, 224)
