@@ -347,7 +347,6 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             >>> aug = self.augment_keypoints(keypoints_on_images)
             >>> assert np.all(aug[0].shape == self.target_size[::-1])
         """
-        print('keypoints_on_images = {!r}'.format(keypoints_on_images))
         result = []
         target_size = np.array(self.target_size)
         target_shape = target_size[::-1]
