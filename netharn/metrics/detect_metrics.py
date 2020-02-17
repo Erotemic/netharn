@@ -625,8 +625,8 @@ def _demo_construct_probs(pred_cxs, pred_scores, classes, rng, hacked=1):
         return class_energy
 
     class_energy = torch.Tensor(class_energy)
-    cond_logits = classes.conditional_log_softmax(class_energy, dim=1)
-    cond_probs = torch.exp(cond_logits).numpy()
+    cond_log_probs = classes.conditional_log_softmax(class_energy, dim=1)
+    cond_probs = torch.exp(cond_log_probs).numpy()
 
     # I was having a difficult time getting this right, so an
     # inefficient per-item non-vectorized implementation it is.
@@ -669,8 +669,8 @@ def _demo_construct_probs(pred_cxs, pred_scores, classes, rng, hacked=1):
             totals = level.sum(axis=1)
             assert level.shape[1] == 1 or np.allclose(totals, 1.0), str(level) + ' : ' + str(totals)
 
-    cond_logits = torch.Tensor(cond_probs).log()
-    class_probs = classes._apply_logit_chain_rule(cond_logits, dim=1).exp().numpy()
+    cond_log_probs = torch.Tensor(cond_probs).log()
+    class_probs = classes._apply_logit_chain_rule(cond_log_probs, dim=1).exp().numpy()
     class_probs = class_probs.reshape(-1, len(classes))
     # print([p[x] for p, x in zip(class_probs, pred_cxs)])
     # print(pred_scores2)

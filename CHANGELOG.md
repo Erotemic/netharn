@@ -11,6 +11,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed 
 * Handle "No running processes found" case in `XPU.coerce('auto')`
 * Resize now works with newer `imgaug` versions
+* Fixed incorrect use of the word "logit", what I was calling logits are
+  actually log probabilities.
 
 ### Changed 
 * Using new mode in `gpu_info`, this is more stable
