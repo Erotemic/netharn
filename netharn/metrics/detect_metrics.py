@@ -1,11 +1,12 @@
 import numpy as np
 import ubelt as ub
 import networkx as nx
-from .assignment import _assign_confusion_vectors
-from .confusion_vectors import ConfusionVectors
+# from .assignment import _assign_confusion_vectors
+from netharn.metrics.confusion_vectors import ConfusionVectors
+from netharn.metrics.assignment import _assign_confusion_vectors
 
 
-class DetectionMetrics(object):
+class DetectionMetrics(ub.NiceRepr):
     """
     Attributes:
         gid_to_true_dets (Dict): maps image ids to truth
@@ -33,6 +34,16 @@ class DetectionMetrics(object):
         dmet.gid_to_true_dets = {}
         dmet.gid_to_pred_dets = {}
         dmet._imgname_to_gid = {}
+
+    def __nice__(dmet):
+        info = {
+            'n_true_imgs': len(dmet.gid_to_true_dets),
+            'n_pred_imgs': len(dmet.gid_to_pred_dets),
+            'n_true_anns': sum(map(len, dmet.gid_to_true_dets.values())),
+            'n_pred_anns': sum(map(len, dmet.gid_to_pred_dets.values())),
+            'classes': dmet.classes,
+        }
+        return ub.repr2(info)
 
     @classmethod
     def from_coco(DetectionMetrics, true_coco, pred_coco):
@@ -122,18 +133,43 @@ class DetectionMetrics(object):
         return dmet.gid_to_pred_dets[gid]
 
     def confusion_vectors(dmet, ovthresh=0.5, bias=0, gids=None, compat='all',
-                          prioritize='iou'):
+                          prioritize='iou', ignore_class='ignore'):
         """
         Assigns predicted boxes to the true boxes so we can transform the
         detection problem into a classification problem for scoring.
 
         Args:
-            compat (str): can be ('ancestors' | 'mutex' | 'all').
-                determines which pred boxes are allowed to match which true
-                boxes. If 'mutex', then pred boxes can only match true boxes of
-                the same class. If 'ancestors', then pred boxes can match true
-                boxes that match or have a coarser label. If 'all', then any
-                pred can match any true, regardless of if it is correct or not.
+
+            ovthresh (float, default=0.5):
+                bounding box overlap iou threshold required for assignment
+
+            bias (float, default=0.0):
+                for computing bounding box overlap, either 1 or 0
+
+            gids (List[int], default=None):
+                which subset of images ids to compute confusion metrics on. If
+                not specified all images are used.
+
+            compat (str, default='all'):
+                can be ('ancestors' | 'mutex' | 'all').  determines which pred
+                boxes are allowed to match which true boxes. If 'mutex', then
+                pred boxes can only match true boxes of the same class. If
+                'ancestors', then pred boxes can match true boxes that match or
+                have a coarser label. If 'all', then any pred can match any
+                true, regardless of its category label.
+
+            prioritize (str, default='iou'):
+                can be ('iou' | 'class' | 'correct') determines which box to
+                assign to if mutiple true boxes overlap a predicted box.  if
+                prioritize is iou, then the true box with maximum iou (above
+                ovthresh) will be chosen.  If prioritize is class, then it will
+                prefer matching a compatible class above a higher iou. If
+                prioritize is correct, then ancestors of the true class are
+                preferred over descendents of the true class, over unreleated
+                classes.
+
+            ignore_class (str, default='ignore'):
+                class name indicating ignore regions
 
         Ignore:
             globals().update(xdev.get_func_kwargs(dmet.confusion_vectors))
@@ -150,10 +186,12 @@ class DetectionMetrics(object):
         for gid in gids:
             true_dets = dmet.true_detections(gid)
             pred_dets = dmet.pred_detections(gid)
+
             y = _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1,
                                           ovthresh=ovthresh, bg_cidx=-1,
                                           bias=bias, classes=dmet.classes,
-                                          compat=compat, prioritize=prioritize)
+                                          compat=compat, prioritize=prioritize,
+                                          ignore_class=ignore_class)
 
             if TRACK_PROBS:
                 # Keep track of per-class probs
@@ -295,7 +333,8 @@ class DetectionMetrics(object):
             info['mAP'] = perclass['mAP']
         return info
 
-    def score_voc(dmet, ovthresh=0.5, bias=1, method='voc2012', gids=None):
+    def score_voc(dmet, ovthresh=0.5, bias=1, method='voc2012', gids=None,
+                  ignore_class='ignore'):
         """
         score using voc method
 
@@ -307,6 +346,7 @@ class DetectionMetrics(object):
             0.9399...
         """
         # from . import voc_metrics
+        from netharn.metrics.assignment import _filter_ignore_regions
         from netharn.metrics import voc_metrics
         if gids is None:
             gids = sorted(dmet._imgname_to_gid.values())
@@ -315,6 +355,14 @@ class DetectionMetrics(object):
         for gid in gids:
             true_dets = dmet.true_detections(gid)
             pred_dets = dmet.pred_detections(gid)
+
+            if ignore_class is not None:
+                true_ignore_flags, pred_ignore_flags = _filter_ignore_regions(
+                    true_dets, pred_dets, ovthresh=ovthresh,
+                    ignore_class=ignore_class)
+                true_dets = true_dets.compress(~true_ignore_flags)
+                pred_dets = pred_dets.compress(~pred_ignore_flags)
+
             vmet.add_truth(true_dets, gid=gid)
             vmet.add_predictions(pred_dets, gid=gid)
         voc_scores = vmet.score(ovthresh, bias=bias, method=method)

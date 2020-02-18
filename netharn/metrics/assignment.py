@@ -23,7 +23,8 @@ import ubelt as ub
 
 def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
                               ovthresh=0.5, bg_cidx=-1, bias=0.0, classes=None,
-                              compat='all', prioritize='iou'):
+                              compat='all', prioritize='iou',
+                              ignore_class='ignore'):
     """
     Create confusion vectors for detections by assigning to ground true boxes
 
@@ -37,29 +38,45 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
         pred_dets (Detections):
             predictions with boxes, classes, and scores
 
-        ovthresh (float): overlap threshold
+        ovthresh (float, default=0.5):
+            bounding box overlap iou threshold required for assignment
 
-        bg_weight (ndarray): weight of background predictions
-          (default=1)
+        bias (float, default=0.0):
+            for computing bounding box overlap, either 1 or 0
 
-        bias : for computing overlap either 1 or 0
+        gids (List[int], default=None):
+            which subset of images ids to compute confusion metrics on. If
+            not specified all images are used.
 
-        compat (str): can be ('mutex' | 'all' | 'ancestors').
-            determines which pred boxes are allowed to match which true boxes.
-            If 'mutex', then pred boxes can only match true boxes of the same
-            class. If 'ancestors', then pred boxes can match true boxes that
-            match or have a coarser label. If 'all', then any pred can match
-            any true, regardless of if the predicted class label matches or
-            not.
+        compat (str, default='all'):
+            can be ('ancestors' | 'mutex' | 'all').  determines which pred
+            boxes are allowed to match which true boxes. If 'mutex', then
+            pred boxes can only match true boxes of the same class. If
+            'ancestors', then pred boxes can match true boxes that match or
+            have a coarser label. If 'all', then any pred can match any
+            true, regardless of its category label.
 
-        prioritize (str): can be ('iou' | 'class' | 'correct'}
-            determines which class to assign to if mutiple boxes overlap.
-            if prioritize is iou, then the true box with maximum iou (above
-            ovthresh) will be chosen. If prioritize is class, then it will
+        prioritize (str, default='iou'):
+            can be ('iou' | 'class' | 'correct') determines which box to
+            assign to if mutiple true boxes overlap a predicted box.  if
+            prioritize is iou, then the true box with maximum iou (above
+            ovthresh) will be chosen.  If prioritize is class, then it will
             prefer matching a compatible class above a higher iou. If
             prioritize is correct, then ancestors of the true class are
             preferred over descendents of the true class, over unreleated
             classes.
+
+        bg_cidx (int, default=-1):
+            The index of the background class.  The index used in the truth
+            column when a predicted bounding box does not match any true
+            bounding box.
+
+        classes (List[str] | ndsampler.CategoryTree):
+            mapping from class indices to class names. Can also contain class
+            heirarchy information.
+
+        ignore_class (str):
+            class name indicating ignore regions
 
     TODO:
         - [ ] This is a bottleneck function. An implementation in C / C++ /
@@ -195,7 +212,8 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
         # In this case simply run the full pairwise iou
         common_true_idxs = np.arange(len(true_dets))
         cx_to_matchable_txs = {cx: common_true_idxs for cx in unique_pcxs}
-        common_ious = pred_dets.boxes.ious(true_dets.boxes, impl='c', bias=bias)
+        common_ious = pred_dets.boxes.ious(true_dets.boxes, bias=bias)
+        # common_ious = pred_dets.boxes.ious(true_dets.boxes, impl='c', bias=bias)
         iou_lookup = dict(enumerate(common_ious))
     else:
         # For each pred-category find matchable true-indices
@@ -211,10 +229,30 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
         unique_pred_cxs, pgroupxs = kwarray.group_indices(pred_dets.class_idxs)
         for cx, pred_idxs in zip(unique_pred_cxs, pgroupxs):
             true_idxs = cx_to_matchable_txs[cx]
-            ious = pred_dets.boxes[pred_idxs].ious(true_dets.boxes[true_idxs], bias=bias)
+            ious = pred_dets.boxes[pred_idxs].ious(
+                true_dets.boxes[true_idxs], bias=bias)
             _px_to_iou = dict(zip(pred_idxs, ious))
             iou_lookup.update(_px_to_iou)
     isvalid_lookup = {px: ious > ovthresh for px, ious in iou_lookup.items()}
+
+    y =  _critical_loop(true_dets, pred_dets, iou_lookup, isvalid_lookup,
+                        cx_to_matchable_txs, bg_weight, prioritize, ovthresh,
+                        pdist_priority, cx_to_ancestors, bg_cidx,
+                        ignore_class=ignore_class)
+    return y
+
+
+def _critical_loop(true_dets, pred_dets, iou_lookup, isvalid_lookup,
+                   cx_to_matchable_txs, bg_weight, prioritize, ovthresh,
+                   pdist_priority, cx_to_ancestors, bg_cidx, ignore_class):
+    # Notes:
+    # * Preallocating numpy arrays does not help
+    # * It might be useful to code this critical loop up in C / Cython
+    # * Could numba help? (I'm having an issue with cmath)
+    import kwarray
+
+    # Keep track of which true items have been used
+    true_unused = np.ones(len(true_dets), dtype=np.bool)
 
     # sort predictions by descending score
     if 'scores' in pred_dets.data:
@@ -226,21 +264,17 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
     _pred_cxs = pred_dets.class_idxs.take(_pred_sortx, axis=0)
     _pred_scores = _scores.take(_pred_sortx, axis=0)
 
-    return _critical_loop(true_dets, pred_dets, _pred_sortx, _pred_cxs,
-                          _pred_scores, iou_lookup, isvalid_lookup,
-                          cx_to_matchable_txs, bg_weight, prioritize, ovthresh,
-                          pdist_priority, cx_to_ancestors, bg_cidx)
+    if ignore_class is not None:
+        # Remove certain ignore regions from scoring
+        true_ignore_flags, pred_ignore_flags = _filter_ignore_regions(
+            true_dets, pred_dets, ovthresh=ovthresh, ignore_class=ignore_class)
 
+        _pred_keep_flags = ~pred_ignore_flags[_pred_sortx]
+        _pred_sortx = _pred_sortx[_pred_keep_flags]
+        _pred_cxs = _pred_cxs[_pred_keep_flags]
+        _pred_scores = _pred_scores[_pred_keep_flags]
 
-def _critical_loop(true_dets, pred_dets, _pred_sortx, _pred_cxs, _pred_scores,
-                   iou_lookup, isvalid_lookup, cx_to_matchable_txs, bg_weight,
-                   prioritize, ovthresh, pdist_priority, cx_to_ancestors,
-                   bg_cidx):
-    # Notes:
-    # * Preallocating numpy arrays does not help
-    # * It might be useful to code this critical loop up in C / Cython
-    # * Could numba help? (I'm having an issue with cmath)
-    import kwarray
+        true_unused[true_ignore_flags] = False
 
     y_pred_raw = []
     y_pred = []
@@ -251,18 +285,15 @@ def _critical_loop(true_dets, pred_dets, _pred_sortx, _pred_cxs, _pred_scores,
     y_pxs = []
     y_txs = []
 
-    # Keep track of which true items have been used
-    true_unused = np.ones(len(true_dets), dtype=np.bool)
-
-    y_pred_raw.extend(_pred_cxs.tolist())
-    y_pxs.extend(_pred_sortx.tolist())
-    y_score.extend(_pred_scores.tolist())
+    # used_truth_policy = 'next_best'
+    used_truth_policy = 'mark_false'
 
     # Greedy assignment. For each predicted detection box.
     # Allow it to match the truth of compatible classes.
     for px, pred_cx, score in zip(_pred_sortx, _pred_cxs, _pred_scores):
+
         # Find compatible truth indices
-        # raw_pred_cx = pred_cx
+        raw_pred_cx = pred_cx
         true_idxs = cx_to_matchable_txs[pred_cx]
         # Filter out any truth that has already been used
         unused = true_unused[true_idxs]
@@ -281,12 +312,35 @@ def _critical_loop(true_dets, pred_dets, _pred_sortx, _pred_cxs, _pred_scores,
             if prioritize == 'iou':
                 # simply match the true box with the highest iou regardless of
                 # category
-                cand_ious = iou_lookup[px].compress(unused)
-                ovidx = cand_ious.argmax()
-                ovmax = cand_ious[ovidx]
-                if ovmax > ovthresh:
-                    tx = cand_true_idxs[ovidx]
+
+                if used_truth_policy == 'next_best':
+                    # Dont even consider matches to previously used groundtruth
+                    # (note this means it will be marked as a false positive)
+                    cand_ious = iou_lookup[px].compress(unused)
+                    ovidx = cand_ious.argmax()
+                    ovmax = cand_ious[ovidx]
+                    if ovmax > ovthresh:
+                        tx = cand_true_idxs[ovidx]
+                elif used_truth_policy == 'mark_false':
+                    # Consider a match to a previously used truth a false (note
+                    # this means it will be marked as a false positive more
+                    # agressively than the next_best option, because there it
+                    # may match a different truth)
+                    cand_ious = iou_lookup[px]
+                    ovidx = cand_ious.argmax()
+                    ovmax = cand_ious[ovidx]
+                    if ovmax > ovthresh:
+                        tx = true_idxs[ovidx]
+                        if not unused[tx]:
+                            tx = -1
+                else:
+                    raise KeyError(used_truth_policy)
+
             elif prioritize == 'correct' or prioritize == 'class':
+
+                if used_truth_policy != 'next_best':
+                    raise NotImplementedError(used_truth_policy)
+
                 # Choose which (if any) of the overlapping true boxes to match
                 # If there are any correct matches above the overlap threshold
                 # choose to match that.
@@ -316,7 +370,7 @@ def _critical_loop(true_dets, pred_dets, _pred_sortx, _pred_cxs, _pred_scores,
         if tx > -1:
             # If the prediction matched a true object, mark the assignment
             # as either a true or false positive
-            tx = unused_true_idxs[ovidx]
+            # tx = unused_true_idxs[ovidx]
             true_unused[tx] = False  # mark this true box as used
 
             if 'weights' in true_dets.data:
@@ -330,25 +384,25 @@ def _critical_loop(true_dets, pred_dets, _pred_sortx, _pred_cxs, _pred_scores,
             if true_cx in cx_to_ancestors[pred_cx]:
                 pred_cx = true_cx
 
-            # y_pred_raw.append(raw_pred_cx)
+            y_pred_raw.append(raw_pred_cx)
             y_pred.append(pred_cx)
             y_true.append(true_cx)
-            # y_score.append(score)
+            y_score.append(score)
             y_weight.append(weight)
             y_iou.append(ovmax)
-            # y_pxs.append(px)
+            y_pxs.append(px)
             y_txs.append(tx)
         else:
             # Assign this prediction to a the background
             # Mark this prediction as a false positive
 
-            # y_pred_raw.append(raw_pred_cx)
+            y_pred_raw.append(raw_pred_cx)
             y_pred.append(pred_cx)
             y_true.append(bg_cidx)
-            # y_score.append(score)
+            y_score.append(score)
             y_weight.append(bg_weight)
             y_iou.append(-1)
-            # y_pxs.append(px)
+            y_pxs.append(px)
             y_txs.append(tx)
 
     # All pred boxes have been assigned to a truth box or the background.
@@ -458,3 +512,77 @@ def _fast_pdist_priority(classes, prioritize, _cache={}):
         _cache[key] = pdist_priority
     pdist_priority = _cache[key]
     return pdist_priority
+
+
+def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
+                           ignore_class='ignore'):
+    """
+    Determine which true and predicted detections should be ignored.
+
+    Returns:
+        Tuple[ndarray, ndarray]: flags indicating which true and predicted
+            detections should be ignored.
+
+    Example:
+        >>> import kwimage
+        >>> pred_dets = kwimage.Detections.random(classes=['a'])
+        >>> true_dets = kwimage.Detections.random(
+        >>>     segmentations=True, classes=['a', 'ignore'])
+        >>> ignore_class = 'ignore'
+        >>> ovthresh = 0.5
+        >>> print('true_dets = {!r}'.format(true_dets))
+        >>> print('pred_dets = {!r}'.format(pred_dets))
+        >>> flags1, flags2 = _filter_ignore_regions(
+        >>>     true_dets, pred_dets, ovthresh=ovthresh, ignore_class=ignore_class)
+        >>> print('flags1 = {!r}'.format(flags1))
+        >>> print('flags2 = {!r}'.format(flags2))
+    """
+    true_ignore_flags = np.zeros(len(true_dets), dtype=np.bool)
+    pred_ignore_flags = np.zeros(len(pred_dets), dtype=np.bool)
+
+    # Filter out true detections labeled as "ignore"
+    if true_dets.classes is not None and ignore_class in true_dets.classes:
+        ignore_cidx = true_dets.classes.index(ignore_class)
+        true_ignore_flags = true_dets.class_idxs == ignore_cidx
+
+        if np.any(true_ignore_flags):
+            ignore_dets = true_dets.compress(true_ignore_flags)
+
+            pred_boxes = pred_dets.data['boxes']
+            ignore_boxes = ignore_dets.data['boxes']
+            ignore_sseg = ignore_dets.data.get('segmentations', None)
+
+            # Determine which predicted boxes are inside the ignore regions
+            # note: using sum over max is delibrate here.
+            ignore_overlap = (pred_boxes.isect_area(ignore_boxes) /
+                              pred_boxes.area).clip(0, 1).sum(axis=1)
+
+            ignore_idxs = np.where(ignore_overlap > ovthresh)[0]
+
+            if ignore_sseg is not None:
+                from shapely.ops import cascaded_union
+                # If the ignore region has segmentations further refine our
+                # estimate of which predictions should be ignored.
+                ignore_sseg = ignore_sseg.to_polygon_list()
+                box_polys = ignore_boxes.to_polygons()
+                ignore_polys = [
+                    bp if p is None else p
+                    for bp, p in zip(box_polys, ignore_sseg.data)
+                ]
+                ignore_regions = [p.to_shapely() for p in ignore_polys]
+                ignore_region = cascaded_union(ignore_regions).buffer(0)
+
+                cand_pred = pred_boxes.take(ignore_idxs)
+
+                # Refine overlap estimates
+                cand_regions = cand_pred.to_shapley()
+                for idx, pred_region in zip(ignore_idxs, cand_regions):
+                    try:
+                        isect = ignore_region.intersection(pred_region)
+                        overlap = (isect.area / pred_region.area)
+                        ignore_overlap[idx] = overlap
+                    except Exception as ex:
+                        import warnings
+                        warnings.warn('ex = {!r}'.format(ex))
+            pred_ignore_flags = ignore_overlap > ovthresh
+    return true_ignore_flags, pred_ignore_flags

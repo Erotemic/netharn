@@ -3,7 +3,7 @@ import numpy as np
 import ubelt as ub
 
 
-class VOC_Metrics(object):
+class VOC_Metrics(ub.NiceRepr):
     """
     API to compute object detection scores using Pascal VOC evaluation method.
 
@@ -14,7 +14,7 @@ class VOC_Metrics(object):
         recs (Dict[int, List[dict]): true boxes for each image.
             maps image ids to a list of records within that image.
             Each record is a tlbr bbox, a difficult flag, and a class name.
-
+el
         cx_to_lines (Dict[int, List]): VOC formatted prediction preditions.
             mapping from class index to all predictions for that category.
             Each "line" is a list of [
@@ -23,6 +23,15 @@ class VOC_Metrics(object):
     def __init__(self):
         self.recs = {}
         self.cx_to_lines = ub.ddict(list)
+
+    def __nice__(self):
+        info = {
+            'n_true_imgs': len(self.recs),
+            'n_true_anns': sum(map(len, self.recs.values())),
+            'n_pred_anns': sum(map(len, self.cx_to_lines.values())),
+            'n_pred_cats': len(self.cx_to_lines),
+        }
+        return ub.repr2(info)
 
     def add_truth(self, true_dets, gid):
         self.recs[gid] = []
@@ -59,8 +68,6 @@ class VOC_Metrics(object):
             info = _voc_eval(lines, self.recs, classname, ovthresh=ovthresh,
                              bias=bias, method=method)
             perclass[cx] = info
-            # perclass[cx]['pr'] = (info['tpr'], info['ppv'])
-            # perclass[cx]['ap'] = info['ap']
 
         mAP = np.nanmean([d['ap'] for d in perclass.values()])
         voc_scores = {
@@ -238,8 +245,8 @@ def _voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012',
 
     # go down dets and mark TPs and FPs
     nd = len(image_ids)
-    tp = np.zeros(nd)
-    fp = np.zeros(nd)
+    is_tp = np.zeros(nd)
+    is_fp = np.zeros(nd)
 
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', message='invalid .* true_divide')
@@ -277,17 +284,17 @@ def _voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012',
                 if not R['difficult'][jmax]:
                     if not R['det'][jmax]:
                         # Mark that this true box has been used.
-                        tp[d] = 1.
+                        is_tp[d] = 1.
                         R['det'][jmax] = 1
                     else:
-                        fp[d] = 1.
+                        is_fp[d] = 1.
             else:
-                fp[d] = 1.
+                is_fp[d] = 1.
 
         thresholds = confidence[sorted_ind]
         # compute precision recall
-        fp = np.cumsum(fp)
-        tp = np.cumsum(tp)
+        fp = np.cumsum(is_fp)
+        tp = np.cumsum(is_tp)
         fn = npos - tp
 
         rec = tp / float(npos)
