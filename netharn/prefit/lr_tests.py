@@ -47,7 +47,7 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
         >>> sys.path.append('/home/joncrall/code/netharn/examples')
         >>> from mnist import setup_harn
         >>> harn = setup_harn().initialize()
-        >>> harn.config['prog_backend'] = 'progiter'
+        >>> harn.preferences['prog_backend'] = 'progiter'
         >>> result = lr_range_test(harn)
         >>> print('result = {!r}'.format(result))
         >>> result.draw()
@@ -257,7 +257,7 @@ def lr_range_scan(harn, low=1e-6, high=10.0, num=8, niter_train=1,
         >>> sys.path.append('/home/joncrall/code/netharn/examples')
         >>> from mnist import setup_harn
         >>> harn = setup_harn().initialize()
-        >>> harn.config['prog_backend'] = 'progiter'
+        >>> harn.preferences['prog_backend'] = 'progiter'
         >>> result = lr_range_scan(harn, niter_train=100, niter_vali=10, num=32)
         >>> print('result = {!r}'.format(result))
         >>> result.draw()
@@ -312,7 +312,7 @@ def lr_range_scan(harn, low=1e-6, high=10.0, num=8, niter_train=1,
         harn.on_epoch = lambda *args, **kw: None
 
         prog = harn._make_prog(learning_rates, desc='scan learning rates',
-                               disable=not harn.config['show_prog'],
+                               disable=not harn.preferences['show_prog'],
                                total=len(learning_rates), leave=True,
                                dynamic_ncols=True, position=0)
 

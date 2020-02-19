@@ -14,12 +14,69 @@ import imgaug.augmenters as iaa
 import imgaug
 
 
+class SegmentationConfig(scfg.Config):
+    """
+    Default configuration for setting up a training session
+    """
+    default = {
+        'nice': scfg.Value('untitled', help='A human readable tag that is "nice" for humans'),
+        'workdir': scfg.Path('~/work/sseg', help='Dump all results in your workdir'),
+
+        'workers': scfg.Value(0, help='number of parallel dataloading jobs'),
+        'xpu': scfg.Value('argv', help='See netharn.XPU for details. can be cpu/gpu/cuda0/0,1,2,3)'),
+
+        'augmenter': scfg.Value('simple', help='type of training dataset augmentation'),
+        'class_weights': scfg.Value('log-median-idf', help='how to weight inbalanced classes'),
+        # 'class_weights': scfg.Value(None, help='how to weight inbalanced classes'),
+
+        'datasets': scfg.Value('special:shapes256', help='Either a special key or a coco file'),
+        'train_dataset': scfg.Value(None),
+        'vali_dataset': scfg.Value(None),
+        'test_dataset': scfg.Value(None),
+
+        'arch': scfg.Value('psp', help='Network architecture code'),
+        'optim': scfg.Value('adam', help='Weight optimizer. Can be SGD, ADAM, ADAMW, etc..'),
+
+        'backend': scfg.Value('npy', help='fast lookup backnd. may be npy or cog'),
+        'input_dims': scfg.Value((224, 224), help='Window size to input to the network'),
+        'input_overlap': scfg.Value(0.25, help='amount of overlap when creating a sliding window dataset'),
+        'normalize_inputs': scfg.Value(True, help='if True, precompute training mean and std for data whitening'),
+
+        'batch_size': scfg.Value(4, help='number of items per batch'),
+        'bstep': scfg.Value(4, help='number of batches before a gradient descent step'),
+
+        'max_epoch': scfg.Value(140, help='Maximum number of epochs'),
+        'patience': scfg.Value(140, help='Maximum "bad" validation epochs before early stopping'),
+
+        'lr': scfg.Value(1e-4, help='Base learning rate'),
+        'decay':  scfg.Value(1e-5, help='Base weight decay'),
+
+        'focus': scfg.Value(0.0, help='focus for focal loss'),
+
+        'schedule': scfg.Value('step90', help=('Special coercable netharn code. Eg: onecycle50, step50, gamma')),
+
+        'init': scfg.Value('kaiming_normal', help='How to initialized weights. (can be a path to a pretrained model)'),
+        'pretrained': scfg.Path(help=('alternative way to specify a path to a pretrained model')),
+    }
+
+    def normalize(self):
+        if self['pretrained'] in ['null', 'None']:
+            self['pretrained'] = None
+
+        if self['pretrained'] is not None:
+            self['init'] = 'pretrained'
+
+
 class SegmentationDataset(torch.utils.data.Dataset):
     """
     Efficient loader for training on a sementic segmentation dataset
 
     Example:
+        >>> # DISABLE_DOCTEST
         >>> #input_dims = (224, 224)
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
+        >>> import ndsampler
+        >>> sampler = ndsampler.CocoSampler.demo('shapes')
         >>> input_dims = (512, 512)
         >>> self = dset = SegmentationDataset(sampler, input_dims)
         >>> output = self[10]
@@ -119,6 +176,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         """
         Example:
+            >>> # DISABLE_DOCTEST
             >>> self = SegmentationDataset.demo(augment=True)
             >>> output = self[10]
             >>> # xdoctest: +REQUIRES(--show)
@@ -141,7 +199,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
         heatmap = self._sample_to_sseg_heatmap(sample)
 
         heatmap = heatmap.numpy()
-        heatmap.data['class_idx'] = heatmap.data['class_idx'].astype(np.int)
+        heatmap.data['class_idx'] = heatmap.data['class_idx'].astype(np.int32)
         cidx_segmap = heatmap.data['class_idx']
 
         if self.augmenter:
@@ -384,9 +442,6 @@ class SegmentationHarn(nh.FitHarn):
     def on_complete(harn):
         """
         Ignore:
-            >>> import sys, ubelt
-            >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
-            >>> from segmentation import *  # NOQA
             >>> kw = {'workers': 0, 'xpu': 'auto', 'batch_size': 8}
             >>> harn = setup_harn(cmdline=False, **kw).initialize()
             >>> harn.datasets['test']
@@ -452,59 +507,6 @@ class SegmentationModel(nh.layers.Sequential):
         self.add_module('model', model_[0](**model_[1]))
 
 
-class SegmentationConfig(scfg.Config):
-    """
-    Default configuration for setting up a training session
-    """
-    default = {
-        'nice': scfg.Value('untitled', help='A human readable tag that is "nice" for humans'),
-        'workdir': scfg.Path('~/work/sseg', help='Dump all results in your workdir'),
-
-        'workers': scfg.Value(0, help='number of parallel dataloading jobs'),
-        'xpu': scfg.Value('argv', help='See netharn.XPU for details. can be cpu/gpu/cuda0/0,1,2,3)'),
-
-        'augmenter': scfg.Value('simple', help='type of training dataset augmentation'),
-        'class_weights': scfg.Value('log-median-idf', help='how to weight inbalanced classes'),
-        # 'class_weights': scfg.Value(None, help='how to weight inbalanced classes'),
-
-        'datasets': scfg.Value('special:shapes256', help='Either a special key or a coco file'),
-        'train_dataset': scfg.Value(None),
-        'vali_dataset': scfg.Value(None),
-        'test_dataset': scfg.Value(None),
-
-        'arch': scfg.Value('psp', help='Network architecture code'),
-        'optim': scfg.Value('adam', help='Weight optimizer. Can be SGD, ADAM, ADAMW, etc..'),
-
-        'backend': scfg.Value('npy', help='fast lookup backnd. may be npy or cog'),
-        'input_dims': scfg.Value((224, 224), help='Window size to input to the network'),
-        'input_overlap': scfg.Value(0.25, help='amount of overlap when creating a sliding window dataset'),
-        'normalize_inputs': scfg.Value(True, help='if True, precompute training mean and std for data whitening'),
-
-        'batch_size': scfg.Value(4, help='number of items per batch'),
-        'bstep': scfg.Value(4, help='number of batches before a gradient descent step'),
-
-        'max_epoch': scfg.Value(140, help='Maximum number of epochs'),
-        'patience': scfg.Value(140, help='Maximum "bad" validation epochs before early stopping'),
-
-        'lr': scfg.Value(1e-4, help='Base learning rate'),
-        'decay':  scfg.Value(1e-5, help='Base weight decay'),
-
-        'focus': scfg.Value(0.0, help='focus for focal loss'),
-
-        'schedule': scfg.Value('step90', help=('Special coercable netharn code. Eg: onecycle50, step50, gamma')),
-
-        'init': scfg.Value('kaiming_normal', help='How to initialized weights. (can be a path to a pretrained model)'),
-        'pretrained': scfg.Path(help=('alternative way to specify a path to a pretrained model')),
-    }
-
-    def normalize(self):
-        if self['pretrained'] in ['null', 'None']:
-            self['pretrained'] = None
-
-        if self['pretrained'] is not None:
-            self['init'] = 'pretrained'
-
-
 def _cached_class_frequency(dset, workers=0):
     import ubelt as ub
     import copy
@@ -544,9 +546,6 @@ def _cached_class_frequency(dset, workers=0):
 def _precompute_class_weights(dset, workers=0, mode='median-idf'):
     """
     Example:
-        >>> import sys, ubelt
-        >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
-        >>> from segmentation import *  # NOQA
         >>> harn = setup_harn(0, workers=0, xpu='cpu').initialize()
         >>> dset = harn.datasets['train']
     """
@@ -602,12 +601,9 @@ def _precompute_class_weights(dset, workers=0, mode='median-idf'):
 def setup_harn(cmdline=True, **kw):
     """
     CommandLine:
-        xdoctest -m ~/code/netharn/examples/segmentation.py setup_harn
+        xdoctest -m netharn.examples.segmentation setup_harn
 
     Example:
-        >>> import sys, ubelt
-        >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
-        >>> from segmentation import *  # NOQA
         >>> kw = {'workers': 0, 'xpu': 'cpu', 'batch_size': 2}
         >>> cmdline = False
         >>> # Just sets up the harness, does not do any heavy lifting
@@ -621,7 +617,7 @@ def setup_harn(cmdline=True, **kw):
     import sys
     import ndsampler
     import kwarray
-    kwarray.seed_global(2108744082)
+    # kwarray.seed_global(2108744082)
 
     config = SegmentationConfig(default=kw)
     config.load(cmdline=cmdline)
@@ -673,7 +669,6 @@ def setup_harn(cmdline=True, **kw):
         class_weights = None
 
     if config['normalize_inputs']:
-        import kwarray
         stats_dset = torch_datasets['train']
         stats_idxs = kwarray.shuffle(np.arange(len(stats_dset)), rng=0)[0:min(1000, len(stats_dset))]
         stats_subset = torch.utils.data.Subset(stats_dset, stats_idxs)
@@ -752,7 +747,7 @@ def setup_harn(cmdline=True, **kw):
     # Create harness
     harn = SegmentationHarn(hyper=hyper)
     harn.classes = torch_datasets['train'].classes
-    harn.config.update({
+    harn.preferences.update({
         'num_keep': 2,
         'keyboard_debug': True,
         # 'export_modules': ['netharn'],
@@ -761,7 +756,7 @@ def setup_harn(cmdline=True, **kw):
         'vali': 1,
         'test': 10,
     })
-    harn._custom_config = config
+    harn.script_config = config
     return harn
 
 
@@ -773,25 +768,34 @@ def main():
 if __name__ == '__main__':
     """
     CommandLine:
-        python ~/code/netharn/examples/segmentation.py --workers=4 --xpu=0 --nice=demo1
 
-        python ~/code/netharn/examples/segmentation.py --workers=4 --xpu=0 --batch_size=4 --lr=1e-5 --nice=demo1 --input_dims=196,196 --datasets=shapes128
-        --workers=4 --xpu=0 --batch_size=4 --lr=1e-5 --nice=demo2 --input_dims=224,224 --datasets=shapes512 --optim=sgd --bstep=8
+        conda install gdal
 
-        python ~/code/netharn/examples/segmentation.py --workers=4 --xpu=0 --nice=camvid_wip2 \
-            --train_dataset=/home/joncrall/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
-            --vali_dataset=/home/joncrall/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
+        python -m netharn.examples.segmentation \
+                --nice=shapes_demo --datasets=shapes32 \
+                --workers=0 --xpu=cpu
+
+        # You can use MS-COCO files to learn to segment your own data To
+        # demonstrate grab the CamVid dataset (the following script also
+        # transforms camvid into the MS-COCO format)
+
+        python -m netharn.data.grab_camvid  # Download MS-COCO files
+
+        python -m netharn.examples.segmentation --workers=4 --xpu=0 --nice=camvid_deeplab \
+            --train_dataset=$HOME/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
+            --vali_dataset=$HOME/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
             --schedule=step-90-120 --arch=deeplab --batch_size=8 --lr=1e-5 --input_dims=224,224 --optim=sgd --bstep=8
 
-        python ~/code/netharn/examples/segmentation.py --workers=4 --xpu=auto --nice=camvid_psp_wip \
+        python -m netharn.examples.segmentation --workers=4 --xpu=auto --nice=camvid_psp_wip \
             --train_dataset=$HOME/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
             --vali_dataset=$HOME/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
             --schedule=step-90-120 --arch=psp --batch_size=6 --lr=1e-3 --input_dims=512,512 --optim=sgd --bstep=1
 
-        python ~/code/netharn/examples/segmentation.py --workers=4 --xpu=auto --nice=camvid_psp_wip_fine \
+        # Note you would need to change the path to a pretrained network
+        python -m netharn.examples.segmentation --workers=4 --xpu=auto --nice=camvid_psp_wip_fine \
             --train_dataset=$HOME/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
             --vali_dataset=$HOME/.cache/netharn/camvid/camvid-master/camvid-train.mscoco.json \
-            --pretrained=/home/joncrall/work/sseg/fit/runs/camvid_psp_wip/fowjplca/deploy_SegmentationModel_fowjplca_134_CZARGB.zip \
+            --pretrained=$HOME/work/sseg/fit/runs/camvid_psp_wip/fowjplca/deploy_SegmentationModel_fowjplca_134_CZARGB.zip \
             --schedule=step-90-120 --arch=psp --batch_size=6 --lr=1e-2 --input_dims=512,512 --optim=sgd --bstep=8
     """
     main()

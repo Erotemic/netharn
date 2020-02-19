@@ -609,7 +609,7 @@ def setup_harn(**kwargs):
     )
 
     harn = MNIST_MatchingHarness(hyper=hyper)
-    harn.config
+    harn.preferences
     return harn
 
 

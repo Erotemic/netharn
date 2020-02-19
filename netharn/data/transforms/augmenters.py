@@ -194,14 +194,21 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         target_size (tuple): Scale images to this size (w, h) keeping the
         aspect ratio using a letterbox.
 
+    CommandLine:
+        xdoctest -m /home/joncrall/code/netharn/netharn/data/transforms/augmenters.py Resize:0
+
     Example:
         >>> from netharn.data.transforms.augmenters import *  # NOQA
         >>> img = demodata_hsv_image()
         >>> box = kwimage.Boxes([[.45, .05, .10, .05], [0., 0.0, .199, .199], [.24, .05, .01, .05]], format='xywh').to_tlbr()
-        >>> bboi = box.to_imgaug(shape=img.shape)
+        >>> bboi = box.to_imgaug(shape=tuple(img.shape))
         >>> self = Resize((40, 30))
         >>> aug1  = self.augment_image(img)
         >>> bboi1 = self.augment_bounding_boxes([bboi])[0]
+        >>> box1 = kwimage.Boxes.from_imgaug(bboi1)
+        >>> assert box1.br_y.max()  > 8
+        >>> assert tuple(bboi1.shape[0:2]) == (30, 40)
+        >>> assert tuple(aug1.shape[0:2]) == (30, 40)
 
     Example:
         >>> from netharn.data.transforms.augmenters import *  # NOQA
@@ -303,6 +310,18 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         new_img = self._img_letterbox_apply(img, embed_size, shift,
                                             self.target_size)
         return new_img
+
+    def _augment_bounding_boxes(self, bounding_boxes_on_images, random_state,
+                                parents, hooks):
+        # Fix for imgaug 0.4.0
+        return self._augment_bounding_boxes_as_keypoints(
+            bounding_boxes_on_images, random_state, parents, hooks)
+
+    def _augment_polygons(self, polygons_on_images, random_state, parents,
+                          hooks):
+        # Fix for imgaug 0.4.0
+        return self._augment_polygons_boxes_as_keypoints(
+            polygons_on_images, random_state, parents, hooks)
 
     def _augment_images(self, images, random_state, parents, hooks):
         self.target_size = None if self.target_size is None else np.array(self.target_size)
@@ -484,6 +503,8 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         dsize = tuple(embed_size)
         # Choose INTER_AREA if we are shrinking the image
         interpolation = cv2.INTER_AREA if sf.sum() < 2 else cv2.INTER_CUBIC
+        if any(d < 0 for d in dsize):
+            raise ValueError('dsize={} must be non-negative'.format(dsize))
         scaled = cv2.resize(img, dsize, interpolation=interpolation)
 
         border = self.border.draw_sample()

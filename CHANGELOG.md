@@ -3,6 +3,24 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
+## Version 0.5.4
+
+### Added
+* EfficientNet backbone and Swish activation
+
+### Fixed 
+* Handle "No running processes found" case in `XPU.coerce('auto')`
+* Resize now works with newer `imgaug` versions
+* Fixed incorrect use of the word "logit", what I was calling logits are
+  actually log probabilities.
+
+### Changed 
+* Using new mode in `gpu_info`, this is more stable
+* Examples are now in the netharn.examples directory, which means you can run
+  them without having to git clone netharn.
+* Moved data grabbers into netharn.data
+* Moved unfinished examples to dev
+
 
 ## Version 0.5.3
 

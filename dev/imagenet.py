@@ -325,7 +325,7 @@ def setup_harn(cmdline=True, **kwargs):
     # Create harness
     harn = ImageClfHarn(hyper=hyper)
     harn.classes = torch_datasets['train'].classes
-    harn.config.update({
+    harn.preferences.update({
         'num_keep': 5,
         'keyboard_debug': True,
         # 'export_modules': ['netharn'],
@@ -334,5 +334,5 @@ def setup_harn(cmdline=True, **kwargs):
         'vali': 1,
         'test': 10,
     })
-    harn._custom_config = config
+    harn.script_config = config
     return harn

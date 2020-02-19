@@ -1,6 +1,7 @@
 """
-The examples/cifar.py is probably the most clear example of what netharn is and
-what it's trying to do / not do.
+The :mod:`netharn.examples.cifar` is a clear dataset-specific example of what
+netharn is and it's trying to do / not do. For a dataset-agnostic example see
+:mod:`netharn.examples.segmentation`.
 
 The basic idea is make an object that inherits from nh.FitHarn. This is our
 harness object. It will contain the hyperparameters as well as the learning
@@ -35,10 +36,10 @@ let the developer focus on the important parts.
 
 
 CommandLine:
-    python examples/cifar.py --gpu=0 --arch=resnet50
-    python examples/cifar.py --gpu=0 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
-    python examples/cifar.py --gpu=1,2,3 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw --batch_size=1800
-    python examples/cifar.py --gpu=1,2 --arch=resnet50 --lr=0.003 --schedule=onecycle --optim=adamw
+    python -m netharn.examples.cifar.py --gpu=0 --arch=resnet50
+    python -m netharn.examples.cifar.py --gpu=0 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
+    python -m netharn.examples.cifar.py --gpu=1,2,3 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw --batch_size=1800
+    python -m netharn.examples.cifar.py --gpu=1,2 --arch=resnet50 --lr=0.003 --schedule=onecycle --optim=adamw
 
 """
 import sys
@@ -49,6 +50,58 @@ import torch
 import os
 import pickle
 import netharn as nh
+import scriptconfig as scfg
+
+
+class CIFARConfig(scfg.Config):
+    """
+    This is the default configuration for running the CIFAR training script.
+
+    Defaults can be modified via passing command line arguments, specifing a
+    json configuration file, or using python kwargs.
+
+    Note that scriptconfig is not necessary to use netharn, but it does make it
+    easy to specify a default configuration and modify.
+    """
+    default = {
+        'nice': scfg.Value('untitled', help='A human readable tag that is "nice" for humans'),
+        'workdir': scfg.Path('~/work/cifar', help='Dump all results in your workdir'),
+
+        'workers': scfg.Value(2, help='number of parallel dataloading jobs'),
+        'xpu': scfg.Value('argv', help='See netharn.XPU for details. can be cpu/gpu/cuda0/0,1,2,3)'),
+
+        'dataset': scfg.Value('cifar10', choices=['cifar10', 'cifar100'],
+                              help='which cifar network to use'),
+        'num_vali': scfg.Value(0, help='number of validation examples'),
+
+        'arch': scfg.Value('resnet50', help='Network architecture code'),
+        'optim': scfg.Value('sgd', help='Weight optimizer. Can be SGD, ADAM, ADAMW, etc..'),
+
+        'input_dims': scfg.Value((32, 32), help='Image size passed to the network'),
+
+        'batch_size': scfg.Value(64, help='number of items per batch'),
+
+        'max_epoch': scfg.Value(350, help='Maximum number of epochs'),
+        'patience': scfg.Value(350, help='Maximum "bad" validation epochs before early stopping'),
+
+        'lr': scfg.Value(1e-1, help='Base learning rate'),
+        'decay':  scfg.Value(5e-4, help='Base weight decay'),
+
+        'schedule': scfg.Value('simplestep', help=('Special coercable netharn code. Eg: onecycle50, step50, gamma')),
+
+        'init': scfg.Value('noop', help='How to initialized weights. (can be a path to a pretrained model)'),
+        'pretrained': scfg.Path(help=('alternative way to specify a path to a pretrained model')),
+
+        'deterministic': scfg.Value(False, help='run deterministically'),
+        'seed': scfg.Value(137852547, help='seed for determinism'),
+    }
+
+    def normalize(self):
+        if self['pretrained'] in ['null', 'None']:
+            self['pretrained'] = None
+
+        if self['pretrained'] is not None:
+            self['init'] = 'pretrained'
 
 
 class CIFAR_FitHarn(nh.FitHarn):
@@ -58,6 +111,7 @@ class CIFAR_FitHarn(nh.FitHarn):
     to our particular problem and dataset.
 
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> from cifar import *
         >>> harn = setup_harn().initialize()
         >>> batch = harn._demo_batch(0, tag='vali')
@@ -126,16 +180,16 @@ class CIFAR_FitHarn(nh.FitHarn):
         """
         y_pred = outputs.data.max(dim=1)[1].cpu().numpy()
         y_true = batch['label'].data.cpu().numpy()
-        probs = outputs.data.cpu().numpy()
 
         bx = harn.bxs[harn.current_tag]
         if bx < 3:
-            decoded = harn._decode(outputs, batch['label'])
-            stacked = harn._draw_batch(batch, decoded)
+            stacked = harn._draw_batch(batch, outputs)
             dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
             fpath = join(dpath, 'batch_{}_epoch_{}.jpg'.format(bx, harn.epoch))
-            nh.util.imwrite(fpath, stacked)
+            import kwimage
+            kwimage.imwrite(fpath, stacked)
 
+        probs = outputs.softmax(dim=1).data.cpu().numpy()
         harn._accum_confusion_vectors['y_true'].append(y_true)
         harn._accum_confusion_vectors['y_pred'].append(y_pred)
         harn._accum_confusion_vectors['probs'].append(probs)
@@ -153,36 +207,48 @@ class CIFAR_FitHarn(nh.FitHarn):
             run relatively few times.
 
         Example:
+            >>> # xdoctest: +REQUIRES(--download)
             >>> harn = setup_harn().initialize()
             >>> harn._demo_epoch('vali')
         """
         from netharn.metrics import clf_report
-
         dset = harn.datasets[harn.current_tag]
-        target_names = dset.categories
 
         probs = np.vstack(harn._accum_confusion_vectors['probs'])
         y_true = np.hstack(harn._accum_confusion_vectors['y_true'])
         y_pred = np.hstack(harn._accum_confusion_vectors['y_pred'])
 
+        # _pred = probs.argmax(axis=1)
+        # assert np.all(_pred == y_pred)
+
+        # from netharn.metrics import confusion_vectors
+        # cfsn_vecs = confusion_vectors.ConfusionVectors.from_arrays(
+        #     true=y_true, pred=y_pred, probs=probs, classes=dset.classes)
+        # report = cfsn_vecs.classification_report()
+        # combined_report = report['metrics'].loc['combined'].to_dict()
+
+        # ovr_cfsn = cfsn_vecs.binarize_ovr()
         # Compute multiclass metrics (new way!)
-        report = clf_report.ovr_classification_report(
+        target_names = dset.classes
+        ovr_report = clf_report.ovr_classification_report(
             y_true, probs, target_names=target_names, metrics=[
                 'auc', 'ap', 'mcc', 'brier'
             ])
 
         # percent error really isn't a great metric, but its standard.
         errors = (y_true != y_pred)
-        acc = 1 - errors.mean()
-        percent_error = (1 - acc) * 100
+        acc = 1.0 - errors.mean()
+        percent_error = (1.0 - acc) * 100
 
         metrics_dict = ub.odict()
-        metrics_dict['ave_brier'] = report['ave']['brier']
-        metrics_dict['ave_mcc'] = report['ave']['mcc']
-        metrics_dict['ave_auc'] = report['ave']['auc']
-        metrics_dict['ave_ap'] = report['ave']['ap']
+        metrics_dict['ave_brier'] = ovr_report['ave']['brier']
+        metrics_dict['ave_mcc'] = ovr_report['ave']['mcc']
+        metrics_dict['ave_auc'] = ovr_report['ave']['auc']
+        metrics_dict['ave_ap'] = ovr_report['ave']['ap']
         metrics_dict['percent_error'] = percent_error
         metrics_dict['acc'] = acc
+
+        harn.info('ACC FOR {!r}: {!r}'.format(harn.current_tag, acc))
 
         # Clear confusion vectors accumulator for the next epoch
         harn._accum_confusion_vectors = {
@@ -192,36 +258,15 @@ class CIFAR_FitHarn(nh.FitHarn):
         }
         return metrics_dict
 
-    def _decode(harn, outputs, true_cxs=None):
-        class_probs = torch.nn.functional.softmax(outputs, dim=1)
-        pred_scores, pred_cxs = class_probs.data.max(dim=1)
-
-        decoded = {
-            'class_probs': class_probs,
-            'pred_cxs': pred_cxs,
-            'pred_scores': pred_scores,
-        }
-        if true_cxs is not None:
-            import kwarray
-            hot = kwarray.one_hot_embedding(true_cxs, class_probs.shape[1])
-            true_probs = (hot * class_probs).sum(dim=1)
-            decoded['true_scores'] = true_probs
-        return decoded
-
-    def _draw_batch(harn, batch, decoded, limit=32):
+    def _draw_batch(harn, batch, outputs, limit=32):
         """
-        CommandLine:
-            xdoctest -m ~/code/netharn/examples/cifar.py CIFAR_FitHarn._draw_batch --show --arch=resnet50
-
         Example:
-            >>> import sys
-            >>> sys.path.append('/home/joncrall/code/netharn/examples')
-            >>> from cifar import *
+            >>> # xdoctest: +REQUIRES(--download)
+            >>> from netharn.examples.cifar import *  # NOQA
             >>> harn = setup_harn().initialize()
             >>> batch = harn._demo_batch(0, tag='test')
             >>> outputs, loss = harn.run_batch(batch)
-            >>> decoded = harn._decode(outputs, batch['label'])
-            >>> stacked = harn._draw_batch(batch, decoded, limit=42)
+            >>> stacked = harn._draw_batch(batch, outputs, limit=12)
             >>> # xdoctest: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
@@ -229,66 +274,32 @@ class CIFAR_FitHarn(nh.FitHarn):
             >>> kwplot.show_if_requested()
         """
         import kwimage
-        inputs = batch['input']
-        inputs = inputs[0:limit]
-
-        input_shape = inputs.shape
-        dims = [160] * (len(input_shape) - 2)
-        min_, max_ = inputs.min(), inputs.max()
-        inputs = (inputs - min_) / (max_ - min_)
-        inputs = torch.nn.functional.interpolate(inputs, size=dims)
-        inputs = (inputs * 255).byte()
-        inputs = inputs.data.cpu().numpy()
+        inputs = batch['input'][0:limit].data.cpu().numpy()
+        true_cxs = batch['label'].data.cpu().numpy()
+        class_probs = outputs.softmax(dim=1).data.cpu().numpy()
+        pred_cxs = class_probs.argmax(axis=1)
 
         dset = harn.datasets[harn.current_tag]
-        catgraph = dset.categories
-
-        pred_cxs = decoded['pred_cxs'].data.cpu().numpy()
-        pred_scores = decoded['pred_scores'].data.cpu().numpy()
-
-        true_cxs = batch['label'].data.cpu().numpy()
-        true_scores = decoded['true_scores'].data.cpu().numpy()
+        classes = dset.classes
 
         todraw = []
-        for im, pcx, tcx, pred_score, true_score in zip(inputs, pred_cxs, true_cxs, pred_scores, true_scores):
+        for im, pcx, tcx, probs in zip(inputs, pred_cxs, true_cxs, class_probs):
             im_ = im.transpose(1, 2, 0)
+
+            # Renormalize and resize image for drawing
+            min_, max_ = im_.min(), im_.max()
+            im_ = ((im_ - min_) / (max_ - min_) * 255).astype(np.uint8)
             im_ = np.ascontiguousarray(im_)
-            h, w = im_.shape[0:2][::-1]
+            im_ = kwimage.imresize(im_, dsize=(200, 200))
 
-            true_name = catgraph[tcx]
-            pred_name = catgraph[pcx]
-            org1 = np.array((2, h - 32))
-            org2 = np.array((2, 25))
-            pred_label = 'p:{pcx}@{pred_score:.2f}:\n{pred_name}'.format(**locals())
-            true_label = 't:{tcx}@{true_score:.2f}:\n{true_name}'.format(**locals())
-            if pcx == tcx:
-                true_label = 't:{tcx}:{true_name}'.format(**locals())
-
-            fontkw = {
-                'fontScale': 1.0,
-                'thickness': 2
-            }
-            color = 'dodgerblue' if pcx == tcx else 'orangered'
-
-            im_ = kwimage.draw_text_on_image(im_, pred_label, org=org1 - 2,
-                                             color='white', **fontkw)
-            im_ = kwimage.draw_text_on_image(im_, true_label, org=org2 - 2,
-                                             color='white', **fontkw)
-
-            for i in [-2, -1, 1, 2]:
-                for j in [-2, -1, 1, 2]:
-                    im_ = kwimage.draw_text_on_image(im_, pred_label, org=org1 + i,
-                                                     color='black', **fontkw)
-                    im_ = kwimage.draw_text_on_image(im_, true_label, org=org2 + j,
-                                                     color='black', **fontkw)
-
-            im_ = kwimage.draw_text_on_image(im_, pred_label, org=org1,
-                                             color=color, **fontkw)
-            im_ = kwimage.draw_text_on_image(im_, true_label, org=org2,
-                                             color='lawngreen', **fontkw)
+            # Draw classification information on the image
+            im_ = kwimage.draw_clf_on_image(im_, classes=classes, tcx=tcx,
+                                            pcx=pcx, probs=probs)
             todraw.append(im_)
 
-        stacked = kwimage.stack_images_grid(todraw, overlap=-10, bg_value=(10, 40, 30), chunksize=8)
+        stacked = kwimage.stack_images_grid(todraw, overlap=-10,
+                                            bg_value=(10, 40, 30),
+                                            chunksize=8)
         return stacked
 
 
@@ -310,57 +321,59 @@ def setup_harn():
     DPN92       |    95.16%  |         95.410% |  94.92%  |
 
     CommandLine:
-        python examples/cifar.py --gpu=0 --arch=resnet50 --optim=sgd --schedule=step250 --lr=0.1 --vd
-        python examples/cifar.py --gpu=0 --arch=wrn_22 --optim=sgd --schedule=step250 --lr=0.1 --vd
+        python -m netharn.examples.cifar --gpu=0 --nice=resnet --arch=resnet50 --optim=sgd --schedule=simplestep --lr=0.1
+        python -m netharn.examples.cifar --gpu=0 --nice=wrn --arch=wrn_22 --optim=sgd --schedule=simplestep --lr=0.1
+        python -m netharn.examples.cifar --gpu=0 --nice=densenet --arch=densenet121 --optim=sgd --schedule=simplestep --lr=0.1
+        python -m netharn.examples.cifar --gpu=0 --nice=efficientnet_scratch --arch=efficientnet-b0 --optim=sgd --schedule=simplestep --lr=0.01 --init=noop --decay=1e-5
+
+        python -m netharn.examples.cifar --gpu=0 --nice=efficientnet \
+            --arch=efficientnet-b0 --optim=rmsprop --lr=0.064 \
+            --batch_size=512 --max_epoch=120 --schedule=Exponential-g0.97-s2
+
+        python -m netharn.examples.cifar --gpu=0 --nice=efficientnet-scratch3 \
+            --arch=efficientnet-b0 --optim=adamw --lr=0.016 --init=noop \
+            --batch_size=1024 --max_epoch=450 --schedule=Exponential-g0.96-s3 --decay=1e-5
+
+        python -m netharn.examples.cifar --gpu=0 --nice=efficientnet-pretrained2 \
+            --arch=efficientnet-b0 --optim=adamw --lr=0.0064 --init=cls \
+            --batch_size=512 --max_epoch=350 --schedule=Exponential-g0.97-s2 --decay=1e-5
     """
     import random
     import torchvision
     from torchvision import transforms
 
-    # Note that most netharn training scripts will use scriptconfig instead of
-    # this more explicit approach.
-    config = {
-        # A conservative traditional baseline
-        'arch': ub.argval('--arch', default='resnet50'),
-        'lr': float(ub.argval('--lr', default=0.1)),
-        'schedule': ub.argval('--schedule', default='step250'),
-        'optim': ub.argval('--optim', default='sgd'),
+    # Create an instance of the CIFAR config and allow command line args
+    config = CIFARConfig(cmdline=True)
 
-        'batch_size': int(ub.argval('--batch_size', default=64)),
-
-        'workers': int(ub.argval('--workers', default=2)),
-        'xpu': ub.argval('--xpu', default='argv'),
-
-        'dataset': ub.argval('--dataset', default='cifar10'),
-        'workdir': ub.expandpath(ub.argval('--workdir', default='~/work/cifar')),
-
-        'seed': int(ub.argval('--seed', default=137852547)),
-        'deterministic': False,
-
-    }
     xpu = nh.XPU.coerce(config['xpu'])
 
     # The work directory is where all intermediate results are dumped.
     ub.ensuredir(config['workdir'])
 
-    # Take care of random seeding and ensuring appropriate determinisim
-    torch.manual_seed((config['seed'] + 0) % int(2 ** 32 - 1))
-    random.seed((config['seed'] + 2360097502) % int(2 ** 32 - 1))
-    np.random.seed((config['seed'] + 893874269) % int(2 ** 32 - 1))
+    if config['deterministic']:
+        # Take care of random seeding and ensuring appropriate determinisim
+        torch.manual_seed((config['seed'] + 0) % int(2 ** 32 - 1))
+        random.seed((config['seed'] + 2360097502) % int(2 ** 32 - 1))
+        np.random.seed((config['seed'] + 893874269) % int(2 ** 32 - 1))
+
     if torch.backends.cudnn.enabled:
         # TODO: ensure the CPU mode is also deterministic
         torch.backends.cudnn.deterministic = config['deterministic']
 
-    # Define augmentation strategy
+    # Define preprocessing + augmentation strategy
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
+        transforms.Resize(config['input_dims']),
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465),
                              (0.2023, 0.1994, 0.2010)),
+        transforms.RandomErasing(p=0.5, scale=(0.5, 0.5),  # Cutout
+                                 value=0),
     ])
 
     transform_test = transforms.Compose([
+        transforms.Resize(config['input_dims']),
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465),
                              (0.2023, 0.1994, 0.2010)),
@@ -371,10 +384,10 @@ def setup_harn():
         dset = DATASET(root=config['workdir'], download=True)
         meta_fpath = os.path.join(dset.root, dset.base_folder, 'batches.meta')
         meta_dict = pickle.load(open(meta_fpath, 'rb'))
-        categories = meta_dict['label_names']
+        classes = meta_dict['label_names']
         # For some reason the torchvision objects dont have the label names
         # in the dataset. But the download directory will have them.
-        # categories = [
+        # classes = [
         #     'airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog',
         #     'horse', 'ship', 'truck',
         # ]
@@ -383,8 +396,8 @@ def setup_harn():
         dset = DATASET(root=config['workdir'], download=True)
         meta_fpath = os.path.join(dset.root, dset.base_folder, 'meta')
         meta_dict = pickle.load(open(meta_fpath, 'rb'))
-        categories = meta_dict['fine_label_names']
-        # categories = [
+        classes = meta_dict['fine_label_names']
+        # classes = [
         #     'apple', 'aquarium_fish', 'baby', 'bear', 'beaver', 'bed', 'bee',
         #     'beetle', 'bicycle', 'bottle', 'bowl', 'boy', 'bridge', 'bus',
         #     'butterfly', 'camel', 'can', 'castle', 'caterpillar', 'cattle',
@@ -411,24 +424,30 @@ def setup_harn():
         'test': DATASET(root=config['workdir'], train=False,
                         transform=transform_test),
     }
-    if True:
+
+    if config['num_vali']:
         # Create a test train split
         learn = datasets['train']
+        learn_copy = DATASET(root=config['workdir'], train=True,
+                             transform=transform_test)
+
+        import kwarray
         indices = np.arange(len(learn))
-        indices = nh.util.shuffle(indices, rng=0)
-        num_vali = 300
-        datasets['vali'] = torch.utils.data.Subset(learn, indices[:num_vali])
+        indices = kwarray.shuffle(indices, rng=0)
+        num_vali = config['num_vali']
+
+        datasets['vali'] = torch.utils.data.Subset(learn_copy, indices[:num_vali])
         datasets['train'] = torch.utils.data.Subset(learn, indices[num_vali:])
 
     # For some reason the torchvision objects do not make the category names
     # easily available. We set them here for ease of use.
     reduction = int(ub.argval('--reduction', default=1))
     for key, dset in datasets.items():
-        dset.categories = categories
+        dset.classes = classes
         if reduction > 1:
             indices = np.arange(len(dset))[::reduction]
             dset = torch.utils.data.Subset(dset, indices)
-        dset.categories = categories
+        dset.classes = classes
         datasets[key] = dset
 
     loaders = {
@@ -450,12 +469,12 @@ def setup_harn():
             'nblocks': [6, 12, 24, 16],
             'growth_rate': 12,
             'reduction': 0.5,
-            'num_classes': len(categories),
+            'num_classes': len(classes),
         }),
 
         'resnet50': (nh.models.resnet.ResNet, {
             'num_blocks': [3, 4, 6, 3],
-            'num_classes': len(categories),
+            'num_classes': len(classes),
             'block': 'Bottleneck',
         }),
 
@@ -464,7 +483,7 @@ def setup_harn():
             'out_planes': (256, 512, 1024, 2048),
             'num_blocks': (2, 2, 2, 2),
             'dense_depth': (16, 32, 24, 128),
-            'num_classes': len(categories),
+            'num_classes': len(classes),
         })),
 
         'dpn92': (nh.models.dual_path_net.DPN, dict(cfg={
@@ -472,7 +491,7 @@ def setup_harn():
             'out_planes': (256, 512, 1024, 2048),
             'num_blocks': (3, 4, 20, 3),
             'dense_depth': (16, 32, 24, 128),
-            'num_classes': len(categories),
+            'num_classes': len(classes),
         })),
     }
 
@@ -481,17 +500,41 @@ def setup_harn():
         import fastai.vision
         available_architectures['wrn_22'] = (
             fastai.vision.models.WideResNet, dict(
-                num_groups=3, N=3, num_classes=10, k=6, drop_p=0.
+                num_groups=3, N=3, num_classes=len(classes), k=6, drop_p=0.
             )
         )
 
-    model_ = available_architectures[config['arch']]
+    if config['arch'].startswith('efficientnet'):
+        # Directly create the model instance...
+        # (as long as it has an `_initkw` attribute)
+        from netharn.models import efficientnet
 
-    # Note there are lots of different initializers including a special
-    # pretrained initializer.
-    initializer_ = (nh.initializers.KaimingNormal, {'param': 0, 'mode': 'fan_in'})
+        if config['init'] == 'cls':
+            model_ = efficientnet.EfficientNet.from_pretrained(
+                config['arch'], override_params={
+                    'classes': classes,
+                }
+            )
+            print('pretrained cls init')
+        else:
+            model_ = efficientnet.EfficientNet.from_name(
+                config['arch'], override_params={
+                    'classes': classes,
+                }
+            )
+    else:
+        model_ = available_architectures[config['arch']]
 
-    if config['schedule'] == 'step250':
+    if config['init'] in ['cls', 'noop']:
+        initializer_ = (nh.initializers.NoOp, {})
+    if config['init'] == 'kaiming_normal':
+        initializer_ = (nh.initializers.KaimingNormal, {'param': 0, 'mode': 'fan_in'})
+    else:
+        # Note there are lots of different initializers including a special
+        # pretrained initializer.
+        initializer_ = nh.api.Initializer.coerce(config)
+
+    if config['schedule'] == 'simplestep':
         scheduler_ = (nh.schedulers.ListedLR, {
             'points': {
                 0: config['lr'],
@@ -544,12 +587,15 @@ def setup_harn():
             }
         })
     else:
-        raise KeyError(config['schedule'])
+        # The netharn API can construct a scheduler from standard keys in a
+        # configuration dictionary. There is a bit of magic involved. Read docs
+        # for coerce for more details.
+        scheduler_ = nh.api.Scheduler.coerce(config)
 
     if config['optim'] == 'sgd':
         optimizer_ = (torch.optim.SGD, {
             'lr': config['lr'],
-            'weight_decay': 5e-4,
+            'weight_decay': config['decay'],
             'momentum': 0.9,
             'nesterov': True,
         })
@@ -557,11 +603,14 @@ def setup_harn():
         optimizer_ = (nh.optimizers.AdamW, {
             'lr': config['lr'],
             'betas': (0.9, 0.999),
-            'weight_decay': 0,
+            'weight_decay': config['decay'],
             'amsgrad': False,
         })
     else:
-        raise KeyError(config['optim'])
+        # The netharn API can construct an optimizer from standard keys in a
+        # configuration dictionary. There is a bit of magic involved. Read docs
+        # for coerce for more details.
+        optimizer_ = nh.api.Optimizer.coerce(config)
 
     # Notice that arguments to hyperparameters are typically specified as a
     # tuple of (type, Dict), where the dictionary are the keyword arguments
@@ -572,21 +621,23 @@ def setup_harn():
     hyper = nh.HyperParams(
         # Datasets must be preconstructed
         datasets=datasets,
-        nice='cifar10_' + config['arch'],
+        nice=config['nice'],
         # Loader may be preconstructed
         loaders=loaders,
         workdir=config['workdir'],
         xpu=xpu,
-        # The 6 major hyper components are best specified as a Tuple[type, dict]
-        # However, in recent releases of netharn, these may be preconstructed
-        # as well.
+        # The 6 major hyper components are best specified as a Tuple[type,
+        # dict] However, in recent releases of netharn, these may be
+        # initialized manually in certain conditions. See docs for details.
+        # TODO: write docs about this.
         model=model_,
         optimizer=optimizer_,
         scheduler=scheduler_,
+        dynamics=nh.api.Dynamics.coerce(config),
         monitor=(nh.Monitor, {
             'minimize': ['loss'],
-            'patience': 350,
-            'max_epoch': 350,
+            'patience': config['patience'],
+            'max_epoch': config['max_epoch'],
         }),
         initializer=initializer_,
         criterion=(torch.nn.CrossEntropyLoss, {}),
@@ -608,7 +659,17 @@ def setup_harn():
 
     # Creating an instance of a Fitharn object is typically fast.
     harn = CIFAR_FitHarn(hyper=hyper)
-    harn.config['prog_backend'] = 'progiter'
+    harn.preferences['prog_backend'] = 'progiter'
+    harn.preferences['keyboard_debug'] = True
+    harn.preferences['eager_dump_tensorboard'] = True
+    harn.preferences['tensorboard_groups'] = ['loss']
+
+    harn.intervals.update({
+        'vali': 1,
+        'test': 1,
+    })
+
+    harn.script_config = config
     return harn
 
 
@@ -620,9 +681,6 @@ def main():
     # initializer are created. This is also where we check if there is a
     # pre-existing checkpoint that we can restart from.
     harn.initialize()
-
-    if ub.argval(('--vd', '--view-directory')):
-        ub.startfile(harn.train_dpath)
 
     # This starts the main loop which will run until the monitor's terminator
     # criterion is satisfied. If the initialize step loaded a checkpointed that
@@ -638,10 +696,24 @@ def main():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python examples/cifar.py --gpu=0 --arch=resnet50
+        python -m netharn.examples.cifar --gpu=0 --arch=resnet50 --num_vali=0
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --num_vali=0
 
-        python examples/cifar.py --gpu=0 --arch=densenet121
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0
+
+        # This next command requires a bit more compute
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=step-3-6-50 --lr=0.1 --init=cls --batch_size=2718
+
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar3 --schedule=step-3-6-12-16 --lr=0.256 --init=cls --batch_size=3000 --workers=2 --num_vali=0 --optim=rmsprop
+
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar3 --schedule=onecycle70 --lr=0.01  --init=cls --batch_size=3000 --workers=2 --num_vali=0 --optim=sgd --datasets=cifar100
+
+        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=ReduceLROnPlateau-p1-c1-f0.9 --lr=0.1 --init=cls --batch_size=2719 --workers=4 --optim=sgd --datasets=cifar100
+
+        python -m netharn.examples.cifar.py --gpu=0 --arch=densenet121
         # Train on two GPUs with a larger batch size
-        python examples/cifar.py --arch=dpn92 --batch_size=256 --gpu=0,1
+        python -m netharn.examples.cifar.py --arch=dpn92 --batch_size=256 --gpu=0,1
     """
+    import seaborn
+    seaborn.set()
     main()

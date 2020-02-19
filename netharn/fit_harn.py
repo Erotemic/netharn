@@ -31,6 +31,11 @@ Notes:
     still be useful to look at.  Its complexity is more than CIFAR but less
     than YOLO.
 
+Note:
+    This file uses mixins to define :class:`FitHarn`. Mixin classes group
+    related functionalities. This makes it slightly easier to navigate this
+    rather large file.
+
 CommandLine:
     xdoctest netharn.fit_harn __doc__:0
     xdoctest netharn.fit_harn __doc__:0 --progiter
@@ -118,6 +123,10 @@ Example:
 TODO:
     [X] - output "monitor" curves to disk
     [x] - move logs to a logs folder. Keep a single master log in the root
+    [ ] - log learning rate an a per-batch basis
+    [ ] - ability to run an iteration of the validation data within an epoch,
+          perhaps we could allow the user to redefine how long an epoch is.
+
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import glob
@@ -333,7 +342,10 @@ class InitializeMixin(object):
                         shutil.move(train_info_fpath, backup_fpath)
                     util.write_json(train_info_fpath, harn.train_info)
             else:
-                util.write_json(train_info_fpath, harn.train_info)
+                try:
+                    util.write_json(train_info_fpath, harn.train_info)
+                except Exception as ex:
+                    harn.warn('Unable to write train info ex = {!r}'.format(ex))
 
         harn._setup_loggers(overwrite=overwrite)
 
@@ -471,7 +483,7 @@ class InitializeMixin(object):
             # - [ ] setup an alternative database to record epoch measures for
             # plotting if tensorboard is not available.
             harn._tlog = None
-            if tensorboard_logger:
+            if tensorboard_logger is None:
                 harn.warn('Tensorboard is not available')
             else:
                 harn.debug('Tensorboard is disabled')
@@ -609,7 +621,7 @@ class InitializeMixin(object):
         for load_path in reversed(prev_states):
             try:
                 harn.load_snapshot(load_path)
-            except (RuntimeError, EOFError):
+            except (RuntimeError, EOFError, Exception):
                 harn.info('Failed to load {}. Skiping.'.format(load_path))
                 harn.info('NOTE: This will sometimes cause torch to crash. Delete the skipped file if it does')
             else:
@@ -1089,7 +1101,11 @@ class SnapshotCallbacks(object):
             harn.debug('loaded monitor_state_dict')
 
         if 'optimizer_state_dict' in snapshot_state:
+            # NOTE: IF YOU CREATE AN OPTIMIZER WITH A DIFFERENT ORDER OF THE
+            # PARAMS INSIDE THE PARAM GROUP THIS WILL FAIL.
+            # https://discuss.pytorch.org/t/loading-a-saved-model-for-continue-training/17244/4
             harn.optimizer.load_state_dict(snapshot_state['optimizer_state_dict'])
+            harn.optimizer.zero_grad()
             harn.debug('loaded optimizer_state_dict')
 
         if 'scheduler_state_dict' in snapshot_state:
@@ -1494,10 +1510,6 @@ class CoreMixin(object):
             vali_loader (torch.utils.data.DataLoader | None): vali loader
             test_loader (torch.utils.data.DataLoader | None): test loader
         """
-        # if harn._check_termination():
-        #     harn.info('stop before _run_tagged_epochs')
-        #     raise StopTraining()
-
         harn.debug('=== start epoch {} ==='.format(harn.epoch))
 
         # Log learning rate and momentum
@@ -1624,6 +1636,9 @@ class CoreMixin(object):
 
             call_on_epoch (bool, default=True): if False then `on_epoch`
                 is not called after the main loop.
+
+        Returns:
+            dict: epoch_metrics - scalar values measured in this epoch.
         """
         harn.debug('_run_epoch {}, tag={}, learn={}'.format(harn.epoch, tag, learn))
         harn.debug(' * len(loader) = {}'.format(len(loader)))
@@ -1694,6 +1709,10 @@ class CoreMixin(object):
 
             harn.debug('Starting batch iteration for tag={}, epoch={}'.format(
                 tag, harn.epoch))
+
+            #################################
+            ### THIS IS THE CRITICAL LOOP ###
+            #################################
 
             for bx in range(n_batches):
                 if DEMO and bx > DEMO_BX:
@@ -2209,11 +2228,13 @@ class PropertyMixin(object):
         )
         return iter_idx
 
-    # @property
-    # def bxs(harn):
-    #     """ old way to reference harn.batch_indices """
-    #     return harn.batch_indieces?
-    #     # TODO: bxs is a bad name, but what do we rename it to?
+    @property
+    def stage(harn):
+        """
+        Returns the "tag" of the current dataset (e.g. training, validation,
+        test, calibration)
+        """
+        return harn.current_tag
 
 
 # Define the exposed class as a union of mixin classes
@@ -2395,6 +2416,11 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             'cleanup': 10,
         }
 
+        # TODO: it might be interesting for preferences to have two defaults, a
+        # minimal default and a recommended default. The safe default is
+        # statically defined to the minimum requirements, and recommended could
+        # be manually or hueristically constructed.
+
         harn.preferences = {
             'keyboard_debug': False,
 
@@ -2446,7 +2472,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
     @property
     def config(harn):
         import warnings
-        warnings.warn('harn.config is deprecated, use harn.preferences instead',
+        warnings.warn('harn.preferences is deprecated, use harn.preferences instead',
                       DeprecationWarning)
         return harn.preferences
 

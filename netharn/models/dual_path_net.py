@@ -1,6 +1,8 @@
 """
 Dual Path Networks in PyTorch.
 
+TODO: move to backbones
+
 References:
     https://github.com/kuangliu/pytorch-cifar/blob/master/models/dpn.py
 """

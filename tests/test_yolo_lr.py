@@ -108,8 +108,8 @@ def test_yolo_lr():
         'monitor'    : (nh.Monitor, {'max_epoch': max_epoch}),
     }
     harn = MyHarn(hyper=hyper)
-    harn.config['prog_backend'] = 'progiter'
-    harn.config['use_tensorboard'] = False
+    harn.preferences['prog_backend'] = 'progiter'
+    harn.preferences['use_tensorboard'] = False
     # Delete previous data
     harn.initialize(reset='delete')
 
@@ -126,8 +126,8 @@ def test_yolo_lr():
 
     # Restarting the harness should begin at the same point
     harn = MyHarn(hyper=hyper)
-    harn.config['prog_backend'] = 'progiter'
-    harn.config['use_tensorboard'] = False
+    harn.preferences['prog_backend'] = 'progiter'
+    harn.preferences['use_tensorboard'] = False
     harn.initialize()
     harn.xdata = old_harn.xdata
     harn.ydata = old_harn.ydata

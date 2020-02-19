@@ -53,18 +53,18 @@ KNOWN BUGS:
    * The metrics for computing detection mAP / AP might not be correct.
    * The YOLO example gets to about 70% mAP (using Girshik's mAP code) whereas we should be hitting 74-76%
 AUTHORS COMMENTS:
-   * My MNIST, CIFAR, and VOC examples will download the data as needed.
-   * My CIFAR example for ResNet50 achieves 95.72% accuracy, outperforming the
+   * The MNIST, CIFAR, and VOC examples will download the data as needed.
+   * The CIFAR example for ResNet50 achieves 95.72% accuracy, outperforming the
      best DPN92 result (95.16%) that I'm aware of.
      This result seems real, I do not believe I've made an error in measurement
      (but this has need been peer-reviewed so, caveat emptor).  I've reproduced
      this results a few times. You can use the code in examples/cifar.py to see
      if you can too (please tell me if you cannot). 
-   * My YOLO example is based of of EAVise's excellent lightnet (https://gitlab.com/EAVISE/lightnet/) package.
+   * The YOLO example is based of of EAVise's excellent lightnet (https://gitlab.com/EAVISE/lightnet/) package.
    * I reimplemented the CocoAPI (see nh.data.coco_api), because I had some
      (probably minor) issue with the original implementation. I've extended it
      quite a bit, and I'd recommend using it.
-   * My metric-learning example requires code requires the ibeis software:
+   * The metric-learning example requires code requires the ibeis software:
      `https://github.com/Erotemic/ibeis`.
 DEPENDENCIES:
     * torch
@@ -475,11 +475,6 @@ it would produce this more detailed description of what it was doing:
 
 
 ]
- 
- 
-Acknowledgements:
-=================
-The authors would like to thank AFRL for their support of this work via `SBIR Contract FA8650-18-C-1075 <https://govtribe.com/award/federal-contract-award/definitive-contract-fa865018c1075>`_. This library is approved for public release via 88ABW.
 
 
 .. |Pypi| image:: https://img.shields.io/pypi/v/netharn.svg

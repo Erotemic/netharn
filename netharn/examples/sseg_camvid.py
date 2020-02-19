@@ -78,6 +78,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
     Efficient loader for training on a sementic segmentation dataset
 
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> sampler = grab_camvid_sampler()
         >>> #input_dims = (224, 224)
         >>> input_dims = (512, 512)
@@ -180,6 +181,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         """
         Example:
+            >>> # xdoctest: +REQUIRES(--download)
             >>> self = SegmentationDataset.demo(augment='complex')
             >>> item = self[10]
             >>> # xdoctest: +REQUIRES(--show)
@@ -275,7 +277,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
 
     @classmethod
     def demo(cls, **kwargs):
-        from grab_camvid import grab_coco_camvid
+        from netharn.data.grab_camvid import grab_coco_camvid
         import ndsampler
         dset = grab_coco_camvid()
         sampler = ndsampler.CocoSampler(dset, workdir=None, backend='npy')
@@ -303,6 +305,7 @@ class SegmentationHarn(nh.FitHarn):
         How to compute a forward pass through the network and compute loss
 
         Example:
+            >>> # xdoctest: +REQUIRES(--download)
             >>> kw = {'workers': 0, 'xpu': 'cpu', 'batch_size': 2}
             >>> harn = setup_harn(cmdline=False, **kw).initialize()
             >>> batch = harn._demo_batch(tag='train')
@@ -377,6 +380,7 @@ class SegmentationHarn(nh.FitHarn):
     def _draw_batch_preds(harn, batch, outputs, lim=16):
         """
         Example:
+            >>> # xdoctest: +REQUIRES(--download)
             >>> kw = {'workers': 0, 'xpu': 'cpu', 'batch_size': 8}
             >>> harn = setup_harn(cmdline=False, **kw).initialize()
             >>> batch = harn._demo_batch(tag='train')
@@ -477,7 +481,7 @@ def evaluate_network(sampler, eval_config):
         >>> do_draw = True
         >>> evaluate_network(sampler, deployed, out_dpath, do_draw)
     """
-    from grab_camvid import rgb_to_cid
+    from netharn.data.grab_camvid import rgb_to_cid
     coco_dset = sampler.dset
     classes = sampler.classes
 
@@ -639,6 +643,7 @@ class SegmentationPredictor(object):
     Wraps a pretrained model and allows prediction on full images
 
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> deployed = ub.expandpath('/home/joncrall/work/camvid/fit/runs/camvid_augment_weight_v2/otavqgrp/deploy_UNet_otavqgrp_089_FOAUOG.zip')
         >>> full_rgb = kwimage.grab_test_image('astro')
         >>> self = SegmentationPredictor(deployed)
@@ -742,6 +747,7 @@ class PredSlidingWindowDataset(torch_data.Dataset, ub.NiceRepr):
     This is used for prediction and evaluation
 
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> import kwimage
         >>> image = kwimage.grab_test_image('astro')
         >>> slider = nh.util.SlidingWindow(image.shape[0:2], (64, 64))
@@ -784,7 +790,7 @@ def setup_coco_datasets():
         - [ ] Do proper train / validation split
         - [ ] Allow custom train / validation split
     """
-    from grab_camvid import grab_coco_camvid, grab_camvid_train_test_val_splits
+    from netharn.data.grab_camvid import grab_coco_camvid, grab_camvid_train_test_val_splits
     coco_dset = grab_coco_camvid()
 
     # Use the same train/test/vali splits used in segnet
@@ -846,6 +852,7 @@ def _cached_class_frequency(dset):
 def _precompute_class_weights(dset, mode='median-idf'):
     """
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> import sys, ubelt
         >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
         >>> from sseg_camvid import *  # NOQA
@@ -919,6 +926,7 @@ def _precompute_class_weights(dset, mode='median-idf'):
 def setup_harn(cmdline=True, **kw):
     """
     Example:
+        >>> # xdoctest: +REQUIRES(--download)
         >>> import sys, ubelt
         >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
         >>> from sseg_camvid import *  # NOQA
@@ -1054,7 +1062,7 @@ def setup_harn(cmdline=True, **kw):
     # Create harness
     harn = SegmentationHarn(hyper=hyper)
     harn.classes = torch_datasets['train'].classes
-    harn.config.update({
+    harn.preferences.update({
         'num_keep': 5,
         'keyboard_debug': True,
         # 'export_modules': ['netharn'],
@@ -1063,7 +1071,7 @@ def setup_harn(cmdline=True, **kw):
         'vali': 1,
         'test': 10,
     })
-    harn._custom_config = config
+    harn.script_config = config
     return harn
 
 
@@ -1075,29 +1083,23 @@ def main():
 if __name__ == '__main__':
     """
     CommandLine:
-        cd ~/code/netharn/examples/
-        python sseg_camvid.py --workers=4 --xpu=0 --batch_size=2 --lr=1e-3 --nice=expt1 --input_dims=196,196
 
-        python sseg_camvid.py --workers=4 --xpu=0 --batch_size=8 --lr=1e-3 --nice=camvid_augment_v1 --input_dims=256,256 --augment=simple
+        python -m netharn.examples.sseg_camvid \
+                --nice=camvid_segnet --arch=segnet --init=cls \
+                --workers=4 --xpu=auto  \
+                --batch_size=16 --lr=1e-3 \
+                --input_dims=64,64
 
-        python sseg_camvid.py --workers=8 --xpu=auto --batch_size=16 --lr=1e-3 --nice=camvid_augment_log_med_weight_v1 --input_dims=256,256 --augment=simple --class_weights=log-median-idf
-        python sseg_camvid.py --workers=8 --xpu=auto --batch_size=16 --lr=1e-3 --nice=camvid_augment_med_weight_v1 --input_dims=256,256 --augment=simple --class_weights=median-idf
+        python -m netharn.examples.sseg_camvid \
+                --nice=camvid_psp --arch=psp --init=cls \
+                --workers=4 --xpu=auto  \
+                --batch_size=16 --lr=1e-3 \
+                --input_dims=64,64
 
-
-        python ~/code/netharn/examples/sseg_camvid.py --workers=4 --xpu=0 --batch_size=6 --lr=1e-3 --nice=camvid_augment_weight_v1 --input_dims=200,200 --augment=simple --class_weights=log-median-idf --pretrained=/home/joncrall/work/camvid/fit/runs/camvid_augment_weight_v1/eivcadxj/best_snapshot.pt
-        python ~/code/netharn/examples/sseg_camvid.py --workers=7 --xpu=0 --batch_size=6 --lr=1e-3 --nice=camvid_augment_weight_v2 --input_dims=200,200 --augment=simple --class_weights=log-median-idf --pretrained=/home/joncrall/work/camvid/fit/nice/camvid_augment_weight_v1/best_snapshot.pt
-
-
-        python ~/code/netharn/examples/sseg_camvid.py --workers=4 --xpu=auto --batch_size=16 --lr=1e-3 --nice=segnet_v1 --input_dims=256,256 --augment=simple --class_weights=median-idf --arch=segnet --init=cls
-
-        python ~/code/netharn/examples/sseg_camvid.py --workers=6 --xpu=auto --batch_size=6 --lr=1e-3 --nice=test_psp \
-                --input_overlap=0.25 --input_dims=64,64 --augment=simple --class_weights=log-median-idf --arch=psp --init=noop
-
-        python ~/code/netharn/examples/sseg_camvid.py --workers=6 --xpu=auto --batch_size=8 --lr=1e-3 --nice=test_deeplab \
-                --input_dims=128,128 --augment=simple --class_weights=log-median-idf --arch=deeplab
-
-
-        python ~/code/netharn/examples/sseg_camvid.py --workers=6 --xpu=auto --batch_size=4 --bstep=4 --lr=1e-4 --decay=1e-5 --nice=test_psp2 \
-                --input_overlap=0.5 --input_dims=256,256 --augment=simple --class_weights=median-idf --arch=psp --init=kaiming_normal
-    """
+        python -m netharn.examples.sseg_camvid \
+                --nice=camvid_deeplab --arch=deeplab --init=cls \
+                --workers=4 --xpu=auto  \
+                --batch_size=16 --lr=1e-3 \
+                --input_dims=64,64
+        """
     main()

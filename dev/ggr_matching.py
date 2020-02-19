@@ -735,7 +735,7 @@ def setup_harn(**kwargs):
         },
     })
     harn = MatchingHarness(hyper=hyper)
-    harn.config['prog_backend'] = 'progiter'
+    harn.preferences['prog_backend'] = 'progiter'
     harn.intervals['log_iter_train'] = 1
     harn.intervals['log_iter_test'] = None
     harn.intervals['log_iter_vali'] = None

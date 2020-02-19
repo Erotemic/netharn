@@ -45,7 +45,8 @@ Example:
     >>>     'monitor'     : (nh.Monitor, {'max_epoch': 3,}),
     >>> })
     >>> harn = nh.FitHarn(hyper)
-    >>> harn.config['use_tensorboard'] = False
+    >>> harn.preferences['use_tensorboard'] = False
+    >>> harn.intervals['test'] = 1
     >>> harn.initialize(reset='delete')
     >>> harn.run()
     --- STEP 1: TRAIN A MODEL ---
@@ -54,7 +55,6 @@ Example:
     ......
     Symlink: .../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww -> .../.cache/netharn/tests/deploy/fit/nice/deploy_demo
     ......
-    INFO: Initializing tensorboard (dont forget to start the tensorboard server)
     INFO: Model has 824 parameters
     INFO: Mounting ToyNet2d model on CPU
     INFO: Exported model topology to .../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/ToyNet2d_2a3f49.py
@@ -64,8 +64,6 @@ Example:
     INFO: Snapshots will save to harn.snapshot_dpath = '.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/torch_snapshots'
     INFO: ARGV:
         .../.local/conda/envs/py36/bin/python .../.local/conda/envs/py36/bin/ipython
-    INFO: dont forget to start:
-        tensorboard --logdir ~/.cache/netharn/tests/deploy/fit/nice
     INFO: === begin training 0 / 3 : deploy_demo ===
     epoch lr:0.01 │ vloss is unevaluated 0/3... rate=0 Hz, eta=?, total=0:00:00, wall=19:32 EST
     train loss:0.717 │ 100.00% of 64x8... rate=2093.02 Hz, eta=0:00:00, total=0:00:00, wall=19:32 EST
@@ -442,18 +440,6 @@ class DeployedModel(ub.NiceRepr):
             >>> self = DeployedModel.custom(snap_fpath, model, initkw)
             >>> dpath = ub.ensure_app_cache_dir('netharn', 'tests/_package_custom')
             >>> self.package(dpath)
-
-        Ignore:
-            from netharn.export.deployer import *
-            fcnn116 = ub.import_module_from_path(ub.expandpath('~/remote/hermes/tmp/fcnn116.py'))
-            model = fcnn116.FCNN116()
-            initkw = {}
-            snap_fpath = ub.expandpath('~/remote/hermes/tmp/fcnn116.pt')
-            train_info_fpath = None
-            self = DeployedModel.custom(snap_fpath, model, initkw)
-            zipfile = self.package(dpath)
-
-            loaded = DeployedModel(zipfile).load_model()
         """
         if isinstance(model, six.string_types):
             model_fpath = model
@@ -663,7 +649,8 @@ class DeployedModel(ub.NiceRepr):
             deployed = DeployedModel(None)
             deployed._model = arg
         elif isinstance(arg, six.string_types):
-            # handle the case where we are given a weights file in a snapshot directory
+            # handle the case where we are given a weights file
+            # use heuristics try and determine model topology
             if arg.endswith('.pt'):
                 snap_fpath = arg
                 dpath_cands = []
@@ -722,7 +709,7 @@ def _demodata_toy_harn():
         'monitor'     : (nh.Monitor, {'max_epoch': 1}),
     })
     harn = nh.FitHarn(hyper)
-    harn.config['use_tensorboard'] = False
+    harn.preferences['use_tensorboard'] = False
     return harn
 
 

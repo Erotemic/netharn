@@ -57,13 +57,13 @@ def focal_loss(input, target, focus, dim=1, weight=None, ignore_index=None,
     return output
 
 
-def nll_focal_loss(logits, targets, focus, dim=1, weight=None,
+def nll_focal_loss(log_probs, targets, focus, dim=1, weight=None,
                    ignore_index=None, reduction='none'):
     r"""
-    Focal loss given preprocessed logits (log probs) instead of raw outputs
+    Focal loss given preprocessed log_probs (log probs) instead of raw outputs
 
     Args:
-        logits (FloatTensor): log-probabilities for each class
+        log_probs (FloatTensor): log-probabilities for each class
         targets (LongTensor): correct class indices for each example
         focus (float): focus factor
         dim (int, default=1): class dimension (usually 1)
@@ -75,23 +75,23 @@ def nll_focal_loss(logits, targets, focus, dim=1, weight=None,
         >>> from netharn.criterions.focal import *
         >>> C = 3
         >>> dim = 1
-        >>> logits = F.log_softmax(torch.rand(10, C, 11, 12), dim=dim)
+        >>> log_probs = F.log_softmax(torch.rand(10, C, 11, 12), dim=dim)
         >>> targets = (torch.rand(10, 11, 12) * C).long()
-        >>> loss1 = F.nll_loss(logits, targets, reduction='none')
-        >>> loss2 = nll_focal_loss(logits, targets, focus=0, dim=dim)
+        >>> loss1 = F.nll_loss(log_probs, targets, reduction='none')
+        >>> loss2 = nll_focal_loss(log_probs, targets, focus=0, dim=dim)
         >>> assert torch.allclose(loss1, loss2)
-        >>> logits3 = logits.permute(0, 2, 3, 1)
-        >>> loss3 = nll_focal_loss(logits3, targets, focus=0, dim=3)
+        >>> log_probs3 = log_probs.permute(0, 2, 3, 1)
+        >>> loss3 = nll_focal_loss(log_probs3, targets, focus=0, dim=3)
         >>> assert torch.allclose(loss1, loss3)
 
         >>> # with perclass weights
-        >>> logits = F.log_softmax(torch.rand(8, C, 2, 2), dim=dim)
+        >>> log_probs = F.log_softmax(torch.rand(8, C, 2, 2), dim=dim)
         >>> targets = (torch.rand(8, 2, 2) * C).long()
         >>> weight = torch.FloatTensor([.1, 1.0, 10.0])
         >>> focus = 2.0
         >>> dim = 1
         >>> ignore_index = 0
-        >>> output = nll_focal_loss(logits, targets, focus, dim, weight, ignore_index)
+        >>> output = nll_focal_loss(log_probs, targets, focus, dim, weight, ignore_index)
 
     Benchmark:
         >>> from netharn.criterions.focal import *
@@ -103,7 +103,7 @@ def nll_focal_loss(logits, targets, focus, dim=1, weight=None,
         >>> dim = 1
         >>> inputs = torch.rand(B, C, *DIMS)
         >>> inputs.requires_grad = True
-        >>> logits = F.log_softmax(inputs, dim=dim)
+        >>> log_probs = F.log_softmax(inputs, dim=dim)
         >>> targets = (torch.rand(B, *DIMS) * C).long()
         >>> #
         >>> ti = ub.Timerit(20, bestof=3, verbose=1, unit='us')
@@ -115,42 +115,42 @@ def nll_focal_loss(logits, targets, focus, dim=1, weight=None,
         >>> #
         >>> # Forward
         >>> for xpu in devices:
-        >>>     logits = xpu.move(logits)
+        >>>     log_probs = xpu.move(log_probs)
         >>>     targets = xpu.move(targets)
         >>>     print(' --- FORWARD ---')
         >>>     print('\n\n--- xpu = {!r} ---\n'.format(xpu))
         >>>     for timer in ti.reset('F.nll_loss'):
         >>>         with timer:
-        >>>             loss1 = F.nll_loss(logits, targets, reduction='none')
+        >>>             loss1 = F.nll_loss(log_probs, targets, reduction='none')
         >>>             torch.cuda.synchronize()
         >>>     for timer in ti.reset('nll_focal_loss(focus=0)'):
         >>>         with timer:
-        >>>             loss2 = nll_focal_loss(logits, targets, focus=0, dim=dim)
+        >>>             loss2 = nll_focal_loss(log_probs, targets, focus=0, dim=dim)
         >>>             torch.cuda.synchronize()
         >>>     for timer in ti.reset('nll_focal_loss(focus=2)'):
         >>>         with timer:
-        >>>             loss3 = nll_focal_loss(logits, targets, focus=2, dim=dim)
+        >>>             loss3 = nll_focal_loss(log_probs, targets, focus=2, dim=dim)
         >>>             torch.cuda.synchronize()
         >>> #
         >>> # Backward
         >>> ti = ub.Timerit(5, bestof=1, verbose=1, unit='ms')
-        >>> logits = F.log_softmax(inputs, dim=dim)
+        >>> log_probs = F.log_softmax(inputs, dim=dim)
         >>> for xpu in devices:
         >>>     print(' --- BACKWARD ---')
         >>>     print('\n\n--- xpu = {!r} ---\n'.format(xpu))
         >>>     for timer in ti.reset('F.nll_loss'):
         >>>         with timer:
-        >>>             loss1 = F.nll_loss(logits, targets, reduction='none')
+        >>>             loss1 = F.nll_loss(log_probs, targets, reduction='none')
         >>>         loss1.mean().backward(retain_graph=True)
         >>>         torch.cuda.synchronize()
         >>>     for timer in ti.reset('nll_focal_loss(focus=0)'):
         >>>         with timer:
-        >>>             loss2 = nll_focal_loss(logits, targets, focus=0.0, dim=dim)
+        >>>             loss2 = nll_focal_loss(log_probs, targets, focus=0.0, dim=dim)
         >>>         loss2.mean().backward(retain_graph=True)
         >>>         torch.cuda.synchronize()
         >>>     for timer in ti.reset('nll_focal_loss(focus=2)'):
         >>>         with timer:
-        >>>             loss3 = nll_focal_loss(logits, targets, focus=2.0, dim=dim)
+        >>>             loss3 = nll_focal_loss(log_probs, targets, focus=2.0, dim=dim)
         >>>         loss3.mean().backward(retain_graph=True)
         >>>         torch.cuda.synchronize()
     """
@@ -158,18 +158,18 @@ def nll_focal_loss(logits, targets, focus, dim=1, weight=None,
         # In this case nll_focal_loss is nll_loss, but nll_loss is faster
         if ignore_index is None:
             ignore_index = -100
-        return F.nll_loss(logits, targets, weight=weight,
+        return F.nll_loss(log_probs, targets, weight=weight,
                           ignore_index=ignore_index, reduction=reduction)
 
-    # Determine which entry in logits corresponds to the target
-    num_classes = logits.shape[dim]
+    # Determine which entry in log_probs corresponds to the target
+    num_classes = log_probs.shape[dim]
     t = kwarray.one_hot_embedding(targets.data, num_classes, dim=dim)
 
     # We only need the log(p) component corresponding to the target class
-    target_logits = (logits * t).sum(dim=dim)  # sameas logits[t > 0]
+    target_log_probs = (log_probs * t).sum(dim=dim)  # sameas log_probs[t > 0]
 
     # Modulate the weight of examples based on hardness
-    target_p = torch.exp(target_logits)
+    target_p = torch.exp(target_log_probs)
     w = (1 - target_p).pow(focus)
 
     # Factor in per-class `weight` to the a per-input weight
@@ -185,7 +185,7 @@ def nll_focal_loss(logits, targets, focus, dim=1, weight=None,
     # Normal cross-entropy computation (but with augmented weights per example)
     # Recall the nll_loss of an aexample is simply its -log probability or the
     # real class, all other classes are not needed (due to softmax magic)
-    output = w * -target_logits
+    output = w * -target_log_probs
 
     if reduction == ELEMENTWISE_MEAN:
         output = output.mean()

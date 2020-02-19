@@ -34,7 +34,7 @@ class ParamatarizedAugmenter(imgaug.augmenters.Augmenter):
         super(ParamatarizedAugmenter, self).__setattr__(key, value)
 
     def _augment_heatmaps(self):
-        raise NotImplemented
+        raise NotImplementedError
 
     @staticmethod
     def _hack_get_named_params(self):

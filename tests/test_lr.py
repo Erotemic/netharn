@@ -80,7 +80,7 @@ def test_lr():
         'monitor'    : (nh.Monitor, {'max_epoch': 15}),
     }
     harn = MyHarn(hyper=hyper)
-    harn.config['use_tqdm'] = 0
+    harn.preferences['use_tqdm'] = 0
     # Delete previous data
     harn.initialize(reset='delete')
 
