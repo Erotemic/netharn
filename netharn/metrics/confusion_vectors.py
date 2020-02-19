@@ -220,11 +220,16 @@ class ConfusionVectors(ub.NiceRepr):
         coarse_cfsn_vecs = ConfusionVectors(new_y_df, self.classes, self.probs)
         return coarse_cfsn_vecs
 
-    def binarize_peritem(self):
+    def binarize_peritem(self, negative_classes=None):
         """
-        Creates a binary representation of self where the an item is correct if
-        the prediction matches the truth, and the score is the confidence in
-        the prediction.
+        Creates a binary representation useful for measuring the performance of
+        detectors. It is assumed that scores of "positive" classes should be
+        high and "negative" clases should be low.
+
+        Args:
+            negative_classes (List[str | int]): list of negative class names or
+                idxs, by default chooses any class with a true class index of
+                -1. These classes should ideally have low scores.
 
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
@@ -235,12 +240,19 @@ class ConfusionVectors(ub.NiceRepr):
             >>> class_idxs = list(dmet.classes.node_to_idx.values())
             >>> binvecs = self.binarize_peritem()
         """
-        import warnings
         import kwarray
-        warnings.warn('binarize_peritem DOES NOT PRODUCE CORRECT RESULTS')
+        # import warnings
+        # warnings.warn('binarize_peritem DOES NOT PRODUCE CORRECT RESULTS')
+
+        if negative_classes is None:
+            negative_cidxs = {-1}
+        else:
+            raise NotImplementedError
+
+        is_false = kwarray.isect_flags(self.data['true'], negative_cidxs)
 
         _data = {
-            'is_true': self.data['true'] == self.data['pred'],
+            'is_true': ~is_false,
             'pred_score': self.data['score'],
         }
         extra = ub.dict_isect(_data, [

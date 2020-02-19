@@ -14,7 +14,7 @@ class VOC_Metrics(ub.NiceRepr):
         recs (Dict[int, List[dict]): true boxes for each image.
             maps image ids to a list of records within that image.
             Each record is a tlbr bbox, a difficult flag, and a class name.
-el
+
         cx_to_lines (Dict[int, List]): VOC formatted prediction preditions.
             mapping from class index to all predictions for that category.
             Each "line" is a list of [
