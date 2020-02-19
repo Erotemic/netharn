@@ -285,8 +285,10 @@ def _critical_loop(true_dets, pred_dets, iou_lookup, isvalid_lookup,
     y_pxs = []
     y_txs = []
 
-    # used_truth_policy = 'next_best'
-    used_truth_policy = 'mark_false'
+    if prioritize == 'correct' or prioritize == 'class':
+        used_truth_policy = 'next_best'
+    else:
+        used_truth_policy = 'mark_false'
 
     # Greedy assignment. For each predicted detection box.
     # Allow it to match the truth of compatible classes.
@@ -331,7 +333,7 @@ def _critical_loop(true_dets, pred_dets, iou_lookup, isvalid_lookup,
                     ovmax = cand_ious[ovidx]
                     if ovmax > ovthresh:
                         tx = true_idxs[ovidx]
-                        if not unused[tx]:
+                        if not unused[ovidx]:
                             tx = -1
                 else:
                     raise KeyError(used_truth_policy)
@@ -586,3 +588,11 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
                         warnings.warn('ex = {!r}'.format(ex))
             pred_ignore_flags = ignore_overlap > ovthresh
     return true_ignore_flags, pred_ignore_flags
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python ~/code/netharn/netharn/metrics/assignment.py all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
