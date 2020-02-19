@@ -475,11 +475,6 @@ it would produce this more detailed description of what it was doing:
 
 
 ]
- 
- 
-Acknowledgements:
-=================
-The authors would like to thank AFRL for their support of this work via `SBIR Contract FA8650-18-C-1075 <https://govtribe.com/award/federal-contract-award/definitive-contract-fa865018c1075>`_. This library is approved for public release via 88ABW.
 
 
 .. |Pypi| image:: https://img.shields.io/pypi/v/netharn.svg

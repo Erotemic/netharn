@@ -621,6 +621,10 @@ class BinaryConfusionVectors(ub.NiceRepr):
         """
         import sklearn
         import sklearn.metrics  # NOQA
+        try:
+            from sklearn.metrics._ranking import _binary_clf_curve
+        except ImportError:
+            from sklearn.metrics.ranking import _binary_clf_curve
         data = self.data
 
         y_true = data['is_true'].astype(np.uint8)
@@ -632,6 +636,8 @@ class BinaryConfusionVectors(ub.NiceRepr):
             ap = np.nan
             prec = [np.nan]
             rec = [np.nan]
+            fps = [np.nan]
+            tps = [np.nan]
             thresholds = [np.nan]
 
         else:
@@ -654,8 +660,25 @@ class BinaryConfusionVectors(ub.NiceRepr):
                 warnings.filterwarnings('ignore', message='invalid .* true_divide')
                 ap = sklearn.metrics.average_precision_score(
                     y_score=y_score, **metric_kw)
-                prec, rec, thresholds = sklearn.metrics.precision_recall_curve(
-                    probas_pred=y_score, **metric_kw)
+
+                fps, tps, _thresholds = _binary_clf_curve(
+                    y_true, y_score, pos_label=1.0,
+                    sample_weight=sample_weight)
+                precision = tps / (tps + fps)
+                precision[np.isnan(precision)] = 0
+                recall = tps / tps[-1]
+
+                # stop when full recall attained
+                # and reverse the outputs so recall is decreasing
+                last_ind = tps.searchsorted(tps[-1])
+                sl = slice(last_ind, None, -1)
+                prec, rec, thresholds = (
+                    np.r_[precision[sl], 1],
+                    np.r_[recall[sl], 0],
+                    _thresholds[sl])
+
+                # prec, rec, thresholds = sklearn.metrics.precision_recall_curve(
+                #     probas_pred=y_score, **metric_kw)
 
         # FIXME
         # USING true == pred IS WRONG.
@@ -678,6 +701,8 @@ class BinaryConfusionVectors(ub.NiceRepr):
             'ap': ap,
             'ppv': prec,   # (positive predictive value) == (precision)
             'tpr': rec,    # (true positive rate) == (recall)
+            'fp_count': fps,
+            'tp_count': tps,
             'thresholds': thresholds,
             'nsupport': nsupport,
             'realpos_total': realpos_total,
