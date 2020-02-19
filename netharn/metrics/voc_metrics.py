@@ -20,9 +20,10 @@ class VOC_Metrics(ub.NiceRepr):
             Each "line" is a list of [
                 [<imgid>, <score>, <tl_x>, <tl_y>, <br_x>, <br_y>]].
     """
-    def __init__(self):
+    def __init__(self, classes=None):
         self.recs = {}
         self.cx_to_lines = ub.ddict(list)
+        self.classes = classes
 
     def __nice__(self):
         info = {
@@ -60,14 +61,47 @@ class VOC_Metrics(ub.NiceRepr):
     def score(self, ovthresh=0.5, bias=1, method='voc2012'):
         """
         Compute VOC scores for every category
+
+        Example:
+            >>> from netharn.metrics.detect_metrics import DetectionMetrics
+            >>> from netharn.metrics.voc_metrics import *  # NOQA
+            >>> dmet = DetectionMetrics.demo(
+            >>>     nimgs=1, nboxes=(0, 100), n_fp=(0, 30), n_fn=(0, 30), nclasses=2, score_noise=0.9)
+            >>> self = VOC_Metrics(classes=dmet.classes)
+            >>> self.add_truth(dmet.true_detections(0), 0)
+            >>> self.add_predictions(dmet.pred_detections(0), 0)
+            >>> voc_scores = self.score()
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.figure(fnum=1, doclf=True)
+            >>> voc_scores['perclass'].draw()
+
+            kwplot.figure(fnum=2)
+            dmet.true_detections(0).draw(color='green', labels=None)
+            dmet.pred_detections(0).draw(color='blue', labels=None)
+            kwplot.autoplt().gca().set_xlim(0, 100)
+            kwplot.autoplt().gca().set_ylim(0, 100)
         """
+        from netharn.metrics.confusion_vectors import PR_Result
+        from netharn.metrics.confusion_vectors import PerClass_PR_Result
         perclass = {}
         for cx in self.cx_to_lines.keys():
             lines = self.cx_to_lines[cx]
             classname = cx
-            info = _voc_eval(lines, self.recs, classname, ovthresh=ovthresh,
-                             bias=bias, method=method)
-            perclass[cx] = info
+            roc_info = _voc_eval(lines, self.recs, classname,
+                                 ovthresh=ovthresh, bias=bias, method=method)
+            roc_info['cx'] = cx
+            if self.classes is not None:
+                catname = self.classes[cx]
+                roc_info.update({
+                    'node': catname,
+                })
+                perclass[catname] = PR_Result(roc_info)
+            else:
+                perclass[cx] = PR_Result(roc_info)
+
+        perclass = PerClass_PR_Result(perclass)
 
         mAP = np.nanmean([d['ap'] for d in perclass.values()])
         voc_scores = {
@@ -304,14 +338,22 @@ def _voc_eval(lines, recs, classname, ovthresh=0.5, method='voc2012',
 
         ap = _voc_ave_precision(rec=rec, prec=prec, method=method)
 
+    # number of supports is the number of real positives + unassigned preds
+    realneg_total = fp[-1]  # number of unassigned predictions
+    realpos_total = npos  # number of truth predictions
+    nsupport = realneg_total + realpos_total
+
     info = {
-        'fp': fp,
-        'tp': tp,
-        'fn': fn,
+        'fp_count': fp,
+        'tp_count': tp,
+        'fn_count': fn,
         'tpr': rec,    # (true positive rate) == (recall)
         'ppv': prec,  # (positive predictive value) == (precision)
         'thresholds': thresholds,
         'npos': npos,
+        'nsupport': nsupport,
+        'realpos_total': realpos_total,
+        'realneg_total': realneg_total,
         'ap': ap,
     }
     return info
