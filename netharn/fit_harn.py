@@ -87,6 +87,7 @@ Example:
     >>> harn = nh.FitHarn(hyper)
     >>> # non-algorithmic behavior configs (do not change learned models)
     >>> harn.preferences['use_tensorboard'] = False
+    >>> harn.preferences['timeout'] = 0.5
     >>> # start training.
     >>> harn.initialize(reset='delete')
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
@@ -1354,10 +1355,19 @@ class CoreMixin(object):
             ### THIS IS THE MAIN LOOP ###
             #############################
 
-            for harn.epoch in it.count(harn.epoch):
-                harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
-                if DEMO and harn.epoch > DEMO:
-                    break
+            with ub.Timer() as timer:
+
+                for harn.epoch in it.count(harn.epoch):
+                    harn._run_tagged_epochs(
+                        train_loader,
+                        vali_loader,
+                        test_loader
+                    )
+                    if DEMO and harn.epoch > DEMO:
+                        raise StopTraining
+                    elif timer.toc() > harn.preferences['timeout']:
+                        harn.info('timeout')
+                        raise StopTraining
 
             ##############################
             ### THAT WAS THE MAIN LOOP ###
@@ -2456,6 +2466,8 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             'num_keep': 2,
             # Ensure we always keep a snapshot every `freq` epochs
             'keep_freq': 20,
+
+            'timeout': float('inf'),  # limits the amount of time training can take
         }
 
         # This variable should be used to store your custom script
