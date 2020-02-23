@@ -117,7 +117,9 @@ Features (continued)
 
 * Example tasks:
   Baseline code for standard tasks like: object segmentation, classification,
-  and detection are defined in ``netharn.examples``.
+  and detection are defined in ``netharn.examples``. The examples also provide
+  example use cases for ``ndsampler``, ``kwimage``, ``kwannot``, and
+  ``kwplot``. 
 
 
 
