@@ -29,22 +29,25 @@ BUILTINS:
    - tensorboard metric visualization (optional)
 DESIGN PHILOSOPHY: 
    Avoid boilerplate, built-it yourself when you need to, and don't repeat yourself.
+   Experiments should be strongly tied to the choice of hyperparameters, and
+   the framework should be able to construct a directory heirarchy based on
+   these hyperparameters.
 SLOGAN: 
     Rein and train.
 USAGE PATTERNS:
     (1) Write code for a torch object  (i.e. Dataset, Model, Criterion, Initializer, and Scheduler) just as you normally would.
-    (2) Inherit from the ``nh.FitHarn`` object, define ``run_batch``, ``on_batch``, ``on_epoch``, etc...
-    (3) Create an instance of ``nh.HyperParams`` to specify your dataset, model, criterion, etc...
+    (2) Inherit from the ``netharn.FitHarn`` object, define ``run_batch``, ``on_batch``, ``on_epoch``, etc...
+    (3) Create an instance of ``netharn.HyperParams`` to specify your dataset, model, criterion, etc...
     (4) Create an instance of your ``FitHarn`` object with those hyperparameters.
     (5) Then execute its ``run`` method.
     (6) ???
     (7) profit
 EXAMPLES:
-    * ToyData2d classification with nh.models.ToyNet2d (see doctest in netharn/fit_harn.py:__DOC__:0)
-    * MNIST digit classification with MnistNet (examples/mnist.py)
-    * Cifar10 category classification with ResNet50 / dpn91 (examples/cifar.py)
-    * Voc2007+2012 object detection with YOLOv2 (examples/yolo_voc.py)
-    * IBEIS metric learning with SiameseLP (examples/siam_ibeis.py)
+    * ToyData2d classification with netharn.models.ToyNet2d (see doctest in netharn/fit_harn.py:__DOC__:0)
+    * MNIST digit classification with MnistNet (netharn/examples/mnist.py)
+    * Cifar10 category classification with ResNet50 / dpn91 (netharn/examples/cifar.py)
+    * Voc2007+2012 object detection with YOLOv2 (netharn/examples/yolo_voc.py)
+    * IBEIS metric learning with SiameseLP (netharn/examples/siam_ibeis.py)
 STABILITY:
    Mostly harmless. Most tests pass, the current failures are probably not
    critical. I'm able to use it on my machine (tm). In this early stage of
@@ -61,7 +64,7 @@ AUTHORS COMMENTS:
      this results a few times. You can use the code in examples/cifar.py to see
      if you can too (please tell me if you cannot). 
    * The YOLO example is based of of EAVise's excellent lightnet (https://gitlab.com/EAVISE/lightnet/) package.
-   * I reimplemented the CocoAPI (see nh.data.coco_api), because I had some
+   * I reimplemented the CocoAPI (see netharn.data.coco_api), because I had some
      (probably minor) issue with the original implementation. I've extended it
      quite a bit, and I'd recommend using it.
    * The metric-learning example requires code requires the ibeis software:
@@ -73,6 +76,50 @@ DEPENDENCIES:
     * ubelt
     * xdoctest
     * ... (see requirements.txt)
+
+
+Features (continued)
+====================
+
+* Hyperparameter tracking: The hash of your hyperparameters determines the
+  directory data will be written to. We also allow for a "nicer" means to
+  manage directory structures. Given a ``HyperParams`` object, we create the
+  symlink ``{workdir}/fit/nice/{nice}`` which points to
+  ``{workdir}/fit/runs/{nice}/{hashid}``.
+
+* Automatic restarts: 
+  Calling ``FitHarn.run`` twice restarts training from where you left off by
+  default (as long as the hyperparams haven't changed).
+
+* "Smart" Snapshot cleanup:  
+  Maintaining model weights files can be a memory hog. Depending the settings
+  of ``harn.preferences``, ``netharn.FitHarn`` will periodically remove
+  less-recent or low-scoring snapshots.
+
+* Deployment files: 
+  Model weights and architecture are together written as one
+  reasonably-portable zip-file. We also package training metadata to maintain
+  data provinence and make reproducing experiments easier. 
+
+* Restart from any pretrained state: 
+  use ``netharn.initializers.PretainedInitializer``. 
+
+* Utilities for building networks in torch:
+  Layers like ``netharn.layers.ConvNormNd`` make it easy to build networks for
+  n=1, 2, or 3 dimensional data. 
+
+* Analytic output shape and receptive field:
+  Netharn defines a ``netharn.layers.AnalyticModule``, which can automatically
+  define ``forward``, ``output_shape_for`` and ``receptive_field_for`` if users
+  define a special ``_output_for`` method, written with the
+  ``netharn.analytic_for.Output``, ``netharn.analytic_for.Hidden``, and
+  ``netharn.analytic_for.OutputFor`` special callables.
+
+* Example tasks:
+  Baseline code for standard tasks like: object segmentation, classification,
+  and detection are defined in ``netharn.examples``.
+
+
 
 Installation
 ============
@@ -140,13 +187,13 @@ Example:
 This following example is the doctest in ``netharn/fit_harn.py``. It
 demonstrates how to use NetHarn to train a model to solve a toy problem.  
 
-In this toy problem, we do not extend the nh.FitHarn object, so we are using
+In this toy problem, we do not extend the netharn.FitHarn object, so we are using
 the default behavior of ``run_batch``. The default ``on_batch``, and
 ``on_epoch`` do nothing, so only loss will be the only measurement of
 performance.
 
 For further examples please see the examples directory. These example show how
-to extend nh.FitHarn to measure performance wrt a particular problem.  The
+to extend netharn.FitHarn to measure performance wrt a particular problem.  The
 MNIST and CIFAR examples are the most simple. The YOLO example is more complex.
 The IBEIS example depends on non-public data / software, but can still be
 useful to look at.  Its complexity is more than CIFAR but less than YOLO.
@@ -154,51 +201,52 @@ useful to look at.  Its complexity is more than CIFAR but less than YOLO.
 
 .. code-block:: python
 
-    >>> import netharn as nh
-    >>> hyper = nh.HyperParams(**{
+    >>> import netharn 
+    >>> hyper = netharn.HyperParams(**{
     >>>     # ================
     >>>     # Environment Components
     >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/demo'),
     >>>     'nice'        : 'demo',
-    >>>     'xpu'         : nh.XPU.cast('auto'),
+    >>>     'xpu'         : netharn.XPU.cast('auto'),
     >>>     # workdir is a directory where intermediate results can be saved
     >>>     # nice symlinks <workdir>/fit/nice/<nice> -> ../runs/<hashid>
     >>>     # XPU auto select a gpu if idle and VRAM>6GB else a cpu
     >>>     # ================
     >>>     # Data Components
     >>>     'datasets'    : {  # dict of plain ol torch.data.Dataset instances
-    >>>         'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
-    >>>         'vali': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
-    >>>         'test': nh.data.ToyData2d(size=3, border=1, n=128, rng=2),
+    >>>         'train': netharn.data.ToyData2d(size=3, border=1, n=256, rng=0),
+    >>>         'vali': netharn.data.ToyData2d(size=3, border=1, n=128, rng=1),
+    >>>         'test': netharn.data.ToyData2d(size=3, border=1, n=128, rng=2),
     >>>     },
     >>>     'loaders'     : {'batch_size': 64}, # DataLoader instances or kw
     >>>     # ================
     >>>     # Algorithm Components
     >>>     # Note the (cls, kw) tuple formatting
-    >>>     'model'       : (nh.models.ToyNet2d, {}),
-    >>>     'optimizer'   : (nh.optimizers.SGD, {
+    >>>     'model'       : (netharn.models.ToyNet2d, {}),
+    >>>     'optimizer'   : (netharn.optimizers.SGD, {
     >>>         'lr': 0.0001
     >>>     }),
-    >>>     # focal loss is usually better than nh.criterions.CrossEntropyLoss
-    >>>     'criterion'   : (nh.criterions.FocalLoss, {}),
-    >>>     'initializer' : (nh.initializers.KaimingNormal, {
+    >>>     # focal loss is usually better than netharn.criterions.CrossEntropyLoss
+    >>>     'criterion'   : (netharn.criterions.FocalLoss, {}),
+    >>>     'initializer' : (netharn.initializers.KaimingNormal, {
     >>>         'param': 0,
     >>>     }),
     >>>     # these may receive an overhaul soon
-    >>>     'scheduler'   : (nh.schedulers.ListedScheduler, {
+    >>>     'scheduler'   : (netharn.schedulers.ListedScheduler, {
     >>>         'points': {'lr': {0: .0001, 2: .01, 5: .015, 6: .005, 9: .001}},
     >>>         'interpolation': 'linear',
     >>>     }),
-    >>>     'monitor'     : (nh.Monitor, {
+    >>>     'monitor'     : (netharn.Monitor, {
     >>>         'max_epoch': 10,
     >>>     }),
     >>>     # dynamics are a config option that modify the behavior of the main
     >>>     # training loop. These parameters effect the learned model.
     >>>     'dynamics'   : {'batch_step': 4},
     >>> })
-    >>> harn = nh.FitHarn(hyper)
+    >>> harn = netharn.FitHarn(hyper)
     >>> # non-algorithmic behavior configs (do not change learned models)
-    >>> harn.config['prog_backend'] = 'progiter'  # alternative: 'tqdm'
+    >>> harn.preferences['prog_backend'] = 'progiter'  # alternative: 'tqdm'
+    >>> harn.preferences['num_keep'] = 10
     >>> # start training.
     >>> harn.initialize(reset='delete')
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
@@ -269,8 +317,8 @@ Running this code produes the following output:
    INFO: wrote single-file deployment to: '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_009_GAEYQT.zip'
    INFO: exiting fit harness.
 
-Furthermore, if you were to run that code when `'--verbose' in sys.argv`, then
-it would produce this more detailed description of what it was doing:
+Furthermore, if you were to run that code when ``'--verbose' in sys.argv``,
+then it would produce this more detailed description of what it was doing:
 
 .. code-block:: 
 
@@ -472,9 +520,6 @@ it would produce this more detailed description of what it was doing:
    [DEPLOYER] Deployed zipfpath=/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_000_JWPNDC.zip
    INFO: wrote single-file deployment to: '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_000_JWPNDC.zip'
    INFO: exiting fit harness.
-
-
-]
 
 
 .. |Pypi| image:: https://img.shields.io/pypi/v/netharn.svg
