@@ -151,15 +151,28 @@ def _ensure_json_serializable(dict_, normalize_containers=False, verbose=0):
                 _convert(dict_, root, key, new_value)
             elif isinstance(value, np.ndarray):
                 new_value = value.tolist()
+                if value.dtype.kind in {'i', 'u'}:
+                    new_value = list(map(int, new_value))
+                elif value.dtype.kind in {'f'}:
+                    new_value = list(map(float, new_value))
+                elif value.dtype.kind in {'c'}:
+                    new_value = list(map(complex, new_value))
+                else:
+                    pass
+                    # raise TypeError(value.dtype)
                 to_convert.append((root, key, new_value))
             elif isinstance(value, torch.Tensor):
                 new_value = value.data.cpu().numpy().tolist()
                 to_convert.append((root, key, new_value))
+            elif isinstance(value, (np.int16, np.int32, np.int64,
+                                    np.uint16, np.uint32, np.uint64)):
+                new_value = int(value)
+                to_convert.append((root, key, new_value))
             elif isinstance(value, (np.float32, np.float64)):
                 new_value = float(value)
                 to_convert.append((root, key, new_value))
-            elif isinstance(value, (np.int32, np.int64)):
-                new_value = float(value)
+            elif isinstance(value, (np.complex64, np.complex128)):
+                new_value = complex(value)
                 to_convert.append((root, key, new_value))
             elif hasattr(value, '__json__'):
                 new_value = value.__json__()

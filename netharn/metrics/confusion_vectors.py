@@ -909,6 +909,9 @@ class DictProxy(DictLike):
     def keys(self):
         return self.proxy.keys()
 
+    def __json__(self):
+        return ub.odict(self.proxy)
+
 
 class ROC_Result(ub.NiceRepr, DictProxy):
     """
