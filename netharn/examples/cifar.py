@@ -326,6 +326,9 @@ def setup_harn():
         python -m netharn.examples.cifar --gpu=0 --nice=densenet --arch=densenet121 --optim=sgd --schedule=simplestep --lr=0.1
         python -m netharn.examples.cifar --gpu=0 --nice=efficientnet_scratch --arch=efficientnet-b0 --optim=sgd --schedule=simplestep --lr=0.01 --init=noop --decay=1e-5
 
+        python -m netharn.examples.cifar --gpu=0 --nice=efficientnet_scratch-v4 --arch=efficientnet-b0 --optim=sgd --schedule=simplestep --lr=0.01 --init=noop --decay=1e-5
+        python -m netharn.examples.cifar --gpu=0 --nice=efficientnet_scratch-v5 --arch=efficientnet-b0 --optim=sgd --schedule=step-30-200 --lr=0.01 --init=noop --decay=1e-5
+
         python -m netharn.examples.cifar --gpu=0 --nice=efficientnet \
             --arch=efficientnet-b0 --optim=rmsprop --lr=0.064 \
             --batch_size=512 --max_epoch=120 --schedule=Exponential-g0.97-s2
@@ -336,7 +339,11 @@ def setup_harn():
 
         python -m netharn.examples.cifar --gpu=0 --nice=efficientnet-pretrained2 \
             --arch=efficientnet-b0 --optim=adamw --lr=0.0064 --init=cls \
-            --batch_size=512 --max_epoch=350 --schedule=Exponential-g0.97-s2 --decay=1e-5
+            --batch_size=512 --max_epoch=350 --schedule=Exponential-g0.97-s2 --decay=0
+
+        python -m netharn.examples.cifar --gpu=0 --nice=efficientnet-pretrained6 \
+            --arch=efficientnet-b0 --optim=sgd --lr=0.016 --init=cls \
+            --batch_size=1024 --max_epoch=350 --schedule=Exponential-g0.97-s3 --decay=1e-5
     """
     import random
     import torchvision
@@ -368,8 +375,8 @@ def setup_harn():
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465),
                              (0.2023, 0.1994, 0.2010)),
-        transforms.RandomErasing(p=0.5, scale=(0.5, 0.5),  # Cutout
-                                 value=0),
+        # transforms.RandomErasing(p=0.5, scale=(0.5, 0.5),  # Cutout
+        #                          value=0),
     ])
 
     transform_test = transforms.Compose([
@@ -463,6 +470,26 @@ def setup_harn():
         import cv2
         cv2.setNumThreads(0)
 
+    if config['optim'] == 'sgd':
+        optimizer_ = (torch.optim.SGD, {
+            'lr': config['lr'],
+            'weight_decay': config['decay'],
+            'momentum': 0.9,
+            'nesterov': True,
+        })
+    elif config['optim'] == 'adamw':
+        optimizer_ = (nh.optimizers.AdamW, {
+            'lr': config['lr'],
+            'betas': (0.9, 0.999),
+            'weight_decay': config['decay'],
+            'amsgrad': False,
+        })
+    else:
+        # The netharn API can construct an optimizer from standard keys in a
+        # configuration dictionary. There is a bit of magic involved. Read docs
+        # for coerce for more details.
+        optimizer_ = nh.api.Optimizer.coerce(config)
+
     # Choose which network architecture to train
     available_architectures = {
         'densenet121': (nh.models.densenet.DenseNet, {
@@ -522,6 +549,41 @@ def setup_harn():
                     'classes': classes,
                 }
             )
+
+        # For efficient nets we need to dramatically reduce the weight decay on
+        # the depthwise part of the depthwise separable convolution.  To do
+        # this we need to manually construct the param groups for the
+        # optimizer.
+        model = model_
+        params = dict(model.named_parameters())
+        key_groups = ub.ddict(list)
+        for key in params.keys():
+            if key.endswith('.bias'):
+                key_groups['bias'].append(key)
+            elif 'depthwise_conv' in key:
+                key_groups['depthwise'].append(key)
+            else:
+                key_groups['other'].append(key)
+
+        named_param_groups = {}
+        for group_name, keys in key_groups.items():
+            if keys:
+                # very important that groups are alway in the same order
+                keys = sorted(keys)
+                param_group = {
+                    'params': list(ub.take(params, keys)),
+                }
+                named_param_groups[group_name] = param_group
+
+        # Override the default weight decay of chosen groups
+        named_param_groups['bias']['weight_decay'] = 0
+        named_param_groups['depthwise']['weight_decay'] = 0
+
+        param_groups = [v for k, v in sorted(named_param_groups.items())]
+
+        optim_cls, optim_kw = optimizer_
+        optim = optim_cls(param_groups, **optim_kw)
+        optimizer_ = optim
     else:
         model_ = available_architectures[config['arch']]
 
@@ -592,26 +654,6 @@ def setup_harn():
         # for coerce for more details.
         scheduler_ = nh.api.Scheduler.coerce(config)
 
-    if config['optim'] == 'sgd':
-        optimizer_ = (torch.optim.SGD, {
-            'lr': config['lr'],
-            'weight_decay': config['decay'],
-            'momentum': 0.9,
-            'nesterov': True,
-        })
-    elif config['optim'] == 'adamw':
-        optimizer_ = (nh.optimizers.AdamW, {
-            'lr': config['lr'],
-            'betas': (0.9, 0.999),
-            'weight_decay': config['decay'],
-            'amsgrad': False,
-        })
-    else:
-        # The netharn API can construct an optimizer from standard keys in a
-        # configuration dictionary. There is a bit of magic involved. Read docs
-        # for coerce for more details.
-        optimizer_ = nh.api.Optimizer.coerce(config)
-
     # Notice that arguments to hyperparameters are typically specified as a
     # tuple of (type, Dict), where the dictionary are the keyword arguments
     # that can be used to instantiate an instance of that class. While
@@ -638,6 +680,7 @@ def setup_harn():
             'minimize': ['loss'],
             'patience': config['patience'],
             'max_epoch': config['max_epoch'],
+            'smoothing': 0.0,
         }),
         initializer=initializer_,
         criterion=(torch.nn.CrossEntropyLoss, {}),

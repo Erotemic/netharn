@@ -108,6 +108,8 @@ class MBConvBlock(layers.AnalyticModule):
         # Depthwise convolution phase
         k = self._block_args.kernel_size
         s = self._block_args.stride
+        # Note: it is important to set the weight decay to be very low for the
+        # depthwise convolutions
         self._depthwise_conv = Conv2d(
             in_channels=oup, out_channels=oup, groups=oup,  # groups makes it depthwise
             kernel_size=k, stride=s, bias=False)
@@ -122,6 +124,8 @@ class MBConvBlock(layers.AnalyticModule):
         # Output phase
         final_oup = self._block_args.output_filters
         self._project_conv = Conv2d(in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False)
+        # Note that the bn2 layer before the residual add, should be
+        # initailized with gamma=0
         self._bn2 = nn.BatchNorm2d(num_features=final_oup, momentum=self._bn_mom, eps=self._bn_eps)
         noli = 'swish'
         self._swish = layers.rectify_nonlinearity(noli, dim=2)
