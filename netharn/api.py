@@ -284,6 +284,8 @@ class Scheduler(object):
             for scheduler == exponential:
                 gamma
                 stepsize
+
+        onecycle90-p0.2
         """
         import netharn as nh
         import parse
@@ -291,21 +293,43 @@ class Scheduler(object):
         key = config.get('scheduler', config.get('schedule', 'step90'))
         lr = config.get('learning_rate', config.get('lr', 3e-3))
 
-        result = parse.parse('onecycle{:d}', key)
+        result = parse.parse('onecycle{:d}{]', key)
         if result:
             size = result.fixed[0]
+            suffix = result.fixed[1]
+
+            parts = suffix.split('-')
+            kw = {
+                'peak': 0.5,
+            }
+            try:
+                for part in parts:
+                    if not part:
+                        continue
+                    if part.startswith('p'):
+                        valstr = part[1:]
+                        if valstr.startswith('0.'):
+                            kw['peak'] = int(size * float(part[1:]))
+                        else:
+                            kw['peak'] = int(part[1:])
+                    else:
+                        raise ValueError('unknown {} part'.format(suffix))
+            except Exception:
+                raise ValueError('Unable to parse {} specs: {}'.format(
+                    result, suffix))
+
             scheduler_ = (nh.schedulers.ListedScheduler, {
                 'points': {
                     'lr': {
                         size * 0   : lr * 0.1,
-                        size // 2  : lr * 1.0,
+                        kw['peak'] : lr * 1.0,
                         size * 1   : lr * 0.01,
-                        size + 1   : lr * 0.0001,
+                        size + 1   : lr * 0.001,
                     },
                     'momentum': {
                         size * 0   : 0.95,
-                        size // 2  : 0.85,
-                        size * 1   : 0.98,
+                        kw['peak'] : 0.90,
+                        size * 1   : 0.95,
                         size + 1   : 0.999,
                     },
                 },

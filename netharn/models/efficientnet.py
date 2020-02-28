@@ -127,6 +127,7 @@ class MBConvBlock(layers.AnalyticModule):
         # Note that the bn2 layer before the residual add, should be
         # initailized with gamma=0
         self._bn2 = nn.BatchNorm2d(num_features=final_oup, momentum=self._bn_mom, eps=self._bn_eps)
+        self._bn2._residual_bn = True
         noli = 'swish'
         self._swish = layers.rectify_nonlinearity(noli, dim=2)
 
