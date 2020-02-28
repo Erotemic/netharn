@@ -141,6 +141,12 @@ def _ensure_json_serializable(dict_, normalize_containers=False, verbose=0):
             d = d[k]
         d[key] = new_value
 
+    def _flatmap(func, data):
+        if isinstance(data, list):
+            return [_flatmap(func, item) for item in data]
+        else:
+            return func(data)
+
     to_convert = []
     for root, level in ub.ProgIter(_walk_json(dict_), desc='walk json',
                                    verbose=verbose):
@@ -151,15 +157,26 @@ def _ensure_json_serializable(dict_, normalize_containers=False, verbose=0):
                 _convert(dict_, root, key, new_value)
             elif isinstance(value, np.ndarray):
                 new_value = value.tolist()
-                if value.dtype.kind in {'i', 'u'}:
-                    new_value = list(map(int, new_value))
-                elif value.dtype.kind in {'f'}:
-                    new_value = list(map(float, new_value))
-                elif value.dtype.kind in {'c'}:
-                    new_value = list(map(complex, new_value))
-                else:
-                    pass
-                    # raise TypeError(value.dtype)
+                if 0:
+                    if len(value.shape) == 1:
+                        if value.dtype.kind in {'i', 'u'}:
+                            new_value = list(map(int, new_value))
+                        elif value.dtype.kind in {'f'}:
+                            new_value = list(map(float, new_value))
+                        elif value.dtype.kind in {'c'}:
+                            new_value = list(map(complex, new_value))
+                        else:
+                            pass
+                    else:
+                        if value.dtype.kind in {'i', 'u'}:
+                            new_value = _flatmap(int, new_value)
+                        elif value.dtype.kind in {'f'}:
+                            new_value = _flatmap(float, new_value)
+                        elif value.dtype.kind in {'c'}:
+                            new_value = _flatmap(complex, new_value)
+                        else:
+                            pass
+                            # raise TypeError(value.dtype)
                 to_convert.append((root, key, new_value))
             elif isinstance(value, torch.Tensor):
                 new_value = value.data.cpu().numpy().tolist()

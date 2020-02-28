@@ -149,14 +149,12 @@ import numpy as np
 import ubelt as ub
 
 from netharn import hyperparams
-from netharn.exceptions import (StopTraining, CannotResume, TrainingDiverged,
-                                SkipBatch)
-
 from netharn import util
+from netharn import export
 from netharn.util import profiler
 from netharn.util import strip_ansi
-
-from netharn import export
+from netharn.exceptions import (CannotResume, SkipBatch, StopTraining,
+                                TrainingDiverged)
 
 try:
     import tensorboard_logger
