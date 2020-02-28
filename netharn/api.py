@@ -293,14 +293,14 @@ class Scheduler(object):
         key = config.get('scheduler', config.get('schedule', 'step90'))
         lr = config.get('learning_rate', config.get('lr', 3e-3))
 
-        result = parse.parse('onecycle{:d}{]', key)
-        if result:
+        if key.startswith('onecycle'):
+            result = parse.parse('onecycle{:d}-{}', key)
             size = result.fixed[0]
             suffix = result.fixed[1]
 
             parts = suffix.split('-')
             kw = {
-                'peak': 0.5,
+                'peak': size // 2,
             }
             try:
                 for part in parts:
@@ -309,9 +309,9 @@ class Scheduler(object):
                     if part.startswith('p'):
                         valstr = part[1:]
                         if valstr.startswith('0.'):
-                            kw['peak'] = int(size * float(part[1:]))
+                            kw['peak'] = int(size * float(valstr))
                         else:
-                            kw['peak'] = int(part[1:])
+                            kw['peak'] = int(valstr)
                     else:
                         raise ValueError('unknown {} part'.format(suffix))
             except Exception:

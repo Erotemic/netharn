@@ -379,7 +379,6 @@ def setup_harn():
         torch.backends.cudnn.deterministic = config['deterministic']
 
     inplace = True
-    inplace = False
 
     # Define preprocessing + augmentation strategy
     transform_train = transforms.Compose([
@@ -390,8 +389,8 @@ def setup_harn():
         transforms.Normalize((0.4914, 0.4822, 0.4465),
                              (0.2023, 0.1994, 0.2010), inplace=inplace),
         transforms.RandomErasing(p=0.5,  # Cutout
-                                 scale=(0.1, 0.5),
-                                 ratio=(0.3, 3.3),
+                                 scale=(0.5, 0.5),
+                                 ratio=(1.0, 1.0),
                                  value='random', inplace=inplace),
     ])
 
@@ -761,9 +760,9 @@ if __name__ == '__main__':
         python -m netharn.examples.cifar --nice=efficientnet_wip-v1 \
             --xpu=0 \
             --arch=efficientnet-b0 --optim=rmsprop \
-            --schedule=onecycle250-p5 \
+            --schedule=onecycle250-p150 \
             --init=cls \
-            --batch_size=2048 --lr=0.1 --decay=1e-4
+            --batch_size=2048 --lr=0.001 --decay=1e-4
     """
     import seaborn
     seaborn.set()
