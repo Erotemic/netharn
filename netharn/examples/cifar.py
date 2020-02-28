@@ -705,6 +705,7 @@ def setup_harn():
     harn.preferences['keyboard_debug'] = True
     harn.preferences['eager_dump_tensorboard'] = True
     harn.preferences['tensorboard_groups'] = ['loss']
+    # harn.preferences['tensorboard_groups']
 
     harn.intervals.update({
         'vali': 1,
@@ -759,10 +760,48 @@ if __name__ == '__main__':
 
         python -m netharn.examples.cifar --nice=efficientnet_wip-v1 \
             --xpu=0 \
-            --arch=efficientnet-b0 --optim=rmsprop \
+            --arch=efficientnet-b0 --optim=adamw \
             --schedule=onecycle250-p150 \
             --init=cls \
-            --batch_size=2048 --lr=0.001 --decay=1e-4
+            --batch_size=2048 --lr=0.01 --decay=1e-4
+
+        python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue \
+            --xpu=0 \
+            --arch=efficientnet-b0 --optim=sgd \
+            --schedule=onecycle250-p20 \
+            --batch_size=128 --lr=0.001 --decay=1e-4 \
+            --init=pretrained \
+            --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
+
+        python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue-alt \
+            --xpu=0 \
+            --arch=efficientnet-b0 --optim=sgd \
+            --schedule=onecycle250-p20 \
+            --batch_size=128 --lr=0.001 --decay=1e-4 \
+            --init=pretrained \
+            --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
+
+        python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue-alt2 \
+            --xpu=0 \
+            --arch=efficientnet-b0 --optim=sgd \
+            --schedule=Exponential-g0.98-s1 \
+            --batch_size=256 --lr=0.0005 --decay=5e-5 \
+            --init=pretrained \
+            --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
+
+        python -m netharn.examples.cifar --nice=efficientnet_wip-v2 \
+            --xpu=0 \
+            --arch=efficientnet-b0 --optim=adamw \
+            --schedule=onecycle250-p15 \
+            --init=cls \
+            --batch_size=2048 --lr=0.01 --decay=1e-4
+
+        python -m netharn.examples.cifar --nice=efficientnet_wip-v2 \
+            --xpu=0 \
+            --arch=efficientnet-b0 --optim=adamw \
+            --schedule=onecycle250-p15 \
+            --init=cls \
+            --batch_size=2048 --lr=0.01 --decay=1e-4
     """
     import seaborn
     seaborn.set()
