@@ -781,11 +781,11 @@ if __name__ == '__main__':
             --init=pretrained \
             --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
 
-        python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue-alt3 \
+        python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue-alt4 \
             --xpu=0 \
-            --arch=efficientnet-b0 --optim=sgd \
+            --arch=efficientnet-b0 --optim=adamw \
             --schedule=Exponential-g0.98-s1 \
-            --batch_size=256 --lr=0.01 --decay=5e-5 \
+            --batch_size=64 --lr=0.00001 --decay=1e-4 \
             --init=pretrained \
             --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
 
@@ -802,6 +802,27 @@ if __name__ == '__main__':
             --schedule=onecycle250-p15 \
             --init=cls \
             --batch_size=2048 --lr=0.01 --decay=1e-4
+
+        python -m netharn.examples.cifar --nice=efficientnet_wip-v3 \
+            --xpu=0 \
+            --arch=efficientnet-b0 --optim=adamw \
+            --schedule=onecycle250-p10 \
+            --init=cls \
+            --batch_size=1024 --lr=0.01 --decay=1e-4
+
+        python -m netharn.examples.cifar --nice=efficientnet_wip-v4 \
+            --xpu=0 \
+            --arch=efficientnet-b0 --optim=adamw \
+            --schedule=onecycle250-p10 \
+            --init=cls \
+            --batch_size=1024 --lr=0.001 --decay=1e-4
+
+        python -m netharn.examples.cifar --nice=efficientnet_wip-v5 \
+            --xpu=0 \
+            --arch=efficientnet-b0 --optim=adamw \
+            --schedule=onecycle250-p10 \
+            --init=cls \
+            --batch_size=1024 --lr=0.02 --decay=1e-4
     """
     import seaborn
     seaborn.set()
