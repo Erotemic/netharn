@@ -781,11 +781,11 @@ if __name__ == '__main__':
             --init=pretrained \
             --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
 
-        python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue-alt2 \
+        python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue-alt3 \
             --xpu=0 \
             --arch=efficientnet-b0 --optim=sgd \
             --schedule=Exponential-g0.98-s1 \
-            --batch_size=256 --lr=0.0005 --decay=5e-5 \
+            --batch_size=256 --lr=0.01 --decay=5e-5 \
             --init=pretrained \
             --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
 
