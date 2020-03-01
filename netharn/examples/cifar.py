@@ -362,13 +362,25 @@ def setup_harn():
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.Resize(config['input_dims']),
+        # transforms.RandomChoice([
+        #     transforms.ColorJitter(brightness=(0, .01), contrast=(0, .01),
+        #                            saturation=(0, .01), hue=(-0.01, 0.01),),
+        #     ub.identity,
+        # ]),
+        transforms.RandomGrayscale(p=0.1),
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465),
                              (0.2023, 0.1994, 0.2010), inplace=inplace),
-        transforms.RandomErasing(p=0.5,  # Cutout
-                                 scale=(0.5, 0.5),
-                                 ratio=(1.0, 1.0),
-                                 value='random', inplace=inplace),
+        transforms.RandomChoice([
+            transforms.RandomErasing(p=0.6,  # Cutout
+                                     scale=(0.1, 0.4),
+                                     ratio=(1.0, 1.0),
+                                     value='random', inplace=inplace),
+            transforms.RandomErasing(p=0.6,  # Cutout
+                                     scale=(0.1, 0.4),
+                                     ratio=(1.0, 1.0),
+                                     value=0, inplace=inplace),
+        ])
     ])
 
     transform_test = transforms.Compose([
@@ -720,20 +732,28 @@ def main():
     if ub.argflag('--lrtest'):
         """
         python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0 \
-                --nice=test_cifar9 --schedule=Exponential-g0.98 \
-                --lr=0.1 --init=cls --batch_size=512 --lrtest --show
+                --nice=test_cifar9 --optim=adamw --schedule=Exponential-g0.98 \
+                --lr=0.1 --init=kaiming_normal \
+                --batch_size=2048 --lrtest --show
 
-        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0 \
-                --nice=test_cifar9 --schedule=Exponential-g0.98 \
-                --lr=0.2746474114816056 \
-                --init=cls --batch_size=512
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b7 \
+                --nice=test_cifar9 --optim=adamw --schedule=Exponential-g0.98 \
+                --lr=0.1 --init=kaiming_normal \
+                --batch_size=256  --lrtest --show
+
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b7 \
+                --nice=test_cifar9 --optim=adamw --schedule=Exponential-g0.98 \
+                --lr=1e-2 --init=kaiming_normal \
+                --batch_size=128
         """
         # Undocumented hidden feature,
         # Perform an LR-test, then resetup the harness. Optionally draw the
         # results using matplotlib.
         from netharn.prefit.lr_tests import lr_range_test
 
-        result = lr_range_test(harn)
+        result = lr_range_test(
+            harn, init_value=1e-4, final_value=0.5, beta=0.3,
+            explode_factor=10, num_iters=200)
 
         if ub.argflag('--show'):
             import kwplot
