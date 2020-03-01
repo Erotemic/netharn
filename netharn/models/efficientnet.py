@@ -128,8 +128,8 @@ class MBConvBlock(layers.AnalyticModule):
         # initailized with gamma=0
         self._bn2 = nn.BatchNorm2d(num_features=final_oup, momentum=self._bn_mom, eps=self._bn_eps)
         self._bn2._residual_bn = True
-        noli = 'swish'
-        self._swish = layers.rectify_nonlinearity(noli, dim=2)
+        noli = global_params.noli
+        self._noli = layers.rectify_nonlinearity(noli, dim=2)
 
     def forward(self, inputs, drop_connect_rate=None):
         """
@@ -141,13 +141,13 @@ class MBConvBlock(layers.AnalyticModule):
         # Expansion and Depthwise Convolution
         x = inputs
         if self._block_args.expand_ratio != 1:
-            x = self._swish(self._bn0(self._expand_conv(inputs)))
-        x = self._swish(self._bn1(self._depthwise_conv(x)))
+            x = self._noli(self._bn0(self._expand_conv(inputs)))
+        x = self._noli(self._bn1(self._depthwise_conv(x)))
 
         # Squeeze and Excitation
         if self.has_se:
             x_squeezed = F.adaptive_avg_pool2d(x, 1)
-            x_squeezed = self._se_expand(self._swish(self._se_reduce(x_squeezed)))
+            x_squeezed = self._se_expand(self._noli(self._se_reduce(x_squeezed)))
             x = torch.sigmoid(x_squeezed) * x
 
         x = self._bn2(self._project_conv(x))
@@ -278,8 +278,8 @@ class EfficientNet(layers.AnalyticModule):
         self._avg_pooling = nn.AdaptiveAvgPool2d(1)
         self._dropout = nn.Dropout(self._global_params.dropout_rate)
         self._fc = nn.Linear(out_channels, self._global_params.num_classes)
-        noli = 'swish'
-        self._swish = layers.rectify_nonlinearity(noli, dim=2)
+        noli = global_params.noli
+        self._noli = layers.rectify_nonlinearity(noli, dim=2)
 
     def round_filters(self, filters):
         """ Calculate and round number of filters based on depth multiplier. """
@@ -311,7 +311,7 @@ class EfficientNet(layers.AnalyticModule):
         """
         # Stem
         x = self._conv_stem(inputs)
-        x = self._swish(self._bn0(x))
+        x = self._noli(self._bn0(x))
 
         # Blocks
         for idx, block in enumerate(self._blocks):
@@ -321,7 +321,7 @@ class EfficientNet(layers.AnalyticModule):
             x = block(x, drop_connect_rate=drop_connect_rate)
 
         # Head
-        x = self._swish(self._bn1(self._conv_head(x)))
+        x = self._noli(self._bn1(self._conv_head(x)))
 
         return x
 
@@ -344,7 +344,7 @@ class EfficientNet(layers.AnalyticModule):
 
         x = inputs
         x = hidden['_conv_stem'] = _OutputFor(self._conv_stem)(x)
-        x = hidden['_swish1'] = _OutputFor(self._swish)(x)
+        x = hidden['_noli1'] = _OutputFor(self._noli)(x)
 
         for idx, block in enumerate(self._blocks):
             drop_connect_rate = self._global_params.drop_connect_rate
@@ -353,7 +353,7 @@ class EfficientNet(layers.AnalyticModule):
             x = hidden['block_{}'.format(idx)] = _OutputFor(block)(
                 x, drop_connect_rate=drop_connect_rate)
 
-        x = hidden['_swish2'] = _OutputFor(self._swish)(x)
+        x = hidden['_noli2'] = _OutputFor(self._noli)(x)
 
         # Pooling and final linear layer
         x = _OutputFor(self._avg_pooling)(x)
@@ -396,17 +396,21 @@ class EfficientNet(layers.AnalyticModule):
         return self
 
     @classmethod
-    def from_pretrained(EfficientNet, model_name, advprop=False, override_params=None, in_channels=3):
+    def from_pretrained(EfficientNet, model_name, advprop=False,
+                        override_params=None, in_channels=3):
         """
         Initialize the model from a pretrained state
 
         Example:
             >>> # xdoctest: +REQUIRES(--download)
             >>> # xdoctest: +REQUIRES(module:ndsampler)
-            >>> from netharn.models.efficentnet import *  # NOQA
+            >>> from netharn.models.efficientnet import *  # NOQA
             >>> model = EfficientNet.from_pretrained('efficientnet-b0')
             >>> inputs = torch.rand(1, 3, 224, 224)
             >>> outputs = model.forward(inputs)
+
+            >>> from netharn.models.efficientnet import *  # NOQA
+            >>> model = EfficientNet.from_pretrained('efficientnet-b0', override_params={'noli': 'mish'})
         """
         if override_params is None:
             override_params = {}
@@ -442,6 +446,13 @@ class Details(object):
         'efficientnet-b3': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b3-5fb5a3c3.pth',
         'efficientnet-b4': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b4-6ed6700e.pth',
         'efficientnet-b5': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b5-b6417697.pth',
+
+        # 'efficientnet-b1': 'https://www.dropbox.com/s/6745ear79b1ltkh/efficientnet-b1-ef6aa7.pth?dl=1',
+        # 'efficientnet-b2': 'https://www.dropbox.com/s/0dhtv1t5wkjg0iy/efficientnet-b2-7c98aa.pth?dl=1',
+        # 'efficientnet-b3': 'https://www.dropbox.com/s/5uqok5gd33fom5p/efficientnet-b3-bdc7f4.pth?dl=1',
+        # 'efficientnet-b4': 'https://www.dropbox.com/s/y2nqt750lixs8kc/efficientnet-b4-3e4967.pth?dl=1',
+        # 'efficientnet-b5': 'https://www.dropbox.com/s/qxonlu3q02v9i47/efficientnet-b5-4c7978.pth?dl=1',
+
         'efficientnet-b6': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b6-c76e70fd.pth',
         'efficientnet-b7': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b7-dcc49843.pth',
     }
@@ -588,7 +599,7 @@ class Details(object):
         'batch_norm_momentum', 'batch_norm_epsilon', 'dropout_rate',
         'num_classes', 'width_coefficient', 'depth_coefficient',
         'depth_divisor', 'min_depth', 'drop_connect_rate', 'image_size',
-        'classes'])
+        'classes', 'noli'])
 
     # Change namedtuple defaults
     GlobalParams.__new__.__defaults__ = (None,) * len(GlobalParams._fields)
@@ -626,6 +637,7 @@ class Details(object):
             min_depth=None,
             image_size=image_size,
             classes=None,
+            noli='swish'
         )
 
         return blocks_args, global_params

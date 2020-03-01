@@ -326,35 +326,12 @@ def setup_harn():
         python -m netharn.examples.cifar --xpu=0 --nice=densenet --arch=densenet121 --optim=sgd --schedule=step-150-250 --lr=0.1
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet_scratch --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.01 --init=noop --decay=1e-5
 
+        python -m netharn.examples.cifar --xpu=0 --nice=se_resnet18 --arch=se_resnet18 --optim=sgd --schedule=step-150-250 --lr=0.01 --init=noop --decay=1e-5
 
-        python -m netharn.examples.cifar --xpu=0 --nice=resnet50_batch128 --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1 --batch_size=128
 
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet_scratch-v4 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.01 --init=noop --decay=1e-5
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet_scratch-v5 --arch=efficientnet-b0 --optim=sgd --schedule=step-30-200 --lr=0.01 --init=noop --decay=1e-5
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet \
-            --arch=efficientnet-b0 --optim=rmsprop --lr=0.064 \
-            --batch_size=512 --max_epoch=120 --schedule=Exponential-g0.97-s2
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet-scratch3 \
-            --arch=efficientnet-b0 --optim=adamw --lr=0.016 --init=noop \
-            --batch_size=1024 --max_epoch=450 --schedule=Exponential-g0.96-s3 --decay=1e-5
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet-pretrained2 \
-            --arch=efficientnet-b0 --optim=adamw --lr=0.0064 --init=cls \
-            --batch_size=512 --max_epoch=350 --schedule=Exponential-g0.97-s2 --decay=0
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet-pretrained6 \
-            --arch=efficientnet-b0 --optim=sgd --lr=0.016 --init=cls \
-            --batch_size=1024 --max_epoch=350 --schedule=Exponential-g0.97-s3 --decay=1e-5
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet-pretrained7 \
-            --arch=efficientnet-b0 --optim=sgd --lr=0.016 --init=cls \
-            --batch_size=1024 --max_epoch=350 --schedule=Exponential-g0.97-s3 --decay=1e-5 --bstep=4
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet-pretrained7 \
-            --arch=efficientnet-b0 --optim=sgd --lr=0.016 --init=cls \
-            --batch_size=1024 --max_epoch=350 --schedule=step-30-100 --decay=1e-5 --bstep=4
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_scratch \
+            --arch=efficientnet-b7 --optim=adamw --schedule=step-150-250-350 \
+            --batch_size=512 --lr=0.01 --init=noop --decay=1e-5
     """
     import random
     import torchvision
@@ -546,6 +523,19 @@ def setup_harn():
             )
         )
 
+    if config['arch'].startswith('se_resnet18'):
+        from nethar.models import se_resnet
+        model = se_resnet.se_resnet18(
+            num_classes=len(classes),
+        )
+
+    if config['arch'].startswith('se_resnet50'):
+        from nethar.models import se_resnet
+        model = se_resnet.se_resnet50(
+            num_classes=len(classes),
+            pretrained=config['init'] == 'cls',
+        )
+
     if config['arch'].startswith('efficientnet'):
         # Directly create the model instance...
         # (as long as it has an `_initkw` attribute)
@@ -556,13 +546,14 @@ def setup_harn():
             model_ = efficientnet.EfficientNet.from_pretrained(
                 config['arch'], override_params={
                     'classes': classes,
-                }
-            )
+                    'noli': 'mish'
+                })
             print('pretrained cls init')
         else:
             model_ = efficientnet.EfficientNet.from_name(
                 config['arch'], override_params={
                     'classes': classes,
+                    'noli': 'mish'
                 }
             )
 
@@ -717,6 +708,7 @@ def setup_harn():
 
 
 def main():
+    # Run your code that sets up your custom FitHarn object.
     harn = setup_harn()
 
     # Initializing a FitHarn object can take a little time, but not too much.
@@ -724,6 +716,36 @@ def main():
     # initializer are created. This is also where we check if there is a
     # pre-existing checkpoint that we can restart from.
     harn.initialize()
+
+    if ub.argflag('--lrtest'):
+        """
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0 \
+                --nice=test_cifar9 --schedule=Exponential-g0.98 \
+                --lr=0.1 --init=cls --batch_size=512 --lrtest --show
+
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0 \
+                --nice=test_cifar9 --schedule=Exponential-g0.98 \
+                --lr=0.2746474114816056 \
+                --init=cls --batch_size=512
+        """
+        # Undocumented hidden feature,
+        # Perform an LR-test, then resetup the harness. Optionally draw the
+        # results using matplotlib.
+        from netharn.prefit.lr_tests import lr_range_test
+
+        result = lr_range_test(harn)
+
+        if ub.argflag('--show'):
+            import kwplot
+            plt = kwplot.autoplt()
+            result.draw()
+            plt.show()
+
+        # Recreate a new version of the harness with the recommended LR.
+        config = harn.script_config.asdict()
+        config['lr'] = (result.recommended_lr * 10)
+        harn = setup_harn(**config)
+        harn.initialize()
 
     # This starts the main loop which will run until the monitor's terminator
     # criterion is satisfied. If the initialize step loaded a checkpointed that
@@ -756,73 +778,6 @@ if __name__ == '__main__':
         python -m netharn.examples.cifar.py --xpu=0 --arch=densenet121
         # Train on two GPUs with a larger batch size
         python -m netharn.examples.cifar.py --arch=dpn92 --batch_size=256 --xpu=0,1
-
-
-        python -m netharn.examples.cifar --nice=efficientnet_wip-v1 \
-            --xpu=0 \
-            --arch=efficientnet-b0 --optim=adamw \
-            --schedule=onecycle250-p150 \
-            --init=cls \
-            --batch_size=2048 --lr=0.01 --decay=1e-4
-
-        python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue \
-            --xpu=0 \
-            --arch=efficientnet-b0 --optim=sgd \
-            --schedule=onecycle250-p20 \
-            --batch_size=128 --lr=0.001 --decay=1e-4 \
-            --init=pretrained \
-            --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
-
-        python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue-alt \
-            --xpu=0 \
-            --arch=efficientnet-b0 --optim=sgd \
-            --schedule=onecycle250-p20 \
-            --batch_size=128 --lr=0.001 --decay=1e-4 \
-            --init=pretrained \
-            --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
-
-        python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue-alt4 \
-            --xpu=0 \
-            --arch=efficientnet-b0 --optim=adamw \
-            --schedule=Exponential-g0.98-s1 \
-            --batch_size=64 --lr=0.00001 --decay=1e-4 \
-            --init=pretrained \
-            --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
-
-        python -m netharn.examples.cifar --nice=efficientnet_wip-v2 \
-            --xpu=0 \
-            --arch=efficientnet-b0 --optim=adamw \
-            --schedule=onecycle250-p15 \
-            --init=cls \
-            --batch_size=2048 --lr=0.01 --decay=1e-4
-
-        python -m netharn.examples.cifar --nice=efficientnet_wip-v2 \
-            --xpu=0 \
-            --arch=efficientnet-b0 --optim=adamw \
-            --schedule=onecycle250-p15 \
-            --init=cls \
-            --batch_size=2048 --lr=0.01 --decay=1e-4
-
-        python -m netharn.examples.cifar --nice=efficientnet_wip-v3 \
-            --xpu=0 \
-            --arch=efficientnet-b0 --optim=adamw \
-            --schedule=onecycle250-p10 \
-            --init=cls \
-            --batch_size=1024 --lr=0.01 --decay=1e-4
-
-        python -m netharn.examples.cifar --nice=efficientnet_wip-v4 \
-            --xpu=0 \
-            --arch=efficientnet-b0 --optim=adamw \
-            --schedule=onecycle250-p10 \
-            --init=cls \
-            --batch_size=1024 --lr=0.001 --decay=1e-4
-
-        python -m netharn.examples.cifar --nice=efficientnet_wip-v5 \
-            --xpu=0 \
-            --arch=efficientnet-b0 --optim=adamw \
-            --schedule=onecycle250-p10 \
-            --init=cls \
-            --batch_size=1024 --lr=0.02 --decay=1e-4
     """
     import seaborn
     seaborn.set()

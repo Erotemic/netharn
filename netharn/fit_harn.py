@@ -2315,19 +2315,21 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             starting from scratch or Pretrained if doing transfer learning)
 
         optimizer (torch.optim.optimizer.Optimizer) :
-            Optimization algorithm like SGD or ADAM. SeeAlso: `netharn.optimizers`
+            Optimization algorithm like SGD or ADAM. SeeAlso:
+                `netharn.optimizers`
 
         scheduler (torch.optim.lr_scheduler._LRScheduler) :
-            Learning rate scheduler. SeeAlso: `netharn.schedulers` for a schedulers
-            that are not currently implemented in torch. Note that the
-            newstyle-netharn schedulers can control momentum as well as lr.
+            Learning rate scheduler. SeeAlso: `netharn.schedulers` for a
+            schedulers that are not currently implemented in torch. Note that
+            the newstyle-netharn schedulers can control momentum as well as lr.
 
         criterion (torch.nn.modules.loss._Loss | None) :
             Objective function / loss criterion. SeeAlso: `netharn.criterions`.
             This is not strictly necessary if the loss is defined inline.
 
         monitor (netharn.Monitor) :
-            monitors performance of the validation set. SeeAlso `netharn.monitor`.
+            monitors performance of the validation set. SeeAlso
+            `netharn.monitor`.
 
 
     Note:
@@ -2430,7 +2432,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
         # be manually or hueristically constructed.
 
         harn.preferences = {
-            'keyboard_debug': False,
+            'keyboard_debug': True,
 
             'snapshot_after_error': True,  # Try to checkpoint before crashing
 

@@ -7,7 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## Version 0.5.5
 
 ### Added
-* timeout to FitHarn.preferences
+* Timeout to FitHarn.preferences
+
+### Changed
+* Removed explicit support for Python 2.7
+* Reverted default of `keyboard_debug` to True.
+
 
 ## Version 0.5.4 - Released 2020-02-19 
 

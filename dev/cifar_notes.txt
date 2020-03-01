@@ -1,0 +1,196 @@
+
+
+
+
+https://arxiv.org/pdf/1905.11946.pdf#page=10&zoom=100,0,0 
+
+We train our EfficientNet models on ImageNet using similar settings as (Tan et al., 2019): RMSProp optimizer with decay 0.9 and momentum 0.9; batch norm momentum 0.99; weight decay 1e-5; initial learning rate 0.256 that decays by 0.97 every 2.4 epochs. We also use swish activation (Ramachandran et al., 2018; Elfwing et al., 2018), fixed AutoAugment policy (Cubuk et al., 2019), and stochastic depth (Huang et al., 2016) with survival probability 0.8. As commonly known that bigger models need more regularization, we linearly increase dropout (Srivastava et al., 2014) ratio from 0.2 for EfficientNet-B0 to 0.5 for EfficientNet-B7.
+
+
+Hello Jon,
+
+Thanks for the interest. I mostly use the same settings (e.g., optimizer, weight decay, batch size) as ImageNet, except changing the learning rate to be 1/4 of the original ImageNet learning rate. One thing to notice is that I scale up all images to be the same as ImageNet size (i.e., 224 for B0). 
+
+Best,
+Mingxing
+
+
+
+-----
+
+Cubuk et al., 2019
+https://arxiv.org/pdf/1805.09501.pdf
+
+The baseline pre-processing follows the convention for
+state-of-the-art CIFAR-10 models: standardizing the data,
+using horizontal flips with 50% probability, zero-padding
+and random crops, and finally Cutout with 16x16 pixels [17, 65, 48, 72].
+
+
+Operation 1 Operation 2
+Sub-policy 0 (Invert,0.1,7) (Contrast,0.2,6)
+Sub-policy 1 (Rotate,0.7,2) (TranslateX,0.3,9)
+Sub-policy 2 (Sharpness,0.8,1) (Sharpness,0.9,3)
+Sub-policy 3 (ShearY,0.5,8) (TranslateY,0.7,9)
+Sub-policy 4 (AutoContrast,0.5,8) (Equalize,0.9,2)
+Sub-policy 5 (ShearY,0.2,7) (Posterize,0.3,7)
+Sub-policy 6 (Color,0.4,3) (Brightness,0.6,7)
+Sub-policy 7 (Sharpness,0.3,9) (Brightness,0.7,9)
+Sub-policy 8 (Equalize,0.6,5) (Equalize,0.5,1)
+Sub-policy 9 (Contrast,0.6,7) (Sharpness,0.6,5)
+Sub-policy 10 (Color,0.7,7) (TranslateX,0.5,8)
+Sub-policy 11 (Equalize,0.3,7) (AutoContrast,0.4,8)
+Sub-policy 12 (TranslateY,0.4,3) (Sharpness,0.2,6)
+Sub-policy 13 (Brightness,0.9,6) (Color,0.2,8)
+Sub-policy 14 (Solarize,0.5,2) (Invert,0.0,3)
+Sub-policy 15 (Equalize,0.2,0) (AutoContrast,0.6,0)
+Sub-policy 16 (Equalize,0.2,8) (Equalize,0.6,4)
+Sub-policy 17 (Color,0.9,9) (Equalize,0.6,6)
+Sub-policy 18 (AutoContrast,0.8,4) (Solarize,0.2,8)
+Sub-policy 19 (Brightness,0.1,3) (Color,0.7,0)
+Sub-policy 20 (Solarize,0.4,5) (AutoContrast,0.9,3)
+Sub-policy 21 (TranslateY,0.9,9) (TranslateY,0.7,9)
+Sub-policy 22 (AutoContrast,0.9,2) (Solarize,0.8,3)
+Sub-policy 23 (Equalize,0.8,8) (Invert,0.1,3)
+Sub-policy 24 (TranslateY,0.7,9) (AutoContrast,0.9,1)
+Table 7. AutoAugment policy found on reduced CIFAR-10.
+
+
+On CIFAR-10, AutoAugment picks mostly color-based
+transformations. For example, the most commonly picked
+transformations on CIFAR-10 are Equalize, AutoContrast,
+Color, and Brightness (refer to Table 1 in the Appendix for
+their descriptions). Geometric transformations like ShearX
+and ShearY are rarely found in good policies. Furthermore,
+the transformation Invert is almost never applied in a successful policy. 
+
+-----
+Tan et al., 2019
+
+
+https://arxiv.org/pdf/1807.11626.pdf
+
+For full ImageNet training, we use RMSProp optimizer
+with decay 0.9 and momentum 0.9. Batch norm is added
+after every convolution layer with momentum 0.99, and
+weight decay is 1e-5. Dropout rate 0.2 is applied to the last
+layer. Following [7], learning rate is increased from 0 to
+0.256 in the first 5 epochs, and then decayed by 0.97 every
+2.4 epochs. We use batch size 4K and Inception preprocessing with image size 224×224. For COCO training, we plug
+our learned model into SSD detector [22] and use the same
+settings as [29], including input size 320 × 320.
+
+
+
+
+
+python -m netharn.examples.cifar --nice=efficientnet_wip-v1 \
+    --xpu=0 \
+    --arch=efficientnet-b0 --optim=adamw \
+    --schedule=onecycle250-p150 \
+    --init=cls \
+    --batch_size=2048 --lr=0.01 --decay=1e-4
+
+python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue \
+    --xpu=0 \
+    --arch=efficientnet-b0 --optim=sgd \
+    --schedule=onecycle250-p20 \
+    --batch_size=128 --lr=0.001 --decay=1e-4 \
+    --init=pretrained \
+    --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
+
+python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue-alt \
+    --xpu=0 \
+    --arch=efficientnet-b0 --optim=sgd \
+    --schedule=onecycle250-p20 \
+    --batch_size=128 --lr=0.001 --decay=1e-4 \
+    --init=pretrained \
+    --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
+
+python -m netharn.examples.cifar --nice=efficientnet_wip-v1-continue-alt4 \
+    --xpu=0 \
+    --arch=efficientnet-b0 --optim=adamw \
+    --schedule=Exponential-g0.98-s1 \
+    --batch_size=64 --lr=0.00001 --decay=1e-4 \
+    --init=pretrained \
+    --pretrained=/home/joncrall/work/cifar/fit/nice/efficientnet_wip-v1/torch_snapshots/_epoch_00000020.pt
+
+python -m netharn.examples.cifar --nice=efficientnet_wip-v2 \
+    --xpu=0 \
+    --arch=efficientnet-b0 --optim=adamw \
+    --schedule=onecycle250-p15 \
+    --init=cls \
+    --batch_size=2048 --lr=0.01 --decay=1e-4
+
+python -m netharn.examples.cifar --nice=efficientnet_wip-v2 \
+    --xpu=0 \
+    --arch=efficientnet-b0 --optim=adamw \
+    --schedule=onecycle250-p15 \
+    --init=cls \
+    --batch_size=2048 --lr=0.01 --decay=1e-4
+
+python -m netharn.examples.cifar --nice=efficientnet_wip-v3 \
+    --xpu=0 \
+    --arch=efficientnet-b0 --optim=adamw \
+    --schedule=onecycle250-p10 \
+    --init=cls \
+    --batch_size=512 --lr=0.01 --decay=1e-4
+
+python -m netharn.examples.cifar --nice=efficientnet_wip-v4 \
+    --xpu=0 \
+    --arch=efficientnet-b0 --optim=adamw \
+    --schedule=onecycle250-p10 \
+    --init=cls \
+    --batch_size=1024 --lr=0.001 --decay=1e-4
+
+python -m netharn.examples.cifar --nice=efficientnet_wip-v5 \
+    --xpu=0 \
+    --arch=efficientnet-b0 --optim=adamw \
+    --schedule=onecycle100-p10 \
+    --init=cls \
+    --batch_size=1024 --lr=0.02 --decay=1e-4
+
+python -m netharn.examples.cifar --nice=efficientnet_wip-v6 \
+    --xpu=0 \
+    --arch=efficientnet-b0 --optim=adamw \
+    --schedule=onecycle350-p5 \
+    --init=cls \
+    --batch_size=2048 --lr=0.003 --decay=5e-5
+
+python -m netharn.examples.cifar --nice=efficientnet_wip-v8 \
+    --xpu=0 \
+    --arch=efficientnet-b3 --optim=adamw \
+    --schedule=onecycle350-p5 \
+    --init=noop \
+    --batch_size=128 --lr=0.001 --decay=1e-4
+
+
+
+        python -m netharn.examples.cifar --xpu=0 --nice=resnet50_batch128 --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1 --batch_size=128
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet_scratch-v4 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.01 --init=noop --decay=1e-5
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet_scratch-v5 --arch=efficientnet-b0 --optim=sgd --schedule=step-30-200 --lr=0.01 --init=noop --decay=1e-5
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet \
+            --arch=efficientnet-b0 --optim=rmsprop --lr=0.064 \
+            --batch_size=512 --max_epoch=120 --schedule=Exponential-g0.97-s2
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet-scratch3 \
+            --arch=efficientnet-b0 --optim=adamw --lr=0.016 --init=noop \
+            --batch_size=1024 --max_epoch=450 --schedule=Exponential-g0.96-s3 --decay=1e-5
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet-pretrained2 \
+            --arch=efficientnet-b0 --optim=adamw --lr=0.0064 --init=cls \
+            --batch_size=512 --max_epoch=350 --schedule=Exponential-g0.97-s2 --decay=0
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet-pretrained6 \
+            --arch=efficientnet-b0 --optim=sgd --lr=0.016 --init=cls \
+            --batch_size=1024 --max_epoch=350 --schedule=Exponential-g0.97-s3 --decay=1e-5
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet-pretrained7 \
+            --arch=efficientnet-b0 --optim=sgd --lr=0.016 --init=cls \
+            --batch_size=1024 --max_epoch=350 --schedule=Exponential-g0.97-s3 --decay=1e-5 --bstep=4
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet-pretrained7 \
+            --arch=efficientnet-b0 --optim=sgd --lr=0.016 --init=cls \
+            --batch_size=1024 --max_epoch=350 --schedule=step-30-100 --decay=1e-5 --bstep=4

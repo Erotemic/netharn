@@ -327,7 +327,7 @@ def main():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python examples/mnist.py
+        python -m netharn.examples.mnist
 
         tensorboard --logdir ~/data/work/mnist/fit/nice
     """
