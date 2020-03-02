@@ -1,2 +1,2 @@
 # TODO: new api
-from netharn.analytic_for import *
+from netharn.analytic.analytic_for import *

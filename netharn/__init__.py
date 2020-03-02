@@ -30,9 +30,9 @@ from netharn.device import (XPU,)
 from netharn.fit_harn import (FitHarn,)
 from netharn.hyperparams import (HyperParams,)
 from netharn.monitor import (Monitor,)
-from netharn.output_shape_for import (OutputShapeFor, OutputShape,
+from netharn.analytic.output_shape_for import (OutputShapeFor, OutputShape,
                                       HiddenShapes)
-from netharn.receptive_field_for import (ReceptiveFieldFor, ReceptiveField,
+from netharn.analytic.receptive_field_for import (ReceptiveFieldFor, ReceptiveField,
                                          HiddenFields)
 
 __extra_all__ = [

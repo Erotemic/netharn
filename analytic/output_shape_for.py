@@ -1,2 +1,2 @@
 # TODO: new api
-from netharn.output_shape_for import *
+from netharn.analytic.output_shape_for import *

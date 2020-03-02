@@ -13,6 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 * Removed explicit support for Python 2.7
 * Reverted default of `keyboard_debug` to True.
+* Moved `analytic_for`, `output_shape_for`, and `receptive_field` for to the netharn.analytic subpackage. Original names are still available, but deprecated and will be removed in a future version. 
 
 
 ## Version 0.5.4 - Released 2020-02-19 

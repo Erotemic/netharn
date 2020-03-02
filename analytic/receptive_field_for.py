@@ -1,2 +1,2 @@
 # TODO: new api
-from netharn.receptive_field_for import *
+from netharn.analytic.receptive_field_for import *

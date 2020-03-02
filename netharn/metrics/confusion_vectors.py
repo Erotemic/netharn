@@ -649,6 +649,7 @@ class BinaryConfusionVectors(ub.NiceRepr):
             prec = [np.nan]
             rec = [np.nan]
             fps = [np.nan]
+            fns = [np.nan]
             tps = [np.nan]
             thresholds = [np.nan]
 
