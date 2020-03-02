@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 * Timeout to FitHarn.preferences
+* Basic gradient logging
 
 ### Changed
 * Removed explicit support for Python 2.7

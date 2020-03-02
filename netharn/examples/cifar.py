@@ -328,6 +328,8 @@ def setup_harn():
 
         python -m netharn.examples.cifar --xpu=0 --nice=se_resnet18 --arch=se_resnet18 --optim=sgd --schedule=step-150-250 --lr=0.01 --init=noop --decay=1e-5
 
+        python -m netharn.examples.cifar --xpu=0 --nice=resnet50_newaug_b128 --batch_size=128 --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal
+
 
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_scratch \
             --arch=efficientnet-b7 --optim=adamw --schedule=step-150-250-350 \
@@ -743,8 +745,8 @@ def main():
 
         python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b7 \
                 --nice=test_cifar9 --optim=adamw --schedule=Exponential-g0.98 \
-                --lr=1e-2 --init=kaiming_normal \
-                --batch_size=128
+                --lr=4e-2 --init=kaiming_normal \
+                --batch_size=256
         """
         # Undocumented hidden feature,
         # Perform an LR-test, then resetup the harness. Optionally draw the

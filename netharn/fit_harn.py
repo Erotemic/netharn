@@ -1870,7 +1870,7 @@ class CoreMixin(object):
                 loss information added in this function.
         """
         loss_value = float(loss.data.cpu().item())
-        loss_value = harn._check_loss(loss_value)
+        harn._check_loss(loss_value)
 
         metrics_dict = ub.odict()
         metrics_dict['loss'] = loss_value
@@ -1930,7 +1930,6 @@ class ChecksMixin(object):
             if loss_value > harn.preferences['large_loss']:
                 # if the loss is getting large, check if the weights are ok
                 harn._check_divergence()
-        return loss_value
 
     @profiler.profile
     def _check_divergence(harn):
@@ -1963,6 +1962,20 @@ class ChecksMixin(object):
             harn.error('NON-FINITE WEIGHTS: {}'.format(ub.repr2(bad_layers, nl=1)))
             raise TrainingDiverged(
                 'NON-FINITE WEIGHTS weights.sum() = {!r}'.format(weight_sum))
+
+    def _check_layer_rotation(harn):
+        """
+        References:
+            "Layer rotation: a surprisingly powerful indicator of generalization in deep networks?" -
+            https://arxiv.org/pdf/1806.01603.pdf
+
+        TODO:
+            - [ ] Requires storing network initialization state in memory.
+            - [ ] Per layer rotation - cosine distance
+            - [ ] Technique to combine into single number? Average? Rotation of flattened network?
+        """
+
+        pass
 
 
 @register_mixin
@@ -2143,17 +2156,37 @@ class CoreCallbacks(object):
         bstep = harn.dynamics['batch_step']
         if (bx + 1) % bstep == 0:
 
+            tag = harn.current_tag
+            iter_idx = harn.iter_index
+
             if harn.dynamics['grad_norm_max']:
                 total_norm = torch.nn.utils.clip_grad_norm_(
                     harn.model.parameters(),
                     max_norm=harn.dynamics['grad_norm_max'],
                     norm_type=harn.dynamics['grad_norm_type'],
                 )
+                if harn.preferences['log_gradients']:
+                    harn.log_value(tag + ' iter clipped total norm', total_norm, iter_idx)
+
                 if total_norm > harn.dynamics['grad_norm_max'] * 100:
                     harn.warn('grad norm is too high: '
                               'total_norm = {!r}'.format(total_norm))
-            # if False:
-            #     harn._check_gradients(batch, loss)
+            elif harn.preferences['log_gradients']:
+                total_norm = torch.nn.utils.clip_grad_norm_(
+                    harn.model.parameters(),
+                    max_norm=float('inf'),
+                    norm_type=harn.dynamics['grad_norm_type'],
+                )
+                harn.log_value(tag + ' iter total norm', total_norm, iter_idx)
+
+            if harn.preferences['log_gradients']:
+                all_grads = harn._check_gradients()
+
+                if True:
+                    layer_mag = {k: v.norm().data.cpu().numpy().tolist() for k, v in all_grads.items()}
+                    mag_arr = np.array(list(layer_mag.values()))
+                    harn.log_histogram(tag + ' iter layer norm', mag_arr, iter_idx)
+
             # harn.debug("STEP")
             harn.optimizer.step()
             harn.optimizer.zero_grad()
@@ -2443,6 +2476,8 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             # If your loss criterion returns a dictionary of parts, ignore any
             # infinite values before summing the total loss.
             'ignore_inf_loss_parts': False,
+
+            'log_gradients': True,  # compute and log stats about gradients
 
             'use_tensorboard': True,
 
