@@ -314,11 +314,16 @@ def setup_harn():
     running kuangliu's code, and the final column is using my own training
     harness (handles logging and whatnot) called netharn.
 
-           arch |  kuangliu  | rerun-kuangliu  |  netharn |
-    -------------------------------------------------------
-    ResNet50    |    93.62%  |         95.370% |  95.72%  |
-    DenseNet121 |    95.04%  |         95.420% |  94.47%  |
-    DPN92       |    95.16%  |         95.410% |  94.92%  |
+           arch        |  kuangliu  | rerun-kuangliu |  netharn |  train rate | num params
+    ---------------------------------------------------------------------------------------
+    ResNet50           |    93.62%  |        95.370% |  95.72%  |             |
+    DenseNet121        |    95.04%  |        95.420% |  94.47%  |             |
+    DPN92              |    95.16%  |        95.410% |  94.92%  |             |
+    ResNet50_newaug*   |        --  |             -- |  96.13%  |   498.90 Hz | 23,520,842
+    EfficientNet-7*    |        --  |             -- |      --  |   214.18 Hz | 63,812,570
+    EfficientNet-3*    |        --  |             -- |      --  |   568.30 Hz | 10,711,602
+    EfficientNet-0*    |        --  |             -- |      --  |   964.21 Hz |  4,020,358
+
 
     CommandLine:
         python -m netharn.examples.cifar --xpu=0 --nice=resnet50_baseline --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1
@@ -330,9 +335,13 @@ def setup_harn():
 
         python -m netharn.examples.cifar --xpu=0 --nice=resnet50_newaug_b128 --batch_size=128 --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal
 
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_newaug_b128 --batch_size=128 --arch=efficientnet-b7 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet3_newaug_b128 --batch_size=128 --arch=efficientnet-b3 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal; python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal
+
 
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_scratch \
-            --arch=efficientnet-b7 --optim=adamw --schedule=step-150-250-350 \
+            --arch=efficientnet-b7 --optim=sgd --schedule=step-150-250-350 \
             --batch_size=512 --lr=0.01 --init=noop --decay=1e-5
     """
     import random
