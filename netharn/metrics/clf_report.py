@@ -377,6 +377,15 @@ def ovr_classification_report(mc_y_true, mc_probs, target_names=None,
         1 0.5846 0.6014 0.0000 0.0000 0.2195        5  0.2778
         2 0.8000 0.8693 0.2623 0.2652 0.1602        5  0.2778
 
+    Ignore:
+        >>> y_true = [1, 1, 1]
+        >>> y_probs = np.random.rand(len(y_true), 3)
+        >>> target_names = None
+        >>> sample_weight = None
+        >>> verbose = True
+        >>> report = ovr_classification_report(y_true, y_probs)
+        >>> print(report['ovr'])
+
     """
     import pandas as pd
     import sklearn.metrics
@@ -415,8 +424,11 @@ def ovr_classification_report(mc_y_true, mc_probs, target_names=None,
             true_probs = (bin_probs * bin_truth).sum(axis=1)
 
             if 'auc' in metrics:
-                k_metrics['auc'] = sklearn.metrics.roc_auc_score(
-                    bin_truth, bin_probs, sample_weight=sample_weight)
+                try:
+                    k_metrics['auc'] = sklearn.metrics.roc_auc_score(
+                        bin_truth, bin_probs, sample_weight=sample_weight)
+                except ValueError:
+                    k_metrics['auc'] = np.nan
 
             if 'ap' in metrics:
                 k_metrics['ap'] = sklearn.metrics.average_precision_score(
