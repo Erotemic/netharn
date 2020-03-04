@@ -2166,18 +2166,20 @@ class CoreCallbacks(object):
                     norm_type=harn.dynamics['grad_norm_type'],
                 )
                 if harn.preferences['log_gradients']:
-                    harn.log_value(tag + ' iter clipped total norm', total_norm, iter_idx)
+                    if harn.check_interval('log_iter_' + tag, iter_idx, first=True):
+                        harn.log_value(tag + ' iter clipped total norm', total_norm, iter_idx)
 
                 if total_norm > harn.dynamics['grad_norm_max'] * 100:
                     harn.warn('grad norm is too high: '
                               'total_norm = {!r}'.format(total_norm))
             elif harn.preferences['log_gradients']:
-                total_norm = torch.nn.utils.clip_grad_norm_(
-                    harn.model.parameters(),
-                    max_norm=float('inf'),
-                    norm_type=harn.dynamics['grad_norm_type'],
-                )
-                harn.log_value(tag + ' iter total norm', total_norm, iter_idx)
+                if harn.check_interval('log_iter_' + tag, iter_idx, first=True):
+                    total_norm = torch.nn.utils.clip_grad_norm_(
+                        harn.model.parameters(),
+                        max_norm=float('inf'),
+                        norm_type=harn.dynamics['grad_norm_type'],
+                    )
+                    harn.log_value(tag + ' iter total norm', total_norm, iter_idx)
 
             if harn.preferences['log_gradients']:
                 all_grads = harn._check_gradients()
