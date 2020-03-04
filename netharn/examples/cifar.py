@@ -351,16 +351,18 @@ def setup_harn():
 
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
 
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128_sz224 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple --input_dims=224,224
 
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_yogi \
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_yogi_b1024 \
                 --batch_size=1028 --arch=efficientnet-b0 --optim=Yogi \
                 --schedule=step-60-120-160-250-350-f5 --decay=5e-4 --lr=0.01549 \
                 --init=kaiming_normal --augment=simple --grad_norm_max=35 \
                 --warmup_iters=100
 
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet1_newaug_diffgrad \
-                --batch_size=1028 --arch=efficientnet-b0 --optim=DiffGrad \
-                --schedule=step-60-120-160-250-350-f5 --decay=5e-4 --lr=0.01549 \
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet1_newaug_diffgrad_b1024 \
+                --batch_size=1028 --arch=efficientnet-b1 --optim=DiffGrad \
+                --schedule=step-60-120-160-250-350-f5 --decay=5e-4 --lr=0.01 \
                 --init=kaiming_normal --augment=simple --grad_norm_max=35 \
                 --warmup_iters=100
 
@@ -370,6 +372,14 @@ def setup_harn():
                 --batch_size=128 \
                 --arch=efficientnet-b0 \
                 --optim=sgd --lr=0.01 --decay=5e-4 \
+                --schedule=step-60-120-160-f5 --max_epoch=200 \
+                --init=kaiming_normal --augment=simple \
+                --grad_norm_max=35 --warmup_iters=100
+
+        python -m netharn.examples.cifar --xpu=0 --nice=repro_cutoutDiffGrad \
+                --batch_size=128 \
+                --arch=efficientnet-b1 \
+                --optim=DiffGrad --lr=0.01 --decay=5e-4 \
                 --schedule=step-60-120-160-f5 --max_epoch=200 \
                 --init=kaiming_normal --augment=simple \
                 --grad_norm_max=35 --warmup_iters=100
