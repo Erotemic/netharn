@@ -179,8 +179,26 @@ class Optimizer(object):
             momentum:
                 a float, only used if the optimizer accepts it
 
+        Notes:
+            pip install torch-optimizer
+
         References:
             https://datascience.stackexchange.com/questions/26792/difference-between-rmsprop-with-momentum-and-adam-optimizers
+            https://github.com/jettify/pytorch-optimizer
+
+        Example:
+            >>> config = {'optimizer': 'sgd'}
+            >>> optim_ = Optimizer.coerce(config)
+
+            >>> # xdoctest: +REQUIRES(module:torch_optimizer)
+            >>> from netharn.api import *  # NOQA
+            >>> config = {'optimizer': 'DiffGrad'}
+            >>> optim_ = Optimizer.coerce(config)
+            >>> print('optim_ = {!r}'.format(optim_))
+
+            >>> config = {'optimizer': 'Yogi'}
+            >>> optim_ = Optimizer.coerce(config)
+            >>> print('optim_ = {!r}'.format(optim_))
         """
         import netharn as nh
         _update_defaults(config, kw)
@@ -225,7 +243,36 @@ class Optimizer(object):
                 'alpha': 0.9,
             })
         else:
-            raise KeyError(key)
+            try:
+                import torch_optimizer
+            except Exception:
+                torch_optimizer = None
+                raise KeyError(key)
+            else:
+
+                known = ['AccSGD', 'AdaBound', 'AdaMod', 'DiffGrad', 'Lamb',
+                         'Lookahead', 'NovoGrad', 'RAdam', 'SGDW', 'Yogi']
+
+                from netharn.util import util_inspect
+                if 0:
+                    for key in known:
+                        cls = getattr(torch_optimizer, key, None)
+                        print('cls = {!r}'.format(cls))
+                        defaultkw = util_inspect.default_kwargs(cls)
+                        print('defaultkw = {!r}'.format(defaultkw))
+
+                _lut = {k.lower(): k for k in known}
+                key = _lut[key]
+
+                cls = getattr(torch_optimizer, key, None)
+                if cls is not None:
+                    defaultkw = util_inspect.default_kwargs(cls)
+                    kw = defaultkw.copy()
+                    kw.update()
+                    optim_ = (cls, kw)
+                else:
+                    raise KeyError(key)
+
         return optim_
 
 

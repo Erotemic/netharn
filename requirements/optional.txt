@@ -20,3 +20,5 @@ ndsampler >= 0.5.0
 # pyqt5>= 5.11.2;python_version>'2.7'  # 
 
 colormath
+
+pytorch-optimizer

@@ -73,6 +73,7 @@ class CIFARConfig(scfg.Config):
         'dataset': scfg.Value('cifar10', choices=['cifar10', 'cifar100'],
                               help='which cifar network to use'),
         'num_vali': scfg.Value(0, help='number of validation examples'),
+        'augment': scfg.Value('baseline', help='an augmentation comma separated list or a code'),
 
         'arch': scfg.Value('resnet50', help='Network architecture code'),
         'optim': scfg.Value('sgd', help='Weight optimizer. Can be SGD, ADAM, ADAMW, etc..'),
@@ -88,6 +89,9 @@ class CIFARConfig(scfg.Config):
         'decay':  scfg.Value(5e-4, help='Base weight decay'),
 
         'schedule': scfg.Value('step-150-250', help=('Special coercable netharn code. Eg: onecycle50, step50, gamma')),
+
+        'grad_norm_max': scfg.Value(None, help='clip gradients exceeding this value'),
+        'warmup_iters': scfg.Value(0, help='number of iterations to warmup learning rate'),
 
         'init': scfg.Value('noop', help='How to initialized weights. (can be a path to a pretrained model)'),
         'pretrained': scfg.Path(help=('alternative way to specify a path to a pretrained model')),
@@ -314,30 +318,41 @@ def setup_harn():
     running kuangliu's code, and the final column is using my own training
     harness (handles logging and whatnot) called netharn.
 
+    The first three experiments are with simple augmentation. The rest have
+    more complex augmentation.
+
            arch        |  kuangliu  | rerun-kuangliu |  netharn |  train rate | num params
     ---------------------------------------------------------------------------------------
     ResNet50           |    93.62%  |        95.370% |  95.72%  |             |
     DenseNet121        |    95.04%  |        95.420% |  94.47%  |             |
     DPN92              |    95.16%  |        95.410% |  94.92%  |             |
+    --------------------
     ResNet50_newaug*   |        --  |             -- |  96.13%  |   498.90 Hz | 23,520,842
-    EfficientNet-7*    |        --  |             -- |      --  |   214.18 Hz | 63,812,570
-    EfficientNet-3*    |        --  |             -- |      --  |   568.30 Hz | 10,711,602
-    EfficientNet-0*    |        --  |             -- |      --  |   964.21 Hz |  4,020,358
+    EfficientNet-7*    |        --  |             -- |  85.36%  |   214.18 Hz | 63,812,570
+    EfficientNet-3*    |        --  |             -- |  86.87%  |   568.30 Hz | 10,711,602
+    EfficientNet-0*    |        --  |             -- |  87.13%  |   964.21 Hz |  4,020,358
+
+
+   600025177002,
 
 
     CommandLine:
         python -m netharn.examples.cifar --xpu=0 --nice=resnet50_baseline --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1
         python -m netharn.examples.cifar --xpu=0 --nice=wrn --arch=wrn_22 --optim=sgd --schedule=step-150-250 --lr=0.1
         python -m netharn.examples.cifar --xpu=0 --nice=densenet --arch=densenet121 --optim=sgd --schedule=step-150-250 --lr=0.1
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet_scratch --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.01 --init=noop --decay=1e-5
 
-        python -m netharn.examples.cifar --xpu=0 --nice=se_resnet18 --arch=se_resnet18 --optim=sgd --schedule=step-150-250 --lr=0.01 --init=noop --decay=1e-5
+        python -m netharn.examples.cifar --xpu=0 --nice=se_resnet18 --arch=se_resnet18 --optim=sgd --schedule=step-150-250 --lr=0.01 --init=noop --decay=1e-5 --augment=simple
 
-        python -m netharn.examples.cifar --xpu=0 --nice=resnet50_newaug_b128 --batch_size=128 --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal
+        python -m netharn.examples.cifar --xpu=0 --nice=resnet50_newaug_b128 --batch_size=128 --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
 
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_newaug_b128 --batch_size=128 --arch=efficientnet-b7 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_newaug_b128 --batch_size=128 --arch=efficientnet-b7 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
 
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet3_newaug_b128 --batch_size=128 --arch=efficientnet-b3 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal; python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet3_newaug_b128 --batch_size=128 --arch=efficientnet-b3 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
+
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_yogi_b128 --batch_size=128 --arch=efficientnet-b0 --optim=Yogi --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple --grad_norm_max=35 --warmup_iters=0 --lrtest --show
 
 
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_scratch \
@@ -369,30 +384,56 @@ def setup_harn():
     inplace = True
 
     # Define preprocessing + augmentation strategy
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.Resize(config['input_dims']),
+    augment = config['augment']
+    if ',' in augment:
+        augmentors = augment.split(',')
+    elif augment == 'baseline':
+        augmentors = ['crop', 'flip']
+    elif augment == 'simple':
+        augmentors = ['crop', 'flip', 'gray', 'cutout']
+    else:
+        raise KeyError(augment)
+
+    train_augmentors = []
+
+    if 'crop' in augmentors:
+        train_augmentors += [
+            transforms.RandomCrop(32, padding=4),
+        ]
+    if 'flip' in augmentors:
+        train_augmentors += [
+            transforms.RandomHorizontalFlip(),
+        ]
+    if 'gray' in augmentors:
+        train_augmentors += [
+            transforms.RandomGrayscale(p=0.1),
+        ]
+    if 'jitter' in augmentors:
+        raise NotImplementedError
         # transforms.RandomChoice([
         #     transforms.ColorJitter(brightness=(0, .01), contrast=(0, .01),
         #                            saturation=(0, .01), hue=(-0.01, 0.01),),
         #     ub.identity,
         # ]),
-        transforms.RandomGrayscale(p=0.1),
+    train_augmentors += [
+        transforms.Resize(config['input_dims']),
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465),
                              (0.2023, 0.1994, 0.2010), inplace=inplace),
-        transforms.RandomChoice([
-            transforms.RandomErasing(p=0.6,  # Cutout
+    ]
+    if 'cutout' in augmentors:
+        transforms.RandomChoice([  # Cutout
+            transforms.RandomErasing(p=0.6,
                                      scale=(0.1, 0.4),
                                      ratio=(1.0, 1.0),
                                      value='random', inplace=inplace),
-            transforms.RandomErasing(p=0.6,  # Cutout
+            transforms.RandomErasing(p=0.6,
                                      scale=(0.1, 0.4),
                                      ratio=(1.0, 1.0),
                                      value=0, inplace=inplace),
         ])
-    ])
+
+    transform_train = transforms.Compose(train_augmentors)
 
     transform_test = transforms.Compose([
         transforms.Resize(config['input_dims']),
@@ -704,6 +745,7 @@ def setup_harn():
         other={
             # Specify anything else that is special about your hyperparams here
             # Especially if you make a custom_batch_runner
+            'augment': config['augment'],
         },
         # These extra arguments are recorded in the train_info.json but do
         # not contribute to the hyperparameter hash.
