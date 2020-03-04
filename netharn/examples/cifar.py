@@ -352,7 +352,23 @@ def setup_harn():
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
 
 
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_yogi_b128 --batch_size=128 --arch=efficientnet-b0 --optim=Yogi --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple --grad_norm_max=35 --warmup_iters=0 --lrtest --show
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_yogi \
+                --batch_size=1028 --arch=efficientnet-b0 --optim=Yogi \
+                --schedule=step-60-120-160-250-350-f5 --decay=5e-4 --lr=0.01549 \
+                --init=kaiming_normal --augment=simple --grad_norm_max=35 \
+                --warmup_iters=100
+
+
+        # Params from Cutout paper: https://arxiv.org/pdf/1708.04552.pdf
+        python -m netharn.examples.cifar --xpu=0 --nice=repro_cutout \
+                --batch_size=128 \
+                --arch=efficientnet-b0 \
+                --optim=sgd --lr=0.01 --decay=5e-4 \
+                --schedule=step-60-120-160-f5 --max_epoch=200 \
+                --init=kaiming_normal --augment=simple \
+                --grad_norm_max=35 --warmup_iters=100
+
+        0.015219216761025578
 
 
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_scratch \
@@ -415,23 +431,29 @@ def setup_harn():
         #                            saturation=(0, .01), hue=(-0.01, 0.01),),
         #     ub.identity,
         # ]),
+
+    # A more general system could infer (and cache) this from the data
+    input_mean = (0.4914, 0.4822, 0.4465)
+    input_std = (0.4914, 0.4822, 0.4465)
+
     train_augmentors += [
         transforms.Resize(config['input_dims']),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010), inplace=inplace),
+        transforms.Normalize(input_mean, input_std, inplace=inplace),
     ]
     if 'cutout' in augmentors:
-        transforms.RandomChoice([  # Cutout
-            transforms.RandomErasing(p=0.6,
-                                     scale=(0.1, 0.4),
-                                     ratio=(1.0, 1.0),
-                                     value='random', inplace=inplace),
-            transforms.RandomErasing(p=0.6,
-                                     scale=(0.1, 0.4),
-                                     ratio=(1.0, 1.0),
-                                     value=0, inplace=inplace),
-        ])
+        train_augmentors += [
+            transforms.RandomChoice([  # Cutout
+                # transforms.RandomErasing(p=0.6,
+                #                          scale=(0.1, 0.4),
+                #                          ratio=(1.0, 1.0),
+                #                          value='random', inplace=inplace),
+                transforms.RandomErasing(p=0.6,
+                                         scale=(0.1, 0.4),
+                                         ratio=(1.0, 1.0),
+                                         value=input_mean, inplace=inplace),
+            ])
+        ]
 
     transform_train = transforms.Compose(train_augmentors)
 

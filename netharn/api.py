@@ -418,11 +418,17 @@ class Scheduler(object):
         if key.lower().startswith(prefix):
             # Allow step to specify `-` separated step points
             suffix = key[len(prefix):]
-            points = [int(p) for p in suffix.split('-') if p]
+            param_parts = suffix.split('-')
+            if param_parts and param_parts[-1].startswith('f'):
+                factor = float(param_parts[-1][1:])
+                param_parts = param_parts[:-1]
+            else:
+                factor = 10
+            points = [int(p) for p in param_parts if p]
             assert sorted(points) == points, 'points must be in order'
             lr_pts = {0: lr}
             for i, epoch in enumerate(points, start=1):
-                lr_pts[epoch] = lr / (10 ** i)
+                lr_pts[epoch] = lr / (factor ** i)
 
             scheduler_ = (nh.schedulers.ListedScheduler, {
                 'points': {
