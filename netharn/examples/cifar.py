@@ -358,6 +358,12 @@ def setup_harn():
                 --init=kaiming_normal --augment=simple --grad_norm_max=35 \
                 --warmup_iters=100
 
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet1_newaug_diffgrad \
+                --batch_size=1028 --arch=efficientnet-b0 --optim=DiffGrad \
+                --schedule=step-60-120-160-250-350-f5 --decay=5e-4 --lr=0.01549 \
+                --init=kaiming_normal --augment=simple --grad_norm_max=35 \
+                --warmup_iters=100
+
 
         # Params from Cutout paper: https://arxiv.org/pdf/1708.04552.pdf
         python -m netharn.examples.cifar --xpu=0 --nice=repro_cutout \
