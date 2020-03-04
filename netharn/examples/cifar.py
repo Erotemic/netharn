@@ -351,7 +351,7 @@ def setup_harn():
 
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
 
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128_sz224 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple --input_dims=224,224
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b64_sz224 --batch_size=64 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple --input_dims=224,224
 
 
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_yogi_b1024 \
