@@ -35,6 +35,10 @@ validation, and test sets. In short, netharn handles the necessary parts and
 let the developer focus on the important parts.
 
 
+References:
+    https://github.com/kuangliu/pytorch-cifar
+
+
 CommandLine:
     python -m netharn.examples.cifar.py --xpu=0 --arch=resnet50
     python -m netharn.examples.cifar.py --xpu=0 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
@@ -309,87 +313,9 @@ class CIFAR_FitHarn(nh.FitHarn):
 
 def setup_harn():
     """
-    Replicates parameters from https://github.com/kuangliu/pytorch-cifar
-
-    The following is a table of kuangliu's reported accuracy and our measured
-    accuracy for each architecture.
-
-    The first column is kuangliu's reported accuracy, the second column is me
-    running kuangliu's code, and the final column is using my own training
-    harness (handles logging and whatnot) called netharn.
-
-    The first three experiments are with simple augmentation. The rest have
-    more complex augmentation.
-
-           arch        |  kuangliu  | rerun-kuangliu |  netharn |  train rate | num params
-    ---------------------------------------------------------------------------------------
-    ResNet50           |    93.62%  |        95.370% |  95.72%  |             |
-    DenseNet121        |    95.04%  |        95.420% |  94.47%  |             |
-    DPN92              |    95.16%  |        95.410% |  94.92%  |             |
-    --------------------
-    ResNet50_newaug*   |        --  |             -- |  96.13%  |   498.90 Hz | 23,520,842
-    EfficientNet-7*    |        --  |             -- |  85.36%  |   214.18 Hz | 63,812,570
-    EfficientNet-3*    |        --  |             -- |  86.87%  |   568.30 Hz | 10,711,602
-    EfficientNet-0*    |        --  |             -- |  87.13%  |   964.21 Hz |  4,020,358
-
-
-   600025177002,
-
-
-    CommandLine:
-        python -m netharn.examples.cifar --xpu=0 --nice=resnet50_baseline --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1
-        python -m netharn.examples.cifar --xpu=0 --nice=wrn --arch=wrn_22 --optim=sgd --schedule=step-150-250 --lr=0.1
-        python -m netharn.examples.cifar --xpu=0 --nice=densenet --arch=densenet121 --optim=sgd --schedule=step-150-250 --lr=0.1
-
-        python -m netharn.examples.cifar --xpu=0 --nice=se_resnet18 --arch=se_resnet18 --optim=sgd --schedule=step-150-250 --lr=0.01 --init=noop --decay=1e-5 --augment=simple
-
-        python -m netharn.examples.cifar --xpu=0 --nice=resnet50_newaug_b128 --batch_size=128 --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_newaug_b128 --batch_size=128 --arch=efficientnet-b7 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet3_newaug_b128 --batch_size=128 --arch=efficientnet-b3 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b64_sz224 --batch_size=64 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple --input_dims=224,224
-
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_yogi_b1024 \
-                --batch_size=1028 --arch=efficientnet-b0 --optim=Yogi \
-                --schedule=step-60-120-160-250-350-f5 --decay=5e-4 --lr=0.01549 \
-                --init=kaiming_normal --augment=simple --grad_norm_max=35 \
-                --warmup_iters=100
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet1_newaug_diffgrad_b1024 \
-                --batch_size=1028 --arch=efficientnet-b1 --optim=DiffGrad \
-                --schedule=step-60-120-160-250-350-f5 --decay=5e-4 --lr=0.01 \
-                --init=kaiming_normal --augment=simple --grad_norm_max=35 \
-                --warmup_iters=100
-
-
-        # Params from Cutout paper: https://arxiv.org/pdf/1708.04552.pdf
-        python -m netharn.examples.cifar --xpu=0 --nice=repro_cutout \
-                --batch_size=128 \
-                --arch=efficientnet-b0 \
-                --optim=sgd --lr=0.01 --decay=5e-4 \
-                --schedule=step-60-120-160-f5 --max_epoch=200 \
-                --init=kaiming_normal --augment=simple \
-                --grad_norm_max=35 --warmup_iters=100
-
-        python -m netharn.examples.cifar --xpu=0 --nice=repro_cutoutDiffGrad \
-                --batch_size=128 \
-                --arch=efficientnet-b1 \
-                --optim=DiffGrad --lr=0.01 --decay=5e-4 \
-                --schedule=step-60-120-160-f5 --max_epoch=200 \
-                --init=kaiming_normal --augment=simple \
-                --grad_norm_max=35 --warmup_iters=100
-
-        0.015219216761025578
-
-
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_scratch \
-            --arch=efficientnet-b7 --optim=sgd --schedule=step-150-250-350 \
-            --batch_size=512 --lr=0.01 --init=noop --decay=1e-5
+    This function creates an instance of the custom FitHarness, which involves
+    parsing script configuration parameters, creating a custom torch dataset,
+    and connecting those data and hyperparameters to the FitHarness.
     """
     import random
     import torchvision
@@ -870,6 +796,90 @@ def main():
 
 if __name__ == '__main__':
     r"""
+    The baseline script replicates parameters from
+    https://github.com/kuangliu/pytorch-cifar
+
+    The following is a table of kuangliu's reported accuracy and our measured
+    accuracy for each architecture.
+
+    The first column is kuangliu's reported accuracy, the second column is me
+    running kuangliu's code, and the final column is using my own training
+    harness (handles logging and whatnot) called netharn.
+
+    The first three experiments are with simple augmentation. The rest have
+    more complex augmentation.
+
+           arch        |  kuangliu  | rerun-kuangliu |  netharn |  train rate | num params
+    ---------------------------------------------------------------------------------------
+    ResNet50           |    93.62%  |        95.370% |  95.72%  |             |
+    DenseNet121        |    95.04%  |        95.420% |  94.47%  |             |
+    DPN92              |    95.16%  |        95.410% |  94.92%  |             |
+    --------------------
+    ResNet50_newaug*   |        --  |             -- |  96.13%  |   498.90 Hz | 23,520,842
+    EfficientNet-7*    |        --  |             -- |  85.36%  |   214.18 Hz | 63,812,570
+    EfficientNet-3*    |        --  |             -- |  86.87%  |   568.30 Hz | 10,711,602
+    EfficientNet-0*    |        --  |             -- |  87.13%  |   964.21 Hz |  4,020,358
+
+    EfficientNet-0-b64-224 |    --  |             -- |      --  |   148.15 Hz |  4,020,358
+
+
+   600025177002,
+
+
+    CommandLine:
+        python -m netharn.examples.cifar --xpu=0 --nice=resnet50_baseline --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1
+        python -m netharn.examples.cifar --xpu=0 --nice=wrn --arch=wrn_22 --optim=sgd --schedule=step-150-250 --lr=0.1
+        python -m netharn.examples.cifar --xpu=0 --nice=densenet --arch=densenet121 --optim=sgd --schedule=step-150-250 --lr=0.1
+
+        python -m netharn.examples.cifar --xpu=0 --nice=se_resnet18 --arch=se_resnet18 --optim=sgd --schedule=step-150-250 --lr=0.01 --init=noop --decay=1e-5 --augment=simple
+
+        python -m netharn.examples.cifar --xpu=0 --nice=resnet50_newaug_b128 --batch_size=128 --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_newaug_b128 --batch_size=128 --arch=efficientnet-b7 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet3_newaug_b128 --batch_size=128 --arch=efficientnet-b3 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b64_sz224 --batch_size=64 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple --input_dims=224,224
+
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_yogi_b1024 \
+                --batch_size=1028 --arch=efficientnet-b0 --optim=Yogi \
+                --schedule=step-60-120-160-250-350-f5 --decay=5e-4 --lr=0.01549 \
+                --init=kaiming_normal --augment=simple --grad_norm_max=35 \
+                --warmup_iters=100
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet1_newaug_diffgrad_b1024 \
+                --batch_size=1028 --arch=efficientnet-b1 --optim=DiffGrad \
+                --schedule=step-60-120-160-250-350-f5 --decay=5e-4 --lr=0.01 \
+                --init=kaiming_normal --augment=simple --grad_norm_max=35 \
+                --warmup_iters=100
+
+
+        # Params from Cutout paper: https://arxiv.org/pdf/1708.04552.pdf
+        python -m netharn.examples.cifar --xpu=0 --nice=repro_cutout \
+                --batch_size=128 \
+                --arch=efficientnet-b0 \
+                --optim=sgd --lr=0.01 --decay=5e-4 \
+                --schedule=step-60-120-160-f5 --max_epoch=200 \
+                --init=kaiming_normal --augment=simple \
+                --grad_norm_max=35 --warmup_iters=100
+
+        python -m netharn.examples.cifar --xpu=0 --nice=repro_cutoutDiffGrad \
+                --batch_size=128 \
+                --arch=efficientnet-b1 \
+                --optim=DiffGrad --lr=0.01 --decay=5e-4 \
+                --schedule=step-60-120-160-f5 --max_epoch=200 \
+                --init=kaiming_normal --augment=simple \
+                --grad_norm_max=35 --warmup_iters=100
+
+        0.015219216761025578
+
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_scratch \
+            --arch=efficientnet-b7 --optim=sgd --schedule=step-150-250-350 \
+            --batch_size=512 --lr=0.01 --init=noop --decay=1e-5
     CommandLine:
         python -m netharn.examples.cifar --xpu=0 --arch=resnet50 --num_vali=0
         python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0 --num_vali=0
