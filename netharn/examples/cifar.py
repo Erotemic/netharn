@@ -400,15 +400,14 @@ def setup_harn():
     inplace = True
 
     # Define preprocessing + augmentation strategy
-    augment = config['augment']
-    if ',' in augment:
-        augmentors = augment.split(',')
-    elif augment == 'baseline':
+    if ',' in config['augment']:
+        augmentors = config['augment'].split(',')
+    elif config['augment'] == 'baseline':
         augmentors = ['crop', 'flip']
-    elif augment == 'simple':
+    elif config['augment'] == 'simple':
         augmentors = ['crop', 'flip', 'gray', 'cutout']
     else:
-        raise KeyError(augment)
+        raise KeyError(config['augment'])
 
     train_augmentors = []
 
@@ -444,11 +443,11 @@ def setup_harn():
     if 'cutout' in augmentors:
         train_augmentors += [
             transforms.RandomChoice([  # Cutout
-                # transforms.RandomErasing(p=0.6,
+                # transforms.RandomErasing(p=0.5,
                 #                          scale=(0.1, 0.4),
                 #                          ratio=(1.0, 1.0),
                 #                          value='random', inplace=inplace),
-                transforms.RandomErasing(p=0.6,
+                transforms.RandomErasing(p=0.5,
                                          scale=(0.1, 0.4),
                                          ratio=(1.0, 1.0),
                                          value=input_mean, inplace=inplace),
