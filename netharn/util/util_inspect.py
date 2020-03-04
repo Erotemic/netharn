@@ -12,6 +12,7 @@ def default_kwargs(cls):
         >>> from netharn.util.util_inspect import *  # NOQA
         >>> import netharn as nh
         >>> import torch
+        >>> import ubelt as ub
         >>> cls = torch.optim.Adam
         >>> default_kwargs(cls)
         >>> cls = nh.initializers.KaimingNormal

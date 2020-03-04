@@ -3,8 +3,8 @@ import torch
 from torch import nn
 import ubelt as ub
 from netharn.layers import common
-from netharn import output_shape_for
-from netharn import receptive_field_for
+from netharn.analytic import output_shape_for
+from netharn.analytic import receptive_field_for
 
 
 class L2Norm(common.Module):

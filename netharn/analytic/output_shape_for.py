@@ -7,7 +7,7 @@ import torch.nn as nn
 import torchvision
 from collections import OrderedDict
 from six.moves import builtins
-from netharn import analytic_for
+from netharn.analytic import analytic_for
 # try:
 from netharn.device import DataSerial
 # except ImportError:

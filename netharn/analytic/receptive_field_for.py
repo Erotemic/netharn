@@ -9,7 +9,7 @@ import ubelt as ub
 import numpy as np
 from collections import OrderedDict
 from netharn.analytic.output_shape_for import OutputShapeFor
-from netharn import analytic_for
+from netharn.analytic import analytic_for
 # try:
 # from netharn.device import MountedModel
 # except ImportError:

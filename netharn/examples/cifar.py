@@ -310,6 +310,43 @@ class CIFAR_FitHarn(nh.FitHarn):
                                             chunksize=8)
         return stacked
 
+    def before_epochs(harn):
+        if harn.epoch == 0:
+            harn._draw_conv_layers(suffix='_init')
+
+    def after_epochs(harn):
+        """
+        Callback after all train/vali/test epochs are complete.
+        """
+        harn._draw_conv_layers()
+
+    def _draw_conv_layers(harn, suffix=''):
+        """
+        We use this to visualize the first convolutional layer
+        """
+        import kwplot
+        # Visualize the first convolutional layer
+        dpath = ub.ensuredir((harn.train_dpath, 'monitor', 'layers'))
+        # fig = kwplot.figure(fnum=1)
+        for key, layer in nh.util.trainable_layers(harn.model, names=True):
+            # Typically the first convolutional layer returned here is the
+            # first convolutional layer in the network
+            if isinstance(layer, torch.nn.Conv2d):
+                if max(layer.kernel_size) > 2:
+                    fig = kwplot.plot_convolutional_features(
+                        layer, fnum=1, normaxis=0)
+                    kwplot.set_figtitle(key, subtitle=str(layer), fig=fig)
+                    layer_dpath = ub.ensuredir((dpath, key))
+                    fname = 'layer-{}-epoch_{}{}.jpg'.format(
+                        key, harn.epoch, suffix)
+                    fpath = join(layer_dpath, fname)
+                    fig.savefig(fpath)
+                    break
+
+            if isinstance(layer, torch.nn.Linear):
+                # TODO: visualize the FC layer
+                pass
+
 
 def setup_harn():
     """
@@ -342,7 +379,9 @@ def setup_harn():
     inplace = True
 
     # Define preprocessing + augmentation strategy
-    if ',' in config['augment']:
+    if isinstance(config['augment'], list):
+        augmentors = config['augment']
+    elif ',' in config['augment']:
         augmentors = config['augment'].split(',')
     elif config['augment'] == 'baseline':
         augmentors = ['crop', 'flip']
@@ -574,7 +613,7 @@ def setup_harn():
                 config['arch'], override_params={
                     'classes': classes,
                     'noli': 'mish'
-                })
+                }, advprop=True)
             print('pretrained cls init')
         else:
             model_ = efficientnet.EfficientNet.from_name(
@@ -632,6 +671,7 @@ def setup_harn():
 
         optim_cls, optim_kw = optimizer_
         optim = optim_cls(param_groups, **optim_kw)
+        optim._initkw = optim_kw
         optimizer_ = optim
     else:
         model_ = available_architectures[config['arch']]
@@ -820,7 +860,7 @@ if __name__ == '__main__':
     EfficientNet-3*    |        --  |             -- |  86.87%  |   568.30 Hz | 10,711,602
     EfficientNet-0*    |        --  |             -- |  87.13%  |   964.21 Hz |  4,020,358
 
-    EfficientNet-0-b64-224 |    --  |             -- |      --  |   148.15 Hz |  4,020,358
+    EfficientNet-0-b64-224 |    --  |             -- |   25ish% |   148.15 Hz |  4,020,358
 
 
    600025177002,
@@ -840,6 +880,9 @@ if __name__ == '__main__':
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet3_newaug_b128 --batch_size=128 --arch=efficientnet-b3 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
 
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
+
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout"
 
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b64_sz224 --batch_size=64 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple --input_dims=224,224
 

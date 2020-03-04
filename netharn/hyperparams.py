@@ -81,12 +81,11 @@ def _hash_data(data):
     return ub.hash_data(data, hasher='sha512', base='abc', types=True)
 
 
-def _rectify_class(lookup, arg, kw):
+def _rectify_class(arg, kw, lookup=None):
     """
-    Args:
-        lookup (func | None):
-            transforms arg or arg[0] into the class type
+    Helps normalize and serialize hyperparameter inputs.
 
+    Args:
         arg (Tuple[type, dict] | type | object):
             Either a (cls, initkw) tuple, a class, or an instance.
             It is recommended that you don't pass an instance.
@@ -94,10 +93,32 @@ def _rectify_class(lookup, arg, kw):
         kw (Dict[str, object]):
             augments initkw if arg is in tuple form otherwise becomes initkw
 
+        lookup (func | None):
+            transforms arg or arg[0] into the class type
+
     Returns:
-        Tuple[type, Dict]:
-            The class type that we want to construct and the keyword args
-            used to do the construction.
+        Dict: containing
+            'cls' (type): the type of the object
+            'cls_kw' (Dict): the initialization keyword args
+            'instance': (object): None or the actual instanciated object
+
+            We will use this cls and cls_kw to construct an instance unless one
+            is already specified.
+
+    Example:
+        >>> # The ideal case is that we have a cls, initkw tuple
+        >>> import netharn as nh
+        >>> kw = {'lr': 0.1}
+        >>> cls = torch.optim.SGD
+        >>> rectified1 = _rectify_class(cls, kw.copy())
+        >>> print('rectified1 = {!r}'.format(rectified1))
+        >>> # But we can also take an instance of the object, however, you must
+        >>> # now make sure to specify the _initkw attribute.
+        >>> model = nh.models.ToyNet2d()
+        >>> self = cls(model.parameters(), **kw)
+        >>> self._initkw = kw
+        >>> rectified2 = _rectify_class(self, {})
+        >>> print('rectified2 = {!r}'.format(rectified2))
     """
     if lookup is None:
         lookup = ub.identity
@@ -142,15 +163,15 @@ def _rectify_class(lookup, arg, kw):
                 cls_kw.update(instance._initkw)
             else:
                 import warnings
-                warnings.warn(ub.paragraph(
+                warnings.warn(ub.paragraph(  # _initkw warning
                     '''
-                    Netharn expects hyperparameter objects to be specified as
+                    netharn.HyperParams objects are expected to be specified as
                     (type, kw) tuples, but we received a preconstructed
                     instance. This is only ok if you know what you are doing.
                     To disable this warning set the _initkw instance attribute
                     to the correct keyword arguments needed to reconstruct this
-                    class.
-                    '''))
+                    class. Offending data is arg={!r}, kw={!r}
+                    ''').format(arg, kw))
 
         # Update with explicitly specified information
         cls_kw.update(kw2)
@@ -165,13 +186,12 @@ def _rectify_class(lookup, arg, kw):
         'instance': instance,
     }
     return rectified
-    # return cls, cls_kw
 
 
 def _rectify_criterion(arg, kw):
     if arg is None:
         # arg = 'CrossEntropyLoss'
-        return _rectify_class(None, None, kw)
+        return _rectify_class(None, kw)
 
     def _lookup(arg):
         if isinstance(arg, six.string_types):
@@ -184,11 +204,37 @@ def _rectify_criterion(arg, kw):
             cls = arg
         return cls
 
-    rectified = _rectify_class(_lookup, arg, kw)
+    rectified = _rectify_class(arg, kw, _lookup)
     return rectified
 
 
 def _rectify_optimizer(arg, kw):
+    """
+    Create a rectified tuple
+
+    Example:
+        >>> # Test using a (cls, kw) tuple and an instance object.
+        >>> import netharn as nh
+        >>> optim_ = nh.api.Optimizer.coerce({
+        >>>     'optim': 'adam', 'lr': 0.1, 'weight_decay': 1e-4})
+        >>> cls, kw = optim_
+        >>> #
+        >>> model = nh.models.ToyNet2d()
+        >>> params = dict(model.named_parameters())
+        >>> grouped_keys = {}
+        >>> grouped_keys['bias'] = [k for k in params.keys() if 'bias' in k]
+        >>> grouped_keys['weight'] = [k for k in params.keys() if 'weight' in k]
+        >>> named_param_groups = {
+        >>>     k: {'params': list(ub.take(params, sorted(v)))}
+        >>>     for k, v in grouped_keys.items()
+        >>> }
+        >>> named_param_groups['bias']['weight_decay'] = 0
+        >>> param_groups = list(ub.sorted_keys(named_param_groups).values())
+        >>> #
+        >>> optim = cls(param_groups, **kw)
+        >>> rectified1 = _rectify_optimizer(cls, kw)
+        >>> rectified2 = _rectify_optimizer(optim, {})
+    """
     if arg is None:
         arg = 'SGD'
         if kw is None:
@@ -208,7 +254,7 @@ def _rectify_optimizer(arg, kw):
             cls = arg
         return cls
 
-    rectified = _rectify_class(_lookup, arg, kw)
+    rectified = _rectify_class(arg, kw, _lookup)
     kw2 = rectified['cls_kw']
 
     for k, v in kw2.items():
@@ -220,7 +266,7 @@ def _rectify_optimizer(arg, kw):
 
 def _rectify_lr_scheduler(arg, kw):
     if arg is None:
-        return _rectify_class(None, None, kw)
+        return _rectify_class(None, kw)
 
     def _lookup(arg):
         if isinstance(arg, six.string_types):
@@ -236,7 +282,7 @@ def _rectify_lr_scheduler(arg, kw):
             cls = arg
         return cls
 
-    rectified = _rectify_class(_lookup, arg, kw)
+    rectified = _rectify_class(arg, kw, _lookup)
     return rectified
 
 
@@ -257,7 +303,7 @@ def _rectify_initializer(arg, kw):
             cls = arg
         return cls
 
-    rectified = _rectify_class(_lookup, arg, kw)
+    rectified = _rectify_class(arg, kw, _lookup)
     return rectified
 
 
@@ -269,7 +315,7 @@ def _rectify_monitor(arg, kw):
         else:
             cls = arg
         return cls
-    rectified = _rectify_class(_lookup, arg, kw)
+    rectified = _rectify_class(arg, kw, _lookup)
     return rectified
 
 
@@ -300,7 +346,7 @@ def _rectify_dynamics(arg, kw):
 
 def _rectify_model(arg, kw):
     if arg is None:
-        return _rectify_class(None, None, kw)
+        return _rectify_class(None, kw)
 
     def _lookup_model(arg):
         import torchvision
@@ -318,7 +364,7 @@ def _rectify_model(arg, kw):
     if isinstance(arg, device.MountedModel):
         arg = arg.module
 
-    rectified = _rectify_class(_lookup_model, arg, kw)
+    rectified = _rectify_class(arg, kw, _lookup_model)
     return rectified
 
 
