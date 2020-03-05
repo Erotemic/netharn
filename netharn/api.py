@@ -195,7 +195,6 @@ class Optimizer(object):
             >>> config = {'optimizer': 'DiffGrad'}
             >>> optim_ = Optimizer.coerce(config)
             >>> print('optim_ = {!r}'.format(optim_))
-
             >>> config = {'optimizer': 'Yogi'}
             >>> optim_ = Optimizer.coerce(config)
             >>> print('optim_ = {!r}'.format(optim_))
