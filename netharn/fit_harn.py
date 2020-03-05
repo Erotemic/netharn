@@ -2260,14 +2260,14 @@ class PropertyMixin(object):
     @property
     def batch_index(harn):
         """ The index of the current batch in the current epoch """
-        return harn.bxs[harn.current_tag]
+        return harn.bxs.get(harn.current_tag, 0)
 
     @property
     def iter_index(harn):
         """ Returns the current iteration index of the current tag """
         iter_idx = (
-            harn._prev_iter_idxs[harn.current_tag] +
-            harn.bxs[harn.current_tag]
+            harn._prev_iter_idxs.get(harn.current_tag, 0) +
+            harn.bxs.get(harn.current_tag, 0)
         )
         return iter_idx
 
