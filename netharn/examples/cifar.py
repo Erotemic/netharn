@@ -256,7 +256,7 @@ class CIFAR_FitHarn(nh.FitHarn):
         metrics_dict['percent_error'] = percent_error
         metrics_dict['acc'] = acc
 
-        harn.info('ACC FOR {!r}: {!r}'.format(harn.current_tag, acc))
+        harn.info(ub.color_text('ACC FOR {!r}: {!r}'.format(harn.current_tag, acc), 'yellow'))
 
         # Clear confusion vectors accumulator for the next epoch
         harn._accum_confusion_vectors = {
@@ -298,7 +298,8 @@ class CIFAR_FitHarn(nh.FitHarn):
             min_, max_ = im_.min(), im_.max()
             im_ = ((im_ - min_) / (max_ - min_) * 255).astype(np.uint8)
             im_ = np.ascontiguousarray(im_)
-            im_ = kwimage.imresize(im_, dsize=(200, 200))
+            im_ = kwimage.imresize(im_, dsize=(200, 200),
+                                   interpolation='nearest')
 
             # Draw classification information on the image
             im_ = kwimage.draw_clf_on_image(im_, classes=classes, tcx=tcx,
@@ -348,6 +349,83 @@ class CIFAR_FitHarn(nh.FitHarn):
                 pass
 
 
+def build_train_augmentors(augment, input_mean):
+    from torchvision import transforms
+
+    # Define preprocessing + augmentation strategy
+    if isinstance(augment, list):
+        augmentors = augment
+    elif ',' in augment:
+        augmentors = augment.split(',')
+    elif augment == 'baseline':
+        augmentors = ['crop', 'flip']
+    elif augment == 'simple':
+        augmentors = ['crop', 'flip', 'gray', 'cutout']
+    else:
+        raise KeyError(augment)
+
+    pil_augmentors = []
+    tensor_augmentors = []
+
+    if 'crop' in augmentors:
+        pil_augmentors += [
+            transforms.RandomCrop(32, padding=4),
+        ]
+    if 'flip' in augmentors:
+        pil_augmentors += [
+            transforms.RandomHorizontalFlip(),
+        ]
+    if 'gray' in augmentors:
+        pil_augmentors += [
+            transforms.RandomGrayscale(p=0.1),
+        ]
+    if 'jitter' in augmentors:
+        raise NotImplementedError
+        # pil_augmentors += [transforms.RandomChoice([
+        #     transforms.ColorJitter(brightness=(0, .01), contrast=(0, .01),
+        #                            saturation=(0, .01), hue=(-0.01, 0.01),),
+        #     ub.identity,
+        # ])]
+
+    if 'cutout' in augmentors:
+        def cutout(tensor):
+            """
+            Ignore:
+                tensor = torch.rand(3, 32, 32)
+            """
+            # This cutout is closer to the definition in the paper
+            import kwarray
+            rng = kwarray.ensure_rng(None)
+            img_h, img_w = tensor.shape[1:]
+            p = 0.9
+            value = 0
+            scale = 0.5
+            if rng.rand() < p:
+                cx = rng.randint(0, img_w)
+                cy = rng.randint(0, img_h)
+
+                w2 = int((img_w * scale) // 2)
+                h2 = int((img_h * scale) // 2)
+                x1 = max(cx - w2, 0)
+                y1 = max(cy - h2, 0)
+                x2 = min(cx + w2, img_w)
+                y2 = min(cy + h2, img_h)
+
+                sl = (slice(None), slice(y1, y2), slice(x1, x2))
+                tensor[sl] = value
+            return tensor
+        tensor_augmentors += [cutout]
+
+        # tensor_augmentors += [  # Cutout
+        #     transforms.RandomErasing(
+        #         p=0.5, scale=(0.4, 0.4), ratio=(1.0, 1.0),
+        #         value=0, inplace=True),
+        # ]
+    print('pil_augmentors = {!r}'.format(pil_augmentors))
+    print('tensor_augmentors = {!r}'.format(tensor_augmentors))
+    return pil_augmentors, tensor_augmentors
+
+
 def setup_harn():
     """
     This function creates an instance of the custom FitHarness, which involves
@@ -376,73 +454,38 @@ def setup_harn():
         # TODO: ensure the CPU mode is also deterministic
         torch.backends.cudnn.deterministic = config['deterministic']
 
-    inplace = True
-
-    # Define preprocessing + augmentation strategy
-    if isinstance(config['augment'], list):
-        augmentors = config['augment']
-    elif ',' in config['augment']:
-        augmentors = config['augment'].split(',')
-    elif config['augment'] == 'baseline':
-        augmentors = ['crop', 'flip']
-    elif config['augment'] == 'simple':
-        augmentors = ['crop', 'flip', 'gray', 'cutout']
-    else:
-        raise KeyError(config['augment'])
-
-    train_augmentors = []
-
-    if 'crop' in augmentors:
-        train_augmentors += [
-            transforms.RandomCrop(32, padding=4),
-        ]
-    if 'flip' in augmentors:
-        train_augmentors += [
-            transforms.RandomHorizontalFlip(),
-        ]
-    if 'gray' in augmentors:
-        train_augmentors += [
-            transforms.RandomGrayscale(p=0.1),
-        ]
-    if 'jitter' in augmentors:
-        raise NotImplementedError
-        # transforms.RandomChoice([
-        #     transforms.ColorJitter(brightness=(0, .01), contrast=(0, .01),
-        #                            saturation=(0, .01), hue=(-0.01, 0.01),),
-        #     ub.identity,
-        # ]),
-
     # A more general system could infer (and cache) this from the data
     input_mean = (0.4914, 0.4822, 0.4465)
-    input_std = (0.4914, 0.4822, 0.4465)
+    input_std = (0.2023, 0.1994, 0.2010)
 
-    train_augmentors += [
-        transforms.Resize(config['input_dims']),
-        transforms.ToTensor(),
-        transforms.Normalize(input_mean, input_std, inplace=inplace),
+    def common_transform(pil_img):
+        import kwimage
+        hwc255 = np.array(pil_img)
+        hwc01 = hwc255.astype(np.float32)
+        hwc01 /= 255.0
+        if hwc01.shape[0:2] != tuple(config['input_dims']):
+            dsize = config['input_dims'][::-1]
+            hwc01 = kwimage.imresize(hwc01, dsize=dsize,
+                                     interpolation='linear')
+        chw01 = torch.from_numpy(hwc01.transpose(2, 0, 1)).contiguous()
+        return chw01
+
+    common_transforms = [
+        common_transform,
+        # transforms.Resize(config['input_dims'], interpolation),
+        # transforms.ToTensor(),
+        transforms.Normalize(input_mean, input_std, inplace=True),
     ]
-    if 'cutout' in augmentors:
-        train_augmentors += [
-            transforms.RandomChoice([  # Cutout
-                # transforms.RandomErasing(p=0.5,
-                #                          scale=(0.1, 0.4),
-                #                          ratio=(1.0, 1.0),
-                #                          value='random', inplace=inplace),
-                transforms.RandomErasing(p=0.5,
-                                         scale=(0.1, 0.4),
-                                         ratio=(1.0, 1.0),
-                                         value=input_mean, inplace=inplace),
-            ])
-        ]
 
-    transform_train = transforms.Compose(train_augmentors)
+    augment = config['augment']
+    pil_augmentors, tensor_augmentors = build_train_augmentors(
+        augment, input_mean)
 
-    transform_test = transforms.Compose([
-        transforms.Resize(config['input_dims']),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010), inplace=inplace),
-    ])
+    transform_train = transforms.Compose(
+        pil_augmentors + common_transforms + tensor_augmentors
+    )
+
+    transform_test = transforms.Compose(common_transforms)
 
     if config['dataset'] == 'cifar10':
         DATASET = torchvision.datasets.CIFAR10
@@ -882,7 +925,9 @@ if __name__ == '__main__':
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
 
 
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout"
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b128_sz32 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.01 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=32,32
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b64_sz224 --batch_size=64 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.01 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=224,224
 
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b64_sz224 --batch_size=64 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple --input_dims=224,224
 

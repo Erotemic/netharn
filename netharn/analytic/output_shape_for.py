@@ -1092,4 +1092,3 @@ def ensure_iterablen(scalar, n):
     except TypeError:
         return [scalar] * n
     return scalar
-
