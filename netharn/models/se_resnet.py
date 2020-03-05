@@ -107,7 +107,7 @@ class SEBottleneck(nn.Module):
         return out
 
 
-def se_resnet18(num_classes=1_000):
+def se_resnet18(num_classes=1000):
     """Constructs a ResNet-18 model.
 
     Args:
@@ -118,7 +118,7 @@ def se_resnet18(num_classes=1_000):
     return model
 
 
-def se_resnet34(num_classes=1_000):
+def se_resnet34(num_classes=1000):
     """Constructs a ResNet-34 model.
 
     Args:
@@ -129,7 +129,7 @@ def se_resnet34(num_classes=1_000):
     return model
 
 
-def se_resnet50(num_classes=1_000, pretrained=False):
+def se_resnet50(num_classes=1000, pretrained=False):
     """Constructs a ResNet-50 model.
 
     Args:
@@ -143,7 +143,7 @@ def se_resnet50(num_classes=1_000, pretrained=False):
     return model
 
 
-def se_resnet101(num_classes=1_000):
+def se_resnet101(num_classes=1000):
     """Constructs a ResNet-101 model.
 
     Args:
@@ -154,7 +154,7 @@ def se_resnet101(num_classes=1_000):
     return model
 
 
-def se_resnet152(num_classes=1_000):
+def se_resnet152(num_classes=1000):
     """Constructs a ResNet-152 model.
 
     Args:
