@@ -146,7 +146,7 @@ def _redump_measures(dpath):
     _dump_measures(tb_data, out_dpath, mode)
 
 
-def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
+def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.0,
                    ignore_outliers=True):
     """
     This is its own function in case we need to modify formatting
@@ -172,7 +172,7 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
         >>> mode = ['epoch', 'iter']
         >>> fpath = join(out_dpath, 'tb_data.json')
         >>> tb_data = json.load(open(fpath, 'r'))
-        >>> _dump_measures(tb_data,  out_dpath)
+        >>> _dump_measures(tb_data,  out_dpath, smoothing=0)
     """
     import ubelt as ub
     from os.path import join

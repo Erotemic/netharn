@@ -931,7 +931,11 @@ if __name__ == '__main__':
 
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b64_sz224 --batch_size=64 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple --input_dims=224,224
 
-        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b128_sz32_v2 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-10-20 --max_epoch=100 --lr=0.01 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=32,32
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b128_sz32_v2 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-20-45-70-90-f5 --max_epoch=100 --lr=0.01 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=32,32  # 88%
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b128_sz32_v3 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-13-20-45-70-90-f5 --max_epoch=100 --lr=0.01 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=32,32
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b128_sz32_v4 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-10-20-45-70-90-f5 --max_epoch=100 --lr=0.03 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=32,32
 
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b64_sz224_v2 --batch_size=64 --arch=efficientnet-b0 --optim=sgd --schedule=step-10-20 --max_epoch=100 --lr=0.01 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=224,224
 
