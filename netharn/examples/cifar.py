@@ -55,6 +55,7 @@ import os
 import pickle
 import netharn as nh
 import scriptconfig as scfg
+from netharn.util import layer_rotation
 
 
 class CIFARConfig(scfg.Config):
