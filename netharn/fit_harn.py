@@ -1799,7 +1799,7 @@ class CoreMixin(object):
                                     from netharn.mixins import _dump_monitor_tensorboard
                                     _dump_monitor_tensorboard(
                                         harn, 'iter',
-                                        harn.preferences['tensorboard_groups'])
+                                        special_groupers=harn.preferences['tensorboard_groups'])
 
                         prog.update(display_interval)
                         if use_tqdm:
