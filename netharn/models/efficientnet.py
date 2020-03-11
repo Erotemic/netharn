@@ -103,6 +103,7 @@ class Conv2dStaticSamePadding(nn.Conv2d, layers.AnalyticModule):
         pad_h = max((oh - 1) * self.stride[0] + (kh - 1) * self.dilation[0] + 1 - ih, 0)
         pad_w = max((ow - 1) * self.stride[1] + (kw - 1) * self.dilation[1] + 1 - iw, 0)
         self.image_size = image_size
+        self._pad = (pad_h, pad_w)
         self._pad_w = pad_w
         self._pad_h = pad_w
         if pad_h > 0 or pad_w > 0:
