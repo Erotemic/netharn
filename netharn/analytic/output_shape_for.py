@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import ubelt as ub
 import math
 import torch
+import torch.nn.functional as F
 import torch.nn as nn
 import torchvision
 from collections import OrderedDict
@@ -503,6 +504,57 @@ class OutputShapeFor(analytic_for.OutputFor):
         return OutputShapeFor.convnd(module, input_shape, 2)
 
     @staticmethod
+    @compute_type(nn.ZeroPad2d)
+    def zeropad2d(module, input_shape):
+        r"""
+        Shape:
+            - Input: :math:`(N, C, H_{in}, W_{in})`
+            - Output: :math:`(N, C, H_{out}, W_{out})` where
+
+              :math:`H_{out} = H_{in} + \text{padding\_top} + \text{padding\_bottom}`
+
+              :math:`W_{out} = W_{in} + \text{padding\_left} + \text{padding\_right}`
+
+        Example:
+            >>> module = nn.ZeroPad2d([2, 3, 5, 7])
+            >>> input_shape = (1, 3, 5, 7)
+            >>> out = OutputShapeFor(module)(input_shape)
+            >>> out_want = module(torch.zeros(*input_shape)).shape
+            >>> assert out == tuple(out_want)
+        """
+        return OutputShapeFor.pad(input_shape, module.padding)
+
+    @staticmethod
+    @compute_type(F.conv2d)
+    def f_conv2d(inputs, weight, bias=None, stride=1, padding=0,
+                 dilation=1, groups=1):
+        """
+        Example:
+            >>> x = inputs = (1, 124, 226, 226)
+            >>> module = nn.Conv2d(128, 64, kernel_size=(3, 5), groups=8)
+            >>> weight = module.weight
+            >>> bias = module.bias is not None
+            >>> stride = module.stride
+            >>> padding = module.padding
+            >>> dilation = module.dilation
+            >>> groups = module.groups
+            >>> y =  _OutputFor(F.conv2d)(x, weight, bias, stride, padding,
+            >>>         dilation, groups)
+            >>> print(y)
+            >>> y2 = OutputShapeFor(module)(x)
+            >>> assert y == y2
+
+            >>> weight = torch.rand(3, 2, 5, 5)
+            >>> OutputShapeFor(F.conv2d)((1, 3, 7, 7), weight)
+        """
+        out_channels, in_channels, kernel_h, kernel_w = weight.shape
+        kernel = (kernel_h, kernel_w)
+        module = nn.Conv2d(in_channels * groups, out_channels, kernel,
+                           bias=bias, stride=stride, padding=padding,
+                           dilation=dilation, groups=groups)
+        return OutputShapeFor.convnd(module, inputs, 2)
+
+    @staticmethod
     @compute_type(nn.Conv3d)
     def conv3d(module, input_shape):
         return OutputShapeFor.convnd(module, input_shape, 3)
@@ -959,6 +1011,40 @@ class OutputShapeFor(analytic_for.OutputFor):
         return output_shape_
 
     @staticmethod
+    @compute_type(torch.sigmoid)
+    def sigmoid(input_shape):
+        return OutputShapeFor.identity(input_shape)
+
+    @staticmethod
+    @compute_type(F.pad)
+    def pad(x, pad, mode='constant', value=0):
+        """
+        Example:
+            >>> t4d = x = (3, 3, 4, 2)
+            >>> pad = p1d = (1, 1)
+            >>> out = OutputShapeFor(F.pad)(x, pad)
+            >>> print(out)
+            (3, 3, 4, 4)
+            >>> p2d = (1, 1, 2, 2) # pad last dim by (1, 1) and 2nd to last by (2, 2)
+            >>> out = OutputShapeFor.pad(t4d, p2d, "constant", 0)
+            >>> print(out)
+            (3, 3, 8, 4)
+            >>> t4d = (3, 3, 4, 2)
+            >>> p3d = (0, 1, 2, 1, 3, 3) # pad by (0, 1), (2, 1), and (3, 3)
+            >>> out = OutputShapeFor.pad(t4d, p3d, "constant", 0)
+            >>> print(out)
+            (3, 9, 7, 3)
+        """
+        new_x = list(x)
+        dim = len(new_x)
+        for idx, dpad in enumerate(ub.chunks(pad, 2), start=1):
+            dimx = dim - idx
+            lpad, rpad = dpad
+            new_x[dimx] = x[dimx] + lpad + rpad
+        out = SHAPE_CLS(new_x)
+        return out
+
+    @staticmethod
     @compute_type(torch.cat)
     def cat(input_shapes, dim=0):
         """
@@ -1061,6 +1147,25 @@ def _output_shape_broadcast(arr1, arr2):
     if not ub.iterable(arr2):
         return arr1
     if tuple(arr1) != tuple(arr2):
+
+        if len(arr1) == len(arr2):
+            arr3 = []
+            for d1, d2 in zip(arr1, arr2):
+                if d1 is None or d1 < 0:
+                    raise NotImplementedError
+                if d2 is None or d2 < 0:
+                    raise NotImplementedError
+                if d1 == d2:
+                    arr3.append(d1)
+                elif d1 == 1:
+                    arr3.append(d2)
+                elif d2 == 1:
+                    arr3.append(d1)
+                else:
+                    raise ValueError('broadcast seems bad')
+            arr3 = type(arr1)(arr3)
+            return arr3
+
         # TODO: handle broadcast
         raise NotImplementedError('Full broadcast not implemented {} != {}'.format(arr1, arr2))
     return arr1

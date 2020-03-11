@@ -106,3 +106,158 @@ def strip_ansi(text):
     ansi_escape3 = re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]', flags=re.IGNORECASE)
     text = ansi_escape3.sub('', text)
     return text
+
+
+def align(text, character='=', replchar=None, pos=0):
+    r"""
+    Left justifies text on the left side of character
+
+    Args:
+        text (str): text to align
+        character (str): character to align at
+        replchar (str): replacement character (default=None)
+
+    Returns:
+        str: new_text
+
+    Example:
+        >>> character = '='
+        >>> text = 'a = b=\none = two\nthree = fish\n'
+        >>> print(text)
+        >>> result = (align(text, '='))
+        >>> print(result)
+        a     = b=
+        one   = two
+        three = fish
+    """
+    line_list = text.splitlines()
+    new_lines = align_lines(line_list, character, replchar, pos=pos)
+    new_text = '\n'.join(new_lines)
+    return new_text
+
+
+def align_lines(line_list, character='=', replchar=None, pos=0):
+    r"""
+    Left justifies text on the left side of character
+
+    align_lines
+
+    TODO:
+        clean up and move to ubelt?
+
+    Args:
+        line_list (list of strs):
+        character (str):
+        pos (int or list or None): does one alignment for all chars beyond this
+            column position. If pos is None, then all chars are aligned.
+
+    Returns:
+        list: new_lines
+
+    Example:
+        >>> line_list = 'a = b\none = two\nthree = fish'.split('\n')
+        >>> character = '='
+        >>> new_lines = align_lines(line_list, character)
+        >>> result = ('\n'.join(new_lines))
+        >>> print(result)
+        a     = b
+        one   = two
+        three = fish
+
+    Example:
+        >>> line_list = 'foofish:\n    a = b\n    one    = two\n    three    = fish'.split('\n')
+        >>> character = '='
+        >>> new_lines = align_lines(line_list, character)
+        >>> result = ('\n'.join(new_lines))
+        >>> print(result)
+        foofish:
+            a        = b
+            one      = two
+            three    = fish
+
+    Example:
+        >>> import ubelt as ub
+        >>> character = ':'
+        >>> text = ub.codeblock('''
+            {'max': '1970/01/01 02:30:13',
+             'mean': '1970/01/01 01:10:15',
+             'min': '1970/01/01 00:01:41',
+             'range': '2:28:32',
+             'std': '1:13:57',}''').split('\n')
+        >>> new_lines = align_lines(text, ':', ' :')
+        >>> result = '\n'.join(new_lines)
+        >>> print(result)
+        {'max'   : '1970/01/01 02:30:13',
+         'mean'  : '1970/01/01 01:10:15',
+         'min'   : '1970/01/01 00:01:41',
+         'range' : '2:28:32',
+         'std'   : '1:13:57',}
+
+    Example:
+        >>> line_list = 'foofish:\n a = b = c\n one = two = three\nthree=4= fish'.split('\n')
+        >>> character = '='
+        >>> # align the second occurence of a character
+        >>> new_lines = align_lines(line_list, character, pos=None)
+        >>> print(('\n'.join(line_list)))
+        >>> result = ('\n'.join(new_lines))
+        >>> print(result)
+        foofish:
+         a   = b   = c
+         one = two = three
+        three=4    = fish
+    """
+
+    # FIXME: continue to fix ansi
+    if pos is None:
+        # Align all occurences
+        num_pos = max([line.count(character) for line in line_list])
+        pos = list(range(num_pos))
+
+    # Allow multiple alignments
+    if isinstance(pos, list):
+        pos_list = pos
+        # recursive calls
+        new_lines = line_list
+        for pos in pos_list:
+            new_lines = align_lines(new_lines, character=character,
+                                    replchar=replchar, pos=pos)
+        return new_lines
+
+    # base case
+    if replchar is None:
+        replchar = character
+
+    # the pos-th character to align
+    lpos = pos
+    rpos = lpos + 1
+
+    tup_list = [line.split(character) for line in line_list]
+
+    handle_ansi = True
+    if handle_ansi:
+        # Remove ansi from length calculation
+        # References: http://stackoverflow.com/questions/14693701remove-ansi
+        ansi_escape = re.compile(r'\x1b[^m]*m')
+
+    # Find how much padding is needed
+    maxlen = 0
+    for tup in tup_list:
+        if len(tup) >= rpos + 1:
+            if handle_ansi:
+                tup = [ansi_escape.sub('', x) for x in tup]
+            left_lenlist = list(map(len, tup[0:rpos]))
+            left_len = sum(left_lenlist) + lpos * len(replchar)
+            maxlen = max(maxlen, left_len)
+
+    # Pad each line to align the pos-th occurence of the chosen character
+    new_lines = []
+    for tup in tup_list:
+        if len(tup) >= rpos + 1:
+            lhs = character.join(tup[0:rpos])
+            rhs = character.join(tup[rpos:])
+            # pad the new line with requested justification
+            newline = lhs.ljust(maxlen) + replchar + rhs
+            new_lines.append(newline)
+        else:
+            new_lines.append(replchar.join(tup))
+    return new_lines

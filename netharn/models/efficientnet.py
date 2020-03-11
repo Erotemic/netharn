@@ -17,7 +17,7 @@ from functools import partial
 from torch.utils import model_zoo
 
 
-class Conv2dDynamicSamePadding(nn.Conv2d):
+class Conv2dDynamicSamePadding(nn.Conv2d, layers.AnalyticModule):
     """ 2D Convolutions like TensorFlow, for a dynamic image size """
 
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1, bias=True):
@@ -44,8 +44,47 @@ class Conv2dDynamicSamePadding(nn.Conv2d):
         else:
             return partial(Conv2dStaticSamePadding, image_size=image_size)
 
+    def _analytic_forward(self, inputs, _OutputFor, _Output, _Hidden,
+                          **kwargs):
+        """
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> from netharn.models.efficientnet import *  # NOQA
+            >>> import netharn as nh
+            >>> kwargs = layers.AnalyticModule._analytic_shape_kw()
+            >>> globals().update(kwargs)
+            >>> inputs = (1, 3, 224, 224)
+            >>> self = Conv2dDynamicSamePadding(2, 3, 5)
+            >>> outputs = self.output_shape_for(inputs)
+            >>> print(nh.util.align(ub.repr2(outputs.hidden, nl=-1), ':'))
+        """
+        hidden = _Hidden()
+        x = inputs
+        ih, iw = _OutputFor.shape(x)[-2:]
+        kh, kw = self.weight.size()[-2:]
+        sh, sw = self.stride
+        oh, ow = math.ceil(ih / sh), math.ceil(iw / sw)
+        pad_h = max((oh - 1) * self.stride[0] + (kh - 1) * self.dilation[0] + 1 - ih, 0)
+        pad_w = max((ow - 1) * self.stride[1] + (kw - 1) * self.dilation[1] + 1 - iw, 0)
+        if pad_h > 0 or pad_w > 0:
+            pad = [pad_w // 2, pad_w - pad_w // 2,
+                   pad_h // 2, pad_h - pad_h // 2]
+            x = hidden['dynamic_padding'] = _OutputFor(F.pad)(x, pad)
 
-class Conv2dStaticSamePadding(nn.Conv2d):
+        weight = self.weight
+        bias = self.bias is not None
+        stride = self.stride
+        padding = self.padding
+        dilation = self.dilation
+        groups = self.groups
+
+        y = hidden['conv'] = _OutputFor(F.conv2d)(x, weight, bias, stride,
+                                                  padding, dilation, groups)
+        outputs = _Output.coerce(y, hidden)
+        return outputs
+
+
+class Conv2dStaticSamePadding(nn.Conv2d, layers.AnalyticModule):
     """ 2D Convolutions like TensorFlow, for a fixed image size"""
 
     def __init__(self, in_channels, out_channels, kernel_size, image_size=None, **kwargs):
@@ -60,6 +99,8 @@ class Conv2dStaticSamePadding(nn.Conv2d):
         oh, ow = int(math.ceil(ih / sh)), int(math.ceil(iw / sw))
         pad_h = max((oh - 1) * self.stride[0] + (kh - 1) * self.dilation[0] + 1 - ih, 0)
         pad_w = max((ow - 1) * self.stride[1] + (kw - 1) * self.dilation[1] + 1 - iw, 0)
+        self._pad_w = pad_w
+        self._pad_h = pad_w
         if pad_h > 0 or pad_w > 0:
             self.static_padding = nn.ZeroPad2d((pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2))
         else:
@@ -69,6 +110,29 @@ class Conv2dStaticSamePadding(nn.Conv2d):
         x = self.static_padding(x)
         x = F.conv2d(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
         return x
+
+    def _analytic_forward(self, inputs, _OutputFor, _Output, _Hidden,
+                          **kwargs):
+        """
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> from netharn.models.efficientnet import *  # NOQA
+            >>> import netharn as nh
+            >>> kwargs = layers.AnalyticModule._analytic_shape_kw()
+            >>> globals().update(kwargs)
+            >>> inputs = (1, 3, 224, 224)
+            >>> self = Conv2dStaticSamePadding(2, 3, 5, image_size=[512, 512])
+            >>> outputs = self.output_shape_for(inputs)
+            >>> print(nh.util.align(ub.repr2(outputs.hidden, nl=-1), ':'))
+        """
+        hidden = _Hidden()
+        x = inputs
+        x = hidden['static_padding'] = _OutputFor(self.static_padding)(x)
+        y = hidden['conv'] = _OutputFor(F.conv2d)(
+            x, self.weight, self.bias is not None, self.stride, self.padding,
+            self.dilation, self.groups)
+        outputs = _Output.coerce(y, hidden)
+        return outputs
 
 
 ##################
@@ -80,8 +144,8 @@ class MBConvBlock(layers.AnalyticModule):
     Mobile Inverted Residual Bottleneck Block
 
     Args:
-        block_args (BlockArgs): see above
-        global_params (GlobalParam): see above
+        block_args (BlockArgs): see :class:`Details`
+        global_params (GlobalParam): see :class:`Details`
 
     Attributes:
         has_se (bool): Whether the block contains a Squeeze and Excitation layer.
@@ -159,6 +223,68 @@ class MBConvBlock(layers.AnalyticModule):
                 x = self.drop_connect(x, p=drop_connect_rate)
             x = x + inputs  # skip connection
         return x
+
+    @classmethod
+    def demo(MBConvBlock):
+        layer_block_args, global_params = Details.build_efficientnet_params()
+        block_args = layer_block_args[0]
+        self = MBConvBlock(block_args, global_params)
+        return self
+
+    def _analytic_forward(self, inputs, _OutputFor, _Output, _Hidden,
+                          **kwargs):
+        """
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> from netharn.models.efficientnet import *  # NOQA
+            >>> import netharn as nh
+            >>> self = MBConvBlock.demo()
+            >>> kwargs = self._analytic_shape_kw()
+            >>> globals().update(kwargs)
+            >>> input_shape = inputs = (1, 32, 224, 224)
+            >>> outputs = self.output_shape_for(input_shape)
+            >>> print(nh.util.align(ub.repr2(outputs.hidden, nl=-1), ':'))
+        """
+        hidden = _Hidden()
+
+        # Expansion and Depthwise Convolution
+        x = inputs
+        if self._block_args.expand_ratio != 1:
+            x = hidden['expand_conv'] = _OutputFor(self._expand_conv)(inputs)
+            x = hidden['_bn0'] = _OutputFor(self._bn0)(x)
+            x = hidden['_noli0'] = _OutputFor(self._noli)(x)
+
+        x = hidden['depthwise_conv'] = _OutputFor(self._depthwise_conv)(x)
+        x = hidden['_bn1'] = _OutputFor(self._bn1)(x)
+        x = hidden['_noli1'] = _OutputFor(self._noli)(x)
+
+        # Squeeze and Excitation
+        if self.has_se:
+            x_squeezed = hidden['_se_pool'] = _OutputFor(F.adaptive_avg_pool2d)(x, 1)
+            x_squeezed = hidden['_se_reduce'] =  _OutputFor(self._se_reduce)(x_squeezed)
+            x_squeezed = hidden['_se_noli'] = _OutputFor(self._noli)(x_squeezed)
+            x_squeezed = hidden['_se_expand'] = _OutputFor(self._se_expand)(x_squeezed)
+            x_squeezed = hidden['_se_sigmoid'] = _OutputFor(torch.sigmoid)(x_squeezed)
+            x = hidden['_se_mul'] = _OutputFor.mul(x_squeezed, x)
+
+        x = hidden['_project'] = _OutputFor(self._project_conv)(x)
+        x = hidden['_bn2'] = _OutputFor(self._bn2)(x)
+
+        # Skip connection and drop connect
+        input_filters, output_filters = self._block_args.input_filters, self._block_args.output_filters
+        if self.id_skip and self._block_args.stride == 1 and input_filters == output_filters:
+            drop_connect_rate = kwargs.get('drop_connect_rate', 0)
+            if drop_connect_rate:
+                try:
+                    x = self.drop_connect(x, p=drop_connect_rate)
+                except Exception:
+                    pass
+                hidden['drop_connect'] = x
+
+            # skip connection
+            x = hidden['skip'] = _OutputFor.add(x, inputs)
+        outputs = _Output.coerce(x, hidden)
+        return outputs
 
     def drop_connect(self, inputs, p):
         """ Drop connect. """
@@ -330,17 +456,28 @@ class EfficientNet(layers.AnalyticModule):
         """
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> import netharn as nh
             >>> from netharn.models.efficientnet import *  # NOQA
             >>> self = EfficientNet.from_name('efficientnet-b0')
             >>> kwargs = self._analytic_shape_kw()
             >>> globals().update(kwargs)
             >>> inputs = (1, 3, 224, 224)
+            >>> inputs = (1, 3, 32, 32)
+            >>> outputs = self.output_shape_for(inputs)
+            >>> print(nh.util.align(ub.repr2(outputs.hidden.shallow(1), nl=-1), ':'))
+
+            >>> print(nh.util.align(ub.repr2(outputs.hidden['block_0'].shallow(2), nl=-1), ':'))
+            >>> print(nh.util.align(ub.repr2(outputs.hidden['block_1'].shallow(2), nl=-1), ':'))
+            >>> print(nh.util.align(ub.repr2(outputs.hidden['block_2'].shallow(2), nl=-1), ':'))
+            >>> print(nh.util.align(ub.repr2(outputs.hidden['block_3'].shallow(2), nl=-1), ':'))
+            >>> print(nh.util.align(ub.repr2(outputs.hidden['block_14'].shallow(2), nl=-1), ':'))
+            >>> print(nh.util.align(ub.repr2(outputs.hidden['block_15'].shallow(2), nl=-1), ':'))
         """
         hidden = _Hidden()
 
         # NEEDS MORE BACKEND WORK
 
-        bs = inputs.size(0)
+        bs = _OutputFor.shape(inputs)[0]
 
         x = inputs
         x = hidden['_conv_stem'] = _OutputFor(self._conv_stem)(x)
@@ -357,7 +494,7 @@ class EfficientNet(layers.AnalyticModule):
 
         # Pooling and final linear layer
         x = _OutputFor(self._avg_pooling)(x)
-        x = _OutputFor(x.view)(bs, -1)
+        x = _OutputFor.view(x, bs, -1)
         x = _OutputFor(self._dropout)(x)
         x = _OutputFor(self._fc)(x)
         outputs = _Output.coerce(x, hidden)
@@ -380,6 +517,14 @@ class EfficientNet(layers.AnalyticModule):
         return x
 
     # TODO: Analytic forward
+
+    @classmethod
+    def from_params(cls, width, depth, size, dropout, **override_params):
+        # note: all models have drop connect rate = 0.2
+        blocks_args, global_params = Details.build_efficientnet_params(
+            width_coefficient=width, depth_coefficient=depth,
+            dropout_rate=dropout, image_size=size)
+        global_params = global_params._replace(**override_params)
 
     @classmethod
     def from_name(EfficientNet, model_name, override_params=None):
@@ -643,7 +788,7 @@ class Details(object):
         Creates a efficientnet parameters
 
         Example:
-            Details.build_efficientnet_params(0.1, 0.1, image_size=512)
+            Details.build_efficientnet_params(None, None, image_size=512)
         """
 
         blocks_args = [
@@ -659,7 +804,6 @@ class Details(object):
             batch_norm_epsilon=1e-3,
             dropout_rate=dropout_rate,
             drop_connect_rate=drop_connect_rate,
-            # data_format='channels_last',  # removed, this is always true in PyTorch
             num_classes=num_classes,
             width_coefficient=width_coefficient,
             depth_coefficient=depth_coefficient,
@@ -669,7 +813,6 @@ class Details(object):
             classes=None,
             noli='swish'
         )
-
         return blocks_args, global_params
 
     @staticmethod

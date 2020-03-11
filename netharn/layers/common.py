@@ -122,14 +122,17 @@ class AnalyticModule(Module):
             '_Hidden': analytic_for.Hidden,
         }
 
-    def output_shape_for(self, input_shape):
+    def output_shape_for(self, input_shape, **kwargs):
         """
         Uses custom _analytic_forward to compute output shape
         """
         kw = self._analytic_shape_kw()
+        if kwargs:
+            kw = kw.copy()
+            kw.update(kwargs)
         return self._analytic_forward(input_shape, **kw)
 
-    def receptive_field_for(self, input_field=None):
+    def receptive_field_for(self, input_field=None, **kwargs):
         """
         Uses custom _analytic_forward to compute receptive field
         """
@@ -138,13 +141,19 @@ class AnalyticModule(Module):
         if input_field is None:
             input_field = receptive_field_for.ReceptiveFieldFor.input()
         kw = self._analytic_field_kw()
+        if kwargs:
+            kw = kw.copy()
+            kw.update(kwargs)
         return self._analytic_forward(input_field, **kw)
 
-    def forward(self, inputs, **kw):
+    def forward(self, inputs, **kwargs):
         """
         Uses custom _analytic_forward to compute receptive field
         """
         kw = self._analytic_forward_kw()
+        if kwargs:
+            kw = kw.copy()
+            kw.update(kwargs)
         return self._analytic_forward(inputs, **kw)
 
 

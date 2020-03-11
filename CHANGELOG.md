@@ -9,6 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 * Timeout to FitHarn.preferences
 * Basic gradient logging
+* Several new functions are now registered with OutputShapeFor to support efficientnet (F.pad, F.conv2d, torch.sigmoid)
 
 ### Changed
 * Removed explicit support for Python 2.7
