@@ -21,7 +21,10 @@ class Conv2dDynamicSamePadding(nn.Conv2d, layers.AnalyticModule):
     """ 2D Convolutions like TensorFlow, for a dynamic image size """
 
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1, bias=True):
-        super(Conv2dDynamicSamePadding, self).__init__(in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
+        super(Conv2dDynamicSamePadding, self).__init__(in_channels,
+                                                       out_channels,
+                                                       kernel_size, stride, 0,
+                                                       dilation, groups, bias)
         self.stride = self.stride if len(self.stride) == 2 else [self.stride[0]] * 2
 
     def forward(self, x):
@@ -99,6 +102,7 @@ class Conv2dStaticSamePadding(nn.Conv2d, layers.AnalyticModule):
         oh, ow = int(math.ceil(ih / sh)), int(math.ceil(iw / sw))
         pad_h = max((oh - 1) * self.stride[0] + (kh - 1) * self.dilation[0] + 1 - ih, 0)
         pad_w = max((ow - 1) * self.stride[1] + (kw - 1) * self.dilation[1] + 1 - iw, 0)
+        self.image_size = image_size
         self._pad_w = pad_w
         self._pad_h = pad_w
         if pad_h > 0 or pad_w > 0:
@@ -344,6 +348,8 @@ class EfficientNet(layers.AnalyticModule):
         tmp['classes'] = self.classes.__json__()
         self._global_params = type(global_params)(**tmp)
 
+        self.image_size = self._global_params._asdict()['image_size']
+
         # import ubelt as ub
         # print(ub.repr2(self._global_params._asdict(), nl=-4))
         # print(ub.repr2(self._global_params._asdict()))
@@ -472,6 +478,42 @@ class EfficientNet(layers.AnalyticModule):
             >>> print(nh.util.align(ub.repr2(outputs.hidden['block_3'].shallow(2), nl=-1), ':'))
             >>> print(nh.util.align(ub.repr2(outputs.hidden['block_14'].shallow(2), nl=-1), ':'))
             >>> print(nh.util.align(ub.repr2(outputs.hidden['block_15'].shallow(2), nl=-1), ':'))
+
+            >>> self = EfficientNet.from_name('efficientnet-b7')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+            >>> self = EfficientNet.from_name('efficientnet-b6')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+            >>> self = EfficientNet.from_name('efficientnet-b3')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+            >>> self = EfficientNet.from_name('efficientnet-b2')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+            >>> self = EfficientNet.from_name('efficientnet-b1')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+            >>> self = EfficientNet.from_name('efficientnet-b0')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+
+            >>> inputs = (1, 3, 224, 224)
+            >>> self = EfficientNet.from_name('efficientnet-b7')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+            >>> outputs = self.output_shape_for(inputs)
+            >>> print(nh.util.align(ub.repr2(outputs.hidden.shallow(1), nl=-1), ':'))
+
+            for name, layer in nh.util.trainable_layers(self, names=1):
+                if hasattr(layer, 'image_size'):
+                    print('name = {!r}'.format(name))
+                    print('layer = {!r}'.format(layer))
+                    print('layer.image_size = {!r}'.format(layer.image_size))
+
+            >>> inputs = (1, 3, 224, 224)
+            >>> self = EfficientNet.from_name('efficientnet-b0')
+            >>> outputs = self.output_shape_for(inputs)
+            >>> print(nh.util.align(ub.repr2(outputs.hidden.shallow(1), nl=-1), ':'))
+
+            for name, layer in nh.util.trainable_layers(self, names=1):
+                if hasattr(layer, 'image_size'):
+                    print('name = {!r}'.format(name))
+                    print('layer = {!r}'.format(layer))
+                    print('layer.image_size = {!r}'.format(layer.image_size))
         """
         hidden = _Hidden()
 
