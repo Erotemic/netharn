@@ -697,7 +697,7 @@ def make_netharn_registry():
 
         # netharn - training harness
         CommonRepo(
-            name='netharn', branch='dev/0.5.4', remote='public',
+            name='netharn', branch='dev/0.5.5', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
         ),
     ]
