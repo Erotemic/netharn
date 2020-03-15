@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
-from netharn.output_shape_for import OutputShapeFor
+from netharn.analytic.output_shape_for import OutputShapeFor
 from netharn.layers import rectify
 from netharn.layers import common
 import ubelt as ub  # NOQA

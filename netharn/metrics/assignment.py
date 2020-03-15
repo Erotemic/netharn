@@ -556,8 +556,13 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
 
             # Determine which predicted boxes are inside the ignore regions
             # note: using sum over max is delibrate here.
-            ignore_overlap = (pred_boxes.isect_area(ignore_boxes) /
-                              pred_boxes.area).clip(0, 1).sum(axis=1)
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', message='invalid .* less')
+                warnings.filterwarnings('ignore', message='invalid .* greater_equal')
+                warnings.filterwarnings('ignore', message='invalid .* true_divide')
+                ignore_overlap = (pred_boxes.isect_area(ignore_boxes) /
+                                  pred_boxes.area).clip(0, 1).sum(axis=1)
+                ignore_overlap = np.nan_to_num(ignore_overlap)
 
             ignore_idxs = np.where(ignore_overlap > ovthresh)[0]
 
@@ -584,7 +589,6 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
                         overlap = (isect.area / pred_region.area)
                         ignore_overlap[idx] = overlap
                     except Exception as ex:
-                        import warnings
                         warnings.warn('ex = {!r}'.format(ex))
             pred_ignore_flags = ignore_overlap > ovthresh
     return true_ignore_flags, pred_ignore_flags

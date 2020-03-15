@@ -337,17 +337,17 @@ test_full/cp35-cp35m-linux:
 # ---------------
 # Python 2.7 Jobs
 
-build/cp27-cp27mu-linux:
-    <<: 
-        - *build_template
-    image:
-        python:2.7
+#build/cp27-cp27mu-linux:
+#    <<: 
+#        - *build_template
+#    image:
+#        python:2.7
 
-test_full/cp27-cp27mu-linux:
-    <<: 
-        - *test_full_template
-    image:
-        python:2.7
+#test_full/cp27-cp27mu-linux:
+#    <<: 
+#        - *test_full_template
+#    image:
+#        python:2.7
 
 #gpgsign/cp27-cp27mu-linux:
 #    <<: 

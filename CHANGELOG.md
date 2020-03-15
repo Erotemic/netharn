@@ -3,7 +3,23 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.5.4
+
+## Version 0.5.5
+
+### Added
+* Timeout to FitHarn.preferences
+* Basic gradient logging
+* Several new functions are now registered with OutputShapeFor to support efficientnet (F.pad, F.conv2d, torch.sigmoid)
+
+### Changed
+* Removed explicit support for Python 2.7
+* Reverted default of `keyboard_debug` to True.
+* Moved `analytic_for`, `output_shape_for`, and `receptive_field` for to the netharn.analytic subpackage. Original names are still available, but deprecated and will be removed in a future version. 
+* Moved helpers from `netharn.hyperparams` to `netharn.util`
+* Made pytorch-optimizer optional: https://github.com/jettify/pytorch-optimizer
+
+
+## Version 0.5.4 - Released 2020-02-19 
 
 ### Added
 * EfficientNet backbone and Swish activation

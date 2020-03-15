@@ -53,6 +53,10 @@ def rectify_nonlinearity(key=ub.NoParam, dim=2):
         from netharn.layers.swish import Swish
         kw.pop('inplace', None)
         cls = Swish
+    elif noli_type == 'mish':
+        from netharn.layers.mish import Mish
+        kw.pop('inplace', None)
+        cls = Mish
     else:
         raise KeyError('unknown type: {}'.format(kw))
     return cls(**kw)

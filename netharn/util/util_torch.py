@@ -10,6 +10,18 @@ class ModuleMixin(object):
     """
     Adds convenience functions to a torch module
     """
+
+    def trainable_layers(self, names=False):
+        """
+        Get the layers netharn identifies as "trainable"
+
+        Example:
+            >>> import torchvision
+            >>> model = torchvision.models.AlexNet()
+            >>> list(ModuleMixin.trainable_layers(model, names=True))
+        """
+        return trainable_layers(self, names=names)
+
     def number_of_parameters(self, trainable=True):
         """
         Tally the number of model paramters.
@@ -310,7 +322,7 @@ def trainable_layers(model, names=False):
     """
     Note:
         This was moved to netharn.initializers.functional.
-        Is this still needed in util?
+        Move it back here, or do some other refactoring.
 
     Example:
         >>> import torchvision

@@ -668,11 +668,11 @@ def make_netharn_registry():
 
         # The util libs
         CommonRepo(
-            name='kwarray', branch='dev/0.5.4', remote='public',
+            name='kwarray', branch='dev/0.5.5', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
         ),
         CommonRepo(
-            name='kwimage', branch='dev/0.6.0', remote='public',
+            name='kwimage', branch='dev/0.6.1', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
         ),
         # CommonRepo(  # TODO
@@ -691,7 +691,7 @@ def make_netharn_registry():
             remotes={'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
         ),
         CommonRepo(
-            name='ndsampler', branch='dev/0.5.4', remote='public',
+            name='ndsampler', branch='dev/0.5.5', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
         ),
 

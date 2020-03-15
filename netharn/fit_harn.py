@@ -87,6 +87,7 @@ Example:
     >>> harn = nh.FitHarn(hyper)
     >>> # non-algorithmic behavior configs (do not change learned models)
     >>> harn.preferences['use_tensorboard'] = False
+    >>> harn.preferences['timeout'] = 0.5
     >>> # start training.
     >>> harn.initialize(reset='delete')
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
@@ -148,14 +149,12 @@ import numpy as np
 import ubelt as ub
 
 from netharn import hyperparams
-from netharn.exceptions import (StopTraining, CannotResume, TrainingDiverged,
-                                SkipBatch)
-
 from netharn import util
+from netharn import export
 from netharn.util import profiler
 from netharn.util import strip_ansi
-
-from netharn import export
+from netharn.exceptions import (CannotResume, SkipBatch, StopTraining,
+                                TrainingDiverged)
 
 try:
     import tensorboard_logger
@@ -1354,10 +1353,19 @@ class CoreMixin(object):
             ### THIS IS THE MAIN LOOP ###
             #############################
 
-            for harn.epoch in it.count(harn.epoch):
-                harn._run_tagged_epochs(train_loader, vali_loader, test_loader)
-                if DEMO and harn.epoch > DEMO:
-                    break
+            with ub.Timer() as timer:
+
+                for harn.epoch in it.count(harn.epoch):
+                    harn._run_tagged_epochs(
+                        train_loader,
+                        vali_loader,
+                        test_loader
+                    )
+                    if DEMO and harn.epoch > DEMO:
+                        raise StopTraining
+                    elif timer.toc() > harn.preferences['timeout']:
+                        harn.info('timeout')
+                        raise StopTraining
 
             ##############################
             ### THAT WAS THE MAIN LOOP ###
@@ -1791,7 +1799,7 @@ class CoreMixin(object):
                                     from netharn.mixins import _dump_monitor_tensorboard
                                     _dump_monitor_tensorboard(
                                         harn, 'iter',
-                                        harn.preferences['tensorboard_groups'])
+                                        special_groupers=harn.preferences['tensorboard_groups'])
 
                         prog.update(display_interval)
                         if use_tqdm:
@@ -1862,7 +1870,7 @@ class CoreMixin(object):
                 loss information added in this function.
         """
         loss_value = float(loss.data.cpu().item())
-        loss_value = harn._check_loss(loss_value)
+        harn._check_loss(loss_value)
 
         metrics_dict = ub.odict()
         metrics_dict['loss'] = loss_value
@@ -1922,7 +1930,6 @@ class ChecksMixin(object):
             if loss_value > harn.preferences['large_loss']:
                 # if the loss is getting large, check if the weights are ok
                 harn._check_divergence()
-        return loss_value
 
     @profiler.profile
     def _check_divergence(harn):
@@ -1955,6 +1962,20 @@ class ChecksMixin(object):
             harn.error('NON-FINITE WEIGHTS: {}'.format(ub.repr2(bad_layers, nl=1)))
             raise TrainingDiverged(
                 'NON-FINITE WEIGHTS weights.sum() = {!r}'.format(weight_sum))
+
+    def _check_layer_rotation(harn):
+        """
+        References:
+            "Layer rotation: a surprisingly powerful indicator of generalization in deep networks?" -
+            https://arxiv.org/pdf/1806.01603.pdf
+
+        TODO:
+            - [ ] Requires storing network initialization state in memory.
+            - [ ] Per layer rotation - cosine distance
+            - [ ] Technique to combine into single number? Average? Rotation of flattened network?
+        """
+
+        pass
 
 
 @register_mixin
@@ -2135,17 +2156,39 @@ class CoreCallbacks(object):
         bstep = harn.dynamics['batch_step']
         if (bx + 1) % bstep == 0:
 
+            tag = harn.current_tag
+            iter_idx = harn.iter_index
+
             if harn.dynamics['grad_norm_max']:
                 total_norm = torch.nn.utils.clip_grad_norm_(
                     harn.model.parameters(),
                     max_norm=harn.dynamics['grad_norm_max'],
                     norm_type=harn.dynamics['grad_norm_type'],
                 )
+                if harn.preferences['log_gradients']:
+                    if harn.check_interval('log_iter_' + tag, iter_idx, first=True):
+                        harn.log_value(tag + ' iter clipped total norm', total_norm, iter_idx)
+
                 if total_norm > harn.dynamics['grad_norm_max'] * 100:
                     harn.warn('grad norm is too high: '
                               'total_norm = {!r}'.format(total_norm))
-            # if False:
-            #     harn._check_gradients(batch, loss)
+            elif harn.preferences['log_gradients']:
+                if harn.check_interval('log_iter_' + tag, iter_idx, first=True):
+                    total_norm = torch.nn.utils.clip_grad_norm_(
+                        harn.model.parameters(),
+                        max_norm=float('inf'),
+                        norm_type=harn.dynamics['grad_norm_type'],
+                    )
+                    harn.log_value(tag + ' iter total norm', total_norm, iter_idx)
+
+            if harn.preferences['log_gradients']:
+                all_grads = harn._check_gradients()
+
+                if True:
+                    layer_mag = {k: v.norm().data.cpu().numpy().tolist() for k, v in all_grads.items()}
+                    mag_arr = np.array(list(layer_mag.values()))
+                    harn.log_histogram(tag + ' iter layer norm', mag_arr, iter_idx)
+
             # harn.debug("STEP")
             harn.optimizer.step()
             harn.optimizer.zero_grad()
@@ -2217,14 +2260,14 @@ class PropertyMixin(object):
     @property
     def batch_index(harn):
         """ The index of the current batch in the current epoch """
-        return harn.bxs[harn.current_tag]
+        return harn.bxs.get(harn.current_tag, 0)
 
     @property
     def iter_index(harn):
         """ Returns the current iteration index of the current tag """
         iter_idx = (
-            harn._prev_iter_idxs[harn.current_tag] +
-            harn.bxs[harn.current_tag]
+            harn._prev_iter_idxs.get(harn.current_tag, 0) +
+            harn.bxs.get(harn.current_tag, 0)
         )
         return iter_idx
 
@@ -2307,19 +2350,21 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             starting from scratch or Pretrained if doing transfer learning)
 
         optimizer (torch.optim.optimizer.Optimizer) :
-            Optimization algorithm like SGD or ADAM. SeeAlso: `netharn.optimizers`
+            Optimization algorithm like SGD or ADAM. SeeAlso:
+                `netharn.optimizers`
 
         scheduler (torch.optim.lr_scheduler._LRScheduler) :
-            Learning rate scheduler. SeeAlso: `netharn.schedulers` for a schedulers
-            that are not currently implemented in torch. Note that the
-            newstyle-netharn schedulers can control momentum as well as lr.
+            Learning rate scheduler. SeeAlso: `netharn.schedulers` for a
+            schedulers that are not currently implemented in torch. Note that
+            the newstyle-netharn schedulers can control momentum as well as lr.
 
         criterion (torch.nn.modules.loss._Loss | None) :
             Objective function / loss criterion. SeeAlso: `netharn.criterions`.
             This is not strictly necessary if the loss is defined inline.
 
         monitor (netharn.Monitor) :
-            monitors performance of the validation set. SeeAlso `netharn.monitor`.
+            monitors performance of the validation set. SeeAlso
+            `netharn.monitor`.
 
 
     Note:
@@ -2422,7 +2467,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
         # be manually or hueristically constructed.
 
         harn.preferences = {
-            'keyboard_debug': False,
+            'keyboard_debug': True,
 
             'snapshot_after_error': True,  # Try to checkpoint before crashing
 
@@ -2433,6 +2478,8 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             # If your loss criterion returns a dictionary of parts, ignore any
             # infinite values before summing the total loss.
             'ignore_inf_loss_parts': False,
+
+            'log_gradients': True,  # compute and log stats about gradients
 
             'use_tensorboard': True,
 
@@ -2456,6 +2503,8 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             'num_keep': 2,
             # Ensure we always keep a snapshot every `freq` epochs
             'keep_freq': 20,
+
+            'timeout': float('inf'),  # limits the amount of time training can take
         }
 
         # This variable should be used to store your custom script

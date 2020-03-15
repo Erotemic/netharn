@@ -3,8 +3,8 @@ import torch
 from torch import nn
 import ubelt as ub
 from netharn.layers import common
-from netharn import output_shape_for
-from netharn import receptive_field_for
+from netharn.analytic import output_shape_for
+from netharn.analytic import receptive_field_for
 
 
 class L2Norm(common.Module):
@@ -35,7 +35,7 @@ class L2Norm(common.Module):
                    [20., 20.]]], dtype=np.float32)
 
     Example:
-        >>> from netharn.output_shape_for import OutputShapeFor
+        >>> from netharn.analytic.output_shape_for import OutputShapeFor
         >>> self = L2Norm(in_features=7, scale=20)
         >>> OutputShapeFor(self)._check_consistency((1, 7, 2, 2))
         (1, 7, 2, 2)

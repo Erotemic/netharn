@@ -329,13 +329,14 @@ class ExpMovingAve(MovingAve):
         return self
 
 
-class RunningStats(object):
+class RunningStats(ub.NiceRepr):
     """
     Dynamically records per-element array statistics and can summarized them
     per-element, across channels, or globally.
 
     TODO:
         - [ ] This may need a few API tweaks and good documentation
+        - [ ] Move to kwarray
 
     SeeAlso:
         InternalRunningStats
@@ -362,6 +363,16 @@ class RunningStats(object):
         run.raw_total = 0
         run.raw_squares = 0
         run.n = 0
+
+    def __nice__(self):
+        return '{}'.format(self.shape)
+
+    @property
+    def shape(run):
+        try:
+            return run.raw_total.shape
+        except Exception:
+            return None
 
     def update(run, img):
         run.n += 1

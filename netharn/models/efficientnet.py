@@ -17,11 +17,14 @@ from functools import partial
 from torch.utils import model_zoo
 
 
-class Conv2dDynamicSamePadding(nn.Conv2d):
+class Conv2dDynamicSamePadding(nn.Conv2d, layers.AnalyticModule):
     """ 2D Convolutions like TensorFlow, for a dynamic image size """
 
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1, bias=True):
-        super(Conv2dDynamicSamePadding, self).__init__(in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
+        super(Conv2dDynamicSamePadding, self).__init__(in_channels,
+                                                       out_channels,
+                                                       kernel_size, stride, 0,
+                                                       dilation, groups, bias)
         self.stride = self.stride if len(self.stride) == 2 else [self.stride[0]] * 2
 
     def forward(self, x):
@@ -44,8 +47,47 @@ class Conv2dDynamicSamePadding(nn.Conv2d):
         else:
             return partial(Conv2dStaticSamePadding, image_size=image_size)
 
+    def _analytic_forward(self, inputs, _OutputFor, _Output, _Hidden,
+                          **kwargs):
+        """
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> from netharn.models.efficientnet import *  # NOQA
+            >>> import netharn as nh
+            >>> kwargs = layers.AnalyticModule._analytic_shape_kw()
+            >>> globals().update(kwargs)
+            >>> inputs = (1, 3, 224, 224)
+            >>> self = Conv2dDynamicSamePadding(2, 3, 5)
+            >>> outputs = self.output_shape_for(inputs)
+            >>> print(nh.util.align(ub.repr2(outputs.hidden, nl=-1), ':'))
+        """
+        hidden = _Hidden()
+        x = inputs
+        ih, iw = _OutputFor.shape(x)[-2:]
+        kh, kw = self.weight.size()[-2:]
+        sh, sw = self.stride
+        oh, ow = math.ceil(ih / sh), math.ceil(iw / sw)
+        pad_h = max((oh - 1) * self.stride[0] + (kh - 1) * self.dilation[0] + 1 - ih, 0)
+        pad_w = max((ow - 1) * self.stride[1] + (kw - 1) * self.dilation[1] + 1 - iw, 0)
+        if pad_h > 0 or pad_w > 0:
+            pad = [pad_w // 2, pad_w - pad_w // 2,
+                   pad_h // 2, pad_h - pad_h // 2]
+            x = hidden['dynamic_padding'] = _OutputFor(F.pad)(x, pad)
 
-class Conv2dStaticSamePadding(nn.Conv2d):
+        weight = self.weight
+        bias = self.bias is not None
+        stride = self.stride
+        padding = self.padding
+        dilation = self.dilation
+        groups = self.groups
+
+        y = hidden['conv'] = _OutputFor(F.conv2d)(x, weight, bias, stride,
+                                                  padding, dilation, groups)
+        outputs = _Output.coerce(y, hidden)
+        return outputs
+
+
+class Conv2dStaticSamePadding(nn.Conv2d, layers.AnalyticModule):
     """ 2D Convolutions like TensorFlow, for a fixed image size"""
 
     def __init__(self, in_channels, out_channels, kernel_size, image_size=None, **kwargs):
@@ -60,6 +102,10 @@ class Conv2dStaticSamePadding(nn.Conv2d):
         oh, ow = int(math.ceil(ih / sh)), int(math.ceil(iw / sw))
         pad_h = max((oh - 1) * self.stride[0] + (kh - 1) * self.dilation[0] + 1 - ih, 0)
         pad_w = max((ow - 1) * self.stride[1] + (kw - 1) * self.dilation[1] + 1 - iw, 0)
+        self.image_size = image_size
+        self._pad = (pad_h, pad_w)
+        self._pad_w = pad_w
+        self._pad_h = pad_w
         if pad_h > 0 or pad_w > 0:
             self.static_padding = nn.ZeroPad2d((pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2))
         else:
@@ -69,6 +115,29 @@ class Conv2dStaticSamePadding(nn.Conv2d):
         x = self.static_padding(x)
         x = F.conv2d(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
         return x
+
+    def _analytic_forward(self, inputs, _OutputFor, _Output, _Hidden,
+                          **kwargs):
+        """
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> from netharn.models.efficientnet import *  # NOQA
+            >>> import netharn as nh
+            >>> kwargs = layers.AnalyticModule._analytic_shape_kw()
+            >>> globals().update(kwargs)
+            >>> inputs = (1, 3, 224, 224)
+            >>> self = Conv2dStaticSamePadding(2, 3, 5, image_size=[512, 512])
+            >>> outputs = self.output_shape_for(inputs)
+            >>> print(nh.util.align(ub.repr2(outputs.hidden, nl=-1), ':'))
+        """
+        hidden = _Hidden()
+        x = inputs
+        x = hidden['static_padding'] = _OutputFor(self.static_padding)(x)
+        y = hidden['conv'] = _OutputFor(F.conv2d)(
+            x, self.weight, self.bias is not None, self.stride, self.padding,
+            self.dilation, self.groups)
+        outputs = _Output.coerce(y, hidden)
+        return outputs
 
 
 ##################
@@ -80,8 +149,8 @@ class MBConvBlock(layers.AnalyticModule):
     Mobile Inverted Residual Bottleneck Block
 
     Args:
-        block_args (BlockArgs): see above
-        global_params (GlobalParam): see above
+        block_args (BlockArgs): see :class:`Details`
+        global_params (GlobalParam): see :class:`Details`
 
     Attributes:
         has_se (bool): Whether the block contains a Squeeze and Excitation layer.
@@ -108,6 +177,8 @@ class MBConvBlock(layers.AnalyticModule):
         # Depthwise convolution phase
         k = self._block_args.kernel_size
         s = self._block_args.stride
+        # Note: it is important to set the weight decay to be very low for the
+        # depthwise convolutions
         self._depthwise_conv = Conv2d(
             in_channels=oup, out_channels=oup, groups=oup,  # groups makes it depthwise
             kernel_size=k, stride=s, bias=False)
@@ -122,9 +193,12 @@ class MBConvBlock(layers.AnalyticModule):
         # Output phase
         final_oup = self._block_args.output_filters
         self._project_conv = Conv2d(in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False)
+        # Note that the bn2 layer before the residual add, should be
+        # initailized with gamma=0
         self._bn2 = nn.BatchNorm2d(num_features=final_oup, momentum=self._bn_mom, eps=self._bn_eps)
-        noli = 'swish'
-        self._swish = layers.rectify_nonlinearity(noli, dim=2)
+        self._bn2._residual_bn = True
+        noli = global_params.noli
+        self._noli = layers.rectify_nonlinearity(noli, dim=2)
 
     def forward(self, inputs, drop_connect_rate=None):
         """
@@ -136,13 +210,13 @@ class MBConvBlock(layers.AnalyticModule):
         # Expansion and Depthwise Convolution
         x = inputs
         if self._block_args.expand_ratio != 1:
-            x = self._swish(self._bn0(self._expand_conv(inputs)))
-        x = self._swish(self._bn1(self._depthwise_conv(x)))
+            x = self._noli(self._bn0(self._expand_conv(inputs)))
+        x = self._noli(self._bn1(self._depthwise_conv(x)))
 
         # Squeeze and Excitation
         if self.has_se:
             x_squeezed = F.adaptive_avg_pool2d(x, 1)
-            x_squeezed = self._se_expand(self._swish(self._se_reduce(x_squeezed)))
+            x_squeezed = self._se_expand(self._noli(self._se_reduce(x_squeezed)))
             x = torch.sigmoid(x_squeezed) * x
 
         x = self._bn2(self._project_conv(x))
@@ -154,6 +228,68 @@ class MBConvBlock(layers.AnalyticModule):
                 x = self.drop_connect(x, p=drop_connect_rate)
             x = x + inputs  # skip connection
         return x
+
+    @classmethod
+    def demo(MBConvBlock):
+        layer_block_args, global_params = Details.build_efficientnet_params()
+        block_args = layer_block_args[0]
+        self = MBConvBlock(block_args, global_params)
+        return self
+
+    def _analytic_forward(self, inputs, _OutputFor, _Output, _Hidden,
+                          **kwargs):
+        """
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> from netharn.models.efficientnet import *  # NOQA
+            >>> import netharn as nh
+            >>> self = MBConvBlock.demo()
+            >>> kwargs = self._analytic_shape_kw()
+            >>> globals().update(kwargs)
+            >>> input_shape = inputs = (1, 32, 224, 224)
+            >>> outputs = self.output_shape_for(input_shape)
+            >>> print(nh.util.align(ub.repr2(outputs.hidden, nl=-1), ':'))
+        """
+        hidden = _Hidden()
+
+        # Expansion and Depthwise Convolution
+        x = inputs
+        if self._block_args.expand_ratio != 1:
+            x = hidden['expand_conv'] = _OutputFor(self._expand_conv)(inputs)
+            x = hidden['_bn0'] = _OutputFor(self._bn0)(x)
+            x = hidden['_noli0'] = _OutputFor(self._noli)(x)
+
+        x = hidden['depthwise_conv'] = _OutputFor(self._depthwise_conv)(x)
+        x = hidden['_bn1'] = _OutputFor(self._bn1)(x)
+        x = hidden['_noli1'] = _OutputFor(self._noli)(x)
+
+        # Squeeze and Excitation
+        if self.has_se:
+            x_squeezed = hidden['_se_pool'] = _OutputFor(F.adaptive_avg_pool2d)(x, 1)
+            x_squeezed = hidden['_se_reduce'] =  _OutputFor(self._se_reduce)(x_squeezed)
+            x_squeezed = hidden['_se_noli'] = _OutputFor(self._noli)(x_squeezed)
+            x_squeezed = hidden['_se_expand'] = _OutputFor(self._se_expand)(x_squeezed)
+            x_squeezed = hidden['_se_sigmoid'] = _OutputFor(torch.sigmoid)(x_squeezed)
+            x = hidden['_se_mul'] = _OutputFor.mul(x_squeezed, x)
+
+        x = hidden['_project'] = _OutputFor(self._project_conv)(x)
+        x = hidden['_bn2'] = _OutputFor(self._bn2)(x)
+
+        # Skip connection and drop connect
+        input_filters, output_filters = self._block_args.input_filters, self._block_args.output_filters
+        if self.id_skip and self._block_args.stride == 1 and input_filters == output_filters:
+            drop_connect_rate = kwargs.get('drop_connect_rate', 0)
+            if drop_connect_rate:
+                try:
+                    x = self.drop_connect(x, p=drop_connect_rate)
+                except Exception:
+                    pass
+                hidden['drop_connect'] = x
+
+            # skip connection
+            x = hidden['skip'] = _OutputFor.add(x, inputs)
+        outputs = _Output.coerce(x, hidden)
+        return outputs
 
     def drop_connect(self, inputs, p):
         """ Drop connect. """
@@ -212,6 +348,8 @@ class EfficientNet(layers.AnalyticModule):
         tmp['num_classes'] = len(self.classes)
         tmp['classes'] = self.classes.__json__()
         self._global_params = type(global_params)(**tmp)
+
+        self.image_size = self._global_params._asdict()['image_size']
 
         # import ubelt as ub
         # print(ub.repr2(self._global_params._asdict(), nl=-4))
@@ -273,8 +411,8 @@ class EfficientNet(layers.AnalyticModule):
         self._avg_pooling = nn.AdaptiveAvgPool2d(1)
         self._dropout = nn.Dropout(self._global_params.dropout_rate)
         self._fc = nn.Linear(out_channels, self._global_params.num_classes)
-        noli = 'swish'
-        self._swish = layers.rectify_nonlinearity(noli, dim=2)
+        noli = global_params.noli
+        self._noli = layers.rectify_nonlinearity(noli, dim=2)
 
     def round_filters(self, filters):
         """ Calculate and round number of filters based on depth multiplier. """
@@ -306,7 +444,7 @@ class EfficientNet(layers.AnalyticModule):
         """
         # Stem
         x = self._conv_stem(inputs)
-        x = self._swish(self._bn0(x))
+        x = self._noli(self._bn0(x))
 
         # Blocks
         for idx, block in enumerate(self._blocks):
@@ -316,7 +454,7 @@ class EfficientNet(layers.AnalyticModule):
             x = block(x, drop_connect_rate=drop_connect_rate)
 
         # Head
-        x = self._swish(self._bn1(self._conv_head(x)))
+        x = self._noli(self._bn1(self._conv_head(x)))
 
         return x
 
@@ -325,21 +463,68 @@ class EfficientNet(layers.AnalyticModule):
         """
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> import netharn as nh
             >>> from netharn.models.efficientnet import *  # NOQA
             >>> self = EfficientNet.from_name('efficientnet-b0')
             >>> kwargs = self._analytic_shape_kw()
             >>> globals().update(kwargs)
             >>> inputs = (1, 3, 224, 224)
+            >>> inputs = (1, 3, 32, 32)
+            >>> outputs = self.output_shape_for(inputs)
+            >>> print(nh.util.align(ub.repr2(outputs.hidden.shallow(1), nl=-1), ':'))
+
+            >>> print(nh.util.align(ub.repr2(outputs.hidden['block_0'].shallow(2), nl=-1), ':'))
+            >>> print(nh.util.align(ub.repr2(outputs.hidden['block_1'].shallow(2), nl=-1), ':'))
+            >>> print(nh.util.align(ub.repr2(outputs.hidden['block_2'].shallow(2), nl=-1), ':'))
+            >>> print(nh.util.align(ub.repr2(outputs.hidden['block_3'].shallow(2), nl=-1), ':'))
+            >>> print(nh.util.align(ub.repr2(outputs.hidden['block_14'].shallow(2), nl=-1), ':'))
+            >>> print(nh.util.align(ub.repr2(outputs.hidden['block_15'].shallow(2), nl=-1), ':'))
+
+            >>> self = EfficientNet.from_name('efficientnet-b7')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+            >>> self = EfficientNet.from_name('efficientnet-b6')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+            >>> self = EfficientNet.from_name('efficientnet-b3')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+            >>> self = EfficientNet.from_name('efficientnet-b2')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+            >>> self = EfficientNet.from_name('efficientnet-b1')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+            >>> self = EfficientNet.from_name('efficientnet-b0')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+
+            >>> inputs = (1, 3, 224, 224)
+            >>> self = EfficientNet.from_name('efficientnet-b7')
+            >>> print('self.image_size = {!r}'.format(self.image_size))
+            >>> outputs = self.output_shape_for(inputs)
+            >>> print(nh.util.align(ub.repr2(outputs.hidden.shallow(1), nl=-1), ':'))
+
+            for name, layer in nh.util.trainable_layers(self, names=1):
+                if hasattr(layer, 'image_size'):
+                    print('name = {!r}'.format(name))
+                    print('layer = {!r}'.format(layer))
+                    print('layer.image_size = {!r}'.format(layer.image_size))
+
+            >>> inputs = (1, 3, 224, 224)
+            >>> self = EfficientNet.from_name('efficientnet-b0')
+            >>> outputs = self.output_shape_for(inputs)
+            >>> print(nh.util.align(ub.repr2(outputs.hidden.shallow(1), nl=-1), ':'))
+
+            for name, layer in nh.util.trainable_layers(self, names=1):
+                if hasattr(layer, 'image_size'):
+                    print('name = {!r}'.format(name))
+                    print('layer = {!r}'.format(layer))
+                    print('layer.image_size = {!r}'.format(layer.image_size))
         """
         hidden = _Hidden()
 
         # NEEDS MORE BACKEND WORK
 
-        bs = inputs.size(0)
+        bs = _OutputFor.shape(inputs)[0]
 
         x = inputs
         x = hidden['_conv_stem'] = _OutputFor(self._conv_stem)(x)
-        x = hidden['_swish1'] = _OutputFor(self._swish)(x)
+        x = hidden['_noli1'] = _OutputFor(self._noli)(x)
 
         for idx, block in enumerate(self._blocks):
             drop_connect_rate = self._global_params.drop_connect_rate
@@ -348,11 +533,11 @@ class EfficientNet(layers.AnalyticModule):
             x = hidden['block_{}'.format(idx)] = _OutputFor(block)(
                 x, drop_connect_rate=drop_connect_rate)
 
-        x = hidden['_swish2'] = _OutputFor(self._swish)(x)
+        x = hidden['_noli2'] = _OutputFor(self._noli)(x)
 
         # Pooling and final linear layer
         x = _OutputFor(self._avg_pooling)(x)
-        x = _OutputFor(x.view)(bs, -1)
+        x = _OutputFor.view(x, bs, -1)
         x = _OutputFor(self._dropout)(x)
         x = _OutputFor(self._fc)(x)
         outputs = _Output.coerce(x, hidden)
@@ -377,6 +562,14 @@ class EfficientNet(layers.AnalyticModule):
     # TODO: Analytic forward
 
     @classmethod
+    def from_params(cls, width, depth, size, dropout, **override_params):
+        # note: all models have drop connect rate = 0.2
+        blocks_args, global_params = Details.build_efficientnet_params(
+            width_coefficient=width, depth_coefficient=depth,
+            dropout_rate=dropout, image_size=size)
+        global_params = global_params._replace(**override_params)
+
+    @classmethod
     def from_name(EfficientNet, model_name, override_params=None):
         """
         Example:
@@ -391,17 +584,28 @@ class EfficientNet(layers.AnalyticModule):
         return self
 
     @classmethod
-    def from_pretrained(EfficientNet, model_name, advprop=False, override_params=None, in_channels=3):
+    def from_pretrained(EfficientNet, model_name, advprop=False,
+                        override_params=None, in_channels=3):
         """
         Initialize the model from a pretrained state
 
         Example:
             >>> # xdoctest: +REQUIRES(--download)
             >>> # xdoctest: +REQUIRES(module:ndsampler)
-            >>> from netharn.models.efficentnet import *  # NOQA
+            >>> from netharn.models.efficientnet import *  # NOQA
             >>> model = EfficientNet.from_pretrained('efficientnet-b0')
             >>> inputs = torch.rand(1, 3, 224, 224)
             >>> outputs = model.forward(inputs)
+
+            >>> from netharn.models.efficientnet import *  # NOQA
+            >>> model = EfficientNet.from_pretrained('efficientnet-b0', override_params={'noli': 'mish'}, advprop=True)
+            >>> model = EfficientNet.from_pretrained('efficientnet-b1', override_params={'noli': 'mish'}, advprop=True)
+            >>> model = EfficientNet.from_pretrained('efficientnet-b2', override_params={'noli': 'mish'}, advprop=True)
+            >>> model = EfficientNet.from_pretrained('efficientnet-b3', override_params={'noli': 'mish'}, advprop=True)
+            >>> model = EfficientNet.from_pretrained('efficientnet-b4', override_params={'noli': 'mish'}, advprop=True)
+            >>> model = EfficientNet.from_pretrained('efficientnet-b5', override_params={'noli': 'mish'}, advprop=True)
+            >>> model = EfficientNet.from_pretrained('efficientnet-b6', override_params={'noli': 'mish'}, advprop=True)
+            >>> model = EfficientNet.from_pretrained('efficientnet-b7', override_params={'noli': 'mish'}, advprop=True)
         """
         if override_params is None:
             override_params = {}
@@ -430,27 +634,57 @@ class Details(object):
     """
 
     # Parameters for the entire model (stem, all blocks, and head)
+    # url_map = {
+    #     'efficientnet-b0': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b0-355c32eb.pth',
+    #     'efficientnet-b1': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b1-f1951068.pth',
+    #     'efficientnet-b2': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b2-8bb594d6.pth',
+    #     'efficientnet-b3': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b3-5fb5a3c3.pth',
+    #     'efficientnet-b4': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b4-6ed6700e.pth',
+    #     'efficientnet-b5': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b5-b6417697.pth',
+
+    #     # 'efficientnet-b1': 'https://www.dropbox.com/s/6745ear79b1ltkh/efficientnet-b1-ef6aa7.pth?dl=1',
+    #     # 'efficientnet-b2': 'https://www.dropbox.com/s/0dhtv1t5wkjg0iy/efficientnet-b2-7c98aa.pth?dl=1',
+    #     # 'efficientnet-b3': 'https://www.dropbox.com/s/5uqok5gd33fom5p/efficientnet-b3-bdc7f4.pth?dl=1',
+    #     # 'efficientnet-b4': 'https://www.dropbox.com/s/y2nqt750lixs8kc/efficientnet-b4-3e4967.pth?dl=1',
+    #     # 'efficientnet-b5': 'https://www.dropbox.com/s/qxonlu3q02v9i47/efficientnet-b5-4c7978.pth?dl=1',
+
+    #     'efficientnet-b6': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b6-c76e70fd.pth',
+    #     'efficientnet-b7': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b7-dcc49843.pth',
+    # }
+
+    # url_map_advprop = {
+    #     'efficientnet-b0': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b0-b64d5a18.pth',
+    #     'efficientnet-b1': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b1-0f3ce85a.pth',
+    #     'efficientnet-b2': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b2-6e9d97e5.pth',
+    #     'efficientnet-b3': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b3-cdd7c0f4.pth',
+    #     'efficientnet-b4': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b4-44fb3a87.pth',
+    #     'efficientnet-b5': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b5-86493f6b.pth',
+    #     'efficientnet-b6': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b6-ac80338e.pth',
+    #     'efficientnet-b7': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b7-4652b6dd.pth',
+    #     'efficientnet-b8': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b8-22a8fe65.pth',
+    # }
+
     url_map = {
-        'efficientnet-b0': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b0-355c32eb.pth',
-        'efficientnet-b1': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b1-f1951068.pth',
-        'efficientnet-b2': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b2-8bb594d6.pth',
-        'efficientnet-b3': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b3-5fb5a3c3.pth',
-        'efficientnet-b4': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b4-6ed6700e.pth',
-        'efficientnet-b5': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b5-b6417697.pth',
-        'efficientnet-b6': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b6-c76e70fd.pth',
-        'efficientnet-b7': 'https://publicmodels.blob.core.windows.net/container/aa/efficientnet-b7-dcc49843.pth',
+        'efficientnet-b0': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b0-355c32eb.pth',
+        'efficientnet-b1': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b1-f1951068.pth',
+        'efficientnet-b2': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b2-8bb594d6.pth',
+        'efficientnet-b3': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b3-5fb5a3c3.pth',
+        'efficientnet-b4': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b4-6ed6700e.pth',
+        'efficientnet-b5': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b5-b6417697.pth',
+        'efficientnet-b6': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b6-c76e70fd.pth',
+        'efficientnet-b7': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b7-dcc49843.pth',
     }
 
     url_map_advprop = {
-        'efficientnet-b0': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b0-b64d5a18.pth',
-        'efficientnet-b1': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b1-0f3ce85a.pth',
-        'efficientnet-b2': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b2-6e9d97e5.pth',
-        'efficientnet-b3': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b3-cdd7c0f4.pth',
-        'efficientnet-b4': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b4-44fb3a87.pth',
-        'efficientnet-b5': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b5-86493f6b.pth',
-        'efficientnet-b6': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b6-ac80338e.pth',
-        'efficientnet-b7': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b7-4652b6dd.pth',
-        'efficientnet-b8': 'https://publicmodels.blob.core.windows.net/container/advprop/efficientnet-b8-22a8fe65.pth',
+        'efficientnet-b0': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/adv-efficientnet-b0-b64d5a18.pth',
+        'efficientnet-b1': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/adv-efficientnet-b1-0f3ce85a.pth',
+        'efficientnet-b2': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/adv-efficientnet-b2-6e9d97e5.pth',
+        'efficientnet-b3': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/adv-efficientnet-b3-cdd7c0f4.pth',
+        'efficientnet-b4': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/adv-efficientnet-b4-44fb3a87.pth',
+        'efficientnet-b5': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/adv-efficientnet-b5-86493f6b.pth',
+        'efficientnet-b6': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/adv-efficientnet-b6-ac80338e.pth',
+        'efficientnet-b7': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/adv-efficientnet-b7-4652b6dd.pth',
+        'efficientnet-b8': 'https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/adv-efficientnet-b8-22a8fe65.pth',
     }
 
     @classmethod
@@ -583,7 +817,7 @@ class Details(object):
         'batch_norm_momentum', 'batch_norm_epsilon', 'dropout_rate',
         'num_classes', 'width_coefficient', 'depth_coefficient',
         'depth_divisor', 'min_depth', 'drop_connect_rate', 'image_size',
-        'classes'])
+        'classes', 'noli'])
 
     # Change namedtuple defaults
     GlobalParams.__new__.__defaults__ = (None,) * len(GlobalParams._fields)
@@ -597,7 +831,7 @@ class Details(object):
         Creates a efficientnet parameters
 
         Example:
-            Details.build_efficientnet_params(0.1, 0.1, image_size=512)
+            Details.build_efficientnet_params(None, None, image_size=512)
         """
 
         blocks_args = [
@@ -613,7 +847,6 @@ class Details(object):
             batch_norm_epsilon=1e-3,
             dropout_rate=dropout_rate,
             drop_connect_rate=drop_connect_rate,
-            # data_format='channels_last',  # removed, this is always true in PyTorch
             num_classes=num_classes,
             width_coefficient=width_coefficient,
             depth_coefficient=depth_coefficient,
@@ -621,8 +854,8 @@ class Details(object):
             min_depth=None,
             image_size=image_size,
             classes=None,
+            noli='swish'
         )
-
         return blocks_args, global_params
 
     @staticmethod

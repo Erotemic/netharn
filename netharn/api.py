@@ -167,9 +167,37 @@ class Optimizer(object):
     def coerce(config={}, **kw):
         """
         Accepts keywords:
-            optimizer / optim
-            learning_rate / lr
-            weight_decay / decay
+            optimizer / optim :
+                can be sgd, adam, adamw, rmsprop
+
+            learning_rate / lr :
+                a float
+
+            weight_decay / decay :
+                a float
+
+            momentum:
+                a float, only used if the optimizer accepts it
+
+        Notes:
+            pip install torch-optimizer
+
+        References:
+            https://datascience.stackexchange.com/questions/26792/difference-between-rmsprop-with-momentum-and-adam-optimizers
+            https://github.com/jettify/pytorch-optimizer
+
+        Example:
+            >>> config = {'optimizer': 'sgd'}
+            >>> optim_ = Optimizer.coerce(config)
+
+            >>> # xdoctest: +REQUIRES(module:torch_optimizer)
+            >>> from netharn.api import *  # NOQA
+            >>> config = {'optimizer': 'DiffGrad'}
+            >>> optim_ = Optimizer.coerce(config)
+            >>> print('optim_ = {!r}'.format(optim_))
+            >>> config = {'optimizer': 'Yogi'}
+            >>> optim_ = Optimizer.coerce(config)
+            >>> print('optim_ = {!r}'.format(optim_))
         """
         import netharn as nh
         _update_defaults(config, kw)
@@ -189,12 +217,18 @@ class Optimizer(object):
             optim_ = (torch.optim.Adam, {
                 'lr': lr,
                 'weight_decay': decay,
+                # 'betas': (0.9, 0.999),
+                # 'eps': 1e-8,
+                # 'amsgrad': False
             })
         elif key == 'adamw':
             if _TORCH_IS_GE_1_2_0:
                 from torch.optim import AdamW
                 optim_ = (AdamW, {
                     'lr': lr,
+                    # 'betas': (0.9, 0.999),
+                    # 'eps': 1e-8,
+                    # 'amsgrad': False
                 })
             else:
                 optim_ = (nh.optimizers.AdamW, {
@@ -208,7 +242,36 @@ class Optimizer(object):
                 'alpha': 0.9,
             })
         else:
-            raise KeyError(key)
+            try:
+                import torch_optimizer
+            except Exception:
+                torch_optimizer = None
+                raise KeyError(key)
+            else:
+
+                known = ['AccSGD', 'AdaBound', 'AdaMod', 'DiffGrad', 'Lamb',
+                         'Lookahead', 'NovoGrad', 'RAdam', 'SGDW', 'Yogi']
+
+                from netharn.util import util_inspect
+                if 0:
+                    for key in known:
+                        cls = getattr(torch_optimizer, key, None)
+                        print('cls = {!r}'.format(cls))
+                        defaultkw = util_inspect.default_kwargs(cls)
+                        print('defaultkw = {!r}'.format(defaultkw))
+
+                _lut = {k.lower(): k for k in known}
+                key = _lut[key]
+
+                cls = getattr(torch_optimizer, key, None)
+                if cls is not None:
+                    defaultkw = util_inspect.default_kwargs(cls)
+                    kw = defaultkw.copy()
+                    kw.update()
+                    optim_ = (cls, kw)
+                else:
+                    raise KeyError(key)
+
         return optim_
 
 
@@ -284,6 +347,22 @@ class Scheduler(object):
             for scheduler == exponential:
                 gamma
                 stepsize
+
+            scheduler accepts several special strings which involves a keyword
+            followed by a special coded string that can be used to modify
+            parameters. Some examples:
+
+                step-10-30-50-100 - multiply LR by 0.1 at every point
+
+                onecycle90 - a cyclic scheduler peaking at the epoch 90 // 2
+
+                onecycle90-p0.2 - a cyclic scheduler peaking at the int(90 * 0.2)
+
+                ReduceLROnPlateau-p2-c2 - a ReduceLROnPlateau scheduler with
+                    a patience of 2 and a cooldown of 2
+
+                Exponential-g0.98-s1 - exponential decay of 0.98 every 1-th
+                    epoch
         """
         import netharn as nh
         import parse
@@ -291,21 +370,43 @@ class Scheduler(object):
         key = config.get('scheduler', config.get('schedule', 'step90'))
         lr = config.get('learning_rate', config.get('lr', 3e-3))
 
-        result = parse.parse('onecycle{:d}', key)
-        if result:
+        if key.startswith('onecycle'):
+            result = parse.parse('onecycle{:d}-{}', key)
             size = result.fixed[0]
+            suffix = result.fixed[1]
+
+            parts = suffix.split('-')
+            kw = {
+                'peak': size // 2,
+            }
+            try:
+                for part in parts:
+                    if not part:
+                        continue
+                    if part.startswith('p'):
+                        valstr = part[1:]
+                        if valstr.startswith('0.'):
+                            kw['peak'] = int(size * float(valstr))
+                        else:
+                            kw['peak'] = int(valstr)
+                    else:
+                        raise ValueError('unknown {} part'.format(suffix))
+            except Exception:
+                raise ValueError('Unable to parse {} specs: {}'.format(
+                    result, suffix))
+
             scheduler_ = (nh.schedulers.ListedScheduler, {
                 'points': {
                     'lr': {
                         size * 0   : lr * 0.1,
-                        size // 2  : lr * 1.0,
+                        kw['peak'] : lr * 1.0,
                         size * 1   : lr * 0.01,
-                        size + 1   : lr * 0.0001,
+                        size + 1   : lr * 0.001,
                     },
                     'momentum': {
                         size * 0   : 0.95,
-                        size // 2  : 0.85,
-                        size * 1   : 0.98,
+                        kw['peak'] : 0.90,
+                        size * 1   : 0.95,
                         size + 1   : 0.999,
                     },
                 },
@@ -316,11 +417,17 @@ class Scheduler(object):
         if key.lower().startswith(prefix):
             # Allow step to specify `-` separated step points
             suffix = key[len(prefix):]
-            points = [int(p) for p in suffix.split('-') if p]
+            param_parts = suffix.split('-')
+            if param_parts and param_parts[-1].startswith('f'):
+                factor = float(param_parts[-1][1:])
+                param_parts = param_parts[:-1]
+            else:
+                factor = 10
+            points = [int(p) for p in param_parts if p]
             assert sorted(points) == points, 'points must be in order'
             lr_pts = {0: lr}
             for i, epoch in enumerate(points, start=1):
-                lr_pts[epoch] = lr / (10 ** i)
+                lr_pts[epoch] = lr / (factor ** i)
 
             scheduler_ = (nh.schedulers.ListedScheduler, {
                 'points': {
