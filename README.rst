@@ -6,6 +6,14 @@ NetHarn - a PyTorch Network Harness
 
 The main webpage for this project is: https://gitlab.kitware.com/computer-vision/netharn
 
+If you want a framework for your pytorch training loop that
+(1) chooses directory names based on hashes of hyperparameters,
+(2) can write a single-file deployment of your model by statically auto-extracting the in-code definition of the model topology and zipping it with the weights, 
+(3) has brief terminal output and a rich logging output, 
+(4) has rule-based monitoring of validation loss and can reduce the learning rate or early stop, 
+(5) has tensorboard and/or matplotlib visualizations of training statistics, and 
+(6) is designed to be extended, then you might be interested in NetHarn. 
+
 NAME:
     NetHarn (pronounced "net-harn")
 FRAMEWORK:
@@ -135,6 +143,15 @@ setup instructions, but for now they are the same.
     git clone git@github.com:Erotemic/netharn.git ~/code/netharn
     cd ~/code/netharn
     ./run_developer_setup.sh
+
+
+While all netharn dependencies should be available on pypi (with manylinux2010
+wheels for binary packages), there are other packages developed concurrently
+with netharn. To install the development version of these dependencies then run
+``python super_setup.py ensure`` to check out the repos and ensure they are on
+the correct branch, ``python super_setup.py develop`` to build everything in
+development mode, and ``python super_setup.py pull`` to update to the latest on
+the branch.
 
 Description
 ===========
