@@ -538,8 +538,8 @@ class OutputShapeFor(analytic_for.OutputFor):
             >>> padding = module.padding
             >>> dilation = module.dilation
             >>> groups = module.groups
-            >>> y =  _OutputFor(F.conv2d)(x, weight, bias, stride, padding,
-            >>>         dilation, groups)
+            >>> y = OutputShapeFor(F.conv2d)(x, weight, bias, stride, padding,
+            >>>                              dilation, groups)
             >>> print(y)
             >>> y2 = OutputShapeFor(module)(x)
             >>> assert y == y2

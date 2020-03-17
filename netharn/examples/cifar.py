@@ -55,7 +55,7 @@ import os
 import pickle
 import netharn as nh
 import scriptconfig as scfg
-from netharn.util import layer_rotation
+# from netharn.util import layer_rotation
 
 
 class CIFARConfig(scfg.Config):
@@ -634,13 +634,13 @@ def setup_harn():
         )
 
     if config['arch'].startswith('se_resnet18'):
-        from nethar.models import se_resnet
+        from netharn.models import se_resnet
         model = se_resnet.se_resnet18(
             num_classes=len(classes),
         )
 
     if config['arch'].startswith('se_resnet50'):
-        from nethar.models import se_resnet
+        from netharn.models import se_resnet
         model = se_resnet.se_resnet50(
             num_classes=len(classes),
             pretrained=config['init'] == 'cls',
@@ -904,7 +904,8 @@ if __name__ == '__main__':
     EfficientNet-3*    |        --  |             -- |  86.87%  |   568.30 Hz | 10,711,602
     EfficientNet-0*    |        --  |             -- |  87.13%  |   964.21 Hz |  4,020,358
 
-    EfficientNet-0-b64-224 |    --  |             -- |   25ish% |   148.15 Hz |  4,020,358
+    EfficientNet-0-b64-224 |    --  |             -- |  25ish%  |   148.15 Hz |  4,020,358
+    efficientnet0_transfer_b64_sz224_v2 ||           |  98.04%  |
 
 
    600025177002,
@@ -977,6 +978,7 @@ if __name__ == '__main__':
         python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_scratch \
             --arch=efficientnet-b7 --optim=sgd --schedule=step-150-250-350 \
             --batch_size=512 --lr=0.01 --init=noop --decay=1e-5
+
     CommandLine:
         python -m netharn.examples.cifar --xpu=0 --arch=resnet50 --num_vali=0
         python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0 --num_vali=0

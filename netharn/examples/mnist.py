@@ -311,7 +311,7 @@ def main():
     # pre-existing checkpoint that we can restart from.
     harn.initialize(reset=reset)
 
-    if ub.argval(('--vd', '--view-directory')):
+    if ub.argflag(('--vd', '--view-directory')):
         ub.startfile(harn.train_dpath)
 
     # This starts the main loop which will run until a the monitor's terminator

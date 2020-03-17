@@ -320,7 +320,7 @@ class Monitor(ub.NiceRepr):
 
         Example:
             >>> from netharn.monitor import *
-            >>> monitor = Monitor()
+            >>> monitor = Monitor(smoothing=0.6)
             >>> print(monitor.message(ansi=False))
             vloss is unevaluated
             >>> monitor.update(0, {'loss': 1.0})
@@ -377,8 +377,8 @@ class Monitor(ub.NiceRepr):
             >>> metric_ranks = monitor.best_epochs(5)
             >>> print(ub.repr2(metric_ranks, with_dtype=False, nl=1))
             {
-                'loss': np.array([297, 299, 298, 296, 295]),
-                'miou': np.array([299, 298, 297, 296, 295]),
+                'loss': np.array([297, 296, 299, 295, 298]),
+                'miou': np.array([299, 296, 298, 295, 292]),
             }
         """
         metric_ranks = {}

@@ -59,6 +59,7 @@ class Conv2dDynamicSamePadding(nn.Conv2d, layers.AnalyticModule):
             >>> inputs = (1, 3, 224, 224)
             >>> self = Conv2dDynamicSamePadding(2, 3, 5)
             >>> outputs = self.output_shape_for(inputs)
+            >>> import ubelt as ub
             >>> print(nh.util.align(ub.repr2(outputs.hidden, nl=-1), ':'))
         """
         hidden = _Hidden()
@@ -128,6 +129,7 @@ class Conv2dStaticSamePadding(nn.Conv2d, layers.AnalyticModule):
             >>> inputs = (1, 3, 224, 224)
             >>> self = Conv2dStaticSamePadding(2, 3, 5, image_size=[512, 512])
             >>> outputs = self.output_shape_for(inputs)
+            >>> import ubelt as ub
             >>> print(nh.util.align(ub.repr2(outputs.hidden, nl=-1), ':'))
         """
         hidden = _Hidden()
@@ -248,6 +250,7 @@ class MBConvBlock(layers.AnalyticModule):
             >>> globals().update(kwargs)
             >>> input_shape = inputs = (1, 32, 224, 224)
             >>> outputs = self.output_shape_for(input_shape)
+            >>> import ubelt as ub
             >>> print(nh.util.align(ub.repr2(outputs.hidden, nl=-1), ':'))
         """
         hidden = _Hidden()
@@ -471,6 +474,7 @@ class EfficientNet(layers.AnalyticModule):
             >>> inputs = (1, 3, 224, 224)
             >>> inputs = (1, 3, 32, 32)
             >>> outputs = self.output_shape_for(inputs)
+            >>> import ubelt as ub
             >>> print(nh.util.align(ub.repr2(outputs.hidden.shallow(1), nl=-1), ':'))
 
             >>> print(nh.util.align(ub.repr2(outputs.hidden['block_0'].shallow(2), nl=-1), ':'))
