@@ -1378,6 +1378,14 @@ class CoreMixin(object):
             if not harn.preferences['keyboard_debug']:
                 harn.warn('\n\n\n')
                 harn.info('harn.train_dpath = {!r}'.format(harn.train_dpath))
+
+                if harn.preferences['snapshot_after_error']:
+                    harn.info('Attempting to checkpoint before crashing')
+                    harn.save_snapshot(explicit=True)
+
+                if harn.preferences['deploy_after_error']:
+                    harn.info('Attempting to deploy before crashing')
+                    harn._deploy()
                 raise
             from six.moves import input
             harn.warn('\n\n\n')
@@ -1425,6 +1433,8 @@ class CoreMixin(object):
             raise
         except Exception as ex:
             harn.error('\n\n\n')
+            harn.info('general exception')
+            print('harn.preferences = {!r}'.format(harn.preferences))
 
             if harn.preferences['snapshot_after_error']:
                 harn.info('Attempting to checkpoint before crashing')
