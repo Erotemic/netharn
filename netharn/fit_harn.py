@@ -1364,7 +1364,7 @@ class CoreMixin(object):
                     )
                     if DEMO and harn.epoch > DEMO:
                         raise StopTraining
-                    elif harn._timer.toc() > harn.preferences['timeout']:
+                    elif _timer.toc() > harn.preferences['timeout']:
                         harn.info('timeout')
                         raise StopTraining
 
@@ -1737,7 +1737,7 @@ class CoreMixin(object):
             for bx in range(n_batches):
                 if DEMO and bx > DEMO_BX:
                     break
-                if _timer.toc() > timeout:
+                if _timer is not None and _timer.toc() > timeout:
                     harn.info('timeout')
                     raise StopTraining
 
