@@ -12,11 +12,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Several new functions are now registered with OutputShapeFor to support efficientnet (F.pad, F.conv2d, torch.sigmoid)
 
 ### Changed
+* FitHarn.preferences now uses scriptconfig, which means the "help" sections are coupled with the object.
 * Removed explicit support for Python 2.7
 * Reverted default of `keyboard_debug` to True.
 * Moved `analytic_for`, `output_shape_for`, and `receptive_field` for to the netharn.analytic subpackage. Original names are still available, but deprecated and will be removed in a future version. 
 * Moved helpers from `netharn.hyperparams` to `netharn.util`
 * Made pytorch-optimizer optional: https://github.com/jettify/pytorch-optimizer
+* netharn now will timeout within an epoch
 
 
 ## Version 0.5.4 - Released 2020-02-19 

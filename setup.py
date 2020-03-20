@@ -248,6 +248,10 @@ if __name__ == '__main__':
             # https://pypi.python.org/pypi?%3Aaction=list_classifiers
             'Development Status :: 4 - Beta',
             'Intended Audience :: Developers',
+            'Intended Audience :: Science/Research',
+            'Topic :: Scientific/Engineering',
+            'Topic :: Scientific/Engineering :: Artificial Intelligence',
+            'Topic :: Software Development',
             'Topic :: Software Development :: Libraries :: Python Modules',
             'Topic :: Utilities',
             # This should be interpreted as Apache License v2.0
