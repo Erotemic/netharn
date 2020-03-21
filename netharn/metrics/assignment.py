@@ -552,6 +552,8 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
     pred_ignore_flags = np.zeros(len(pred_dets), dtype=np.bool)
 
     def _normalize_catname(name, classes):
+        if classes is None:
+            return name
         if name in classes:
             return name
         for cname in classes:
