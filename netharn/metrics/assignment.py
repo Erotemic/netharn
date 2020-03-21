@@ -559,7 +559,8 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
         for cname in classes:
             if cname.lower() == name.lower():
                 return cname
-        raise KeyError(name)
+        return name
+        # raise KeyError(name)
 
     ignore_class = _normalize_catname(ignore_class, true_dets.classes)
 
