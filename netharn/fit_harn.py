@@ -47,10 +47,10 @@ Example:
     >>>     # ================
     >>>     # Environment Components
     >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/tests/demo'),
-    >>>     'nice'        : 'demo',
+    >>>     'name'        : 'demo',
     >>>     'xpu'         : nh.XPU.coerce('argv'),
     >>>     # workdir is a directory where intermediate results can be saved
-    >>>     # nice symlinks <workdir>/fit/nice/<nice> -> ../runs/<hashid>
+    >>>     # nice symlinks <workdir>/fit/nice/<name> -> ../runs/<hashid>
     >>>     # XPU auto select a gpu if idle and VRAM>6GB else a cpu
     >>>     # ================
     >>>     # Data Components
@@ -1310,10 +1310,10 @@ class CoreMixin(object):
             if harn.preferences['prog_backend'] == 'progiter':
                 harn.info(ub.color_text('=== {} training {!r} / {!r} : {} ==='.format(
                     action, harn.epoch + 1, harn.monitor.max_epoch,
-                    harn.hyper.nice), 'white'))
+                    harn.hyper.name), 'white'))
             else:
                 harn.info(ub.color_text('=== {} training : {} ==='.format(
-                    action, harn.hyper.nice), 'white'))
+                    action, harn.hyper.name), 'white'))
 
             harn.main_prog = harn._make_prog(desc='epoch',
                                              total=harn.monitor.max_epoch,
@@ -1638,7 +1638,7 @@ class CoreMixin(object):
             if harn.preferences['prog_backend'] == 'progiter':
                 harn.info(ub.color_text(
                     '=== finish epoch {!r} / {!r} : {} ==='.format(
-                        harn.epoch + 1, harn.monitor.max_epoch, harn.hyper.nice),
+                        harn.epoch + 1, harn.monitor.max_epoch, harn.hyper.name),
                     'white'))
 
             harn._update_main_prog_desc()
@@ -2411,8 +2411,8 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
 
         if DEMO:
             # Hack to prefix the nice name in DEMO mode
-            if harn.hyper.nice is not None:
-                harn.hyper.nice = 'DEMO_' + harn.hyper.nice
+            if harn.hyper.name is not None:
+                harn.hyper.name = 'DEMO_' + harn.hyper.name
             else:
                 raise AssertionError('should have a nice name in demo mode')
 

@@ -437,7 +437,7 @@ class HyperParams(object):
     def __init__(hyper,
                  # ----
                  datasets=None,
-                 nice=None,
+                 name=None,
                  workdir=None,
                  xpu=None,
                  loaders=None,
@@ -453,11 +453,16 @@ class HyperParams(object):
                  augment=None,
                  other=None,  # incorporated into the hash
                  extra=None,  # ignored when computing the hash
+                 nice=None,  # alias of name
                  ):
         kwargs = {}
 
         hyper.datasets = datasets
-        hyper.nice = nice
+        if name is None:
+            import warnings
+            warnings.warn('Specify "name" instead of "nice"')
+            name = nice
+        hyper.name = name
         hyper.workdir = workdir
         hyper.xpu = xpu
 
@@ -496,6 +501,11 @@ class HyperParams(object):
         hyper.augment = augment
         hyper.other = other
         hyper.extra = extra
+
+    @property
+    def nice(hyper):
+        """ alias of name for backwards compatibility """
+        return hyper.name
 
     def make_model(hyper):
         """ Instanciate the model defined by the hyperparams """
@@ -861,21 +871,21 @@ class HyperParams(object):
         """
         train_hashid = _hash_data(train_id)[0:8]
 
-        nice = hyper.nice
+        name = hyper.name
 
         nice_dpath = None
         if not given_explicit_train_dpath:
             # setup a cannonical and a linked symlink dir
             train_dpath = normpath(
-                    join(hyper.workdir, 'fit', 'runs', nice, train_hashid))
+                    join(hyper.workdir, 'fit', 'runs', name, train_hashid))
             # also setup a "nice" custom name, which may conflict, but oh well
-            if nice:
+            if name:
                 try:
                     nice_dpath = normpath(
-                            join(hyper.workdir, 'fit', 'nice', nice))
+                            join(hyper.workdir, 'fit', 'nice', name))
                 except Exception:
                     print('hyper.workdir = {!r}'.format(hyper.workdir))
-                    print('hyper.nice = {!r}'.format(hyper.nice))
+                    print('hyper.name = {!r}'.format(hyper.name))
                     raise
 
         # make temporary initializer so we can infer the history
@@ -903,7 +913,7 @@ class HyperParams(object):
             ('init_history', init_history),
             ('init_history_hashid', _hash_data(util.make_idstr(init_history))),
 
-            ('nice', hyper.nice),
+            ('nice', hyper.name),
 
             ('old_train_dpath', normpath(
                 join(hyper.workdir, 'fit', 'runs', train_hashid))),
@@ -937,7 +947,7 @@ class HyperParams(object):
             # ================
             # Environment Components
             'workdir'     : ub.ensure_app_cache_dir('netharn/tests/demo'),
-            'nice'        : 'demo',
+            'name'        : 'demo',
             'xpu'         : nh.XPU.coerce('argv'),
             # workdir is a directory where intermediate results can be saved
             # nice symlinks <workdir>/fit/nice/<nice> -> ../runs/<hashid>

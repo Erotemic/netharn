@@ -13,6 +13,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Balanced batch samplers 
 
 ### Changed
+* Hyperparams "name" can now be specified instead of "nice". We will transition
+  from "nice" to "name", for now both are supported but "nice" will eventually be deprecated.
 * FitHarn.preferences now uses scriptconfig, which means the "help" sections are coupled with the object.
 * Removed explicit support for Python 2.7
 * Reverted default of `keyboard_debug` to True.
