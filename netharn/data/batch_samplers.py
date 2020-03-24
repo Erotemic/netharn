@@ -1,6 +1,8 @@
 import netharn as nh
 import ubelt as ub
 import torch.utils
+import torch
+import numpy as np
 
 
 class MatchingSamplerPK(ub.NiceRepr, torch.utils.data.sampler.BatchSampler):
@@ -132,3 +134,337 @@ class MatchingSamplerPK(ub.NiceRepr, torch.utils.data.sampler.BatchSampler):
 
     def __len__(self):
         return self.num_batches
+
+
+class BalancedBatchSampler(
+        ub.NiceRepr, torch.utils.data.sampler.BatchSampler):
+    """
+    A sampler for balancing classes amongst batches
+
+    Args:
+        index_to_label (List[int]): the label for each index in a dataset
+        batch_size (int): number of dataset indexes for each batch
+        num_batches (int | str, default='auto'): number of batches to generate
+        quantile (float): interpolates between under and oversamling when
+            num_batches='auto'. A value of 0 is pure undersampling, and a value
+            of 1 is pure oversampling.
+        shuffle (bool, default=False): if True randomize batch ordering
+        drop_last (bool): unused, exists for compatibility
+        rng (RandomState, default=None): random seed
+
+    Example:
+        >>> from netharn.data.batch_samplers import *  # NOQA
+        >>> from netharn.data.batch_samplers import RingSampler  # NOQA
+        >>> import kwarray
+        >>> rng = kwarray.ensure_rng(0)
+        >>> classes = ['class_{}'.format(i) for i in range(5)]
+        >>> # Create a random class label for each item
+        >>> index_to_label = rng.randint(0, len(classes), 100)
+        >>> if 1:
+        >>>     # Create a rare class
+        >>>     index_to_label[0:3] = 42
+        >>> quantile = 0.0
+        >>> self = BalancedBatchSampler(index_to_label, batch_size=4, quantile=quantile, rng=0)
+        >>> print('self.label_to_freq = {!r}'.format(self.label_to_freq))
+        >>> indices = list(self)
+        >>> print('indices = {!r}'.format(indices))
+        >>> # Print the epoch / item label frequency per epoch
+        >>> label_sequence = []
+        >>> index_sequence = []
+        >>> for item_indices in self:
+        >>>     item_indices = np.array(item_indices)
+        >>>     item_labels = index_to_label[item_indices]
+        >>>     index_sequence.extend(item_indices)
+        >>>     label_sequence.extend(item_labels)
+        >>> label_hist = ub.dict_hist(label_sequence)
+        >>> index_hist = ub.dict_hist(index_sequence)
+        >>> label_hist = ub.sorted_vals(label_hist, reverse=True)
+        >>> index_hist = ub.sorted_vals(index_hist, reverse=True)
+        >>> index_hist = ub.dict_subset(index_hist, list(index_hist.keys())[0:5])
+        >>> print('label_hist = {}'.format(ub.repr2(label_hist, nl=1)))
+        >>> print('index_hist = {}'.format(ub.repr2(index_hist, nl=1)))
+    """
+
+    def __init__(self, index_to_label, batch_size=1, num_batches='auto',
+                 quantile=0.5, shuffle=False, rng=None):
+        import kwarray
+
+        rng = kwarray.ensure_rng(rng, api='python')
+        label_to_indices = kwarray.group_items(
+            np.arange(len(index_to_label)), index_to_label)
+
+        label_to_freq = ub.map_vals(len, label_to_indices)
+
+        label_to_subsampler = {
+            label: RingSampler(indices, shuffle=shuffle, rng=rng)
+            for label, indices in label_to_indices.items()
+        }
+
+        self.label_to_freq = label_to_freq
+        self.index_to_label = index_to_label
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.rng = rng
+        self.label_to_indices = label_to_indices
+        self.label_to_subsampler = label_to_subsampler
+
+        if num_batches == 'auto':
+            self.num_batches = self._auto_num_batches(quantile)
+        else:
+            self.num_batches = num_batches
+
+        self.labels = list(self.label_to_indices.keys())
+
+    def __nice__(self):
+        return ub.repr2({
+            'num_batches': self.num_batches,
+            'batch_size': self.batch_size,
+        }, nl=0)
+
+    def _auto_num_batches(self, quantile):
+        # Over / under sample each class depending on the balance factor
+        label_freq = sorted(self.label_to_freq.values())
+        # if 'idf':
+        #     TODO: idf balancing
+        #     N = len(self.index_to_label)
+        #     label_to_idf = ub.map_vals(lambda x: N / x, self.label_to_freq)
+        #     denom = sum(label_to_idf.values())
+        #     label_to_prob = ub.map_vals(lambda x: x / denom, label_to_idf)
+        # How many times will we sample each category?
+        samples_per_label = np.quantile(label_freq, quantile)
+        # Compute #items as seen per epoch, and #batches from that
+        epoch_items = samples_per_label * len(label_freq)
+        num_batches = max(1, int(round(epoch_items / self.batch_size)))
+        return num_batches
+
+    def __len__(self):
+        return self.num_batches
+
+    def __iter__(self):
+        for index in range(self.num_batches):
+            yield self[index]
+
+    def __getitem__(self, index):
+        # Choose a label for each item in the batch
+        chosen_labels = self.rng.choices(self.labels, k=self.batch_size)
+        # Count the number of items we need for each label
+        label_freq = ub.dict_hist(chosen_labels)
+
+        # Sample those indices
+        batch_idxs = list(ub.flatten([
+            self.label_to_subsampler[label].sample(num)
+            for label, num in label_freq.items()
+        ]))
+        return batch_idxs
+
+
+class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSampler):
+    """
+    Show items containing less frequent categories more often
+
+    Args:
+        index_to_labels (List[Listint]]): the labels for each index in a dataset
+        batch_size (int): number of dataset indexes for each batch
+        num_batches (int | str, default='auto'): number of batches to generate
+        shuffle (bool, default=False): if True randomize batch ordering
+        drop_last (bool): unused, exists for compatibility
+        rng (RandomState, default=None): random seed
+
+    References:
+        https://arxiv.org/pdf/1908.09492.pdf
+
+    Example:
+        >>> from netharn.data.batch_samplers import *  # NOQA
+        >>> import kwarray
+        >>> rng = kwarray.ensure_rng(0)
+        >>> classes = ['class_{}'.format(i) for i in range(10)]
+        >>> # Create a set of random classes for each item
+        >>> index_to_labels = [rng.randint(0, len(classes), rng.randint(10))
+        >>>                   for _ in range(1000)]
+        >>> # Create a rare class
+        >>> index_to_labels[0][0] = 42
+        >>> self = GroupedBalancedBatchSampler(index_to_labels, batch_size=4)
+        >>> print('self.label_to_freq = {!r}'.format(self.label_to_freq))
+        >>> indices = list(self)
+        >>> print('indices = {!r}'.format(indices))
+        >>> # Print the epoch / item label frequency per epoch
+        >>> label_sequence = []
+        >>> index_sequence = []
+        >>> for item_indices in self:
+        >>>     item_indices = np.array(item_indices)
+        >>>     item_labels = list(ub.flatten(ub.take(index_to_labels, item_indices)))
+        >>>     index_sequence.extend(item_indices)
+        >>>     label_sequence.extend(item_labels)
+        >>> label_hist = ub.dict_hist(label_sequence)
+        >>> index_hist = ub.dict_hist(index_sequence)
+        >>> label_hist = ub.sorted_vals(label_hist, reverse=True)
+        >>> index_hist = ub.sorted_vals(index_hist, reverse=True)
+        >>> index_hist = ub.dict_subset(index_hist, list(index_hist.keys())[0:5])
+        >>> print('label_hist = {}'.format(ub.repr2(label_hist, nl=1)))
+        >>> print('index_hist = {}'.format(ub.repr2(index_hist, nl=1)))
+    """
+
+    def __init__(self, index_to_labels, batch_size=1, num_batches='auto',
+                 shuffle=False, rng=None):
+        import kwarray
+
+        rng = kwarray.ensure_rng(rng, api='python')
+        label_to_indices = ub.ddict(set)
+
+        flat_groups = []
+        for index, item_labels in enumerate(index_to_labels):
+            flat_groups.extend([index] * len(item_labels))
+            for label in item_labels:
+                label_to_indices[label].add(index)
+        flat_labels = np.hstack(index_to_labels)
+        self.label_to_freq = ub.dict_hist(flat_labels)
+
+        # Use tf-idf based scheme to compute sample probabilities
+        label_to_tfidf = {}
+        labels = sorted(set(flat_labels))
+        for label in labels:
+            index_to_tf = np.zeros(len(index_to_labels))
+            for index, item_labels in enumerate(index_to_labels):
+                index_to_tf[index] = (label == item_labels).sum()
+            idf = len(index_to_tf) / (index_to_tf > 0).sum()
+            label_to_tfidf[label] = np.maximum(index_to_tf * idf, 1)
+        index_to_weight = sum(label_to_tfidf.values())
+        index_to_prob = index_to_weight / index_to_weight.sum()
+
+        self.index_to_prob = index_to_prob
+        self.indices = np.arange(len(index_to_prob))
+
+        if num_batches == 'auto':
+            self.num_batches = self._auto_num_batches()
+        else:
+            self.num_batches = num_batches
+
+        self.index_to_labels = index_to_labels
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.rng = kwarray.ensure_rng(rng, api='numpy')
+
+    def __nice__(self):
+        return ub.repr2({
+            'num_batches': self.num_batches,
+            'batch_size': self.batch_size,
+        }, nl=0)
+
+    def _auto_num_batches(self):
+        # The right way to calculate num samples would be using a generalized
+        # solutions to the coupon collector problem, but in practice that
+        # expected number of samples will be too large for imbalanced datasets.
+        # Therefore we punt and simply use heuristics.
+        num_batches = len(self.index_to_prob)
+        # else:
+        #     raise NotImplementedError(balance)
+        # def nth_harmonic(n):
+        #     """
+        #     Example:
+        #         >>> n = 10
+        #         >>> want = float(sympy.harmonic(n))
+        #         >>> got = nth_harmonic(n)
+        #         >>> np.isclose(want, got)
+        #     """
+        #     return np.sum(1 / np.arange(1, n + 1))
+
+        # def uniform_coupon_ev(n):
+        #     ev = n * nth_harmonic(n)
+        #     return ev
+
+        # def uniform_coupon_ev_to_collect_k(n, k):
+        #     i = np.arange(n)
+        #     prob_new = (n - i + 1) / n
+        #     ev_new = 1 / prob_new
+        #     ev = np.sum(ev_new[0:k])
+        #     return ev
+
+        # n = 100
+        # uniform_coupon_ev_to_collect_k(n, int(0.6 * n))
+        # n / np.arange(1, n + 1)[::-1]
+        # ev_uniform = uniform_coupon_ev(len(self.index_to_prob))
+        return num_batches
+
+    def __getitem__(self, index):
+        # Hack, within each batch we are going to prevent replacement
+        batch_idxs = self.rng.choice(
+            self.indices, p=self.index_to_prob, replace=False,
+            size=self.batch_size)
+        return batch_idxs
+
+    def __iter__(self):
+        for index in range(self.num_batches):
+            yield self[index]
+
+    def __len__(self):
+        return self.num_batches
+
+
+class RingSampler(object):
+    """
+    Stateful sampling without replacement until all item are exhausted
+
+    Example:
+        >>> from netharn.data.batch_samplers import RingSampler  # NOQA
+        >>> self = RingSampler(list(range(1, 4)))
+        >>> sampled_items = self.sample(7)
+        >>> print('sampled_items = {!r}'.format(sampled_items))
+        sampled_items = array([1, 2, 3, 1, 2, 3, 1])
+
+        >>> self = RingSampler(list(range(1, 4)), rng=0, shuffle=True)
+        >>> sampled_items = self.sample(7)
+        >>> print('sampled_items = {!r}'.format(sampled_items))
+        sampled_items = array([3, 2, 1, 1, 3, 2, 1])
+    """
+    def __init__(self, items, shuffle=False, rng=None):
+        import kwarray
+        if len(items) == 0:
+            raise Exception('no items to sample')
+        self.rng = kwarray.ensure_rng(rng)
+        self.items = np.array(items)
+        self.shuffle = shuffle
+        self.indices = np.arange(len(items))
+        self._pos = None
+        self.refresh()
+
+    def refresh(self):
+        import kwarray
+        self._pos = 0
+        if self.shuffle:
+            self.indices = kwarray.shuffle(self.indices, rng=self.rng)
+
+    def sample_indices(self, size=None):
+        """
+        Sample indexes into the items array
+        """
+        n_need = size
+        if size is None:
+            n_need = 1
+        n_total = len(self.indices)
+        idx_accum = []
+        while n_need > 0:
+            # Take as many as we need or as many as we have
+            n_avail = (n_total - self._pos)
+            n_got = min(n_need, n_avail)
+            n_need -= n_got
+
+            idxs = self.indices[self._pos:self._pos + n_got]
+            idx_accum.append(idxs.copy())
+
+            # Update state, if we have exhausted all items, then refresh
+            self._pos += n_got
+            if self._pos == n_total:
+                self.refresh()
+
+        sampled_idxs = np.hstack(idx_accum)
+        if size is None:
+            sampled_idxs = sampled_idxs[0]
+        return sampled_idxs
+
+    def sample(self, size=None):
+        """
+        Sample items from the items array
+        """
+        sampled_idxs = self.sample_indices(size)
+        sampled_items = self.items[sampled_idxs]
+        return sampled_items

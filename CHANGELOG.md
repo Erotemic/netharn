@@ -10,6 +10,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Timeout to FitHarn.preferences
 * Basic gradient logging
 * Several new functions are now registered with OutputShapeFor to support efficientnet (F.pad, F.conv2d, torch.sigmoid)
+* Balanced batch samplers 
 
 ### Changed
 * FitHarn.preferences now uses scriptconfig, which means the "help" sections are coupled with the object.
