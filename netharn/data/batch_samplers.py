@@ -353,6 +353,7 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
         return ub.repr2({
             'num_batches': self.num_batches,
             'batch_size': self.batch_size,
+            'label_to_freq': self.label_to_freq,
         }, nl=0)
 
     def _auto_num_batches(self):
