@@ -246,7 +246,12 @@ class BalancedBatchSampler(
 
     def __getitem__(self, index):
         # Choose a label for each item in the batch
-        chosen_labels = self.rng.choices(self.labels, k=self.batch_size)
+        if not hasattr(self.rng, 'choices'):
+            # python 3.5 support
+            chosen_labels = [self.rng.choice(self.labels)
+                             for _ in range(self.batch_size)]
+        else:
+            chosen_labels = self.rng.choices(self.labels, k=self.batch_size)
         # Count the number of items we need for each label
         label_freq = ub.dict_hist(chosen_labels)
 
