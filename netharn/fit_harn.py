@@ -1442,7 +1442,7 @@ class CoreMixin(object):
 
             if harn.preferences['deploy_after_error']:
                 harn.info('Attempting to deploy before crashing')
-                harn._deploy(explicit=True)
+                harn._deploy()
 
             harn.info('harn.train_dpath = {!r}'.format(harn.train_dpath))
             harn.error('an {} error occurred in the train loop: {}'.format(
