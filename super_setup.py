@@ -687,7 +687,7 @@ def make_netharn_registry():
 
         # For example data and CLI
         CommonRepo(
-            name='scriptconfig', branch='dev/0.5.4', remote='public',
+            name='scriptconfig', branch='dev/0.5.5', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
         ),
         CommonRepo(
