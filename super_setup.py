@@ -680,7 +680,7 @@ def make_netharn_registry():
         #     remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwannot.git'},
         # ),
         CommonRepo(
-            name='kwcoco', branch='dev/0.0.2', remote='public',
+            name='kwcoco', branch='dev/0.0.5', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwcoco.git'},
         ),
         CommonRepo(
@@ -695,7 +695,7 @@ def make_netharn_registry():
             remotes={'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
         ),
         CommonRepo(
-            name='ndsampler', branch='dev/0.5.6', remote='public',
+            name='ndsampler', branch='dev/0.5.7', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
         ),
 
