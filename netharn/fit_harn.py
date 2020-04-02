@@ -2586,7 +2586,7 @@ class FitHarnPreferences(scfg.Config):
             ' ignore any infinite values before summing the total loss.')
         ),
 
-        'log_gradients': scfg.Value(True, help=(
+        'log_gradients': scfg.Value(False, help=(
             'compute and log stats about gradients')
         ),
 
