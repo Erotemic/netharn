@@ -833,7 +833,12 @@ def main():
 _DOCKER_DEBUGGING = """
 DOCKER_IMAGE=circleci/python
 docker run -v $PWD:/io --rm -it $DOCKER_IMAGE bash
+
+mkdir -p $HOME/code
+git clone -b dev/0.5.5 https://gitlab.kitware.com/computer-vision/netharn.git
+
 """
+
 
 
 if __name__ == '__main__':
