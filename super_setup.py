@@ -835,7 +835,12 @@ DOCKER_IMAGE=circleci/python
 docker run -v $PWD:/io --rm -it $DOCKER_IMAGE bash
 
 mkdir -p $HOME/code
+cd $HOME/code
 git clone -b dev/0.5.5 https://gitlab.kitware.com/computer-vision/netharn.git
+cd $HOME/code/netharn
+
+pip install -r requirements/super_setup.txt
+python super_setup.py ensure --serial
 
 """
 
