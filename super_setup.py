@@ -296,8 +296,12 @@ class Repo(ub.NiceRepr):
         Args:
             protocol (str): can be ssh or https
         """
+        # Update base url to use the requested protocol
         gurl = GitURL(self.url)
         self.url = gurl.format(protocol)
+        # Update all remote urls to use the requested protocol
+        for key in list(self.remotes.keys()):
+            self.remotes[key] = GitURL(self.remotes[key]).format(protocol)
 
     def info(repo, msg):
         repo._logged_lines.append(('INFO', 'INFO: ' + msg))
@@ -688,6 +692,16 @@ def make_netharn_registry():
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwplot.git'},
         ),
 
+        # Pytorch deployer / exporter
+        CommonRepo(
+            name='liberator', branch='dev/0.0.2', remote='public',
+            remotes={'public': 'git@gitlab.kitware.com:python/liberator.git'},
+        ),
+        CommonRepo(
+            name='torch_liberator', branch='master', remote='public',
+            remotes={'public': 'git@gitlab.kitware.com:computer-vision/torch_liberator.git'},
+        ),
+
 
         # For example data and CLI
         CommonRepo(
@@ -814,6 +828,12 @@ def main():
         registery.apply('versions')
 
     cli_group()
+
+
+_DOCKER_DEBUGGING = """
+DOCKER_IMAGE=circleci/python
+docker run -v $PWD:/io --rm -it $DOCKER_IMAGE bash
+"""
 
 
 if __name__ == '__main__':

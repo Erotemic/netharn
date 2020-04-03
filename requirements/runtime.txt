@@ -1,5 +1,13 @@
+# Note: torch is not published on pypi for windows
+# We could add the line:  
+# --find-links=https://download.pytorch.org/whl/torch_stable.html
+# but that doesn't play well with setuptools. The current recommendation is to
+# install torch yourself on windows. Hopefully there will be a better alternative
+# in the future.
+
 torch >= 1.0.0
 torchvision >= 0.2.0
+
 six >= 1.11.0
 numpy >= 1.9.0
 ubelt >= 0.8.4

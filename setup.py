@@ -67,6 +67,9 @@ def parse_requirements(fname='requirements.txt', with_version=False):
     Returns:
         List[str]: list of requirements items
 
+    References:
+        https://pip.readthedocs.io/en/1.1/requirements.html
+
     CommandLine:
         python -c "import setup; print(setup.parse_requirements())"
         python -c "import setup; print(chr(10).join(setup.parse_requirements(with_version=True)))"
@@ -79,7 +82,12 @@ def parse_requirements(fname='requirements.txt', with_version=False):
         """
         Parse information from a line in a requirements text file
         """
-        if line.startswith('-r '):
+        if line.startswith(('-f ', '--find-links ', '--index-url ')):
+            import warnings
+            warnings.warn(
+                'requirements file specified alternative index urls, but '
+                'there is currently no way to support this in setuptools')
+        elif line.startswith('-r '):
             # Allow specifying requirements in other files
             new_fname = line.split(' ')[1]
             new_fpath = join(base, new_fname)
