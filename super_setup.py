@@ -350,12 +350,21 @@ class Repo(ub.NiceRepr):
         return repo._pygit
 
     def develop(repo):
-        devsetup_script_fpath = join(repo.dpath, 'run_developer_setup.sh')
-        if not exists(devsetup_script_fpath):
-            raise AssertionError('Assume we always have run_developer_setup.sh: repo={!r}'.format(repo))
-        repo._cmd(devsetup_script_fpath, cwd=repo.dpath)
+        if ub.WIN32:
+            # We can't run a shell file on win32, so lets hope this works
+            import warnings
+            warnings.warn('super_setup develop may not work on win32')
+            repo._cmd('pip install -e .', cwd=repo.dpath)
+        else:
+            devsetup_script_fpath = join(repo.dpath, 'run_developer_setup.sh')
+            if not exists(devsetup_script_fpath):
+                raise AssertionError('Assume we always have run_developer_setup.sh: repo={!r}'.format(repo))
+            repo._cmd(devsetup_script_fpath, cwd=repo.dpath)
 
     def doctest(repo):
+        if ub.WIN32:
+            raise NotImplementedError('doctest does not yet work on windows')
+
         devsetup_script_fpath = join(repo.dpath, 'run_doctests.sh')
         if not exists(devsetup_script_fpath):
             raise AssertionError('Assume we always have run_doctests.sh: repo={!r}'.format(repo))
