@@ -323,6 +323,7 @@ class SegmentationHarn(nh.FitHarn):
         How to compute a forward pass through the network and compute loss
 
         Example:
+            >>> # xdoctest: +REQUIRES(--slow)
             >>> kw = {'workers': 0, 'xpu': 'cpu', 'batch_size': 2}
             >>> harn = setup_harn(cmdline=False, **kw).initialize()
             >>> batch = harn._demo_batch(tag='train')
@@ -385,11 +386,13 @@ class SegmentationHarn(nh.FitHarn):
     def _draw_batch_preds(harn, batch, outputs, lim=16):
         """
         Example:
+            >>> # xdoctest: +REQUIRES(--slow)
             >>> kw = {'workers': 0, 'xpu': 'cpu', 'batch_size': 8}
             >>> harn = setup_harn(cmdline=False, **kw).initialize()
             >>> batch = harn._demo_batch(tag='train')
             >>> outputs, loss_parts = harn.run_batch(batch)
             >>> toshow = harn._draw_batch_preds(batch, outputs)
+            >>> # xdoctest: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
             >>> kwplot.imshow(toshow)
@@ -546,6 +549,7 @@ def _cached_class_frequency(dset, workers=0):
 def _precompute_class_weights(dset, workers=0, mode='median-idf'):
     """
     Example:
+        >>> # xdoctest: +REQUIRES(--slow)
         >>> harn = setup_harn(0, workers=0, xpu='cpu').initialize()
         >>> dset = harn.datasets['train']
     """
@@ -604,6 +608,7 @@ def setup_harn(cmdline=True, **kw):
         xdoctest -m netharn.examples.segmentation setup_harn
 
     Example:
+        >>> # xdoctest: +REQUIRES(--slow)
         >>> kw = {'workers': 0, 'xpu': 'cpu', 'batch_size': 2}
         >>> cmdline = False
         >>> # Just sets up the harness, does not do any heavy lifting
@@ -612,7 +617,7 @@ def setup_harn(cmdline=True, **kw):
         >>> harn.initialize()
         >>> #
         >>> batch = harn._demo_batch(tag='train')
-        >>> epoch_metrics = harn._demo_epoch(tag='vali', max_iter=4)
+        >>> epoch_metrics = harn._demo_epoch(tag='vali', max_iter=2)
     """
     import sys
     import ndsampler
