@@ -23,6 +23,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Made pytorch-optimizer optional: https://github.com/jettify/pytorch-optimizer
 * netharn now will timeout within an epoch
 
+### Fixed
+* Bug when a value in `harn.intervals` was zero.
+
 
 ## Version 0.5.4 - Released 2020-02-19 
 

@@ -2528,7 +2528,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             bool: if it is time to do something or not
         """
         n = harn.intervals[tag]
-        if n is None:
+        if n is None or n == 0:
             return False
         elif isinstance(n, int):
             # Intervals can be numbers corresponding to strides
