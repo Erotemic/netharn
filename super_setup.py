@@ -547,6 +547,11 @@ class Repo(ub.NiceRepr):
 
     def pull(repo):
         repo._assert_clean()
+        # TODO: In past runs I've gotten the error:
+        # Your configuration specifies to merge with the ref
+        # 'refs/heads/dev/0.0.2' from the remote, but no such ref was fetched.
+        # Doing an ensure seemed to fix it. We should do something to handle
+        # this case ellegantly.
         repo._cmd('git pull')
 
     def status(repo):
