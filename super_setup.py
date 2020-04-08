@@ -296,8 +296,12 @@ class Repo(ub.NiceRepr):
         Args:
             protocol (str): can be ssh or https
         """
+        # Update base url to use the requested protocol
         gurl = GitURL(self.url)
         self.url = gurl.format(protocol)
+        # Update all remote urls to use the requested protocol
+        for key in list(self.remotes.keys()):
+            self.remotes[key] = GitURL(self.remotes[key]).format(protocol)
 
     def info(repo, msg):
         repo._logged_lines.append(('INFO', 'INFO: ' + msg))
@@ -346,12 +350,21 @@ class Repo(ub.NiceRepr):
         return repo._pygit
 
     def develop(repo):
-        devsetup_script_fpath = join(repo.dpath, 'run_developer_setup.sh')
-        if not exists(devsetup_script_fpath):
-            raise AssertionError('Assume we always have run_developer_setup.sh: repo={!r}'.format(repo))
-        repo._cmd(devsetup_script_fpath, cwd=repo.dpath)
+        if ub.WIN32:
+            # We can't run a shell file on win32, so lets hope this works
+            import warnings
+            warnings.warn('super_setup develop may not work on win32')
+            repo._cmd('pip install -e .', cwd=repo.dpath)
+        else:
+            devsetup_script_fpath = join(repo.dpath, 'run_developer_setup.sh')
+            if not exists(devsetup_script_fpath):
+                raise AssertionError('Assume we always have run_developer_setup.sh: repo={!r}'.format(repo))
+            repo._cmd(devsetup_script_fpath, cwd=repo.dpath)
 
     def doctest(repo):
+        if ub.WIN32:
+            raise NotImplementedError('doctest does not yet work on windows')
+
         devsetup_script_fpath = join(repo.dpath, 'run_doctests.sh')
         if not exists(devsetup_script_fpath):
             raise AssertionError('Assume we always have run_doctests.sh: repo={!r}'.format(repo))
@@ -534,6 +547,11 @@ class Repo(ub.NiceRepr):
 
     def pull(repo):
         repo._assert_clean()
+        # TODO: In past runs I've gotten the error:
+        # Your configuration specifies to merge with the ref
+        # 'refs/heads/dev/0.0.2' from the remote, but no such ref was fetched.
+        # Doing an ensure seemed to fix it. We should do something to handle
+        # this case ellegantly.
         repo._cmd('git pull')
 
     def status(repo):
@@ -668,11 +686,11 @@ def make_netharn_registry():
 
         # The util libs
         CommonRepo(
-            name='kwarray', branch='dev/0.5.4', remote='public',
+            name='kwarray', branch='dev/0.5.7', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
         ),
         CommonRepo(
-            name='kwimage', branch='dev/0.6.0', remote='public',
+            name='kwimage', branch='dev/0.6.2', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
         ),
         # CommonRepo(  # TODO
@@ -680,24 +698,38 @@ def make_netharn_registry():
         #     remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwannot.git'},
         # ),
         CommonRepo(
-            name='kwplot', branch='dev/0.4.3', remote='public',
+            name='kwcoco', branch='dev/0.1.1', remote='public',
+            remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwcoco.git'},
+        ),
+        CommonRepo(
+            name='kwplot', branch='dev/0.4.4', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwplot.git'},
+        ),
+
+        # Pytorch deployer / exporter
+        CommonRepo(
+            name='liberator', branch='dev/0.0.2', remote='public',
+            remotes={'public': 'git@gitlab.kitware.com:python/liberator.git'},
+        ),
+        CommonRepo(
+            name='torch_liberator', branch='dev/0.0.3', remote='public',
+            remotes={'public': 'git@gitlab.kitware.com:computer-vision/torch_liberator.git'},
         ),
 
 
         # For example data and CLI
         CommonRepo(
-            name='scriptconfig', branch='dev/0.5.4', remote='public',
+            name='scriptconfig', branch='dev/0.5.6', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
         ),
         CommonRepo(
-            name='ndsampler', branch='dev/0.5.4', remote='public',
+            name='ndsampler', branch='dev/0.5.8', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
         ),
 
         # netharn - training harness
         CommonRepo(
-            name='netharn', branch='dev/0.5.4', remote='public',
+            name='netharn', branch='dev/0.5.5', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
         ),
     ]
@@ -810,6 +842,21 @@ def main():
         registery.apply('versions')
 
     cli_group()
+
+
+_DOCKER_DEBUGGING = """
+DOCKER_IMAGE=circleci/python
+docker run -v $PWD:/io --rm -it $DOCKER_IMAGE bash
+
+mkdir -p $HOME/code
+cd $HOME/code
+git clone -b dev/0.5.5 https://gitlab.kitware.com/computer-vision/netharn.git
+cd $HOME/code/netharn
+
+pip install -r requirements/super_setup.txt
+python super_setup.py ensure --serial
+
+"""
 
 
 if __name__ == '__main__':

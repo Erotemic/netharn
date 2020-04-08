@@ -604,7 +604,7 @@ class BinaryConfusionVectors(ub.NiceRepr):
         return kwplot.multi_plot(xdata=xdata, ydata=ydata, color=color)
 
     # @ub.memoize_method
-    def precision_recall(self, stabalize_thresh=7, stabalize_pad=7):
+    def precision_recall(self, stabalize_thresh=7, stabalize_pad=7, method='sklearn'):
         """
         Example:
             >>> self = BinaryConfusionVectors.demo(n=11)
@@ -637,8 +637,8 @@ class BinaryConfusionVectors(ub.NiceRepr):
             from sklearn.metrics._ranking import _binary_clf_curve
         except ImportError:
             from sklearn.metrics.ranking import _binary_clf_curve
-        data = self.data
 
+        data = self.data
         y_true = data['is_true'].astype(np.uint8)
         y_score = data['pred_score']
         sample_weight = data._data.get('weight', None)
@@ -649,9 +649,13 @@ class BinaryConfusionVectors(ub.NiceRepr):
             prec = [np.nan]
             rec = [np.nan]
             fps = [np.nan]
+            fns = [np.nan]
             tps = [np.nan]
             thresholds = [np.nan]
 
+            realpos_total = 0
+            realneg_total = 0
+            nsupport = 0
         else:
             if len(self) <= stabalize_thresh:
                 # add dummy data to stabalize the computation
@@ -661,24 +665,72 @@ class BinaryConfusionVectors(ub.NiceRepr):
                 y_true, y_score, sample_weight = _stabalilze_data(
                     y_true, y_score, sample_weight, npad=npad)
 
-            metric_kw = {
-                'y_true': y_true,
-                'sample_weight': sample_weight,
-            }
+            # Get the total weight (typically number of) positive and negative
+            # examples of this class
+            if sample_weight is None:
+                weight = 1
+                nsupport = len(y_true) - bool(npad)
+            else:
+                weight = sample_weight
+                nsupport = sample_weight.sum() - bool(npad)
 
-            # print('metric_kw = {}'.format(ub.repr2(metric_kw, nl=1)))
-            # print('y_score = {!r}'.format(y_score))
+            realpos_total = (y_true * weight).sum()
+            realneg_total = ((1 - y_true) * weight).sum()
+
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore', message='invalid .* true_divide')
-                ap = sklearn.metrics.average_precision_score(
-                    y_score=y_score, **metric_kw)
+                """
+                Notes:
+                    Apparently, consistent scoring is really hard to get right.
 
-                fps, tps, _thresholds = _binary_clf_curve(
-                    y_true, y_score, pos_label=1.0,
-                    sample_weight=sample_weight)
+                    For detection problems scoring via
+                    confusion_vectors+sklearn produces noticably different
+                    results than the VOC method. There are a few reasons for
+                    this.  The VOC method stops counting true positives after
+                    all assigned predicted boxes have been counted. It simply
+                    remembers the amount of original true positives to
+                    normalize the true positive reate. On the other hand,
+                    confusion vectors maintains a list of these unassigned true
+                    boxes and gives them a predicted index of -1 and a score of
+                    zero. This means that this function sees them as having a
+                    y_true of 1 and a y_score of 0, which allows the
+                    scikit-learn fps and tps counts to effectively get up to
+                    100% recall when the threshold is zero. The VOC method
+                    simply ignores these and handles them implicitly. The
+                    problem is that if you remove these from the scikit-learn
+                    inputs, it wont see the correct number of positives and it
+                    will incorrectly normalize the recall.  In summary:
+
+                        VOC:
+                            * remembers realpos_total
+                            * doesn't count unassigned truths as TP when the
+                            threshold is zero.
+
+                        CV+SKL:
+                            * counts unassigned truths as TP with score=0.
+                            * Always ensure tpr=1, ppv=0 and ppv=1, tpr=0 cases
+                            exist.
+                """
+
+                if method.startswith('voc'):
+                    y_score_ = y_score[y_score > 0]
+                    y_true_ = y_true[y_score > 0]
+                    fps, tps, _thresholds = _binary_clf_curve(
+                        y_true_, y_score_, pos_label=1.0,
+                        sample_weight=sample_weight)
+                elif method == 'sklearn':
+                    fps, tps, _thresholds = _binary_clf_curve(
+                        y_true, y_score, pos_label=1.0,
+                        sample_weight=sample_weight)
+                else:
+                    raise KeyError(method)
+
+                # Slight tweak to sklearn.metrics.precision_recall_curve
+                fns = realpos_total - tps
+
                 precision = tps / (tps + fps)
                 precision[np.isnan(precision)] = 0
-                recall = tps / tps[-1]
+                recall = tps / realpos_total
 
                 # stop when full recall attained
                 # and reverse the outputs so recall is decreasing
@@ -689,25 +741,13 @@ class BinaryConfusionVectors(ub.NiceRepr):
                     np.r_[recall[sl], 0],
                     _thresholds[sl])
 
-                # prec, rec, thresholds = sklearn.metrics.precision_recall_curve(
-                #     probas_pred=y_score, **metric_kw)
-
-        # FIXME
-        # USING true == pred IS WRONG.
-        # when pred=-1 and true=0 the score=0, but is_true=False.
-        # THIS CAUSES the total number of TRUE sklearn vecs to be incorrect
-
-        # Get the total weight (typically number of) positive and negative
-        # examples of this class
-        if sample_weight is None:
-            weight = 1
-            nsupport = len(y_true) - bool(npad)
-        else:
-            weight = sample_weight
-            nsupport = sample_weight.sum() - bool(npad)
-
-        realpos_total = (y_true * weight).sum()
-        realneg_total = ((1 - y_true) * weight).sum()
+                if method.startswith('voc'):
+                    from netharn.metrics.voc_metrics import _voc_ave_precision
+                    ap = _voc_ave_precision(rec[::-1], prec[::-1], method=method)
+                elif method == 'sklearn':
+                    ap = sklearn.metrics.average_precision_score(
+                        y_score=y_score, y_true=y_true,
+                        sample_weight=sample_weight)
 
         prs_info = {
             'ap': ap,
@@ -715,6 +755,7 @@ class BinaryConfusionVectors(ub.NiceRepr):
             'tpr': rec,    # (true positive rate) == (recall)
             'fp_count': fps,
             'tp_count': tps,
+            'fn_count': fns,
             'thresholds': thresholds,
             'nsupport': nsupport,
             'realpos_total': realpos_total,
@@ -868,6 +909,9 @@ class DictProxy(DictLike):
 
     def keys(self):
         return self.proxy.keys()
+
+    def __json__(self):
+        return ub.odict(self.proxy)
 
 
 class ROC_Result(ub.NiceRepr, DictProxy):

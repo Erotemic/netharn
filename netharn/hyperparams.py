@@ -62,6 +62,12 @@ from collections import OrderedDict
 # from netharn import criterions
 from torch.optim.optimizer import required
 import torch.utils.data as torch_data
+from netharn.util import util_json
+from netharn.util import util_inspect
+
+
+# backwards compatibility
+_ensure_json_serializable = util_json.ensure_json_serializable  # NOQA
 
 
 try:
@@ -75,115 +81,11 @@ def _hash_data(data):
     return ub.hash_data(data, hasher='sha512', base='abc', types=True)
 
 
-def _ensure_json_serializable(dict_, normalize_containers=False, verbose=0):
+def _rectify_class(arg, kw, lookup=None):
     """
-    Convert numpy and tuples into lists
+    Helps normalize and serialize hyperparameter inputs.
 
     Args:
-        normalize_containers (bool, default=False):
-            if True, normalizes dict containers to be standard python
-            structures.
-
-    Example:
-        >>> from netharn.hyperparams import *  # NOQA
-        >>> from netharn.hyperparams import _hash_data, _ensure_json_serializable
-        >>> data = ub.ddict(lambda: int)
-        >>> data['foo'] = ub.ddict(lambda: int)
-        >>> data['bar'] = np.array([1, 2, 3])
-        >>> data['foo']['a'] = 1
-        >>> data['foo']['b'] = torch.FloatTensor([1, 2, 3])
-        >>> result = _ensure_json_serializable(data, normalize_containers=True)
-        >>> assert type(result) is dict
-    """
-    import copy
-    dict_ = copy.deepcopy(dict_)
-
-    def _norm_container(c):
-        if isinstance(c, dict):
-            # Cast to a normal dictionary
-            if isinstance(c, OrderedDict):
-                if type(c) is not OrderedDict:
-                    c = OrderedDict(c)
-            else:
-                if type(c) is not dict:
-                    c = dict(c)
-        return c
-
-    # inplace convert any ndarrays to lists
-    def _walk_json(data, prefix=[]):
-        items = None
-        if isinstance(data, list):
-            items = enumerate(data)
-        elif isinstance(data, tuple):
-            items = enumerate(data)
-        elif isinstance(data, dict):
-            items = data.items()
-        else:
-            raise TypeError(type(data))
-
-        root = prefix
-        level = {}
-        for key, value in items:
-            level[key] = value
-
-        # yield a dict so the user can choose to not walk down a path
-        yield root, level
-
-        for key, value in level.items():
-            if isinstance(value, (dict, list, tuple)):
-                path = prefix + [key]
-                for _ in _walk_json(value, prefix=path):
-                    yield _
-
-    def _convert(dict_, root, key, new_value):
-        d = dict_
-        for k in root:
-            d = d[k]
-        d[key] = new_value
-
-    to_convert = []
-    for root, level in ub.ProgIter(_walk_json(dict_), desc='walk json',
-                                   verbose=verbose):
-        for key, value in level.items():
-            if isinstance(value, tuple):
-                # Convert tuples on the fly so they become mutable
-                new_value = list(value)
-                _convert(dict_, root, key, new_value)
-            elif isinstance(value, np.ndarray):
-                new_value = value.tolist()
-                to_convert.append((root, key, new_value))
-            elif isinstance(value, torch.Tensor):
-                new_value = value.data.cpu().numpy().tolist()
-                to_convert.append((root, key, new_value))
-            elif isinstance(value, (np.float32, np.float64)):
-                new_value = float(value)
-                to_convert.append((root, key, new_value))
-            elif isinstance(value, (np.int32, np.int64)):
-                new_value = float(value)
-                to_convert.append((root, key, new_value))
-            elif hasattr(value, '__json__'):
-                new_value = value.__json__()
-                to_convert.append((root, key, new_value))
-            elif normalize_containers:
-                if isinstance(value, dict):
-                    new_value = _norm_container(value)
-                    to_convert.append((root, key, new_value))
-
-    for root, key, new_value in to_convert:
-        _convert(dict_, root, key, new_value)
-
-    if normalize_containers:
-        # normalize the outer layer
-        dict_ = _norm_container(dict_)
-    return dict_
-
-
-def _rectify_class(lookup, arg, kw):
-    """
-    Args:
-        lookup (func | None):
-            transforms arg or arg[0] into the class type
-
         arg (Tuple[type, dict] | type | object):
             Either a (cls, initkw) tuple, a class, or an instance.
             It is recommended that you don't pass an instance.
@@ -191,10 +93,32 @@ def _rectify_class(lookup, arg, kw):
         kw (Dict[str, object]):
             augments initkw if arg is in tuple form otherwise becomes initkw
 
+        lookup (func | None):
+            transforms arg or arg[0] into the class type
+
     Returns:
-        Tuple[type, Dict]:
-            The class type that we want to construct and the keyword args
-            used to do the construction.
+        Dict: containing
+            'cls' (type): the type of the object
+            'cls_kw' (Dict): the initialization keyword args
+            'instance': (object): None or the actual instanciated object
+
+            We will use this cls and cls_kw to construct an instance unless one
+            is already specified.
+
+    Example:
+        >>> # The ideal case is that we have a cls, initkw tuple
+        >>> import netharn as nh
+        >>> kw = {'lr': 0.1}
+        >>> cls = torch.optim.SGD
+        >>> rectified1 = _rectify_class(cls, kw.copy())
+        >>> print('rectified1 = {!r}'.format(rectified1))
+        >>> # But we can also take an instance of the object, however, you must
+        >>> # now make sure to specify the _initkw attribute.
+        >>> model = nh.models.ToyNet2d()
+        >>> self = cls(model.parameters(), **kw)
+        >>> self._initkw = kw
+        >>> rectified2 = _rectify_class(self, {})
+        >>> print('rectified2 = {!r}'.format(rectified2))
     """
     if lookup is None:
         lookup = ub.identity
@@ -225,7 +149,7 @@ def _rectify_class(lookup, arg, kw):
             # We were passed an actual instance of the class. (for shame)
             instance = cls_key
 
-        cls_kw = _class_default_params(cls).copy()
+        cls_kw = util_inspect.default_kwargs(cls).copy()
 
         if instance is not None:
             # Try and introspect the initkw, which is needed for model
@@ -239,15 +163,15 @@ def _rectify_class(lookup, arg, kw):
                 cls_kw.update(instance._initkw)
             else:
                 import warnings
-                warnings.warn(ub.paragraph(
+                warnings.warn(ub.paragraph(  # _initkw warning
                     '''
-                    Netharn expects hyperparameter objects to be specified as
+                    netharn.HyperParams objects are expected to be specified as
                     (type, kw) tuples, but we received a preconstructed
                     instance. This is only ok if you know what you are doing.
                     To disable this warning set the _initkw instance attribute
                     to the correct keyword arguments needed to reconstruct this
-                    class.
-                    '''))
+                    class. Offending data is arg={!r}, kw={!r}
+                    ''').format(arg, kw))
 
         # Update with explicitly specified information
         cls_kw.update(kw2)
@@ -255,55 +179,19 @@ def _rectify_class(lookup, arg, kw):
             if key in kw:
                 cls_kw[key] = kw.pop(key)
 
-    cls_kw = _ensure_json_serializable(cls_kw)
+    cls_kw = util_json.ensure_json_serializable(cls_kw)
     rectified = {
         'cls': cls,
         'cls_kw': cls_kw,
         'instance': instance,
     }
     return rectified
-    # return cls, cls_kw
-
-
-def _class_default_params(cls):
-    """
-    Grab initkw defaults from the constructor
-
-    CommandLine:
-        xdoctest -m netharn.hyperparams _class_default_params
-
-    Doctest:
-        >>> cls = torch.optim.Adam
-        >>> _class_default_params(cls)
-        >>> cls = initializers.KaimingNormal
-        >>> print(ub.repr2(_class_default_params(cls), nl=0))
-        {'mode': 'fan_in', 'param': 0}
-        >>> cls = initializers.NoOp
-        >>> _class_default_params(cls)
-        {}
-    """
-    if six.PY2:
-        if cls.__init__ is object.__init__:
-            # hack for python2 classes without __init__
-            return {}
-        else:
-            import funcsigs
-            sig = funcsigs.signature(cls)
-    else:
-        import inspect
-        sig = inspect.signature(cls)
-    default_params = {
-        k: p.default
-        for k, p in sig.parameters.items()
-        if p.default is not p.empty
-    }
-    return default_params
 
 
 def _rectify_criterion(arg, kw):
     if arg is None:
         # arg = 'CrossEntropyLoss'
-        return _rectify_class(None, None, kw)
+        return _rectify_class(None, kw)
 
     def _lookup(arg):
         if isinstance(arg, six.string_types):
@@ -316,11 +204,37 @@ def _rectify_criterion(arg, kw):
             cls = arg
         return cls
 
-    rectified = _rectify_class(_lookup, arg, kw)
+    rectified = _rectify_class(arg, kw, _lookup)
     return rectified
 
 
 def _rectify_optimizer(arg, kw):
+    """
+    Create a rectified tuple
+
+    Example:
+        >>> # Test using a (cls, kw) tuple and an instance object.
+        >>> import netharn as nh
+        >>> optim_ = nh.api.Optimizer.coerce({
+        >>>     'optim': 'adam', 'lr': 0.1, 'weight_decay': 1e-4})
+        >>> cls, kw = optim_
+        >>> #
+        >>> model = nh.models.ToyNet2d()
+        >>> params = dict(model.named_parameters())
+        >>> grouped_keys = {}
+        >>> grouped_keys['bias'] = [k for k in params.keys() if 'bias' in k]
+        >>> grouped_keys['weight'] = [k for k in params.keys() if 'weight' in k]
+        >>> named_param_groups = {
+        >>>     k: {'params': list(ub.take(params, sorted(v)))}
+        >>>     for k, v in grouped_keys.items()
+        >>> }
+        >>> named_param_groups['bias']['weight_decay'] = 0
+        >>> param_groups = list(ub.sorted_keys(named_param_groups).values())
+        >>> #
+        >>> optim = cls(param_groups, **kw)
+        >>> rectified1 = _rectify_optimizer(cls, kw)
+        >>> rectified2 = _rectify_optimizer(optim, {})
+    """
     if arg is None:
         arg = 'SGD'
         if kw is None:
@@ -340,7 +254,7 @@ def _rectify_optimizer(arg, kw):
             cls = arg
         return cls
 
-    rectified = _rectify_class(_lookup, arg, kw)
+    rectified = _rectify_class(arg, kw, _lookup)
     kw2 = rectified['cls_kw']
 
     for k, v in kw2.items():
@@ -352,7 +266,7 @@ def _rectify_optimizer(arg, kw):
 
 def _rectify_lr_scheduler(arg, kw):
     if arg is None:
-        return _rectify_class(None, None, kw)
+        return _rectify_class(None, kw)
 
     def _lookup(arg):
         if isinstance(arg, six.string_types):
@@ -368,7 +282,7 @@ def _rectify_lr_scheduler(arg, kw):
             cls = arg
         return cls
 
-    rectified = _rectify_class(_lookup, arg, kw)
+    rectified = _rectify_class(arg, kw, _lookup)
     return rectified
 
 
@@ -389,7 +303,7 @@ def _rectify_initializer(arg, kw):
             cls = arg
         return cls
 
-    rectified = _rectify_class(_lookup, arg, kw)
+    rectified = _rectify_class(arg, kw, _lookup)
     return rectified
 
 
@@ -401,7 +315,7 @@ def _rectify_monitor(arg, kw):
         else:
             cls = arg
         return cls
-    rectified = _rectify_class(_lookup, arg, kw)
+    rectified = _rectify_class(arg, kw, _lookup)
     return rectified
 
 
@@ -432,7 +346,7 @@ def _rectify_dynamics(arg, kw):
 
 def _rectify_model(arg, kw):
     if arg is None:
-        return _rectify_class(None, None, kw)
+        return _rectify_class(None, kw)
 
     def _lookup_model(arg):
         import torchvision
@@ -450,7 +364,7 @@ def _rectify_model(arg, kw):
     if isinstance(arg, device.MountedModel):
         arg = arg.module
 
-    rectified = _rectify_class(_lookup_model, arg, kw)
+    rectified = _rectify_class(arg, kw, _lookup_model)
     return rectified
 
 
@@ -523,7 +437,7 @@ class HyperParams(object):
     def __init__(hyper,
                  # ----
                  datasets=None,
-                 nice=None,
+                 name=None,
                  workdir=None,
                  xpu=None,
                  loaders=None,
@@ -539,11 +453,16 @@ class HyperParams(object):
                  augment=None,
                  other=None,  # incorporated into the hash
                  extra=None,  # ignored when computing the hash
+                 nice=None,  # alias of name
                  ):
         kwargs = {}
 
         hyper.datasets = datasets
-        hyper.nice = nice
+        if name is None:
+            import warnings
+            warnings.warn('Specify "name" instead of "nice"')
+            name = nice
+        hyper.name = name
         hyper.workdir = workdir
         hyper.xpu = xpu
 
@@ -582,6 +501,11 @@ class HyperParams(object):
         hyper.augment = augment
         hyper.other = other
         hyper.extra = extra
+
+    @property
+    def nice(hyper):
+        """ alias of name for backwards compatibility """
+        return hyper.name
 
     def make_model(hyper):
         """ Instanciate the model defined by the hyperparams """
@@ -947,21 +871,21 @@ class HyperParams(object):
         """
         train_hashid = _hash_data(train_id)[0:8]
 
-        nice = hyper.nice
+        name = hyper.name
 
         nice_dpath = None
         if not given_explicit_train_dpath:
             # setup a cannonical and a linked symlink dir
             train_dpath = normpath(
-                    join(hyper.workdir, 'fit', 'runs', nice, train_hashid))
+                    join(hyper.workdir, 'fit', 'runs', name, train_hashid))
             # also setup a "nice" custom name, which may conflict, but oh well
-            if nice:
+            if name:
                 try:
                     nice_dpath = normpath(
-                            join(hyper.workdir, 'fit', 'nice', nice))
+                            join(hyper.workdir, 'fit', 'nice', name))
                 except Exception:
                     print('hyper.workdir = {!r}'.format(hyper.workdir))
-                    print('hyper.nice = {!r}'.format(hyper.nice))
+                    print('hyper.name = {!r}'.format(hyper.name))
                     raise
 
         # make temporary initializer so we can infer the history
@@ -989,7 +913,7 @@ class HyperParams(object):
             ('init_history', init_history),
             ('init_history_hashid', _hash_data(util.make_idstr(init_history))),
 
-            ('nice', hyper.nice),
+            ('nice', hyper.name),
 
             ('old_train_dpath', normpath(
                 join(hyper.workdir, 'fit', 'runs', train_hashid))),
@@ -1023,7 +947,7 @@ class HyperParams(object):
             # ================
             # Environment Components
             'workdir'     : ub.ensure_app_cache_dir('netharn/tests/demo'),
-            'nice'        : 'demo',
+            'name'        : 'demo',
             'xpu'         : nh.XPU.coerce('argv'),
             # workdir is a directory where intermediate results can be saved
             # nice symlinks <workdir>/fit/nice/<nice> -> ../runs/<hashid>

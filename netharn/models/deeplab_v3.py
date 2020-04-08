@@ -78,7 +78,7 @@ class _Bottleneck(layers.AnalyticModule):
                           **kwargs):
         """
         Example:
-            >>> # xdoctset: +REQUIRES(--slow)
+            >>> # xdoctest: +REQUIRES(--slow)
             >>> from netharn.models.deeplab_v3 import *  # NOQA
             >>> from netharn.models.deeplab_v3 import _Bottleneck
             >>> import netharn as nh
@@ -194,7 +194,7 @@ class _Flatten(layers.AnalyticModule):
                           **kwargs):
         """
         Example:
-            >>> # xdoctset: +REQUIRES(--slow)
+            >>> # xdoctest: +REQUIRES(--slow)
             >>> from netharn.models.deeplab_v3 import *  # NOQA
             >>> from netharn.models.deeplab_v3 import _Flatten
             >>> import netharn as nh
@@ -283,7 +283,7 @@ class _ImagePool(layers.AnalyticModule):
                           **kwargs):
         """
         Example:
-            >>> # xdoctset: +REQUIRES(--slow)
+            >>> # xdoctest: +REQUIRES(--slow)
             >>> from netharn.models.deeplab_v3 import *  # NOQA
             >>> from netharn.models.deeplab_v3 import _ImagePool
             >>> import netharn as nh
@@ -351,7 +351,7 @@ class _ASPP(layers.AnalyticModule):
                           **kwargs):
         """
         Example:
-            >>> # xdoctset: +REQUIRES(--slow)
+            >>> # xdoctest: +REQUIRES(--slow)
             >>> from netharn.models.deeplab_v3 import *  # NOQA
             >>> from netharn.models.deeplab_v3 import _ASPP
             >>> import netharn as nh
@@ -388,8 +388,7 @@ class DeepLabV3(layers.Sequential):
     DeepLab v3: Dilated ResNet with multi-grid + improved ASPP
 
     Example:
-        >>> # xdoctset: +REQUIRES(--slow)
-        >>> # xdoctset: +SKIP
+        >>> # xdoctest: +REQUIRES(--slow)
         >>> from netharn.models.deeplab_v3 import *  # NOQA
         >>> self = DeepLabV3(classes=21).eval()
         >>> ####

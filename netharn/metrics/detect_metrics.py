@@ -351,7 +351,7 @@ class DetectionMetrics(ub.NiceRepr):
         if gids is None:
             gids = sorted(dmet._imgname_to_gid.values())
         # Convert true/pred detections into VOC format
-        vmet = voc_metrics.VOC_Metrics()
+        vmet = voc_metrics.VOC_Metrics(classes=dmet.classes)
         for gid in gids:
             true_dets = dmet.true_detections(gid)
             pred_dets = dmet.pred_detections(gid)

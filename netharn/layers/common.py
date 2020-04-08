@@ -43,11 +43,11 @@ class Sequential(nn.Sequential, util.ModuleMixin):
         }
     """
     def output_shape_for(self, input_shape):
-        from netharn import output_shape_for
+        from netharn.analytic import output_shape_for
         return output_shape_for.OutputShapeFor.sequential(self, input_shape)
 
     def receptive_field_for(self, input_field=None):
-        from netharn import receptive_field_for
+        from netharn.analytic import receptive_field_for
         return receptive_field_for.ReceptiveFieldFor.sequential(self, input_field)
 
 
@@ -70,7 +70,7 @@ class Identity(Sequential):
 
     def receptive_field_for(self, input_field=None):
         if input_field is None:
-            from netharn import receptive_field_for
+            from netharn.analytic import receptive_field_for
             input_field = receptive_field_for.ReceptiveFieldFor.input()
         return input_field
 
@@ -95,7 +95,7 @@ class AnalyticModule(Module):
 
     @classmethod
     def _analytic_shape_kw(self):
-        from netharn import output_shape_for
+        from netharn.analytic import output_shape_for
         return {
             '_OutputFor': output_shape_for.OutputShapeFor,
             '_Output': output_shape_for.OutputShape,
@@ -104,7 +104,7 @@ class AnalyticModule(Module):
 
     @classmethod
     def _analytic_field_kw(self):
-        from netharn import receptive_field_for
+        from netharn.analytic import receptive_field_for
         # import netharn as nh
         return {
             '_OutputFor': receptive_field_for.ReceptiveFieldFor,
@@ -115,36 +115,45 @@ class AnalyticModule(Module):
     @classmethod
     def _analytic_forward_kw(self):
         # import netharn as nh
-        from netharn import analytic_for
+        from netharn.analytic import analytic_for
         return {
             '_OutputFor': analytic_for.ForwardFor,
             '_Output': analytic_for.Output,
             '_Hidden': analytic_for.Hidden,
         }
 
-    def output_shape_for(self, input_shape):
+    def output_shape_for(self, input_shape, **kwargs):
         """
         Uses custom _analytic_forward to compute output shape
         """
         kw = self._analytic_shape_kw()
+        if kwargs:
+            kw = kw.copy()
+            kw.update(kwargs)
         return self._analytic_forward(input_shape, **kw)
 
-    def receptive_field_for(self, input_field=None):
+    def receptive_field_for(self, input_field=None, **kwargs):
         """
         Uses custom _analytic_forward to compute receptive field
         """
         # import netharn as nh
-        from netharn import receptive_field_for
+        from netharn.analytic import receptive_field_for
         if input_field is None:
             input_field = receptive_field_for.ReceptiveFieldFor.input()
         kw = self._analytic_field_kw()
+        if kwargs:
+            kw = kw.copy()
+            kw.update(kwargs)
         return self._analytic_forward(input_field, **kw)
 
-    def forward(self, inputs, **kw):
+    def forward(self, inputs, **kwargs):
         """
         Uses custom _analytic_forward to compute receptive field
         """
         kw = self._analytic_forward_kw()
+        if kwargs:
+            kw = kw.copy()
+            kw.update(kwargs)
         return self._analytic_forward(inputs, **kw)
 
 

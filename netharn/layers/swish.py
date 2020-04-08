@@ -41,7 +41,7 @@ class Swish(nn.Module):
         >>> kwplot.autompl()
         >>> kwplot.multi_plot(xydata={'beta=1': (x.data, y.data)}, fnum=1, pnum=(1, 2, 1))
         >>> kwplot.multi_plot(xydata={'beta=1': (x.data, x.grad)}, fnum=1, pnum=(1, 2, 2))
-        >>> kwplot.show_if_requestd()
+        >>> kwplot.show_if_requested()
 
     """
     def __init__(self, beta=1.0):

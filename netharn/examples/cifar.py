@@ -35,11 +35,15 @@ validation, and test sets. In short, netharn handles the necessary parts and
 let the developer focus on the important parts.
 
 
+References:
+    https://github.com/kuangliu/pytorch-cifar
+
+
 CommandLine:
-    python -m netharn.examples.cifar.py --gpu=0 --arch=resnet50
-    python -m netharn.examples.cifar.py --gpu=0 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
-    python -m netharn.examples.cifar.py --gpu=1,2,3 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw --batch_size=1800
-    python -m netharn.examples.cifar.py --gpu=1,2 --arch=resnet50 --lr=0.003 --schedule=onecycle --optim=adamw
+    python -m netharn.examples.cifar.py --xpu=0 --arch=resnet50
+    python -m netharn.examples.cifar.py --xpu=0 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw
+    python -m netharn.examples.cifar.py --xpu=1,2,3 --arch=wrn_22 --lr=0.003 --schedule=onecycle --optim=adamw --batch_size=1800
+    python -m netharn.examples.cifar.py --xpu=1,2 --arch=resnet50 --lr=0.003 --schedule=onecycle --optim=adamw
 
 """
 import sys
@@ -51,6 +55,7 @@ import os
 import pickle
 import netharn as nh
 import scriptconfig as scfg
+# from netharn.util import layer_rotation
 
 
 class CIFARConfig(scfg.Config):
@@ -68,11 +73,12 @@ class CIFARConfig(scfg.Config):
         'workdir': scfg.Path('~/work/cifar', help='Dump all results in your workdir'),
 
         'workers': scfg.Value(2, help='number of parallel dataloading jobs'),
-        'xpu': scfg.Value('argv', help='See netharn.XPU for details. can be cpu/gpu/cuda0/0,1,2,3)'),
+        'xpu': scfg.Value('auto', help='See netharn.XPU for details. can be auto/cpu/xpu/cuda0/0,1,2,3)'),
 
         'dataset': scfg.Value('cifar10', choices=['cifar10', 'cifar100'],
                               help='which cifar network to use'),
         'num_vali': scfg.Value(0, help='number of validation examples'),
+        'augment': scfg.Value('baseline', help='an augmentation comma separated list or a code'),
 
         'arch': scfg.Value('resnet50', help='Network architecture code'),
         'optim': scfg.Value('sgd', help='Weight optimizer. Can be SGD, ADAM, ADAMW, etc..'),
@@ -87,7 +93,10 @@ class CIFARConfig(scfg.Config):
         'lr': scfg.Value(1e-1, help='Base learning rate'),
         'decay':  scfg.Value(5e-4, help='Base weight decay'),
 
-        'schedule': scfg.Value('simplestep', help=('Special coercable netharn code. Eg: onecycle50, step50, gamma')),
+        'schedule': scfg.Value('step-150-250', help=('Special coercable netharn code. Eg: onecycle50, step50, gamma')),
+
+        'grad_norm_max': scfg.Value(None, help='clip gradients exceeding this value'),
+        'warmup_iters': scfg.Value(0, help='number of iterations to warmup learning rate'),
 
         'init': scfg.Value('noop', help='How to initialized weights. (can be a path to a pretrained model)'),
         'pretrained': scfg.Path(help=('alternative way to specify a path to a pretrained model')),
@@ -235,7 +244,7 @@ class CIFAR_FitHarn(nh.FitHarn):
                 'auc', 'ap', 'mcc', 'brier'
             ])
 
-        # percent error really isn't a great metric, but its standard.
+        # percent error really isn't a great metric, but its easy and standard.
         errors = (y_true != y_pred)
         acc = 1.0 - errors.mean()
         percent_error = (1.0 - acc) * 100
@@ -248,7 +257,7 @@ class CIFAR_FitHarn(nh.FitHarn):
         metrics_dict['percent_error'] = percent_error
         metrics_dict['acc'] = acc
 
-        harn.info('ACC FOR {!r}: {!r}'.format(harn.current_tag, acc))
+        harn.info(ub.color_text('ACC FOR {!r}: {!r}'.format(harn.current_tag, acc), 'yellow'))
 
         # Clear confusion vectors accumulator for the next epoch
         harn._accum_confusion_vectors = {
@@ -290,7 +299,8 @@ class CIFAR_FitHarn(nh.FitHarn):
             min_, max_ = im_.min(), im_.max()
             im_ = ((im_ - min_) / (max_ - min_) * 255).astype(np.uint8)
             im_ = np.ascontiguousarray(im_)
-            im_ = kwimage.imresize(im_, dsize=(200, 200))
+            im_ = kwimage.imresize(im_, dsize=(200, 200),
+                                   interpolation='nearest')
 
             # Draw classification information on the image
             im_ = kwimage.draw_clf_on_image(im_, classes=classes, tcx=tcx,
@@ -302,41 +312,126 @@ class CIFAR_FitHarn(nh.FitHarn):
                                             chunksize=8)
         return stacked
 
+    def before_epochs(harn):
+        if harn.epoch == 0:
+            harn._draw_conv_layers(suffix='_init')
+
+    def after_epochs(harn):
+        """
+        Callback after all train/vali/test epochs are complete.
+        """
+        harn._draw_conv_layers()
+
+    def _draw_conv_layers(harn, suffix=''):
+        """
+        We use this to visualize the first convolutional layer
+        """
+        import kwplot
+        # Visualize the first convolutional layer
+        dpath = ub.ensuredir((harn.train_dpath, 'monitor', 'layers'))
+        # fig = kwplot.figure(fnum=1)
+        for key, layer in nh.util.trainable_layers(harn.model, names=True):
+            # Typically the first convolutional layer returned here is the
+            # first convolutional layer in the network
+            if isinstance(layer, torch.nn.Conv2d):
+                if max(layer.kernel_size) > 2:
+                    fig = kwplot.plot_convolutional_features(
+                        layer, fnum=1, normaxis=0)
+                    kwplot.set_figtitle(key, subtitle=str(layer), fig=fig)
+                    layer_dpath = ub.ensuredir((dpath, key))
+                    fname = 'layer-{}-epoch_{}{}.jpg'.format(
+                        key, harn.epoch, suffix)
+                    fpath = join(layer_dpath, fname)
+                    fig.savefig(fpath)
+                    break
+
+            if isinstance(layer, torch.nn.Linear):
+                # TODO: visualize the FC layer
+                pass
+
+
+def build_train_augmentors(augment, input_mean):
+    from torchvision import transforms
+
+    # Define preprocessing + augmentation strategy
+    if isinstance(augment, list):
+        augmentors = augment
+    elif ',' in augment:
+        augmentors = augment.split(',')
+    elif augment == 'baseline':
+        augmentors = ['crop', 'flip']
+    elif augment == 'simple':
+        augmentors = ['crop', 'flip', 'gray', 'cutout']
+    else:
+        raise KeyError(augment)
+
+    pil_augmentors = []
+    tensor_augmentors = []
+
+    if 'crop' in augmentors:
+        pil_augmentors += [
+            transforms.RandomCrop(32, padding=4),
+        ]
+    if 'flip' in augmentors:
+        pil_augmentors += [
+            transforms.RandomHorizontalFlip(),
+        ]
+    if 'gray' in augmentors:
+        pil_augmentors += [
+            transforms.RandomGrayscale(p=0.1),
+        ]
+    if 'jitter' in augmentors:
+        raise NotImplementedError
+        # pil_augmentors += [transforms.RandomChoice([
+        #     transforms.ColorJitter(brightness=(0, .01), contrast=(0, .01),
+        #                            saturation=(0, .01), hue=(-0.01, 0.01),),
+        #     ub.identity,
+        # ])]
+
+    if 'cutout' in augmentors:
+        def cutout(tensor):
+            """
+            Ignore:
+                tensor = torch.rand(3, 32, 32)
+            """
+            # This cutout is closer to the definition in the paper
+            import kwarray
+            rng = kwarray.ensure_rng(None)
+            img_h, img_w = tensor.shape[1:]
+            p = 0.9
+            value = 0
+            scale = 0.5
+            if rng.rand() < p:
+                cx = rng.randint(0, img_w)
+                cy = rng.randint(0, img_h)
+
+                w2 = int((img_w * scale) // 2)
+                h2 = int((img_h * scale) // 2)
+                x1 = max(cx - w2, 0)
+                y1 = max(cy - h2, 0)
+                x2 = min(cx + w2, img_w)
+                y2 = min(cy + h2, img_h)
+
+                sl = (slice(None), slice(y1, y2), slice(x1, x2))
+                tensor[sl] = value
+            return tensor
+        tensor_augmentors += [cutout]
+
+        # tensor_augmentors += [  # Cutout
+        #     transforms.RandomErasing(
+        #         p=0.5, scale=(0.4, 0.4), ratio=(1.0, 1.0),
+        #         value=0, inplace=True),
+        # ]
+    print('pil_augmentors = {!r}'.format(pil_augmentors))
+    print('tensor_augmentors = {!r}'.format(tensor_augmentors))
+    return pil_augmentors, tensor_augmentors
+
 
 def setup_harn():
     """
-    Replicates parameters from https://github.com/kuangliu/pytorch-cifar
-
-    The following is a table of kuangliu's reported accuracy and our measured
-    accuracy for each architecture.
-
-    The first column is kuangliu's reported accuracy, the second column is me
-    running kuangliu's code, and the final column is using my own training
-    harness (handles logging and whatnot) called netharn.
-
-           arch |  kuangliu  | rerun-kuangliu  |  netharn |
-    -------------------------------------------------------
-    ResNet50    |    93.62%  |         95.370% |  95.72%  |
-    DenseNet121 |    95.04%  |         95.420% |  94.47%  |
-    DPN92       |    95.16%  |         95.410% |  94.92%  |
-
-    CommandLine:
-        python -m netharn.examples.cifar --gpu=0 --nice=resnet --arch=resnet50 --optim=sgd --schedule=simplestep --lr=0.1
-        python -m netharn.examples.cifar --gpu=0 --nice=wrn --arch=wrn_22 --optim=sgd --schedule=simplestep --lr=0.1
-        python -m netharn.examples.cifar --gpu=0 --nice=densenet --arch=densenet121 --optim=sgd --schedule=simplestep --lr=0.1
-        python -m netharn.examples.cifar --gpu=0 --nice=efficientnet_scratch --arch=efficientnet-b0 --optim=sgd --schedule=simplestep --lr=0.01 --init=noop --decay=1e-5
-
-        python -m netharn.examples.cifar --gpu=0 --nice=efficientnet \
-            --arch=efficientnet-b0 --optim=rmsprop --lr=0.064 \
-            --batch_size=512 --max_epoch=120 --schedule=Exponential-g0.97-s2
-
-        python -m netharn.examples.cifar --gpu=0 --nice=efficientnet-scratch3 \
-            --arch=efficientnet-b0 --optim=adamw --lr=0.016 --init=noop \
-            --batch_size=1024 --max_epoch=450 --schedule=Exponential-g0.96-s3 --decay=1e-5
-
-        python -m netharn.examples.cifar --gpu=0 --nice=efficientnet-pretrained2 \
-            --arch=efficientnet-b0 --optim=adamw --lr=0.0064 --init=cls \
-            --batch_size=512 --max_epoch=350 --schedule=Exponential-g0.97-s2 --decay=1e-5
+    This function creates an instance of the custom FitHarness, which involves
+    parsing script configuration parameters, creating a custom torch dataset,
+    and connecting those data and hyperparameters to the FitHarness.
     """
     import random
     import torchvision
@@ -360,24 +455,38 @@ def setup_harn():
         # TODO: ensure the CPU mode is also deterministic
         torch.backends.cudnn.deterministic = config['deterministic']
 
-    # Define preprocessing + augmentation strategy
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.Resize(config['input_dims']),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-        transforms.RandomErasing(p=0.5, scale=(0.5, 0.5),  # Cutout
-                                 value=0),
-    ])
+    # A more general system could infer (and cache) this from the data
+    input_mean = (0.4914, 0.4822, 0.4465)
+    input_std = (0.2023, 0.1994, 0.2010)
 
-    transform_test = transforms.Compose([
-        transforms.Resize(config['input_dims']),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-    ])
+    def common_transform(pil_img):
+        import kwimage
+        hwc255 = np.array(pil_img)
+        hwc01 = hwc255.astype(np.float32)
+        hwc01 /= 255.0
+        if hwc01.shape[0:2] != tuple(config['input_dims']):
+            dsize = config['input_dims'][::-1]
+            hwc01 = kwimage.imresize(hwc01, dsize=dsize,
+                                     interpolation='linear')
+        chw01 = torch.from_numpy(hwc01.transpose(2, 0, 1)).contiguous()
+        return chw01
+
+    common_transforms = [
+        common_transform,
+        # transforms.Resize(config['input_dims'], interpolation),
+        # transforms.ToTensor(),
+        transforms.Normalize(input_mean, input_std, inplace=True),
+    ]
+
+    augment = config['augment']
+    pil_augmentors, tensor_augmentors = build_train_augmentors(
+        augment, input_mean)
+
+    transform_train = transforms.Compose(
+        pil_augmentors + common_transforms + tensor_augmentors
+    )
+
+    transform_test = transforms.Compose(common_transforms)
 
     if config['dataset'] == 'cifar10':
         DATASET = torchvision.datasets.CIFAR10
@@ -451,7 +560,7 @@ def setup_harn():
         datasets[key] = dset
 
     loaders = {
-        key: torch.utils.data.DataLoader(dset, shuffle=key == 'train',
+        key: torch.utils.data.DataLoader(dset, shuffle=(key == 'train'),
                                          num_workers=config['workers'],
                                          batch_size=config['batch_size'],
                                          pin_memory=True)
@@ -462,6 +571,26 @@ def setup_harn():
         # Solves pytorch deadlock issue #1355.
         import cv2
         cv2.setNumThreads(0)
+
+    if config['optim'] == 'sgd':
+        optimizer_ = (torch.optim.SGD, {
+            'lr': config['lr'],
+            'weight_decay': config['decay'],
+            'momentum': 0.9,
+            'nesterov': True,
+        })
+    elif config['optim'] == 'adamw':
+        optimizer_ = (nh.optimizers.AdamW, {
+            'lr': config['lr'],
+            'betas': (0.9, 0.999),
+            'weight_decay': config['decay'],
+            'amsgrad': False,
+        })
+    else:
+        # The netharn API can construct an optimizer from standard keys in a
+        # configuration dictionary. There is a bit of magic involved. Read docs
+        # for coerce for more details.
+        optimizer_ = nh.api.Optimizer.coerce(config)
 
     # Choose which network architecture to train
     available_architectures = {
@@ -504,24 +633,90 @@ def setup_harn():
             )
         )
 
+    if config['arch'].startswith('se_resnet18'):
+        from netharn.models import se_resnet
+        model = se_resnet.se_resnet18(
+            num_classes=len(classes),
+        )
+
+    if config['arch'].startswith('se_resnet50'):
+        from netharn.models import se_resnet
+        model = se_resnet.se_resnet50(
+            num_classes=len(classes),
+            pretrained=config['init'] == 'cls',
+        )
+
     if config['arch'].startswith('efficientnet'):
         # Directly create the model instance...
         # (as long as it has an `_initkw` attribute)
         from netharn.models import efficientnet
 
+        zero_gamma = False
         if config['init'] == 'cls':
             model_ = efficientnet.EfficientNet.from_pretrained(
                 config['arch'], override_params={
                     'classes': classes,
-                }
-            )
+                    'noli': 'mish'
+                }, advprop=True)
             print('pretrained cls init')
         else:
             model_ = efficientnet.EfficientNet.from_name(
                 config['arch'], override_params={
                     'classes': classes,
+                    'noli': 'mish'
                 }
             )
+
+        # For efficient nets we need to dramatically reduce the weight decay on
+        # the depthwise part of the depthwise separable convolution.  To do
+        # this we need to manually construct the param groups for the
+        # optimizer.
+        model = model_
+
+        params = dict(model.named_parameters())
+        key_groups = ub.ddict(list)
+
+        seen_ = set()
+        def append_once(group, key):
+            if key not in seen_:
+                key_groups[group].append(key)
+                seen_.add(key)
+
+        if zero_gamma:
+            for key, layer in model.trainable_layers(names=True):
+                if getattr(layer, '_residual_bn', False):
+                    # zero bn after residual layers.
+                    layer.weight.data.fill_(0)
+                    # dont decay batch norm
+                    # append_once('nodecay', key + '.weight')
+
+        for key in params.keys():
+            if key.endswith('.bias'):
+                append_once('nodecay', key)
+            elif 'depthwise_conv' in key:
+                append_once('nodecay', key)
+            else:
+                append_once('default', key)
+
+        named_param_groups = {}
+        for group_name, keys in key_groups.items():
+            if keys:
+                # very important that groups are alway in the same order
+                keys = sorted(keys)
+                param_group = {
+                    'params': list(ub.take(params, keys)),
+                }
+                named_param_groups[group_name] = param_group
+
+        # Override the default weight decay of chosen groups
+        named_param_groups['nodecay']['weight_decay'] = 0
+
+        param_groups = [v for k, v in sorted(named_param_groups.items())]
+
+        optim_cls, optim_kw = optimizer_
+        optim = optim_cls(param_groups, **optim_kw)
+        optim._initkw = optim_kw
+        optimizer_ = optim
     else:
         model_ = available_architectures[config['arch']]
 
@@ -534,41 +729,9 @@ def setup_harn():
         # pretrained initializer.
         initializer_ = nh.api.Initializer.coerce(config)
 
-    if config['schedule'] == 'simplestep':
-        scheduler_ = (nh.schedulers.ListedLR, {
-            'points': {
-                0: config['lr'],
-                150: config['lr'] * 0.1,
-                250: config['lr'] * 0.01,
-            },
-            'interpolate': False
-        })
-    elif config['schedule'] == 'onecycle':
+    if config['schedule'] == 'onecycle':
         # TODO: Fast AI params
         # TODO: https://github.com/fastai/fastai/blob/c7df6a5948bdaa474f095bf8a36d75dbc1ee8e6a/fastai/callbacks/one_cycle.py
-        # config['lr'] = 3e-3
-        # cyc_len=35
-        # max_lr = 3e-3
-        # moms = (0.95,0.85)
-        # div_factor = 25
-        # pct_start=0.3,
-        # wd=0.4
-        # pct = np.linspace(0, 1.0, 35)
-        # cos_up = (np.cos(np.pi * (1 - pct)) + 1) / 2
-        # cos_down = cos_up[::-1]
-
-        # pt1 = config['lr'] / 25.0
-        # pt2 = config['lr']
-        # pt3 = config['lr'] / (1000 * 25.0)
-
-        # phase1 = (pt2 - pt1) * cos_up + pt1
-        # phase2 = (pt2 - pt3) * cos_down + pt3
-        # points = dict(enumerate(ub.flatten([phase1, phase2])))
-
-        # scheduler_ = (nh.schedulers.ListedLR, {
-        #     'points': points,
-        #     'interpolate': False
-        # })
         scheduler_ = (nh.schedulers.ListedScheduler, {
             'points': {
                 'lr': {
@@ -591,26 +754,6 @@ def setup_harn():
         # configuration dictionary. There is a bit of magic involved. Read docs
         # for coerce for more details.
         scheduler_ = nh.api.Scheduler.coerce(config)
-
-    if config['optim'] == 'sgd':
-        optimizer_ = (torch.optim.SGD, {
-            'lr': config['lr'],
-            'weight_decay': config['decay'],
-            'momentum': 0.9,
-            'nesterov': True,
-        })
-    elif config['optim'] == 'adamw':
-        optimizer_ = (nh.optimizers.AdamW, {
-            'lr': config['lr'],
-            'betas': (0.9, 0.999),
-            'weight_decay': config['decay'],
-            'amsgrad': False,
-        })
-    else:
-        # The netharn API can construct an optimizer from standard keys in a
-        # configuration dictionary. There is a bit of magic involved. Read docs
-        # for coerce for more details.
-        optimizer_ = nh.api.Optimizer.coerce(config)
 
     # Notice that arguments to hyperparameters are typically specified as a
     # tuple of (type, Dict), where the dictionary are the keyword arguments
@@ -638,6 +781,7 @@ def setup_harn():
             'minimize': ['loss'],
             'patience': config['patience'],
             'max_epoch': config['max_epoch'],
+            'smoothing': 0.0,
         }),
         initializer=initializer_,
         criterion=(torch.nn.CrossEntropyLoss, {}),
@@ -648,6 +792,7 @@ def setup_harn():
         other={
             # Specify anything else that is special about your hyperparams here
             # Especially if you make a custom_batch_runner
+            'augment': config['augment'],
         },
         # These extra arguments are recorded in the train_info.json but do
         # not contribute to the hyperparameter hash.
@@ -663,6 +808,7 @@ def setup_harn():
     harn.preferences['keyboard_debug'] = True
     harn.preferences['eager_dump_tensorboard'] = True
     harn.preferences['tensorboard_groups'] = ['loss']
+    # harn.preferences['tensorboard_groups']
 
     harn.intervals.update({
         'vali': 1,
@@ -674,6 +820,7 @@ def setup_harn():
 
 
 def main():
+    # Run your code that sets up your custom FitHarn object.
     harn = setup_harn()
 
     # Initializing a FitHarn object can take a little time, but not too much.
@@ -681,6 +828,44 @@ def main():
     # initializer are created. This is also where we check if there is a
     # pre-existing checkpoint that we can restart from.
     harn.initialize()
+
+    if ub.argflag('--lrtest'):
+        """
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0 \
+                --nice=test_cifar9 --optim=adamw --schedule=Exponential-g0.98 \
+                --lr=0.1 --init=kaiming_normal \
+                --batch_size=2048 --lrtest --show
+
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b7 \
+                --nice=test_cifar9 --optim=adamw --schedule=Exponential-g0.98 \
+                --lr=0.1 --init=kaiming_normal \
+                --batch_size=256  --lrtest --show
+
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b7 \
+                --nice=test_cifar9 --optim=adamw --schedule=Exponential-g0.98 \
+                --lr=4e-2 --init=kaiming_normal \
+                --batch_size=256
+        """
+        # Undocumented hidden feature,
+        # Perform an LR-test, then resetup the harness. Optionally draw the
+        # results using matplotlib.
+        from netharn.prefit.lr_tests import lr_range_test
+
+        result = lr_range_test(
+            harn, init_value=1e-4, final_value=0.5, beta=0.3,
+            explode_factor=10, num_iters=200)
+
+        if ub.argflag('--show'):
+            import kwplot
+            plt = kwplot.autoplt()
+            result.draw()
+            plt.show()
+
+        # Recreate a new version of the harness with the recommended LR.
+        config = harn.script_config.asdict()
+        config['lr'] = (result.recommended_lr * 10)
+        harn = setup_harn(**config)
+        harn.initialize()
 
     # This starts the main loop which will run until the monitor's terminator
     # criterion is satisfied. If the initialize step loaded a checkpointed that
@@ -695,24 +880,123 @@ def main():
 
 if __name__ == '__main__':
     r"""
-    CommandLine:
-        python -m netharn.examples.cifar --gpu=0 --arch=resnet50 --num_vali=0
-        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --num_vali=0
+    The baseline script replicates parameters from
+    https://github.com/kuangliu/pytorch-cifar
 
-        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0
+    The following is a table of kuangliu's reported accuracy and our measured
+    accuracy for each architecture.
+
+    The first column is kuangliu's reported accuracy, the second column is me
+    running kuangliu's code, and the final column is using my own training
+    harness (handles logging and whatnot) called netharn.
+
+    The first three experiments are with simple augmentation. The rest have
+    more complex augmentation.
+
+           arch        |  kuangliu  | rerun-kuangliu |  netharn |  train rate | num params
+    ---------------------------------------------------------------------------------------
+    ResNet50           |    93.62%  |        95.370% |  95.72%  |             |
+    DenseNet121        |    95.04%  |        95.420% |  94.47%  |             |
+    DPN92              |    95.16%  |        95.410% |  94.92%  |             |
+    --------------------
+    ResNet50_newaug*   |        --  |             -- |  96.13%  |   498.90 Hz | 23,520,842
+    EfficientNet-7*    |        --  |             -- |  85.36%  |   214.18 Hz | 63,812,570
+    EfficientNet-3*    |        --  |             -- |  86.87%  |   568.30 Hz | 10,711,602
+    EfficientNet-0*    |        --  |             -- |  87.13%  |   964.21 Hz |  4,020,358
+
+    EfficientNet-0-b64-224 |    --  |             -- |  25ish%  |   148.15 Hz |  4,020,358
+    efficientnet0_transfer_b64_sz224_v2 ||           |  98.04%  |
+
+
+   600025177002,
+
+
+    CommandLine:
+        python -m netharn.examples.cifar --xpu=0 --nice=resnet50_baseline --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1
+        python -m netharn.examples.cifar --xpu=0 --nice=wrn --arch=wrn_22 --optim=sgd --schedule=step-150-250 --lr=0.1
+        python -m netharn.examples.cifar --xpu=0 --nice=densenet --arch=densenet121 --optim=sgd --schedule=step-150-250 --lr=0.1
+
+        python -m netharn.examples.cifar --xpu=0 --nice=se_resnet18 --arch=se_resnet18 --optim=sgd --schedule=step-150-250 --lr=0.01 --init=noop --decay=1e-5 --augment=simple
+
+        python -m netharn.examples.cifar --xpu=0 --nice=resnet50_newaug_b128 --batch_size=128 --arch=resnet50 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_newaug_b128 --batch_size=128 --arch=efficientnet-b7 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet3_newaug_b128 --batch_size=128 --arch=efficientnet-b3 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b128 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple
+
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b128_sz32 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.01 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=32,32
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b64_sz224 --batch_size=64 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.01 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=224,224
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_b64_sz224 --batch_size=64 --arch=efficientnet-b0 --optim=sgd --schedule=step-150-250 --lr=0.1 --init=kaiming_normal --augment=simple --input_dims=224,224
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b128_sz32_v2 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-20-45-70-90-f5 --max_epoch=100 --lr=0.01 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=32,32  # 88%
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b128_sz32_v3 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-13-20-45-70-90-f5 --max_epoch=100 --lr=0.01 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=32,32
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b128_sz32_v4 --batch_size=128 --arch=efficientnet-b0 --optim=sgd --schedule=step-10-20-45-70-90-f5 --max_epoch=100 --lr=0.03 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=32,32
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_transfer_b64_sz224_v2 --batch_size=64 --arch=efficientnet-b0 --optim=sgd --schedule=step-10-20 --max_epoch=100 --lr=0.01 --decay=5e-4 --init=cls --augment="crop,flip,gray,cutout" --input_dims=224,224
+
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet0_newaug_yogi_b1024 \
+                --batch_size=1028 --arch=efficientnet-b0 --optim=Yogi \
+                --schedule=step-60-120-160-250-350-f5 --decay=5e-4 --lr=0.01549 \
+                --init=kaiming_normal --augment=simple --grad_norm_max=35 \
+                --warmup_iters=100
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet1_newaug_diffgrad_b1024 \
+                --batch_size=1028 --arch=efficientnet-b1 --optim=DiffGrad \
+                --schedule=step-60-120-160-250-350-f5 --decay=5e-4 --lr=0.01 \
+                --init=kaiming_normal --augment=simple --grad_norm_max=35 \
+                --warmup_iters=100
+
+
+        # Params from Cutout paper: https://arxiv.org/pdf/1708.04552.pdf
+        python -m netharn.examples.cifar --xpu=0 --nice=repro_cutout \
+                --batch_size=128 \
+                --arch=efficientnet-b0 \
+                --optim=sgd --lr=0.01 --decay=5e-4 \
+                --schedule=step-60-120-160-f5 --max_epoch=200 \
+                --init=kaiming_normal --augment=simple \
+                --grad_norm_max=35 --warmup_iters=100
+
+        python -m netharn.examples.cifar --xpu=0 --nice=repro_cutoutDiffGrad \
+                --batch_size=128 \
+                --arch=efficientnet-b1 \
+                --optim=DiffGrad --lr=0.01 --decay=5e-4 \
+                --schedule=step-60-120-160-f5 --max_epoch=200 \
+                --init=kaiming_normal --augment=simple \
+                --grad_norm_max=35 --warmup_iters=100
+
+        0.015219216761025578
+
+
+        python -m netharn.examples.cifar --xpu=0 --nice=efficientnet7_scratch \
+            --arch=efficientnet-b7 --optim=sgd --schedule=step-150-250-350 \
+            --batch_size=512 --lr=0.01 --init=noop --decay=1e-5
+
+    CommandLine:
+        python -m netharn.examples.cifar --xpu=0 --arch=resnet50 --num_vali=0
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0 --num_vali=0
+
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0
 
         # This next command requires a bit more compute
-        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=step-3-6-50 --lr=0.1 --init=cls --batch_size=2718
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=step-3-6-50 --lr=0.1 --init=cls --batch_size=2718
 
-        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar3 --schedule=step-3-6-12-16 --lr=0.256 --init=cls --batch_size=3000 --workers=2 --num_vali=0 --optim=rmsprop
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0 --nice=test_cifar3 --schedule=step-3-6-12-16 --lr=0.256 --init=cls --batch_size=3000 --workers=2 --num_vali=0 --optim=rmsprop
 
-        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar3 --schedule=onecycle70 --lr=0.01  --init=cls --batch_size=3000 --workers=2 --num_vali=0 --optim=sgd --datasets=cifar100
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0 --nice=test_cifar3 --schedule=onecycle70 --lr=0.01  --init=cls --batch_size=3000 --workers=2 --num_vali=0 --optim=sgd --datasets=cifar100
 
-        python -m netharn.examples.cifar --gpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=ReduceLROnPlateau-p1-c1-f0.9 --lr=0.1 --init=cls --batch_size=2719 --workers=4 --optim=sgd --datasets=cifar100
+        python -m netharn.examples.cifar --xpu=0 --arch=efficientnet-b0 --nice=test_cifar2 --schedule=ReduceLROnPlateau-p1-c1-f0.9 --lr=0.1 --init=cls --batch_size=2719 --workers=4 --optim=sgd --datasets=cifar100
 
-        python -m netharn.examples.cifar.py --gpu=0 --arch=densenet121
+        python -m netharn.examples.cifar.py --xpu=0 --arch=densenet121
         # Train on two GPUs with a larger batch size
-        python -m netharn.examples.cifar.py --arch=dpn92 --batch_size=256 --gpu=0,1
+        python -m netharn.examples.cifar.py --arch=dpn92 --batch_size=256 --xpu=0,1
     """
     import seaborn
     seaborn.set()

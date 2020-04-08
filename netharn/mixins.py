@@ -146,13 +146,13 @@ def _redump_measures(dpath):
     _dump_measures(tb_data, out_dpath, mode)
 
 
-def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
+def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.0,
                    ignore_outliers=True):
     """
     This is its own function in case we need to modify formatting
 
     CommandLine:
-        xdoctest -m netharn.mixins _dump_measures
+        xdoctest -m netharn.mixins _dump_measures --out_dpath=.
 
     Example:
         >>> # SCRIPT
@@ -162,16 +162,22 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.6,
         >>> import json
         >>> from os.path import join
         >>> import ubelt as ub
+        >>> try:
+        >>>     import seaborn as sns
+        >>>     sns.set()
+        >>> except ImportError:
+        >>>     pass
         >>> out_dpath = ub.expandpath('~/work/project/fit/nice/nicename/monitor/tensorboard/')
         >>> out_dpath = ub.argval('--out_dpath', default=out_dpath)
-        >>> mode = 'iter'
+        >>> mode = ['epoch', 'iter']
         >>> fpath = join(out_dpath, 'tb_data.json')
         >>> tb_data = json.load(open(fpath, 'r'))
-        >>> _dump_measures(tb_data,  out_dpath)
+        >>> _dump_measures(tb_data,  out_dpath, smoothing=0)
     """
     import ubelt as ub
     from os.path import join
     import numpy as np
+
     import kwplot
     kwplot.autompl()
 

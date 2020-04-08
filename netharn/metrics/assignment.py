@@ -526,6 +526,8 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
             detections should be ignored.
 
     Example:
+        >>> from netharn.metrics.assignment import *  # NOQA
+        >>> from netharn.metrics.assignment import _filter_ignore_regions
         >>> import kwimage
         >>> pred_dets = kwimage.Detections.random(classes=['a'])
         >>> true_dets = kwimage.Detections.random(
@@ -538,9 +540,29 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
         >>>     true_dets, pred_dets, ovthresh=ovthresh, ignore_class=ignore_class)
         >>> print('flags1 = {!r}'.format(flags1))
         >>> print('flags2 = {!r}'.format(flags2))
+
+
+        >>> flags3, flags4 = _filter_ignore_regions(
+        >>>     true_dets, pred_dets, ovthresh=ovthresh,
+        >>>     ignore_class=ignore_class.upper())
+        >>> assert np.all(flags1 == flags3)
+        >>> assert np.all(flags2 == flags4)
     """
     true_ignore_flags = np.zeros(len(true_dets), dtype=np.bool)
     pred_ignore_flags = np.zeros(len(pred_dets), dtype=np.bool)
+
+    def _normalize_catname(name, classes):
+        if classes is None:
+            return name
+        if name in classes:
+            return name
+        for cname in classes:
+            if cname.lower() == name.lower():
+                return cname
+        return name
+        # raise KeyError(name)
+
+    ignore_class = _normalize_catname(ignore_class, true_dets.classes)
 
     # Filter out true detections labeled as "ignore"
     if true_dets.classes is not None and ignore_class in true_dets.classes:
@@ -556,8 +578,13 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
 
             # Determine which predicted boxes are inside the ignore regions
             # note: using sum over max is delibrate here.
-            ignore_overlap = (pred_boxes.isect_area(ignore_boxes) /
-                              pred_boxes.area).clip(0, 1).sum(axis=1)
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', message='invalid .* less')
+                warnings.filterwarnings('ignore', message='invalid .* greater_equal')
+                warnings.filterwarnings('ignore', message='invalid .* true_divide')
+                ignore_overlap = (pred_boxes.isect_area(ignore_boxes) /
+                                  pred_boxes.area).clip(0, 1).sum(axis=1)
+                ignore_overlap = np.nan_to_num(ignore_overlap)
 
             ignore_idxs = np.where(ignore_overlap > ovthresh)[0]
 
@@ -584,7 +611,6 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
                         overlap = (isect.area / pred_region.area)
                         ignore_overlap[idx] = overlap
                     except Exception as ex:
-                        import warnings
                         warnings.warn('ex = {!r}'.format(ex))
             pred_ignore_flags = ignore_overlap > ovthresh
     return true_ignore_flags, pred_ignore_flags

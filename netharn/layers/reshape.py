@@ -1,6 +1,6 @@
 import torch
 from netharn import util
-from netharn import output_shape_for
+from netharn.analytic import output_shape_for
 
 
 class Reshape(torch.nn.Module, util.ModuleMixin):

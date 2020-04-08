@@ -46,6 +46,7 @@ Example:
     >>> })
     >>> harn = nh.FitHarn(hyper)
     >>> harn.preferences['use_tensorboard'] = False
+    >>> harn.preferences['timeout'] = 1
     >>> harn.intervals['test'] = 1
     >>> harn.initialize(reset='delete')
     >>> harn.run()

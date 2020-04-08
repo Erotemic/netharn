@@ -14,10 +14,14 @@ class TestResult(ub.NiceRepr):
 
 
 def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
-                  explode_factor=10):
+                  explode_factor=10, num_iters=100):
     """
     Implementation of Leslie Smith's LR-range described in [2] test based on
     code found in [1].
+
+    Args:
+        init_value : initial learning rate
+        beta (float): smoothing param
 
     Notes:
         It is critical that `init_value` starts off much lower than the actual
@@ -98,7 +102,7 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
         tag = 'train'
         loader = harn.loaders[tag]
 
-        num_epochs = min(100, len(loader))
+        num_epochs = min(num_iters, len(loader))
 
         # These are the learning rates we will scan through
         learning_rates = np.logspace(
@@ -149,9 +153,9 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
             prog.set_extra(' best_lr={:.2g}, curr_lr={:.2g}, best_loss={:.2f}, curr_loss={:.2f}'.format(best_lr, curr_lr, best_loss, curr_loss))
 
             if bx > 0:
-                # This loss was achived by a step with the previous lr, so ensure
-                # we are associating the correct lr with the loss that corresponds
-                # to it.
+                # This loss was achived by a step with the previous lr, so
+                # ensure we are associating the correct lr with the loss that
+                # corresponds to it.
                 records['loss_std'].append(metrics.std()['loss'])
                 records['loss'].append(curr_loss)
                 records['raw_loss'].append(raw_loss)

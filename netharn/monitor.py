@@ -18,7 +18,7 @@ def demodata_monitor():
     n = 300
     losses = (sorted(rng.randint(10, n, size=n)) + rng.randint(0, 20, size=n) - 10)[::-1]
     mious = (sorted(rng.randint(10, n, size=n)) + rng.randint(0, 20, size=n) - 10)
-    monitor = Monitor(minimize=['loss'], maximize=['miou'], smoothing=.6)
+    monitor = Monitor(minimize=['loss'], maximize=['miou'], smoothing=0.0)
     for epoch, (loss, miou) in enumerate(zip(losses, mious)):
         monitor.update(epoch, {'loss': loss, 'miou': miou})
     return monitor
@@ -34,8 +34,7 @@ class Monitor(ub.NiceRepr):
     Attributes:
         minimize (List[str]): measures where a lower is better
         maximize (List[str]): measures where a higher is better
-        smoothing (float): smoothness factor for the moving averages.
-           Currently 0.6, we may change the default to 0.0 in the future.
+        smoothing (float, default=0.0): smoothness factor for moving averages.
         max_epoch (int, default=1000): number of epochs to stop after
         patience (int, default=None): if specified, the number of epochs
             to wait before quiting if the quality metrics are not improving.
@@ -56,7 +55,7 @@ class Monitor(ub.NiceRepr):
         >>> monitor.show()
     """
 
-    def __init__(monitor, minimize=['loss'], maximize=[], smoothing=0.6,
+    def __init__(monitor, minimize=['loss'], maximize=[], smoothing=0.0,
                  patience=None, max_epoch=1000, min_lr=None):
 
         # Internal attributes
@@ -321,7 +320,7 @@ class Monitor(ub.NiceRepr):
 
         Example:
             >>> from netharn.monitor import *
-            >>> monitor = Monitor()
+            >>> monitor = Monitor(smoothing=0.6)
             >>> print(monitor.message(ansi=False))
             vloss is unevaluated
             >>> monitor.update(0, {'loss': 1.0})
@@ -378,8 +377,8 @@ class Monitor(ub.NiceRepr):
             >>> metric_ranks = monitor.best_epochs(5)
             >>> print(ub.repr2(metric_ranks, with_dtype=False, nl=1))
             {
-                'loss': np.array([297, 299, 298, 296, 295]),
-                'miou': np.array([299, 298, 297, 296, 295]),
+                'loss': np.array([297, 296, 299, 295, 298]),
+                'miou': np.array([299, 296, 298, 295, 292]),
             }
         """
         metric_ranks = {}
