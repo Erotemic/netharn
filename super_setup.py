@@ -723,7 +723,7 @@ def make_netharn_registry():
             remotes={'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
         ),
         CommonRepo(
-            name='ndsampler', branch='dev/0.5.7', remote='public',
+            name='ndsampler', branch='dev/0.5.8', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
         ),
 

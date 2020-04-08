@@ -882,6 +882,12 @@ if __name__ == '__main__':
         python -m netharn.examples.object_detection --datasets=special:voc
 
         python -m netharn.examples.object_detection \
+            --datasets=special:shapes1024 \
+            --arch=yolo2 --optim=sgd \
+            --input_dims=512,512 --lr=1e-3 \
+            --workers=4 --xpu=auto --batch_size=4 --bstep=4
+
+        python -m netharn.examples.object_detection \
             --nice=voc-detection-demo \
             --train_dataset=~/data/VOC/voc-trainval.mscoco.json \
             --vali_dataset=~/data/VOC/voc-test-2007.mscoco.json \
