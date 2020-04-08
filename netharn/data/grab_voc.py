@@ -49,22 +49,20 @@ def convert_voc_to_coco():
 
     t = ndsampler.CocoDataset.union(t1, t2)
     t.tag = 'voc-train'
-    reroot_imgs(t, root)
     t.fpath = join(root, t.tag + '.mscoco.json')
-    print('t.fpath = {!r}'.format(t.fpath))
-    t.dump(t.fpath, newlines=True)
 
     v = ndsampler.CocoDataset.union(v1, v2)
     v.tag = 'voc-val'
-    reroot_imgs(v, root)
     v.fpath = join(root, v.tag + '.mscoco.json')
-    print('v.fpath = {!r}'.format(v.fpath))
-    v.dump(v.fpath, newlines=True)
 
     tv = ndsampler.CocoDataset.union(t1, t2, v1, v2)
     tv.tag = 'voc-trainval'
-    reroot_imgs(tv, root)
     tv.fpath = join(root, tv.tag + '.mscoco.json')
+
+    print('t.fpath = {!r}'.format(t.fpath))
+    t.dump(t.fpath, newlines=True)
+    print('v.fpath = {!r}'.format(v.fpath))
+    v.dump(v.fpath, newlines=True)
     print('tv.fpath = {!r}'.format(tv.fpath))
     tv.dump(tv.fpath, newlines=True)
     if 0:
@@ -102,7 +100,7 @@ def _convert_voc_split(devkit_dpath, classes, split, year, root):
         tree = ET.parse(apath)
         troot = tree.getroot()
 
-        top_level = troot.getchildren()
+        top_level = list(troot)
 
         unknown = {e.tag for e in top_level} - KNOWN
         assert not unknown
@@ -115,7 +113,7 @@ def _convert_voc_split(devkit_dpath, classes, split, year, root):
             'segmented': int(tree.find('segmented').text),
             'source': {
                 elem.tag: elem.text
-                for elem in tree.find('source').getchildren()
+                for elem in list(tree.find('source'))
             },
         }
 
@@ -125,7 +123,7 @@ def _convert_voc_split(devkit_dpath, classes, split, year, root):
         if owner is not None:
             img['owner'] = {
                 elem.tag: elem.text
-                for elem in owner.getchildren()
+                for elem in list(owner)
             }
 
         gid = dset.add_image(**img)

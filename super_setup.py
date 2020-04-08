@@ -686,7 +686,7 @@ def make_netharn_registry():
 
         # The util libs
         CommonRepo(
-            name='kwarray', branch='dev/0.5.6', remote='public',
+            name='kwarray', branch='dev/0.5.7', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
         ),
         CommonRepo(
@@ -712,14 +712,14 @@ def make_netharn_registry():
             remotes={'public': 'git@gitlab.kitware.com:python/liberator.git'},
         ),
         CommonRepo(
-            name='torch_liberator', branch='master', remote='public',
+            name='torch_liberator', branch='dev/0.0.3', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/torch_liberator.git'},
         ),
 
 
         # For example data and CLI
         CommonRepo(
-            name='scriptconfig', branch='dev/0.5.5', remote='public',
+            name='scriptconfig', branch='dev/0.5.6', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
         ),
         CommonRepo(
