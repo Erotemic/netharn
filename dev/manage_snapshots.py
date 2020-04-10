@@ -15,6 +15,71 @@ import parse
 import ubelt as ub
 
 
+def byte_str(num, unit='auto', precision=2):
+    """
+    Automatically chooses relevant unit (KB, MB, or GB) for displaying some
+    number of bytes.
+
+    Args:
+        num (int): number of bytes
+        unit (str): which unit to use, can be auto, B, KB, MB, GB, TB, PB, EB,
+            ZB, or YB.
+
+    References:
+        https://en.wikipedia.org/wiki/Orders_of_magnitude_(data)
+
+    Returns:
+        str: string representing the number of bytes with appropriate units
+
+    Example:
+        >>> num_list = [1, 100, 1024,  1048576, 1073741824, 1099511627776]
+        >>> result = ub.repr2(list(map(byte_str, num_list)), nl=0)
+        >>> print(result)
+        ['0.00 KB', '0.10 KB', '1.00 KB', '1.00 MB', '1.00 GB', '1.00 TB']
+    """
+    abs_num = abs(num)
+    if unit == 'auto':
+        if abs_num < 2.0 ** 10:
+            unit = 'KB'
+        elif abs_num < 2.0 ** 20:
+            unit = 'KB'
+        elif abs_num < 2.0 ** 30:
+            unit = 'MB'
+        elif abs_num < 2.0 ** 40:
+            unit = 'GB'
+        elif abs_num < 2.0 ** 50:
+            unit = 'TB'
+        elif abs_num < 2.0 ** 60:
+            unit = 'PB'
+        elif abs_num < 2.0 ** 70:
+            unit = 'EB'
+        elif abs_num < 2.0 ** 80:
+            unit = 'ZB'
+        else:
+            unit = 'YB'
+    if unit.lower().startswith('b'):
+        num_unit = num
+    elif unit.lower().startswith('k'):
+        num_unit =  num / (2.0 ** 10)
+    elif unit.lower().startswith('m'):
+        num_unit =  num / (2.0 ** 20)
+    elif unit.lower().startswith('g'):
+        num_unit = num / (2.0 ** 30)
+    elif unit.lower().startswith('t'):
+        num_unit = num / (2.0 ** 40)
+    elif unit.lower().startswith('p'):
+        num_unit = num / (2.0 ** 50)
+    elif unit.lower().startswith('e'):
+        num_unit = num / (2.0 ** 60)
+    elif unit.lower().startswith('z'):
+        num_unit = num / (2.0 ** 70)
+    elif unit.lower().startswith('y'):
+        num_unit = num / (2.0 ** 80)
+    else:
+        raise ValueError('unknown num={!r} unit={!r}'.format(num, unit))
+    return ub.repr2(num_unit, precision=precision) + ' ' + unit
+
+
 def is_symlink_broken(path):
     """
     Check is a path is a broken symlink.
@@ -64,98 +129,6 @@ def get_file_info(fpath):
     return info
 
 
-def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
-                               safe_num_days=7):
-    """
-    TODO:
-         Look for directories in runs that have no / very few snapshots
-         and no eval metrics that have a very old modified time and
-         put them into a list as candidates for deletion
-
-    """
-    import ubelt as ub
-    # workdir = ub.expandpath('~/work/foobar')
-
-    print('Checking for dead / dangling sessions in your runs dir')
-
-    # Find if any run directory is empty
-    run_dpath = join(workdir, 'fit', 'runs')
-    training_dpaths = list(glob.glob(join(run_dpath, '*/*')))
-
-    infos = []
-    for dpath in training_dpaths:
-        info = session_info(dpath)
-        infos.append(info)
-
-    nice_groups = ub.group_items(infos, lambda x: x['nice'])
-
-    for nice, group in nice_groups.items():
-        print(' --- {} --- '.format(nice))
-        group = sorted(group, key=lambda x: x['size'])
-        import copy
-        group_ = copy.deepcopy(group)
-        for i in group_:
-            i['dpath'] = '...' + i['dpath'][-20:]
-            # i.pop('last_modified')
-            i['MB'] = i['size'] * 1e-3
-        print(ub.repr2(group_, nl=1))
-
-    # Partion your "nice" sessions into broken and live symlinks.
-    # For each live link remember what the real path is.
-    broken_links = []
-    nice_dpath = join(workdir, 'fit', 'nice')
-    for dname in os.listdir(nice_dpath):
-        dpath = join(nice_dpath, dname)
-        if is_symlink_broken(dpath):
-            broken_links.append(dpath)
-
-    empty_dpaths = []
-    for dname in os.listdir(run_dpath):
-        dpath = join(run_dpath, dname)
-        if len(os.listdir(dpath)) == 0:
-            empty_dpaths.append(dpath)
-
-    bad_dpaths = []
-    iffy_dpaths = []
-    good_dpaths = []
-
-    now = datetime.datetime.now()
-    long_time_ago = now - datetime.timedelta(days=safe_num_days)
-
-    for info in infos:
-        if info['num_snapshots'] == 0:
-            bad_dpaths.append(info['dpath'])
-        elif info['num_snapshots'] < dead_num_snap_thresh:
-            dt = info['last_modified']
-            if dt < long_time_ago:
-                iffy_dpaths.append(info['dpath'])
-            else:
-                good_dpaths.append(info['dpath'])
-        else:
-            good_dpaths.append(info['dpath'])
-
-    if dry:
-        print('Would leave {} good dpaths'.format(len(good_dpaths)))
-        print('NOT DELETING {} iffy dpaths'.format(len(iffy_dpaths)))
-        print('Would delete {} bad dpaths'.format(len(bad_dpaths)))
-        print('Would delete {} broken links'.format(len(broken_links)))
-        print('Would delete {} empty dpaths'.format(len(empty_dpaths)))
-    else:
-        print('Leaving {} good dpaths'.format(len(good_dpaths)))
-        print('NOT DELETING {} iffy dpaths'.format(len(iffy_dpaths)))
-        print('Deleting delete {} bad dpaths'.format(len(bad_dpaths)))
-        print('Deleting delete {} broken links'.format(len(broken_links)))
-        print('Deleting delete {} empty dpaths'.format(len(empty_dpaths)))
-        # for p in iffy_dpaths:
-        #     ub.delete(p)
-        for p in bad_dpaths:
-            ub.delete(p)
-        for p in empty_dpaths:
-            ub.delete(p)
-        for p in broken_links:
-            os.unlink(p)
-
-
 def session_info(dpath):
     """
     Stats about a training session
@@ -187,6 +160,170 @@ def session_info(dpath):
         dt = datetime.datetime.fromtimestamp(unixtime)
         info['last_modified'] = dt
     return info
+
+
+def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
+                               safe_num_days=7):
+    """
+    Look for directories in runs that have no / very few snapshots and no eval
+    metrics that have a very old modified time and put them into a list as
+    candidates for deletion.
+
+    Ignore:
+        import sys, ubelt
+        sys.path.append(ubelt.expandpath('~/code/netharn/dev'))
+        from manage_snapshots import *  # NOQA
+        from manage_snapshots import _devcheck_remove_dead_runs, _devcheck_manage_snapshots
+        workdir = '.'
+        import xdev
+        globals().update(xdev.get_func_kwargs(_devcheck_remove_dead_runs))
+    """
+    import ubelt as ub
+    import copy
+    print('Checking for dead / dangling sessions in your runs dir')
+
+    # Find if any run directory is empty
+    run_dpath = join(workdir, 'fit', 'runs')
+    training_dpaths = list(glob.glob(join(run_dpath, '*/*')))
+
+    all_sessions = []
+    for dpath in training_dpaths:
+        session = session_info(dpath)
+        all_sessions.append(session)
+
+    now = datetime.datetime.now()
+    long_time_ago = now - datetime.timedelta(days=safe_num_days)
+
+    for session in all_sessions:
+        if session['num_snapshots'] == 0:
+            session['decision'] = 'bad'
+        elif session['num_snapshots'] < dead_num_snap_thresh:
+            dt = session['last_modified']
+            if dt < long_time_ago:
+                session['decision'] = 'iffy'
+            else:
+                session['decision'] = 'good'
+        else:
+            session['decision'] = 'good'
+
+    nice_groups = ub.group_items(all_sessions, lambda x: x['nice'])
+
+    for nice, group in nice_groups.items():
+        print(' --- {} --- '.format(nice))
+        group = sorted(group, key=lambda x: x['size'])
+        group_ = copy.deepcopy(group)
+        for item in group_:
+            item['dpath'] = '...' + item['dpath'][-20:]
+            item.pop('last_modified', None)
+            item['size'] = byte_str(item['size'])
+        print(ub.repr2(group_, nl=1))
+
+    # Partion your "nice" sessions into broken and live symlinks.
+    # For each live link remember what the real path is.
+    broken_links = []
+    nice_dpath = join(workdir, 'fit', 'nice')
+    for dname in os.listdir(nice_dpath):
+        dpath = join(nice_dpath, dname)
+        if is_symlink_broken(dpath):
+            broken_links.append(dpath)
+
+    empty_dpaths = []
+    for dname in os.listdir(run_dpath):
+        dpath = join(run_dpath, dname)
+        if len(os.listdir(dpath)) == 0:
+            empty_dpaths.append(dpath)
+
+    decision_groups = ub.group_items(all_sessions, lambda x: x['decision'])
+
+    print('Empty dpaths:  {:>4}'.format(len(empty_dpaths)))
+    print('Broken links:  {:>4}'.format(len(broken_links)))
+    for key in decision_groups.keys():
+        group = decision_groups[key]
+        size = byte_str(sum([s['size'] for s in group]))
+        print('{:>4} sessions:  {:>4}, size={}'.format(key.capitalize(), len(group), size))
+
+    if dry:
+        print('DRY RUN. NOT DELETING ANYTHING')
+    else:
+        print('LIVE RUN. DELETING bad, empty, and broken.')
+        print('NOT DELETING iffy and good sessions')
+
+        # for p in iffy_sessions:
+        #     ub.delete(p)
+        for info in decision_groups.get('bad', []):
+            ub.delete(info['dpath'])
+        for p in empty_dpaths:
+            ub.delete(p)
+        for p in broken_links:
+            os.unlink(info['dpath'])
+
+
+class Session(ub.NiceRepr):
+    """
+    UNFINISHED:
+    NEW: object to maintain info / manipulate a specific training directory
+    """
+    def __init__(session, dpath):
+        session.dpath = dpath
+        session.info = session_info(session.dpath)
+
+    def __nice__(session):
+        return repr(session.info)
+
+
+def _devcheck_manage_monitor(workdir, dry=True):
+    # Get all the images in the monitor directories
+    # (this is a convention and not something netharn does by default)
+    run_dpath = join(workdir, 'fit', 'runs')
+    training_dpaths = list(glob.glob(join(run_dpath, '*/*')))
+
+    all_sessions = []
+    for dpath in training_dpaths:
+        session = Session(dpath)
+        all_sessions.append(session)
+        # UNFINISHED
+
+    all_files = []
+    factor = 100
+
+    def _choose_action(file_infos):
+        import kwarray
+        file_infos = kwarray.shuffle(file_infos, rng=0)
+        n_keep = (len(file_infos) // factor) + 1
+
+        for info in file_infos[:n_keep]:
+            info['action'] = 'keep'
+        for info in file_infos[n_keep:]:
+            info['action'] = 'delete'
+
+    for session in all_sessions:
+        dpath = join(session.dpath, 'monitor', 'train', 'batch')
+        fpaths = list(glob.glob(join(dpath, '*.jpg')))
+        file_infos = [{'size': os.stat(p).st_size, 'fpath': p}
+                      for p in fpaths]
+        _choose_action(file_infos)
+        all_files.extend(file_infos)
+
+        dpath = join(session.dpath, 'monitor', 'vali', 'batch')
+        fpaths = list(glob.glob(join(dpath, '*.jpg')))
+        file_infos = [{'size': os.stat(p).st_size, 'fpath': p}
+                      for p in fpaths]
+        _choose_action(file_infos)
+        all_files.extend(file_infos)
+
+    grouped_actions = ub.group_items(all_files, lambda x: x['action'])
+
+    for key, group in grouped_actions.items():
+        size = byte_str(sum([s['size'] for s in group]))
+        print('{:>4} images:  {:>4}, size={}'.format(key.capitalize(), len(group), size))
+
+    if dry:
+        print('Dry run')
+    else:
+        delete = grouped_actions.get('delete', [])
+        delete_fpaths = [item['fpath'] for item in delete]
+        for p in delete_fpaths:
+            ub.delete(p)
 
 
 def _devcheck_manage_snapshots(workdir, recent=5, factor=10, dry=True):
@@ -323,6 +460,8 @@ if __name__ == '__main__':
     """
     CommandLine:
         python ~/code/netharn/dev/manage_snapshots.py
+
+        find . -iname "explit_checkpoints" -d
 
         python ~/code/netharn/dev/manage_snapshots.py --mode=snapshots --workdir=~/work/voc_yolo2/
         python ~/code/netharn/dev/manage_snapshots.py --mode=runs --workdir=~/work/voc_yolo2/
