@@ -96,7 +96,7 @@ def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
         group_ = copy.deepcopy(group)
         for i in group_:
             i['dpath'] = '...' + i['dpath'][-20:]
-            i.pop('last_modified')
+            # i.pop('last_modified')
             i['MB'] = i['size'] * 1e-3
         print(ub.repr2(group_, nl=1))
 
