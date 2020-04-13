@@ -200,8 +200,46 @@ instructions, but for now they are the same.
     ./run_developer_setup.sh
 
 
-Example:
-========
+Documentation
+=============
+
+Netharn's documentation is currently sparse. I typically do most of my
+documenting in the code itself using docstrings. In the future much of this
+will likely be consolidated in a read-the-docs style documentation page, but
+for now you'll need to look at the code to read the docs.
+
+The main concept provided by netharn is the "FitHarn", which has a decent
+module level docstring, and a lot of good class / method level docstrings: 
+https://gitlab.kitware.com/computer-vision/netharn/-/blob/master/netharn/fit_harn.py
+
+The examples folder has better docstrings with task-level documentation: 
+
+The simplest is the mnist example:
+https://gitlab.kitware.com/computer-vision/netharn/-/blob/master/netharn/examples/mnist.py
+
+The CIFAR example builds on the mnist example:
+https://gitlab.kitware.com/computer-vision/netharn/-/blob/master/netharn/examples/cifar.py
+
+I'd recommend going through those two examples, as they have the best documentation. 
+
+The segmentation example:
+https://gitlab.kitware.com/computer-vision/netharn/-/blob/master/netharn/examples/segmentation.py
+
+and object detection example: 
+https://gitlab.kitware.com/computer-vision/netharn/-/blob/master/netharn/examples/object_detection.py
+
+have less documentation, but provide more real-world style examples of how netharn is used. 
+
+There is an applied segmentation example that is specific to the CAMVID dataset:
+https://gitlab.kitware.com/computer-vision/netharn/-/blob/master/netharn/examples/sseg_camvid.py
+
+And there is an applied VOC detection example:
+https://gitlab.kitware.com/computer-vision/netharn/-/blob/master/netharn/examples/yolo_voc.py
+
+This README also contains a toy example.
+
+Toy Example:
+============
 
 This following example is the doctest in ``netharn/fit_harn.py``. It
 demonstrates how to use NetHarn to train a model to solve a toy problem.  
