@@ -2,6 +2,9 @@
 Simple dataset for loading the VOC 2007 object detection dataset without extra
 bells and whistles. Simply loads the images, boxes, and class labels and
 resizes images to a standard size.
+
+THIS WILL BE DEPRECATED IN THE FUTURE. WE WILL USE THE COCO FORMAT AS A COMMON
+DATA FORMAT FOR DETECTION PROBLEMS.
 """
 from os.path import exists
 from os.path import join
