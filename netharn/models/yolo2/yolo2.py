@@ -258,6 +258,7 @@ class Yolo2(layers.AnalyticModule):
             >>> output = self(inputs)
             >>> batch_dets = self.coder.decode_batch(output)
             >>> dets = batch_dets[0]
+            >>> print('dets.boxes = {!r}'.format(dets.boxes))
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()  # xdoc: +SKIP
@@ -449,12 +450,13 @@ class YoloCoder(object):
             >>> info = dev_demodata()
             >>> self, output = ub.take(info, ['coder', 'outputs'])
             >>> batch_dets = self.decode_batch(output)
-            >>> dets = batch_dets[0]
+            >>> dets = batch_dets[0].sort().scale(info['orig_sizes'][0])
+            >>> print('dets.boxes = {!r}'.format(dets.boxes))
             >>> # xdoctest: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.figure(fnum=1, doclf=True)
             >>> kwplot.imshow(info['rgb255'], colorspace='rgb')
-            >>> dets.scale(info['orig_sizes'][0]).draw()
+            >>> dets.draw()
             >>> kwplot.show_if_requested()
         """
         import kwimage
@@ -512,7 +514,6 @@ class YoloCoder(object):
         # Compute class_score
         if len(self.classes) > 1:
             cls_scores = torch.nn.functional.softmax(class_energy, dim=2)
-
             cls_max, cls_max_idx = torch.max(cls_scores, 2, keepdim=True)
             cls_max.mul_(score)
         else:

@@ -5,14 +5,14 @@ from os.path import dirname
 from os.path import relpath
 
 
-def convert_voc_to_coco():
+def convert_voc_to_coco(dpath=None):
     # TODO: convert segmentation information
 
     classes = [
         'aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat',
         'chair', 'cow', 'diningtable', 'dog', 'horse', 'motorbike', 'person',
         'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor']
-    devkit_dpath = ensure_voc_data()
+    devkit_dpath = ensure_voc_data(dpath=dpath)
     root = out_dpath = dirname(devkit_dpath)
 
     dsets = []
@@ -40,22 +40,22 @@ def convert_voc_to_coco():
         for img in dset.imgs.values():
             img['file_name'] = relpath(img['file_name'], root)
 
-    import ndsampler
-    t1 = ndsampler.CocoDataset(join(out_dpath, 'voc-train-2007.mscoco.json'))
-    t2 = ndsampler.CocoDataset(join(out_dpath, 'voc-train-2012.mscoco.json'))
+    import kwcoco
+    t1 = kwcoco.CocoDataset(join(out_dpath, 'voc-train-2007.mscoco.json'))
+    t2 = kwcoco.CocoDataset(join(out_dpath, 'voc-train-2012.mscoco.json'))
 
-    v1 = ndsampler.CocoDataset(join(out_dpath, 'voc-val-2007.mscoco.json'))
-    v2 = ndsampler.CocoDataset(join(out_dpath, 'voc-val-2012.mscoco.json'))
+    v1 = kwcoco.CocoDataset(join(out_dpath, 'voc-val-2007.mscoco.json'))
+    v2 = kwcoco.CocoDataset(join(out_dpath, 'voc-val-2012.mscoco.json'))
 
-    t = ndsampler.CocoDataset.union(t1, t2)
+    t = kwcoco.CocoDataset.union(t1, t2)
     t.tag = 'voc-train'
     t.fpath = join(root, t.tag + '.mscoco.json')
 
-    v = ndsampler.CocoDataset.union(v1, v2)
+    v = kwcoco.CocoDataset.union(v1, v2)
     v.tag = 'voc-val'
     v.fpath = join(root, v.tag + '.mscoco.json')
 
-    tv = ndsampler.CocoDataset.union(t1, t2, v1, v2)
+    tv = kwcoco.CocoDataset.union(t1, t2, v1, v2)
     tv.tag = 'voc-trainval'
     tv.fpath = join(root, tv.tag + '.mscoco.json')
 
@@ -84,9 +84,9 @@ def _convert_voc_split(devkit_dpath, classes, split, year, root):
     split, year = 'train', 2012
     split, year = 'train', 2007
     """
-    import ndsampler
+    import kwcoco
     import xml.etree.ElementTree as ET
-    dset = ndsampler.CocoDataset(tag='voc-{}-{}'.format(split, year))
+    dset = kwcoco.CocoDataset(tag='voc-{}-{}'.format(split, year))
 
     for catname in classes:
         dset.add_category(catname)
@@ -188,7 +188,7 @@ def _read_split_paths(devkit_dpath, split, year):
 
 def ensure_voc_data(dpath=None, force=False, years=[2007, 2012]):
     """
-    Download the Pascal VOC 2007 data if it does not already exist.
+    Download the Pascal VOC data if it does not already exist.
 
     Example:
         >>> # xdoctest: +REQUIRES(--download)
@@ -200,31 +200,74 @@ def ensure_voc_data(dpath=None, force=False, years=[2007, 2012]):
     # if force or not exists(devkit_dpath):
     ub.ensuredir(dpath)
 
+    def extract_tarfile(fpath, dpath='.'):
+        # Old way
+        # ub.cmd('tar xvf "{}" -C "{}"'.format(fpath1, dpath), verbout=1)
+        import tarfile
+        try:
+            tar = tarfile.open(fpath1)
+            tar.extractall(dpath)
+        finally:
+            tar.close()
+
     fpath1 = ub.grabdata('http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCdevkit_08-Jun-2007.tar', dpath=dpath)
     if force or not exists(join(dpath, 'VOCdevkit', 'VOCcode')):
-        ub.cmd('tar xvf "{}" -C "{}"'.format(fpath1, dpath), verbout=1)
+        extract_tarfile(fpath1, dpath)
 
     if 2007 in years:
         # VOC 2007 train+validation data
         fpath2 = ub.grabdata('http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar', dpath=dpath)
         if force or not exists(join(dpath, 'VOCdevkit', 'VOC2007', 'ImageSets', 'Main', 'bird_trainval.txt')):
-            ub.cmd('tar xvf "{}" -C "{}"'.format(fpath2, dpath), verbout=1)
+            extract_tarfile(fpath2, dpath)
 
         # VOC 2007 test data
         fpath3 = ub.grabdata('http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar', dpath=dpath)
         if force or not exists(join(dpath, 'VOCdevkit', 'VOC2007', 'ImageSets', 'Main', 'bird_test.txt')):
-            ub.cmd('tar xvf "{}" -C "{}"'.format(fpath3, dpath), verbout=1)
+            extract_tarfile(fpath3, dpath)
 
     if 2012 in years:
         # VOC 2012 train+validation data
         fpath4 = ub.grabdata('https://pjreddie.com/media/files/VOCtrainval_11-May-2012.tar', dpath=dpath)
         if force or not exists(join(dpath, 'VOCdevkit', 'VOC2012', 'ImageSets', 'Main', 'bird_trainval.txt')):
-            ub.cmd('tar xvf "{}" -C "{}"'.format(fpath4, dpath), verbout=1)
+            extract_tarfile(fpath4, dpath)
     return devkit_dpath
 
 
+def ensure_voc_coco(dpath=None):
+    """
+    Download the Pascal VOC data and convert it to coco, if it does exit.
+
+    Args:
+        dpath (str): download directory. Defaults to "~/data/VOC".
+
+    Returns:
+        Dict[str, str]: mapping from dataset tags to coco file paths.
+            The original datasets have keys prefixed with underscores.
+            The standard splits keys are train, vali, and test.
+    """
+    if dpath is None:
+        dpath = ub.expandpath('~/data/VOC')
+
+    paths = {
+        '_train-2007': join(dpath, 'voc-train-2007.mscoco.json'),
+        '_train-2012': join(dpath, 'voc-train-2007.mscoco.json'),
+        '_val-2007': join(dpath, 'voc-val-2007.mscoco.json'),
+        '_val-2012': join(dpath, 'voc-val-2012.mscoco.json'),
+        'trainval': join(dpath, 'voc-trainval.mscoco.json'),
+        'train': join(dpath, 'voc-train.mscoco.json'),
+        'vali': join(dpath, 'voc-val.mscoco.json'),
+        'test': join(dpath, 'voc-test-2007.mscoco.json'),
+    }
+    if not all(map(exists, paths.values())):
+        ensure_voc_data(dpath=dpath)
+        convert_voc_to_coco(dpath=dpath)
+
+    return paths
+
+
 def main():
-    convert_voc_to_coco()
+    paths = ensure_voc_coco()
+    print('paths = {}'.format(ub.repr2(paths, nl=1)))
 
 
 if __name__ == '__main__':
