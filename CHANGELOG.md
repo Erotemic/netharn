@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.5.7 - Unreleased
 
+### Changed
+* `harn.deploy_fpath` is now populated when the model is deployed.
 
 
 ## Version 0.5.6 - Released 2020-04-16

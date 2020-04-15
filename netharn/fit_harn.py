@@ -1462,11 +1462,11 @@ class CoreMixin(object):
             harn.info('view tensorboard results for this run via:\n'
                       '    tensorboard --logdir ' + ub.shrinkuser(train_base))
 
-        deploy_fpath = harn._deploy()
+        harn.deploy_fpath = harn._deploy()
 
         harn.on_complete()
         harn.info('exiting fit harness.')
-        return deploy_fpath
+        return harn.deploy_fpath
 
     def _export(harn):
         """
@@ -1526,6 +1526,7 @@ class CoreMixin(object):
             deploy_fpath = None
             harn.warn('Failed to deploy: {}'.format(repr(ex)))
 
+        harn.deploy_fpath = deploy_fpath
         return deploy_fpath
 
     @profiler.profile
