@@ -183,7 +183,11 @@ class DetectionMetrics(ub.NiceRepr):
 
         if gids is None:
             gids = sorted(dmet._imgname_to_gid.values())
-        for gid in gids:
+
+        verbose = 1
+
+        # TODO: parallelize this
+        for gid in ub.ProgIter(gids, desc='assign detections', verbose=verbose):
             true_dets = dmet.true_detections(gid)
             pred_dets = dmet.pred_detections(gid)
 

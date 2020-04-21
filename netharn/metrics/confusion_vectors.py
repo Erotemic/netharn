@@ -247,7 +247,25 @@ class ConfusionVectors(ub.NiceRepr):
         if negative_classes is None:
             negative_cidxs = {-1}
         else:
-            raise NotImplementedError
+            @ub.memoize
+            def _lower_classes():
+                if self.classes is None:
+                    raise Exception(
+                        'classes must be known if negative_classes are strings')
+                return [c.lower() for c in self.classes]
+
+            negative_cidxs = set([-1])
+            for c in negative_classes:
+                import six
+                if isinstance(c, six.string_types):
+                    classes = _lower_classes()
+                    try:
+                        cidx = classes.index(c)
+                    except Exception:
+                        continue
+                else:
+                    cidx = int(c)
+                negative_cidxs.add(cidx)
 
         is_false = kwarray.isect_flags(self.data['true'], negative_cidxs)
 
