@@ -133,7 +133,8 @@ class DetectionMetrics(ub.NiceRepr):
         return dmet.gid_to_pred_dets[gid]
 
     def confusion_vectors(dmet, ovthresh=0.5, bias=0, gids=None, compat='all',
-                          prioritize='iou', ignore_class='ignore'):
+                          prioritize='iou', ignore_class='ignore', verbose=1,
+                          workers=0):
         """
         Assigns predicted boxes to the true boxes so we can transform the
         detection problem into a classification problem for scoring.
@@ -171,6 +172,11 @@ class DetectionMetrics(ub.NiceRepr):
             ignore_class (str, default='ignore'):
                 class name indicating ignore regions
 
+            verbose (int): verbosity flag
+
+            workers (int, default=0):
+                number of parallel assignment processes
+
         Ignore:
             globals().update(xdev.get_func_kwargs(dmet.confusion_vectors))
         """
@@ -186,19 +192,28 @@ class DetectionMetrics(ub.NiceRepr):
 
         verbose = 1
 
-        # TODO: parallelize this
-        for gid in ub.ProgIter(gids, desc='assign detections', verbose=verbose):
+        from ndsampler.utils import util_futures
+        # workers = 8
+        jobs = util_futures.JobPool(mode='process', max_workers=workers)
+
+        for gid in ub.ProgIter(gids, desc='submit assign detection jobs', verbose=verbose):
             true_dets = dmet.true_detections(gid)
             pred_dets = dmet.pred_detections(gid)
+            job = jobs.submit(
+                _assign_confusion_vectors, true_dets, pred_dets,
+                bg_weight=1, ovthresh=ovthresh, bg_cidx=-1, bias=bias,
+                classes=dmet.classes, compat=compat, prioritize=prioritize,
+                ignore_class=ignore_class)
+            job.gid = gid
 
-            y = _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1,
-                                          ovthresh=ovthresh, bg_cidx=-1,
-                                          bias=bias, classes=dmet.classes,
-                                          compat=compat, prioritize=prioritize,
-                                          ignore_class=ignore_class)
+        # for job in ub.ProgIter(jobs.as_completed(), total='assign detections', verbose=verbose):
+        for job in ub.ProgIter(jobs.jobs, desc='assign detections', verbose=verbose):
+            y = job.result()
+            gid = job.gid
 
             if TRACK_PROBS:
                 # Keep track of per-class probs
+                pred_dets = dmet.pred_detections(gid)
                 try:
                     pred_probs = pred_dets.probs
                 except KeyError:
@@ -217,8 +232,57 @@ class DetectionMetrics(ub.NiceRepr):
             for k, v in y.items():
                 y_accum[k].extend(v)
 
+        # else:
+        #     for gid in ub.ProgIter(gids, desc='assign detections', verbose=verbose):
+        #         true_dets = dmet.true_detections(gid)
+        #         pred_dets = dmet.pred_detections(gid)
+
+        #         y = _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1,
+        #                                       ovthresh=ovthresh, bg_cidx=-1,
+        #                                       bias=bias, classes=dmet.classes,
+        #                                       compat=compat, prioritize=prioritize,
+        #                                       ignore_class=ignore_class)
+
+        #         if TRACK_PROBS:
+        #             # Keep track of per-class probs
+        #             try:
+        #                 pred_probs = pred_dets.probs
+        #             except KeyError:
+        #                 TRACK_PROBS = False
+        #             else:
+        #                 pxs = np.array(y['pxs'], dtype=np.int)
+        #                 flags = pxs > -1
+        #                 probs = np.zeros((len(pxs), pred_probs.shape[1]),
+        #                                  dtype=np.float32)
+        #                 bg_idx = dmet.classes.node_to_idx['background']
+        #                 probs[:, bg_idx] = 1
+        #                 probs[flags] = pred_probs[pxs[flags]]
+        #                 prob_accum.append(probs)
+
+        #         y['gid'] = [gid] * len(y['pred'])
+        #         for k, v in y.items():
+        #             y_accum[k].extend(v)
+
+        _data = {}
+        for k, v in ub.ProgIter(list(y_accum.items()), desc='ndarray convert', verbose=verbose):
+            # Try to use 32 bit types for large evaluation problems
+            kw = dict()
+            if k in {'iou', 'score', 'weight'}:
+                kw['dtype'] = np.float32
+            if k in {'pxs', 'txs', 'gid', 'pred', 'true', 'pred_raw'}:
+                kw['dtype'] = np.int32
+            _data[k] = np.asarray(v, **kw)
+
         # Avoid pandas when possible
-        cfsn_data = kwarray.DataFrameArray(ub.map_vals(np.array, y_accum))
+        cfsn_data = kwarray.DataFrameArray(_data)
+
+        if 0:
+            import xdev
+            nbytes = 0
+            for k, v in _data.items():
+                nbytes += v.size * v.dtype.itemsize
+            print(xdev.byte_str(nbytes))
+
         if TRACK_PROBS:
             y_prob = np.vstack(prob_accum)
         else:

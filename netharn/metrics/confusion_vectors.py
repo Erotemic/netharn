@@ -21,8 +21,8 @@ class ConfusionVectors(ub.NiceRepr):
         >>> from netharn.metrics import DetectionMetrics
         >>> dmet = DetectionMetrics.demo(
         >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), nclasses=3)
-        >>> self = dmet.confusion_vectors()
-        >>> print(self.data._pandas())  # xdoctest: IGNORE_WANT
+        >>> cfsn_vecs = dmet.confusion_vectors()
+        >>> print(cfsn_vecs.data._pandas())  # xdoctest: IGNORE_WANT
             pred_raw  pred  true   score  weight     iou  txs  pxs  gid
         0          2     2     2 10.0000  1.0000  1.0000    0    4    0
         1          2     2     2  7.5025  1.0000  1.0000    1    3    0
@@ -48,33 +48,33 @@ class ConfusionVectors(ub.NiceRepr):
         ...
     """
 
-    def __init__(self, data, classes, probs=None):
-        self.data = data
-        self.classes = classes
-        self.probs = probs
+    def __init__(cfsn_vecs, data, classes, probs=None):
+        cfsn_vecs.data = data
+        cfsn_vecs.classes = classes
+        cfsn_vecs.probs = probs
 
-    def __nice__(self):
-        return self.data.__nice__()
+    def __nice__(cfsn_vecs):
+        return cfsn_vecs.data.__nice__()
 
     @classmethod
-    def demo(self):
+    def demo(cfsn_vecs):
         """
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
-            >>> self = ConfusionVectors.demo()
-            >>> print('self = {!r}'.format(self))
-            >>> cx_to_binvecs = self.binarize_ovr()
+            >>> cfsn_vecs = ConfusionVectors.demo()
+            >>> print('cfsn_vecs = {!r}'.format(cfsn_vecs))
+            >>> cx_to_binvecs = cfsn_vecs.binarize_ovr()
             >>> print('cx_to_binvecs = {!r}'.format(cx_to_binvecs))
         """
         from netharn.metrics import DetectionMetrics
         dmet = DetectionMetrics.demo(
             nimgs=10, nboxes=(0, 10), n_fp=(0, 1), nclasses=3)
         # print('dmet = {!r}'.format(dmet))
-        self = dmet.confusion_vectors()
-        self.data._data = ub.dict_isect(self.data._data, [
+        cfsn_vecs = dmet.confusion_vectors()
+        cfsn_vecs.data._data = ub.dict_isect(cfsn_vecs.data._data, [
             'true', 'pred', 'score', 'weight',
         ])
-        return self
+        return cfsn_vecs
 
     @classmethod
     def from_arrays(ConfusionVectors, true, pred=None, score=None, weight=None,
@@ -89,8 +89,8 @@ class ConfusionVectors(ub.NiceRepr):
             >>> rng = kwarray.ensure_rng(0)
             >>> true = (rng.rand(10) * len(classes)).astype(np.int)
             >>> probs = rng.rand(len(true), len(classes))
-            >>> self = ConfusionVectors.from_arrays(true=true, probs=probs, classes=classes)
-            >>> self.confusion_matrix()
+            >>> cfsn_vecs = ConfusionVectors.from_arrays(true=true, probs=probs, classes=classes)
+            >>> cfsn_vecs.confusion_matrix()
             pred     person  vehicle  object
             real
             person        0        0       0
@@ -118,10 +118,10 @@ class ConfusionVectors(ub.NiceRepr):
 
         data = {k: v for k, v in data.items() if v is not None}
         cfsn_data = kwarray.DataFrameArray(data)
-        self = ConfusionVectors(cfsn_data, probs=probs, classes=classes)
-        return self
+        cfsn_vecs = ConfusionVectors(cfsn_data, probs=probs, classes=classes)
+        return cfsn_vecs
 
-    def confusion_matrix(self, raw=False, compress=False):
+    def confusion_matrix(cfsn_vecs, raw=False, compress=False):
         """
         Builds a confusion matrix from the confusion vectors.
 
@@ -141,8 +141,8 @@ class ConfusionVectors(ub.NiceRepr):
             >>> from netharn.metrics import DetectionMetrics
             >>> dmet = DetectionMetrics.demo(
             >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), n_fn=(0, 1), nclasses=3, cls_noise=.2)
-            >>> self = dmet.confusion_vectors()
-            >>> cm = self.confusion_matrix()
+            >>> cfsn_vecs = dmet.confusion_vectors()
+            >>> cm = cfsn_vecs.confusion_matrix()
             >>> print(cm.to_string(float_format=lambda x: '%.2f' % x))
             pred        background  cat_1  cat_2  cat_3
             real
@@ -151,7 +151,7 @@ class ConfusionVectors(ub.NiceRepr):
             cat_2                2      0     14      1
             cat_3                1      0      1     17
         """
-        data = self.data
+        data = cfsn_vecs.data
 
         y_true = data['true'].copy()
         if raw:
@@ -159,8 +159,8 @@ class ConfusionVectors(ub.NiceRepr):
         else:
             y_pred = data['pred'].copy()
 
-        if 'background' in self.classes:
-            bg_idx = self.classes.index('background')
+        if 'background' in cfsn_vecs.classes:
+            bg_idx = cfsn_vecs.classes.index('background')
             y_true[y_true < 0] = bg_idx
             y_pred[y_pred < 0] = bg_idx
         else:
@@ -170,13 +170,13 @@ class ConfusionVectors(ub.NiceRepr):
                 raise IndexError('y_pred contains invalid indices')
 
         matrix = fast_confusion_matrix(
-            y_true, y_pred, n_labels=len(self.classes),
+            y_true, y_pred, n_labels=len(cfsn_vecs.classes),
             sample_weight=data.get('weight', None)
         )
 
         import pandas as pd
-        cm = pd.DataFrame(matrix, index=list(self.classes),
-                          columns=list(self.classes))
+        cm = pd.DataFrame(matrix, index=list(cfsn_vecs.classes),
+                          columns=list(cfsn_vecs.classes))
         if compress:
             iszero = matrix == 0
             unused = (np.all(iszero, axis=0) & np.all(iszero, axis=1))
@@ -185,42 +185,42 @@ class ConfusionVectors(ub.NiceRepr):
         cm.columns.name = 'pred'
         return cm
 
-    def coarsen(self, cxs):
+    def coarsen(cfsn_vecs, cxs):
         """
         Creates a coarsened set of vectors
         """
         import ndsampler
         import kwarray
-        assert self.probs is not None, 'need probs'
-        if not isinstance(self.classes, ndsampler.CategoryTree):
+        assert cfsn_vecs.probs is not None, 'need probs'
+        if not isinstance(cfsn_vecs.classes, ndsampler.CategoryTree):
             raise TypeError('classes must be a ndsampler.CategoryTree')
 
-        descendent_map = self.classes.idx_to_descendants_idxs(include_self=True)
+        descendent_map = cfsn_vecs.classes.idx_to_descendants_idxs(include_cfsn_vecs=True)
         valid_descendant_mapping = ub.dict_isect(descendent_map, cxs)
         # mapping from current category indexes to the new coarse ones
         # Anything without an explicit key will be mapped to background
 
-        bg_idx = self.classes.index('background')
+        bg_idx = cfsn_vecs.classes.index('background')
         mapping = {v: k for k, vs in valid_descendant_mapping.items() for v in vs}
-        new_true = np.array([mapping.get(x, bg_idx) for x in self.data['true']])
-        new_pred = np.array([mapping.get(x, bg_idx) for x in self.data['pred']])
+        new_true = np.array([mapping.get(x, bg_idx) for x in cfsn_vecs.data['true']])
+        new_pred = np.array([mapping.get(x, bg_idx) for x in cfsn_vecs.data['pred']])
 
-        new_score = np.array([p[x] for x, p in zip(new_pred, self.probs)])
+        new_score = np.array([p[x] for x, p in zip(new_pred, cfsn_vecs.probs)])
 
         new_y_df = {
             'true': new_true,
             'pred': new_pred,
             'score': new_score,
-            'weight': self.data['weight'],
-            'txs': self.data['txs'],
-            'pxs': self.data['pxs'],
-            'gid': self.data['gid'],
+            'weight': cfsn_vecs.data['weight'],
+            'txs': cfsn_vecs.data['txs'],
+            'pxs': cfsn_vecs.data['pxs'],
+            'gid': cfsn_vecs.data['gid'],
         }
         new_y_df = kwarray.DataFrameArray(new_y_df)
-        coarse_cfsn_vecs = ConfusionVectors(new_y_df, self.classes, self.probs)
+        coarse_cfsn_vecs = ConfusionVectors(new_y_df, cfsn_vecs.classes, cfsn_vecs.probs)
         return coarse_cfsn_vecs
 
-    def binarize_peritem(self, negative_classes=None):
+    def binarize_peritem(cfsn_vecs, negative_classes=None):
         """
         Creates a binary representation useful for measuring the performance of
         detectors. It is assumed that scores of "positive" classes should be
@@ -236,9 +236,9 @@ class ConfusionVectors(ub.NiceRepr):
             >>> from netharn.metrics import DetectionMetrics
             >>> dmet = DetectionMetrics.demo(
             >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), nclasses=3)
-            >>> self = dmet.confusion_vectors()
+            >>> cfsn_vecs = dmet.confusion_vectors()
             >>> class_idxs = list(dmet.classes.node_to_idx.values())
-            >>> binvecs = self.binarize_peritem()
+            >>> binvecs = cfsn_vecs.binarize_peritem()
         """
         import kwarray
         # import warnings
@@ -249,10 +249,10 @@ class ConfusionVectors(ub.NiceRepr):
         else:
             @ub.memoize
             def _lower_classes():
-                if self.classes is None:
+                if cfsn_vecs.classes is None:
                     raise Exception(
                         'classes must be known if negative_classes are strings')
-                return [c.lower() for c in self.classes]
+                return [c.lower() for c in cfsn_vecs.classes]
 
             negative_cidxs = set([-1])
             for c in negative_classes:
@@ -267,11 +267,11 @@ class ConfusionVectors(ub.NiceRepr):
                     cidx = int(c)
                 negative_cidxs.add(cidx)
 
-        is_false = kwarray.isect_flags(self.data['true'], negative_cidxs)
+        is_false = kwarray.isect_flags(cfsn_vecs.data['true'], negative_cidxs)
 
         _data = {
             'is_true': ~is_false,
-            'pred_score': self.data['score'],
+            'pred_score': cfsn_vecs.data['score'],
         }
         extra = ub.dict_isect(_data, [
             'txs', 'pxs', 'gid', 'weight'])
@@ -280,9 +280,9 @@ class ConfusionVectors(ub.NiceRepr):
         binvecs = BinaryConfusionVectors(bin_data)
         return binvecs
 
-    def binarize_ovr(self, mode=1, keyby='name'):
+    def binarize_ovr(cfsn_vecs, mode=1, keyby='name'):
         """
-        Transforms self into one-vs-rest BinaryConfusionVectors for each category.
+        Transforms cfsn_vecs into one-vs-rest BinaryConfusionVectors for each category.
 
         Args:
             mode (int): 0 for heirarchy aware or 1 for voc like
@@ -294,9 +294,9 @@ class ConfusionVectors(ub.NiceRepr):
 
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
-            >>> self = ConfusionVectors.demo()
-            >>> print('self = {!r}'.format(self))
-            >>> catname_to_binvecs = self.binarize_ovr(keyby='name')
+            >>> cfsn_vecs = ConfusionVectors.demo()
+            >>> print('cfsn_vecs = {!r}'.format(cfsn_vecs))
+            >>> catname_to_binvecs = cfsn_vecs.binarize_ovr(keyby='name')
             >>> print('catname_to_binvecs = {!r}'.format(catname_to_binvecs))
 
         Notes:
@@ -333,11 +333,11 @@ class ConfusionVectors(ub.NiceRepr):
         """
         import kwarray
 
-        classes = self.classes
-        data = self.data
+        classes = cfsn_vecs.classes
+        data = cfsn_vecs.data
 
         if mode == 0:
-            if self.probs is None:
+            if cfsn_vecs.probs is None:
                 raise ValueError('cannot binarize in mode=0 without probs')
             pdist = classes.idx_pairwise_distance()
 
@@ -353,7 +353,7 @@ class ConfusionVectors(ub.NiceRepr):
                     'IN THIS FILE WERE, AND I HAVENT CHECKED THIS ONE YET')
 
                 # Lookup original probability predictions for the class of interest
-                new_scores = self.probs[:, cx]
+                new_scores = cfsn_vecs.probs[:, cx]
 
                 # Determine which truth items have compatible classes
                 # Note: we ignore any truth-label that is COARSER than the
@@ -374,9 +374,9 @@ class ConfusionVectors(ub.NiceRepr):
                     'is_true': is_finer_eq.astype(np.uint8),
                     'pred_score': new_scores,
                     'weight': data['weight'] * (np.float32(1.0) - is_coarser),
-                    'txs': self.data['txs'],
-                    'pxs': self.data['pxs'],
-                    'gid': self.data['gid'],
+                    'txs': cfsn_vecs.data['txs'],
+                    'pxs': cfsn_vecs.data['pxs'],
+                    'gid': cfsn_vecs.data['gid'],
                 }
                 bin_data = kwarray.DataFrameArray(bin_data)
 
@@ -389,18 +389,18 @@ class ConfusionVectors(ub.NiceRepr):
             elif mode == 1:
                 # More VOC-like, not heirarchy friendly
 
-                if self.probs is not None:
+                if cfsn_vecs.probs is not None:
                     # We know the actual score predicted for this category in
                     # this case.
-                    is_true = self.data['true'] == cx
-                    pred_score = self.probs[:, cx]
+                    is_true = cfsn_vecs.data['true'] == cx
+                    pred_score = cfsn_vecs.probs[:, cx]
                 else:
                     import warnings
                     warnings.warn(
                         'Binarize ovr is only approximate if not all probabilities are known')
                     # If we don't know the probabilities for non-predicted
                     # categories then we have to guess.
-                    is_true = self.data['true'] == cx
+                    is_true = cfsn_vecs.data['true'] == cx
 
                     # do we know the actual predicted score for this category?
                     score_is_unknown = data['pred'] != cx
@@ -429,27 +429,27 @@ class ConfusionVectors(ub.NiceRepr):
         if keyby == 'cx':
             cx_to_binvecs = cx_to_binvecs
         elif keyby == 'name':
-            cx_to_binvecs = ub.map_keys(self.classes, cx_to_binvecs)
+            cx_to_binvecs = ub.map_keys(cfsn_vecs.classes, cx_to_binvecs)
         else:
             raise KeyError(keyby)
 
-        ovr_cfns = OneVsRestConfusionVectors(cx_to_binvecs, self.classes)
+        ovr_cfns = OneVsRestConfusionVectors(cx_to_binvecs, cfsn_vecs.classes)
         return ovr_cfns
 
-    def classification_report(self, verbose=0):
+    def classification_report(cfsn_vecs, verbose=0):
         """
         Build a classification report with various metrics.
 
         Example:
             >>> from netharn.metrics.confusion_vectors import *  # NOQA
-            >>> self = ConfusionVectors.demo()
-            >>> report = self.classification_report(verbose=1)
+            >>> cfsn_vecs = ConfusionVectors.demo()
+            >>> report = cfsn_vecs.classification_report(verbose=1)
         """
         from netharn.metrics import clf_report
-        y_true = self.data['true']
-        y_pred = self.data['pred']
-        sample_weight = self.data.get('weight', None)
-        target_names = list(self.classes)
+        y_true = cfsn_vecs.data['true']
+        y_pred = cfsn_vecs.data['pred']
+        sample_weight = cfsn_vecs.data.get('weight', None)
+        target_names = list(cfsn_vecs.classes)
         report = clf_report.classification_report(
             y_true=y_true,
             y_pred=y_pred,
