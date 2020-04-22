@@ -143,13 +143,14 @@ class ConfusionVectors(ub.NiceRepr):
             >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), n_fn=(0, 1), nclasses=3, cls_noise=.2)
             >>> cfsn_vecs = dmet.confusion_vectors()
             >>> cm = cfsn_vecs.confusion_matrix()
+            ...
             >>> print(cm.to_string(float_format=lambda x: '%.2f' % x))
             pred        background  cat_1  cat_2  cat_3
             real
-            background           0      1      1      1
-            cat_1                2     12      0      1
-            cat_2                2      0     14      1
-            cat_3                1      0      1     17
+            background        0.00   1.00   1.00   1.00
+            cat_1             2.00  12.00   0.00   1.00
+            cat_2             2.00   0.00  14.00   1.00
+            cat_3             1.00   0.00   1.00  17.00
         """
         data = cfsn_vecs.data
 

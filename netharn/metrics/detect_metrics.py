@@ -133,8 +133,8 @@ class DetectionMetrics(ub.NiceRepr):
         return dmet.gid_to_pred_dets[gid]
 
     def confusion_vectors(dmet, ovthresh=0.5, bias=0, gids=None, compat='all',
-                          prioritize='iou', ignore_class='ignore', verbose=1,
-                          workers=0):
+                          prioritize='iou', ignore_class='ignore',
+                          verbose='auto', workers=0):
         """
         Assigns predicted boxes to the true boxes so we can transform the
         detection problem into a classification problem for scoring.
@@ -172,7 +172,8 @@ class DetectionMetrics(ub.NiceRepr):
             ignore_class (str, default='ignore'):
                 class name indicating ignore regions
 
-            verbose (int): verbosity flag
+            verbose (int, default='auto'): verbosity flag. In auto mode,
+                verbose=1 if len(gids) > 1000.
 
             workers (int, default=0):
                 number of parallel assignment processes
@@ -190,10 +191,10 @@ class DetectionMetrics(ub.NiceRepr):
         if gids is None:
             gids = sorted(dmet._imgname_to_gid.values())
 
-        verbose = 1
+        if verbose == 'auto':
+            verbose = 1 if len(gids) > 10 else 0
 
         from ndsampler.utils import util_futures
-        # workers = 8
         jobs = util_futures.JobPool(mode='process', max_workers=workers)
 
         for gid in ub.ProgIter(gids, desc='submit assign detection jobs', verbose=verbose):
