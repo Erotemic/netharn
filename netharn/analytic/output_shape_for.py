@@ -11,6 +11,7 @@ from six.moves import builtins
 from netharn.analytic import analytic_for
 # try:
 from netharn.device import DataSerial
+from distutils.version import LooseVersion
 # except ImportError:
 #     DataSerial = None
 

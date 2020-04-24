@@ -10,12 +10,19 @@ import numpy as np
 from collections import OrderedDict
 from netharn.analytic.output_shape_for import OutputShapeFor
 from netharn.analytic import analytic_for
+from distutils.version import LooseVersion
 # try:
 # from netharn.device import MountedModel
 # except ImportError:
 #     MountedModel = None
 
 REGISTERED_TYPES = []
+
+
+if LooseVersion(torch.__version__) >= LooseVersion('1.5.0'):
+    CONV_TRANSPOSE_TYPES = (nn.modules.conv._ConvTransposeNd,)
+else:
+    CONV_TRANSPOSE_TYPES = (nn.modules.conv._ConvTransposeMixin,)
 
 
 def ensure_array_nd(data, n):
@@ -494,7 +501,7 @@ class _TorchMixin(object):
         return field
         # raise NotImplementedError('todo')
 
-    @compute_type(nn.modules.conv._ConvTransposeMixin)
+    @compute_type(*CONV_TRANSPOSE_TYPES)
     def convT(module, input_field=None):
         return ReceptiveFieldFor._kernelized_tranpose(module, input_field)
 
