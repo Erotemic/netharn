@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 * `harn.deploy_fpath` is now populated when the model is deployed.
 
+### Added
+* Ported experimental `ChannelSpec` and `DataContainser` from bioharn to netharn.data.
+* Added basic classification example that works on generic coco datasets
+
 
 ## Version 0.5.6 - Released 2020-04-16
 
