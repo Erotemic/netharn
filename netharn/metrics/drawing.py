@@ -173,11 +173,11 @@ def draw_perclass_prcurve(cx_to_peritem, classes=None, prefix='', fnum=1, **kw):
         if 'realpos_total' in peritem:
             z = peritem['realpos_total']
             if abs(z - int(z)) < 1e-8:
-                label = 'ap={:0.2f}: {} ({:d}/{:d})'.format(ap, catname, int(peritem['realpos_total']), nsupport)
+                label = 'ap={:0.2f}: {} ({:d}/{:d})'.format(ap, catname, int(peritem['realpos_total']), round(nsupport, 2))
             else:
-                label = 'ap={:0.2f}: {} ({}/{:d})'.format(ap, catname, round(peritem['realpos_total'], 2), nsupport)
+                label = 'ap={:0.2f}: {} ({}/{:d})'.format(ap, catname, round(peritem['realpos_total'], 2), round(nsupport, 2))
         else:
-            label = 'ap={:0.2f}: {} ({:d})'.format(ap, catname, nsupport)
+            label = 'ap={:0.2f}: {} ({:d})'.format(ap, catname, round(nsupport, 2))
         xydata[label] = (recall, precision)
 
     with warnings.catch_warnings():
@@ -239,9 +239,9 @@ def draw_peritem_prcurve(peritem, prefix='', fnum=1, **kw):
     if 'realpos_total' in peritem:
         z = peritem['realpos_total']
         if abs(z - int(z)) < 1e-8:
-            label = 'ap={:0.2f}: ({:d}/{:d})'.format(ap, int(peritem['realpos_total']), nsupport)
+            label = 'ap={:0.2f}: ({:d}/{:d})'.format(ap, int(peritem['realpos_total']), round(nsupport, 2))
         else:
-            label = 'ap={:0.2f}: ({}/{:d})'.format(ap, round(peritem['realpos_total'], 2), nsupport)
+            label = 'ap={:0.2f}: ({}/{:d})'.format(ap, round(peritem['realpos_total'], 2), round(nsupport, 2))
     else:
         label = 'ap={:0.2f}: ({:d})'.format(ap, nsupport)
 

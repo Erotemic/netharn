@@ -798,7 +798,6 @@ class BinaryConfusionVectors(ub.NiceRepr):
             >>> print('roc = {}'.format(ub.repr2(self.roc())))
             >>> self = BinaryConfusionVectors.demo(n=3, p_true=0.5, p_error=0.5)
             >>> print('roc = {}'.format(ub.repr2(self.roc())))
-
         """
         import sklearn
         import sklearn.metrics  # NOQA
@@ -915,6 +914,21 @@ class BinaryConfusionVectors(ub.NiceRepr):
                 'node': self.classes[self.cx],
             })
         return ROC_Result(roc_info)
+
+    def threshold_measures(self, **kwargs):
+        """
+        Get statistics (F1, G1, MCC) versus thresholds
+
+        Example:
+            >>> self = BinaryConfusionVectors.demo(n=0)
+            >>> print('roc = {}'.format(ub.repr2(self.roc())))
+            >>> self = BinaryConfusionVectors.demo(n=1, p_true=0.5, p_error=0.5)
+            >>> print('roc = {}'.format(ub.repr2(self.roc())))
+            >>> self = BinaryConfusionVectors.demo(n=3, p_true=0.5, p_error=0.5)
+            >>> print('roc = {}'.format(ub.repr2(self.roc())))
+        """
+        pass
+
 
 
 class DictProxy(DictLike):
