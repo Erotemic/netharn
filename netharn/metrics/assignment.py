@@ -24,7 +24,7 @@ import ubelt as ub
 def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
                               ovthresh=0.5, bg_cidx=-1, bias=0.0, classes=None,
                               compat='all', prioritize='iou',
-                              ignore_class='ignore'):
+                              ignore_classes='ignore'):
     """
     Create confusion vectors for detections by assigning to ground true boxes
 
@@ -75,8 +75,8 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
             mapping from class indices to class names. Can also contain class
             heirarchy information.
 
-        ignore_class (str):
-            class name indicating ignore regions
+        ignore_classes (str | List[str]):
+            class name(s) indicating ignore regions
 
     TODO:
         - [ ] This is a bottleneck function. An implementation in C / C++ /
@@ -238,13 +238,13 @@ def _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1.0,
     y =  _critical_loop(true_dets, pred_dets, iou_lookup, isvalid_lookup,
                         cx_to_matchable_txs, bg_weight, prioritize, ovthresh,
                         pdist_priority, cx_to_ancestors, bg_cidx,
-                        ignore_class=ignore_class)
+                        ignore_classes=ignore_classes)
     return y
 
 
 def _critical_loop(true_dets, pred_dets, iou_lookup, isvalid_lookup,
                    cx_to_matchable_txs, bg_weight, prioritize, ovthresh,
-                   pdist_priority, cx_to_ancestors, bg_cidx, ignore_class):
+                   pdist_priority, cx_to_ancestors, bg_cidx, ignore_classes):
     # Notes:
     # * Preallocating numpy arrays does not help
     # * It might be useful to code this critical loop up in C / Cython
@@ -264,10 +264,10 @@ def _critical_loop(true_dets, pred_dets, iou_lookup, isvalid_lookup,
     _pred_cxs = pred_dets.class_idxs.take(_pred_sortx, axis=0)
     _pred_scores = _scores.take(_pred_sortx, axis=0)
 
-    if ignore_class is not None:
+    if ignore_classes is not None:
         # Remove certain ignore regions from scoring
         true_ignore_flags, pred_ignore_flags = _filter_ignore_regions(
-            true_dets, pred_dets, ovthresh=ovthresh, ignore_class=ignore_class)
+            true_dets, pred_dets, ovthresh=ovthresh, ignore_classes=ignore_classes)
 
         _pred_keep_flags = ~pred_ignore_flags[_pred_sortx]
         _pred_sortx = _pred_sortx[_pred_keep_flags]
@@ -517,7 +517,7 @@ def _fast_pdist_priority(classes, prioritize, _cache={}):
 
 
 def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
-                           ignore_class='ignore'):
+                           ignore_classes='ignore'):
     """
     Determine which true and predicted detections should be ignored.
 
@@ -529,27 +529,29 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
         >>> from netharn.metrics.assignment import *  # NOQA
         >>> from netharn.metrics.assignment import _filter_ignore_regions
         >>> import kwimage
-        >>> pred_dets = kwimage.Detections.random(classes=['a'])
+        >>> pred_dets = kwimage.Detections.random(classes=['a', 'b', 'c'])
         >>> true_dets = kwimage.Detections.random(
-        >>>     segmentations=True, classes=['a', 'ignore'])
-        >>> ignore_class = 'ignore'
+        >>>     segmentations=True, classes=['a', 'b', 'c', 'ignore'])
+        >>> ignore_classes = {'ignore', 'b'}
         >>> ovthresh = 0.5
         >>> print('true_dets = {!r}'.format(true_dets))
         >>> print('pred_dets = {!r}'.format(pred_dets))
         >>> flags1, flags2 = _filter_ignore_regions(
-        >>>     true_dets, pred_dets, ovthresh=ovthresh, ignore_class=ignore_class)
+        >>>     true_dets, pred_dets, ovthresh=ovthresh, ignore_classes=ignore_classes)
         >>> print('flags1 = {!r}'.format(flags1))
         >>> print('flags2 = {!r}'.format(flags2))
 
-
         >>> flags3, flags4 = _filter_ignore_regions(
         >>>     true_dets, pred_dets, ovthresh=ovthresh,
-        >>>     ignore_class=ignore_class.upper())
+        >>>     ignore_classes={c.upper() for c in ignore_classes})
         >>> assert np.all(flags1 == flags3)
         >>> assert np.all(flags2 == flags4)
     """
     true_ignore_flags = np.zeros(len(true_dets), dtype=np.bool)
     pred_ignore_flags = np.zeros(len(pred_dets), dtype=np.bool)
+
+    if not ub.iterable(ignore_classes):
+        ignore_classes = {ignore_classes}
 
     def _normalize_catname(name, classes):
         if classes is None:
@@ -560,14 +562,17 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
             if cname.lower() == name.lower():
                 return cname
         return name
-        # raise KeyError(name)
 
-    ignore_class = _normalize_catname(ignore_class, true_dets.classes)
+    ignore_classes = {_normalize_catname(c, true_dets.classes)
+                      for c in ignore_classes}
+    ignore_classes = ignore_classes & set(true_dets.classes)
 
     # Filter out true detections labeled as "ignore"
-    if true_dets.classes is not None and ignore_class in true_dets.classes:
-        ignore_cidx = true_dets.classes.index(ignore_class)
-        true_ignore_flags = true_dets.class_idxs == ignore_cidx
+    if true_dets.classes is not None and ignore_classes:
+        import kwarray
+        ignore_cidxs = [true_dets.classes.index(c) for c in ignore_classes]
+        true_ignore_flags = kwarray.isect_flags(
+            true_dets.class_idxs, ignore_cidxs)
 
         if np.any(true_ignore_flags):
             ignore_dets = true_dets.compress(true_ignore_flags)

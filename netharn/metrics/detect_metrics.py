@@ -133,7 +133,7 @@ class DetectionMetrics(ub.NiceRepr):
         return dmet.gid_to_pred_dets[gid]
 
     def confusion_vectors(dmet, ovthresh=0.5, bias=0, gids=None, compat='all',
-                          prioritize='iou', ignore_class='ignore',
+                          prioritize='iou', ignore_classes='ignore',
                           verbose='auto', workers=0):
         """
         Assigns predicted boxes to the true boxes so we can transform the
@@ -169,8 +169,8 @@ class DetectionMetrics(ub.NiceRepr):
                 preferred over descendents of the true class, over unreleated
                 classes.
 
-            ignore_class (str, default='ignore'):
-                class name indicating ignore regions
+            ignore_classes (set, default={'ignore'}):
+                class names indicating ignore regions
 
             verbose (int, default='auto'): verbosity flag. In auto mode,
                 verbose=1 if len(gids) > 1000.
@@ -204,7 +204,7 @@ class DetectionMetrics(ub.NiceRepr):
                 _assign_confusion_vectors, true_dets, pred_dets,
                 bg_weight=1, ovthresh=ovthresh, bg_cidx=-1, bias=bias,
                 classes=dmet.classes, compat=compat, prioritize=prioritize,
-                ignore_class=ignore_class)
+                ignore_classes=ignore_classes)
             job.gid = gid
 
         # for job in ub.ProgIter(jobs.as_completed(), total='assign detections', verbose=verbose):
@@ -242,7 +242,7 @@ class DetectionMetrics(ub.NiceRepr):
         #                                       ovthresh=ovthresh, bg_cidx=-1,
         #                                       bias=bias, classes=dmet.classes,
         #                                       compat=compat, prioritize=prioritize,
-        #                                       ignore_class=ignore_class)
+        #                                       ignore_classes=ignore_classes)
 
         #         if TRACK_PROBS:
         #             # Keep track of per-class probs
@@ -403,7 +403,7 @@ class DetectionMetrics(ub.NiceRepr):
         return info
 
     def score_voc(dmet, ovthresh=0.5, bias=1, method='voc2012', gids=None,
-                  ignore_class='ignore'):
+                  ignore_classes='ignore'):
         """
         score using voc method
 
@@ -425,10 +425,10 @@ class DetectionMetrics(ub.NiceRepr):
             true_dets = dmet.true_detections(gid)
             pred_dets = dmet.pred_detections(gid)
 
-            if ignore_class is not None:
+            if ignore_classes is not None:
                 true_ignore_flags, pred_ignore_flags = _filter_ignore_regions(
                     true_dets, pred_dets, ovthresh=ovthresh,
-                    ignore_class=ignore_class)
+                    ignore_classes=ignore_classes)
                 true_dets = true_dets.compress(~true_ignore_flags)
                 pred_dets = pred_dets.compress(~pred_ignore_flags)
 
