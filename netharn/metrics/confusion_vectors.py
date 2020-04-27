@@ -281,13 +281,14 @@ class ConfusionVectors(ub.NiceRepr):
         binvecs = BinaryConfusionVectors(bin_data)
         return binvecs
 
-    def binarize_ovr(cfsn_vecs, mode=1, keyby='name'):
+    def binarize_ovr(cfsn_vecs, mode=1, keyby='name', ignore_classes={'ignore'}):
         """
         Transforms cfsn_vecs into one-vs-rest BinaryConfusionVectors for each category.
 
         Args:
             mode (int): 0 for heirarchy aware or 1 for voc like
             keyby : can be cx or name
+            ignore_classes (set): category names to ignore
 
         Returns:
             OneVsRestConfusionVectors: which behaves like
@@ -344,7 +345,7 @@ class ConfusionVectors(ub.NiceRepr):
 
         cx_to_binvecs = {}
         for cx in range(len(classes)):
-            if classes[cx] == 'background':
+            if classes[cx] == 'background' or classes[cx] in ignore_classes:
                 continue
 
             if mode == 0:
