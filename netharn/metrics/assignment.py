@@ -574,7 +574,7 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
         true_ignore_flags = kwarray.isect_flags(
             true_dets.class_idxs, ignore_cidxs)
 
-        if np.any(true_ignore_flags):
+        if np.any(true_ignore_flags) and len(pred_dets):
             ignore_dets = true_dets.compress(true_ignore_flags)
 
             pred_boxes = pred_dets.data['boxes']
