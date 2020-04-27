@@ -930,7 +930,6 @@ class BinaryConfusionVectors(ub.NiceRepr):
         pass
 
 
-
 class DictProxy(DictLike):
     """
     Allows an object to proxy the behavior of a dict attribute

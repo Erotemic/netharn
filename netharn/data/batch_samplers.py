@@ -273,6 +273,8 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
         num_batches (int | str, default='auto'): number of batches to generate
         shuffle (bool, default=False): if True randomize batch ordering
         drop_last (bool): unused, exists for compatibility
+        label_to_weight (dict, default=None):
+            mapping from labels to user-specified weights
         rng (RandomState, default=None): random seed
 
     References:
@@ -310,7 +312,7 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
     """
 
     def __init__(self, index_to_labels, batch_size=1, num_batches='auto',
-                 shuffle=False, rng=None):
+                 label_to_weight=None, shuffle=False, rng=None):
         import kwarray
 
         rng = kwarray.ensure_rng(rng, api='python')
@@ -322,16 +324,21 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
             for label in item_labels:
                 label_to_indices[label].add(index)
         flat_labels = np.hstack(index_to_labels)
-        self.label_to_freq = ub.dict_hist(flat_labels)
 
         # Use tf-idf based scheme to compute sample probabilities
+        label_to_idf = {}
         label_to_tfidf = {}
         labels = sorted(set(flat_labels))
         for label in labels:
+            # tf for each img, is the number of times the label appears
             index_to_tf = np.zeros(len(index_to_labels))
             for index, item_labels in enumerate(index_to_labels):
                 index_to_tf[index] = (label == item_labels).sum()
+            # idf is the #imgs / #imgs-with-label
             idf = len(index_to_tf) / (index_to_tf > 0).sum()
+            if label_to_weight:
+                idf = idf * label_to_weight[label]
+            label_to_idf[label] = idf
             label_to_tfidf[label] = np.maximum(index_to_tf * idf, 1)
         index_to_weight = sum(label_to_tfidf.values())
         index_to_prob = index_to_weight / index_to_weight.sum()
@@ -344,6 +351,7 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
         else:
             self.num_batches = num_batches
 
+        self.label_to_freq = ub.dict_hist(flat_labels)
         self.index_to_labels = index_to_labels
         self.batch_size = batch_size
         self.shuffle = shuffle
