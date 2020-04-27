@@ -84,7 +84,8 @@ class ResNet(nn.Module):
         >>> print(tuple(y.size()))
         (1, 10)
     """
-    def __init__(self, num_blocks, num_classes=10, block='Bottleneck'):
+    def __init__(self, num_blocks=[3, 4, 6, 3], num_classes=10,
+                 in_channels=3, block='Bottleneck'):
         super(ResNet, self).__init__()
         self.in_planes = 64
 
@@ -95,7 +96,7 @@ class ResNet(nn.Module):
         else:
             raise KeyError('Unknown block={}'.format(block))
 
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
+        self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=3,
                                stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
