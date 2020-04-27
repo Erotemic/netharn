@@ -241,7 +241,7 @@ def draw_peritem_prcurve(peritem, prefix='', fnum=1, **kw):
         if abs(z - int(z)) < 1e-8:
             label = 'ap={:0.2f}: ({:d}/{:d})'.format(ap, int(peritem['realpos_total']), nsupport)
         else:
-            label = 'ap={:0.2f}: ({}/{:d})'.format(ap, peritem['realpos_total'], nsupport)
+            label = 'ap={:0.2f}: ({}/{:d})'.format(ap, round(peritem['realpos_total'], 2), nsupport)
     else:
         label = 'ap={:0.2f}: ({:d})'.format(ap, nsupport)
 
