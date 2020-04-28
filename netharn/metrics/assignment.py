@@ -565,7 +565,9 @@ def _filter_ignore_regions(true_dets, pred_dets, ovthresh=0.5,
 
     ignore_classes = {_normalize_catname(c, true_dets.classes)
                       for c in ignore_classes}
-    ignore_classes = ignore_classes & set(true_dets.classes)
+
+    if true_dets.classes is not None:
+        ignore_classes = ignore_classes & set(true_dets.classes)
 
     # Filter out true detections labeled as "ignore"
     if true_dets.classes is not None and ignore_classes:

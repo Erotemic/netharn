@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 * Ported experimental `ChannelSpec` and `DataContainser` from bioharn to netharn.data.
 * Added basic classification example that works on generic coco datasets
+* Threshold curves to ConfusionVector metrics
 
 
 ## Version 0.5.6 - Released 2020-04-16

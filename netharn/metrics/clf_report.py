@@ -417,7 +417,7 @@ def ovr_classification_report(mc_y_true, mc_probs, target_names=None,
             # Index of the true class
             k_true = ohvec_true.T[k]
             # Index of the predicted class
-            k_pred = np.argmax(bin_probs, axis=1)
+            k_pred = np.argmax(bin_probs, axis=1)  # NOTE: ASSUME MUTEX CLASSES
 
             # Probabilities for the true class for each label
             bin_truth = np.eye(2)[k_true]

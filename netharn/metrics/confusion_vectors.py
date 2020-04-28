@@ -469,6 +469,12 @@ class OneVsRestConfusionVectors(ub.NiceRepr):
     Attributes:
         cx_to_binvecs
         classes
+
+    Example:
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
+        >>> cfsn_vecs = ConfusionVectors.demo()
+        >>> self = cfsn_vecs.binarize_ovr(keyby='name')
+        >>> print('self = {!r}'.format(self))
     """
     def __init__(self, cx_to_binvecs, classes):
         self.cx_to_binvecs = cx_to_binvecs
@@ -507,6 +513,22 @@ class OneVsRestConfusionVectors(ub.NiceRepr):
             mAUC = np.nanmean([item['auc'] for item in perclass.values()])
         return {
             'mAUC': mAUC,
+            'perclass': perclass,
+        }
+
+    def threshold_curves(self, **kwargs):
+        """
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> cfsn_vecs = ConfusionVectors.demo()
+            >>> self = cfsn_vecs.binarize_ovr(keyby='name')
+            >>> thresh_result = self.threshold_curves()['perclass']
+        """
+        perclass = PerClass_Threshold_Result({
+            cx: binvecs.threshold_curves(**kwargs)
+            for cx, binvecs in self.cx_to_binvecs.items()
+        })
+        return {
             'perclass': perclass,
         }
 
@@ -697,40 +719,40 @@ class BinaryConfusionVectors(ub.NiceRepr):
             realpos_total = (y_true * weight).sum()
             realneg_total = ((1 - y_true) * weight).sum()
 
+            """
+            Notes:
+                Apparently, consistent scoring is really hard to get right.
+
+                For detection problems scoring via
+                confusion_vectors+sklearn produces noticably different
+                results than the VOC method. There are a few reasons for
+                this.  The VOC method stops counting true positives after
+                all assigned predicted boxes have been counted. It simply
+                remembers the amount of original true positives to
+                normalize the true positive reate. On the other hand,
+                confusion vectors maintains a list of these unassigned true
+                boxes and gives them a predicted index of -1 and a score of
+                zero. This means that this function sees them as having a
+                y_true of 1 and a y_score of 0, which allows the
+                scikit-learn fps and tps counts to effectively get up to
+                100% recall when the threshold is zero. The VOC method
+                simply ignores these and handles them implicitly. The
+                problem is that if you remove these from the scikit-learn
+                inputs, it wont see the correct number of positives and it
+                will incorrectly normalize the recall.  In summary:
+
+                    VOC:
+                        * remembers realpos_total
+                        * doesn't count unassigned truths as TP when the
+                        threshold is zero.
+
+                    CV+SKL:
+                        * counts unassigned truths as TP with score=0.
+                        * Always ensure tpr=1, ppv=0 and ppv=1, tpr=0 cases
+                        exist.
+            """
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore', message='invalid .* true_divide')
-                """
-                Notes:
-                    Apparently, consistent scoring is really hard to get right.
-
-                    For detection problems scoring via
-                    confusion_vectors+sklearn produces noticably different
-                    results than the VOC method. There are a few reasons for
-                    this.  The VOC method stops counting true positives after
-                    all assigned predicted boxes have been counted. It simply
-                    remembers the amount of original true positives to
-                    normalize the true positive reate. On the other hand,
-                    confusion vectors maintains a list of these unassigned true
-                    boxes and gives them a predicted index of -1 and a score of
-                    zero. This means that this function sees them as having a
-                    y_true of 1 and a y_score of 0, which allows the
-                    scikit-learn fps and tps counts to effectively get up to
-                    100% recall when the threshold is zero. The VOC method
-                    simply ignores these and handles them implicitly. The
-                    problem is that if you remove these from the scikit-learn
-                    inputs, it wont see the correct number of positives and it
-                    will incorrectly normalize the recall.  In summary:
-
-                        VOC:
-                            * remembers realpos_total
-                            * doesn't count unassigned truths as TP when the
-                            threshold is zero.
-
-                        CV+SKL:
-                            * counts unassigned truths as TP with score=0.
-                            * Always ensure tpr=1, ppv=0 and ppv=1, tpr=0 cases
-                            exist.
-                """
 
                 if method.startswith('voc'):
                     y_score_ = y_score[y_score > 0]
@@ -915,19 +937,129 @@ class BinaryConfusionVectors(ub.NiceRepr):
             })
         return ROC_Result(roc_info)
 
-    def threshold_measures(self, **kwargs):
+    def threshold_curves(self, stabalize_thresh=7, stabalize_pad=7):
         """
         Get statistics (F1, G1, MCC) versus thresholds
 
         Example:
-            >>> self = BinaryConfusionVectors.demo(n=0)
-            >>> print('roc = {}'.format(ub.repr2(self.roc())))
-            >>> self = BinaryConfusionVectors.demo(n=1, p_true=0.5, p_error=0.5)
-            >>> print('roc = {}'.format(ub.repr2(self.roc())))
-            >>> self = BinaryConfusionVectors.demo(n=3, p_true=0.5, p_error=0.5)
-            >>> print('roc = {}'.format(ub.repr2(self.roc())))
+            >>> self = BinaryConfusionVectors.demo(n=100)
+            >>> self.threshold_curves()
         """
-        pass
+        # compute tp, fp, tn, fn at each point
+        # compute mcc, f1, g1, etc
+        # write plot functions
+        info = self._binary_clf_curves(stabalize_thresh, stabalize_pad)
+
+        tp = info['tp_count']
+        fp = info['fp_count']
+        tn = info['tn_count']
+        fn = info['fn_count']
+
+        ppv = tp / (tp + fp)
+        tpr = tp / (tp + fn)
+
+        # https://en.wikipedia.org/wiki/Matthews_correlation_coefficient
+        mcc_numer = (tp * tn) - (fp * fn)
+        mcc_denom = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+        mcc_denom[np.isnan(mcc_denom) | (mcc_denom == 0)] = 1
+        info['mcc'] = mcc_numer / mcc_denom
+
+        # https://erotemic.wordpress.com/2019/10/23/closed-form-of-the-mcc-when-tn-inf/
+        info['g1'] = np.sqrt(ppv * tpr)
+
+        f1_numer = (2 * ppv * tpr)
+        f1_denom = (ppv + tpr)
+        f1_denom[f1_denom == 0] = 1
+        info['f1'] =  f1_numer / f1_denom
+
+        info['ppv'] = ppv
+
+        info['tpr'] = tpr
+
+        info['acc'] = (tp + tn) / (tp + tn + fp + fn)
+
+        keys = ['mcc', 'g1', 'f1', 'acc']
+        for key in keys:
+            measure = info[key]
+            max_idx = measure.argmax()
+            best_thresh = info['thresholds'][max_idx]
+            best_measure = measure[max_idx]
+            best_label = '{}={:0.2f}@{:0.2f}'.format(key, best_measure, best_thresh)
+            info['max_{}'.format(key)] = best_label
+            info['_max_{}'.format(key)] = (best_measure, best_thresh)
+
+        return Threshold_Result(info)
+
+    def _binary_clf_curves(self, stabalize_thresh=7, stabalize_pad=7):
+        """
+        Code common to ROC, PR, and threshold measures
+
+        TODO: refactor ROC and PR curves to use this code, perhaps even
+        memoizing it.
+        """
+        try:
+            from sklearn.metrics._ranking import _binary_clf_curve
+        except ImportError:
+            from sklearn.metrics.ranking import _binary_clf_curve
+        data = self.data
+        y_true = data['is_true'].astype(np.uint8)
+        y_score = data['pred_score']
+        sample_weight = data._data.get('weight', None)
+
+        npad = 0
+        if len(self) == 0:
+            fps = [np.nan]
+            fns = [np.nan]
+            tps = [np.nan]
+            thresholds = [np.nan]
+
+            realpos_total = 0
+            realneg_total = 0
+            nsupport = 0
+        else:
+            if len(self) <= stabalize_thresh:
+                # add dummy data to stabalize the computation
+                if sample_weight is None:
+                    sample_weight = np.ones(len(self))
+                npad = stabalize_pad
+                y_true, y_score, sample_weight = _stabalilze_data(
+                    y_true, y_score, sample_weight, npad=npad)
+
+            # Get the total weight (typically number of) positive and negative
+            # examples of this class
+            if sample_weight is None:
+                weight = 1
+                nsupport = len(y_true) - bool(npad)
+            else:
+                weight = sample_weight
+                nsupport = sample_weight.sum() - bool(npad)
+
+            realpos_total = (y_true * weight).sum()
+            realneg_total = ((1 - y_true) * weight).sum()
+
+            fps, tps, thresholds = _binary_clf_curve(
+                y_true, y_score, pos_label=1.0,
+                sample_weight=sample_weight)
+
+        tns = realneg_total - fps
+        fns = realpos_total - tps
+
+        info = {
+            'fp_count': fps,
+            'tp_count': tps,
+            'tn_count': tns,
+            'fn_count': fns,
+            'thresholds': thresholds,
+            'realpos_total': realpos_total,
+            'realneg_total': realneg_total,
+            'nsupport': nsupport,
+        }
+        if self.cx is not None:
+            info.update({
+                'cx': self.cx,
+                'node': self.classes[self.cx],
+            })
+        return info
 
 
 class DictProxy(DictLike):
@@ -1020,7 +1152,43 @@ class PR_Result(ub.NiceRepr, DictProxy):
 
     def draw(self, **kw):
         from netharn.metrics import drawing
-        return drawing.draw_peritem_prcurve(self, **kw)
+        return drawing.draw_prcurve(self, **kw)
+
+
+class Threshold_Result(ub.NiceRepr, DictProxy):
+    """
+    Example:
+        >>> from netharn.metrics.confusion_vectors import *  # NOQA
+        >>> binvecs = BinaryConfusionVectors.demo(n=100, p_error=0.5)
+        >>> self = binvecs.threshold_curves()
+        >>> print('self = {!r}'.format(self))
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> self.draw()
+        >>> kwplot.show_if_requested()
+    """
+    def __init__(self, roc_info):
+        self.proxy = roc_info
+
+    @property
+    def catname(self):
+        return self.get('node', None)
+
+    def __nice__(self):
+        return ub.repr2({
+            'max_mcc': self['max_mcc'],
+            'max_g1': self['max_g1'],
+            'max_f1': self['max_f1'],
+            'nsupport': self['nsupport'],
+            'realpos_total': self['realpos_total'],
+            'realneg_total': self['realneg_total'],
+            'catname': self.get('node', None),
+        }, nl=0, precision=4, strvals=True)
+
+    def draw(self, **kw):
+        from netharn.metrics import drawing
+        return drawing.draw_threshold_curves(self, **kw)
 
 
 class PerClass_ROC_Result(ub.NiceRepr, DictProxy):
@@ -1051,8 +1219,32 @@ class PerClass_PR_Result(ub.NiceRepr, DictProxy):
         return drawing.draw_perclass_prcurve(self, **kw)
 
 
+class PerClass_Threshold_Result(ub.NiceRepr, DictProxy):
+    """
+    """
+    def __init__(self, cx_to_info):
+        self.proxy = cx_to_info
+
+    def __nice__(self):
+        return ub.repr2(self.proxy, nl=2, strvals=True)
+
+    def draw(self, **kw):
+        """
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> cfsn_vecs = ConfusionVectors.demo()
+            >>> ovr_cfsn = cfsn_vecs.binarize_ovr(keyby='name')
+            >>> self = self.threshold_curves()['perclass']
+        """
+        from netharn.metrics import drawing
+        return drawing.draw_perclass_thresholds(self, **kw)
+
+
 def _stabalilze_data(y_true, y_score, sample_weight, npad=7):
-    npad = 7
+    """
+    Adds ideally calibrated dummy values to curves with few positive examples.
+    This acts somewhat like a Baysian prior and smooths out the curve.
+    """
     min_score = y_score.min()
     max_score = y_score.max()
 
