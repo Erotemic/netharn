@@ -309,9 +309,6 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
         >>> index_hist = ub.dict_subset(index_hist, list(index_hist.keys())[0:5])
         >>> print('label_hist = {}'.format(ub.repr2(label_hist, nl=1)))
         >>> print('index_hist = {}'.format(ub.repr2(index_hist, nl=1)))
-
-    Ignore:
-        self = GroupedBalancedBatchSampler(index_to_labels, batch_size=batch_size, num_batches='auto', shuffle=shuffle, label_to_weight=label_to_weight, rng=None)
     """
 
     def __init__(self, index_to_labels, batch_size=1, num_batches='auto',
@@ -327,13 +324,7 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
             for label in item_labels:
                 label_to_indices[label].add(index)
         flat_labels = np.hstack(index_to_labels)
-
-        if 0:
-            label_to_indices = ub.ddict(set)
-            for index, item_labels in enumerate(index_to_labels):
-                for label in item_labels:
-                    label_to_indices[label].add(index)
-            ub.map_vals(len, label_to_indices)
+        label_to_freq = ub.dict_hist(flat_labels)
 
         # Use tf-idf based scheme to compute sample probabilities
         label_to_idf = {}
@@ -353,6 +344,29 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
         index_to_weight = sum(label_to_tfidf.values())
         index_to_prob = index_to_weight / index_to_weight.sum()
 
+        if 0:
+            index_to_unique_labels = list(map(set, index_to_labels))
+            unique_freq = ub.dict_hist(ub.flatten(index_to_unique_labels))
+            tot = sum(unique_freq.values())
+            unweighted_odds = ub.map_vals(lambda x: x / tot, unique_freq)
+
+            label_to_indices = ub.ddict(set)
+            for index, item_labels in enumerate(index_to_labels):
+                for label in item_labels:
+                    label_to_indices[label].add(index)
+            ub.map_vals(len, label_to_indices)
+
+            label_to_odds = ub.ddict(lambda: 0)
+            for label, indices in label_to_indices.items():
+                for idx in indices:
+                    label_to_odds[label] += index_to_prob[idx]
+
+            coi = {x for x, w in label_to_weight.items() if w > 0}
+            coi_weighted = ub.dict_subset(label_to_odds, coi)
+            coi_unweighted = ub.dict_subset(unweighted_odds, coi)
+            print('coi_weighted = {}'.format(ub.repr2(coi_weighted, nl=1)))
+            print('coi_unweighted = {}'.format(ub.repr2(coi_unweighted, nl=1)))
+
         self.index_to_prob = index_to_prob
         self.indices = np.arange(len(index_to_prob))
 
@@ -361,7 +375,7 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
         else:
             self.num_batches = num_batches
 
-        self.label_to_freq = ub.dict_hist(flat_labels)
+        self.label_to_freq = label_to_freq
         self.index_to_labels = index_to_labels
         self.batch_size = batch_size
         self.shuffle = shuffle
