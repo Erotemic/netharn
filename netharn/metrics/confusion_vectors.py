@@ -1041,6 +1041,12 @@ class BinaryConfusionVectors(ub.NiceRepr):
                 y_true, y_score, pos_label=1.0,
                 sample_weight=sample_weight)
 
+            # Adjust weighted totals to be robust to floating point errors
+            if np.isclose(realneg_total, fps[-1]):
+                realneg_total = max(realneg_total, fps[-1])
+            if np.isclose(realpos_total, tps[-1]):
+                realpos_total = max(realpos_total, tps[-1])
+
         tns = realneg_total - fps
         fns = realpos_total - tps
 
@@ -1179,7 +1185,7 @@ class Threshold_Result(ub.NiceRepr, DictProxy):
         return ub.repr2({
             'max_mcc': self['max_mcc'],
             'max_g1': self['max_g1'],
-            'max_f1': self['max_f1'],
+            # 'max_f1': self['max_f1'],
             'nsupport': self['nsupport'],
             'realpos_total': self['realpos_total'],
             'realneg_total': self['realneg_total'],
