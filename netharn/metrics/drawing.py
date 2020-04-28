@@ -80,13 +80,9 @@ def draw_perclass_roc(cx_to_rocinfo, classes=None, prefix='', fnum=1,
     for cx in cxs:
         peritem = cx_to_rocinfo[cx]
 
-        if isinstance(cx, int):
-            catname = classes[cx]
-        else:
-            catname = cx
+        catname = classes[cx] if isinstance(cx, int) else cx
 
         auc = peritem['auc']
-
         tpr = peritem['tpr']
 
         nsupport = int(peritem['nsupport'])
@@ -144,10 +140,7 @@ def draw_perclass_prcurve(cx_to_peritem, classes=None, prefix='', fnum=1, **kw):
     xydata = ub.odict()
     for cx in cxs:
         peritem = cx_to_peritem[cx]
-        if isinstance(cx, int):
-            catname = classes[cx]
-        else:
-            catname = cx
+        catname = classes[cx] if isinstance(cx, int) else cx
         ap = peritem['ap']
         if 'pr' in peritem:
             pr = peritem['pr']
@@ -226,10 +219,7 @@ def draw_perclass_thresholds(cx_to_peritem, key='mcc', classes=None, prefix='', 
     xydata = ub.odict()
     for cx in cxs:
         peritem = cx_to_peritem[cx]
-        if isinstance(cx, int):
-            catname = classes[cx]
-        else:
-            catname = cx
+        catname = classes[cx] if isinstance(cx, int) else cx
 
         thresholds = peritem['thresholds']
         measure = peritem[key]
