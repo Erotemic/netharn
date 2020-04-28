@@ -291,17 +291,17 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
         >>> # Create a rare class
         >>> index_to_labels[0][0] = 42
         >>> self = GroupedBalancedBatchSampler(index_to_labels, batch_size=4)
-        >>> print('self.label_to_freq = {!r}'.format(self.label_to_freq))
+        >>> print('self.label_to_freq = {}'.format(ub.repr2(self.label_to_freq, nl=1)))
         >>> indices = list(self)
         >>> print('indices = {!r}'.format(indices))
         >>> # Print the epoch / item label frequency per epoch
         >>> label_sequence = []
         >>> index_sequence = []
-        >>> for item_indices in self:
+        >>> for item_indices, _ in zip(self, range(1000)):
         >>>     item_indices = np.array(item_indices)
         >>>     item_labels = list(ub.flatten(ub.take(index_to_labels, item_indices)))
         >>>     index_sequence.extend(item_indices)
-        >>>     label_sequence.extend(item_labels)
+        >>>     label_sequence.extend(ub.unique(item_labels))
         >>> label_hist = ub.dict_hist(label_sequence)
         >>> index_hist = ub.dict_hist(index_sequence)
         >>> label_hist = ub.sorted_vals(label_hist, reverse=True)
@@ -309,6 +309,9 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
         >>> index_hist = ub.dict_subset(index_hist, list(index_hist.keys())[0:5])
         >>> print('label_hist = {}'.format(ub.repr2(label_hist, nl=1)))
         >>> print('index_hist = {}'.format(ub.repr2(index_hist, nl=1)))
+
+    Ignore:
+        self = GroupedBalancedBatchSampler(index_to_labels, batch_size=batch_size, num_batches='auto', shuffle=shuffle, label_to_weight=label_to_weight, rng=None)
     """
 
     def __init__(self, index_to_labels, batch_size=1, num_batches='auto',
@@ -324,6 +327,13 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
             for label in item_labels:
                 label_to_indices[label].add(index)
         flat_labels = np.hstack(index_to_labels)
+
+        if 0:
+            label_to_indices = ub.ddict(set)
+            for index, item_labels in enumerate(index_to_labels):
+                for label in item_labels:
+                    label_to_indices[label].add(index)
+            ub.map_vals(len, label_to_indices)
 
         # Use tf-idf based scheme to compute sample probabilities
         label_to_idf = {}
