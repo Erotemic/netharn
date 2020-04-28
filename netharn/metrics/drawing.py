@@ -368,7 +368,7 @@ def draw_threshold_curves(info, keys=None, prefix='', fnum=1, **kw):
         xydata=xydata, fnum=fnum,
         xlim=(0, 1), ylim=(0, 1), xpad=0.01, ypad=0.01,
         xlabel='threshold', ylabel=key,
-        title=prefix + 'info {}'.format(best_label),
+        title=prefix + 'threshold curves',
         legend_loc='lower right',
         color=colors,
         linestyle='cycle', marker='cycle', **kw
