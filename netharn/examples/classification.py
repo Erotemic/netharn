@@ -693,6 +693,6 @@ def main():
 
 if __name__ == '__main__':
     """
-    python -m netharn.examples.classification --datasets=shapes128 --name=shapes_clf
+    python -m netharn.examples.classification --datasets=shapes5000 --name=shapes_clf5000 --batch_size=32
     """
     main()
