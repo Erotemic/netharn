@@ -1182,7 +1182,7 @@ class ScheduleMixin(object):
                             warmup_lr = [_lr * (1 - k) for _lr in regular_lr]
                         else:
                             raise KeyError(warmup)
-                        harn.debug('warmup_lr = {}'.format(warmup_lr))
+                        # harn.debug('warmup_lr = {}'.format(warmup_lr))
                         _set_optimizer_values(harn.optimizer, 'lr', warmup_lr)
 
         # TODO: REFACTOR SO NETHARN HAS A PROPER ITERATION MODE
