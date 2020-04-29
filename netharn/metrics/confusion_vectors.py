@@ -245,17 +245,14 @@ class ConfusionVectors(ub.NiceRepr):
         # import warnings
         # warnings.warn('binarize_peritem DOES NOT PRODUCE CORRECT RESULTS')
 
-        if negative_classes is None:
-            negative_cidxs = {-1}
-        else:
+        negative_cidxs = {-1}
+        if negative_classes is not None:
             @ub.memoize
             def _lower_classes():
                 if cfsn_vecs.classes is None:
                     raise Exception(
                         'classes must be known if negative_classes are strings')
                 return [c.lower() for c in cfsn_vecs.classes]
-
-            negative_cidxs = set([-1])
             for c in negative_classes:
                 import six
                 if isinstance(c, six.string_types):
@@ -411,6 +408,14 @@ class ConfusionVectors(ub.NiceRepr):
                     # These scores were for a different class, so assume
                     # other classes were predicted with a uniform prior
                     approx_score = (1 - pred_score[score_is_unknown]) / (len(classes) - 1)
+
+                    # Except in the case where predicted class is -1. In this
+                    # case no prediction was actually made (above a threshold)
+                    # so the assumed score should be significantly lower, we
+                    # conservatively choose zero.
+                    unknown_preds = data['pred'][score_is_unknown]
+                    approx_score[unknown_preds == -1] = 0
+
                     pred_score[score_is_unknown] = approx_score
 
                 bin_data = {
