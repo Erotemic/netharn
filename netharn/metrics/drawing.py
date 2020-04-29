@@ -213,9 +213,14 @@ def draw_perclass_thresholds(cx_to_peritem, key='mcc', classes=None, prefix='', 
     import kwplot
     # Sort by descending "best value"
     cxs = list(cx_to_peritem.keys())
-    priority = np.array([item['_max_' + key][0] for item in cx_to_peritem.values()])
-    priority[np.isnan(priority)] = -np.inf
-    cxs = list(ub.take(cxs, np.argsort(priority)))[::-1]
+
+    try:
+        priority = np.array([item['_max_' + key][0] for item in cx_to_peritem.values()])
+        priority[np.isnan(priority)] = -np.inf
+        cxs = list(ub.take(cxs, np.argsort(priority)))[::-1]
+    except KeyError:
+        pass
+
     xydata = ub.odict()
     for cx in cxs:
         peritem = cx_to_peritem[cx]
@@ -223,7 +228,13 @@ def draw_perclass_thresholds(cx_to_peritem, key='mcc', classes=None, prefix='', 
 
         thresholds = peritem['thresholds']
         measure = peritem[key]
-        best_label = peritem['max_{}'.format(key)]
+        try:
+            best_label = peritem['max_{}'.format(key)]
+        except KeyError:
+            max_idx = measure.argmax()
+            best_thresh = thresholds[max_idx]
+            best_measure = measure[max_idx]
+            best_label = '{}={:0.2f}@{:0.2f}'.format(key, best_measure, best_thresh)
 
         nsupport = int(peritem['nsupport'])
         if 'realpos_total' in peritem:
