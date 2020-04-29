@@ -977,11 +977,19 @@ class BinaryConfusionVectors(ub.NiceRepr):
         f1_denom[f1_denom == 0] = 1
         info['f1'] =  f1_numer / f1_denom
 
+        tnr = tn / (tn + fp)
+
+        npv = tn / (tn + fn)
+
         info['ppv'] = ppv
 
         info['tpr'] = tpr
 
         info['acc'] = (tp + tn) / (tp + tn + fp + fn)
+
+        info['bm'] = tpr + tnr - 1  # informedness
+
+        info['mk'] = ppv + npv - 1  # markedness
 
         keys = ['mcc', 'g1', 'f1', 'acc']
         for key in keys:
