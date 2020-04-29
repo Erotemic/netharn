@@ -977,9 +977,13 @@ class BinaryConfusionVectors(ub.NiceRepr):
         f1_denom[f1_denom == 0] = 1
         info['f1'] =  f1_numer / f1_denom
 
-        tnr = tn / (tn + fp)
+        tnr_denom = (tn + fp)
+        tnr_denom[tnr_denom == 0] = 1
+        tnr = tn / tnr_denom
 
-        npv = tn / (tn + fn)
+        pnv_denom = (tn + fn)
+        pnv_denom[pnv_denom == 0] = 1
+        npv = tn / pnv_denom
 
         info['ppv'] = ppv
 
