@@ -1138,7 +1138,7 @@ class ROC_Result(ub.NiceRepr, DictProxy):
             'catname': self.get('node', None),
         }, nl=0, precision=4, strvals=True)
 
-    def draw(self, **kw):
+    def draw(self, prefix='', **kw):
         """
         Example:
             >>> from netharn.metrics.confusion_vectors import *  # NOQA
@@ -1150,7 +1150,7 @@ class ROC_Result(ub.NiceRepr, DictProxy):
             >>> kwplot.show_if_requested()
         """
         from netharn.metrics import drawing
-        return drawing.draw_roc(self, **kw)
+        return drawing.draw_roc(self, prefix=prefix, **kw)
 
 
 class PR_Result(ub.NiceRepr, DictProxy):
@@ -1181,9 +1181,9 @@ class PR_Result(ub.NiceRepr, DictProxy):
             'catname': self.get('node', None),
         }, nl=0, precision=4, strvals=True)
 
-    def draw(self, **kw):
+    def draw(self, prefix='', **kw):
         from netharn.metrics import drawing
-        return drawing.draw_prcurve(self, **kw)
+        return drawing.draw_prcurve(self, prefix=prefix, **kw)
 
 
 class Threshold_Result(ub.NiceRepr, DictProxy):
@@ -1217,9 +1217,9 @@ class Threshold_Result(ub.NiceRepr, DictProxy):
             'catname': self.get('node', None),
         }, nl=0, precision=4, strvals=True)
 
-    def draw(self, **kw):
+    def draw(self, prefix='', **kw):
         from netharn.metrics import drawing
-        return drawing.draw_threshold_curves(self, **kw)
+        return drawing.draw_threshold_curves(self, prefix=prefix, **kw)
 
 
 class PerClass_ROC_Result(ub.NiceRepr, DictProxy):
@@ -1231,9 +1231,9 @@ class PerClass_ROC_Result(ub.NiceRepr, DictProxy):
     def __nice__(self):
         return ub.repr2(self.proxy, nl=2, strvals=True)
 
-    def draw(self, **kw):
+    def draw(self, prefix='', **kw):
         from netharn.metrics import drawing
-        return drawing.draw_perclass_roc(self, **kw)
+        return drawing.draw_perclass_roc(self, prefix=prefix, **kw)
 
 
 class PerClass_PR_Result(ub.NiceRepr, DictProxy):
@@ -1245,9 +1245,9 @@ class PerClass_PR_Result(ub.NiceRepr, DictProxy):
     def __nice__(self):
         return ub.repr2(self.proxy, nl=2, strvals=True)
 
-    def draw(self, **kw):
+    def draw(self, prefix='', **kw):
         from netharn.metrics import drawing
-        return drawing.draw_perclass_prcurve(self, **kw)
+        return drawing.draw_perclass_prcurve(self, prefix=prefix, **kw)
 
 
 class PerClass_Threshold_Result(ub.NiceRepr, DictProxy):
@@ -1259,7 +1259,7 @@ class PerClass_Threshold_Result(ub.NiceRepr, DictProxy):
     def __nice__(self):
         return ub.repr2(self.proxy, nl=2, strvals=True)
 
-    def draw(self, **kw):
+    def draw(self, prefix='', **kw):
         """
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
@@ -1268,7 +1268,7 @@ class PerClass_Threshold_Result(ub.NiceRepr, DictProxy):
             >>> self = self.threshold_curves()['perclass']
         """
         from netharn.metrics import drawing
-        return drawing.draw_perclass_thresholds(self, **kw)
+        return drawing.draw_perclass_thresholds(self, prefix=prefix, **kw)
 
 
 def _stabalilze_data(y_true, y_score, sample_weight, npad=7):
