@@ -283,13 +283,14 @@ class ConfusionVectors(ub.NiceRepr):
         Transforms cfsn_vecs into one-vs-rest BinaryConfusionVectors for each category.
 
         Args:
-            mode (int): 0 for heirarchy aware or 1 for voc like
-            keyby : can be cx or name
-            ignore_classes (set): category names to ignore
+            mode (int, default=1): 0 for heirarchy aware or 1 for voc like.
+                MODE 0 IS PROBABLY BROKEN
+            keyby (int | str) : can be cx or name
+            ignore_classes (Set[str]): category names to ignore
 
         Returns:
             OneVsRestConfusionVectors: which behaves like
-            Dict[int, BinaryConfusionVectors]: cx_to_binvecs
+                Dict[int, BinaryConfusionVectors]: cx_to_binvecs
 
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
@@ -477,7 +478,10 @@ class OneVsRestConfusionVectors(ub.NiceRepr):
 
     Example:
         >>> # xdoctest: +REQUIRES(module:ndsampler)
-        >>> cfsn_vecs = ConfusionVectors.demo()
+        >>> from netharn.metrics import DetectionMetrics
+        >>> dmet = DetectionMetrics.demo(
+        >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), nclasses=3)
+        >>> cfsn_vecs = dmet.confusion_vectors()
         >>> self = cfsn_vecs.binarize_ovr(keyby='name')
         >>> print('self = {!r}'.format(self))
     """
@@ -488,6 +492,11 @@ class OneVsRestConfusionVectors(ub.NiceRepr):
     def __nice__(self):
         # return ub.repr2(ub.map_vals(len, self.cx_to_binvecs))
         return ub.repr2(self.cx_to_binvecs, strvals=True)
+
+    def demo(cls):
+        cfsn_vecs = ConfusionVectors.demo()
+        self = cfsn_vecs.binarize_ovr(keyby='name')
+        return self
 
     def keys(self):
         return self.cx_to_binvecs.keys()
@@ -525,8 +534,7 @@ class OneVsRestConfusionVectors(ub.NiceRepr):
         """
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
-            >>> cfsn_vecs = ConfusionVectors.demo()
-            >>> self = cfsn_vecs.binarize_ovr(keyby='name')
+            >>> self = OneVsRestConfusionVectors.demo()
             >>> thresh_result = self.threshold_curves()['perclass']
         """
         perclass = PerClass_Threshold_Result({
@@ -1287,3 +1295,11 @@ def _stabalilze_data(y_true, y_score, sample_weight, npad=7):
     y_score = np.hstack([y_score, pad_score])
     sample_weight = np.hstack([sample_weight, pad_weight])
     return y_true, y_score, sample_weight
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python ~/code/netharn/netharn/metrics/confusion_vectors.py all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

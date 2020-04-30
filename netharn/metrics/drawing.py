@@ -389,3 +389,11 @@ def draw_threshold_curves(info, keys=None, prefix='', fnum=1, **kw):
         color = idx_to_colors[idx]
         ax.plot(best_thresh, best_measure, '*', color=color)
     return ax
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python ~/code/netharn/netharn/metrics/drawing.py
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
