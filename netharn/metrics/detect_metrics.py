@@ -134,7 +134,7 @@ class DetectionMetrics(ub.NiceRepr):
 
     def confusion_vectors(dmet, ovthresh=0.5, bias=0, gids=None, compat='all',
                           prioritize='iou', ignore_classes='ignore',
-                          verbose='auto', workers=0):
+                          background_class=ub.NoParam, verbose='auto', workers=0):
         """
         Assigns predicted boxes to the true boxes so we can transform the
         detection problem into a classification problem for scoring.
@@ -172,6 +172,11 @@ class DetectionMetrics(ub.NiceRepr):
             ignore_classes (set, default={'ignore'}):
                 class names indicating ignore regions
 
+            background_class (str, default=ub.NoParam):
+                Name of the background class. If unspecified we try to
+                determine it with heuristics. A value of None means there is no
+                background class.
+
             verbose (int, default='auto'): verbosity flag. In auto mode,
                 verbose=1 if len(gids) > 1000.
 
@@ -194,11 +199,26 @@ class DetectionMetrics(ub.NiceRepr):
         if verbose == 'auto':
             verbose = 1 if len(gids) > 10 else 0
 
+        if background_class is ub.NoParam:
+            # Try to autodetermine background class name,
+            # otherwise fallback to None
+            background_class = None
+            if dmet.classes is not None:
+                lower_classes = [c.lower() for c in dmet.classes]
+                try:
+                    idx = lower_classes.index('background')
+                    background_class = dmet.classes[idx]
+                    # TODO: if we know the background class name should we
+                    # change bg_cidx in assignment?
+                except ValueError:
+                    pass
+
         from ndsampler.utils import util_futures
         workers = 0
         jobs = util_futures.JobPool(mode='process', max_workers=workers)
 
-        for gid in ub.ProgIter(gids, desc='submit assign detection jobs', verbose=verbose):
+        for gid in ub.ProgIter(gids, desc='submit assign jobs',
+                               verbose=verbose):
             true_dets = dmet.true_detections(gid)
             pred_dets = dmet.pred_detections(gid)
             job = jobs.submit(
@@ -208,8 +228,8 @@ class DetectionMetrics(ub.NiceRepr):
                 ignore_classes=ignore_classes)
             job.gid = gid
 
-        # for job in ub.ProgIter(jobs.as_completed(), total='assign detections', verbose=verbose):
-        for job in ub.ProgIter(jobs.jobs, desc='assign detections', verbose=verbose):
+        for job in ub.ProgIter(jobs.jobs, desc='assign detections',
+                               verbose=verbose):
             y = job.result()
             gid = job.gid
 
@@ -221,16 +241,18 @@ class DetectionMetrics(ub.NiceRepr):
                 except KeyError:
                     TRACK_PROBS = False
                 else:
-                    import xdev
-                    with xdev.embed_on_exception_context:
-                        pxs = np.array(y['pxs'], dtype=np.int)
-                        flags = pxs > -1
-                        probs = np.zeros((len(pxs), pred_probs.shape[1]),
-                                         dtype=np.float32)
-                        bg_idx = dmet.classes.node_to_idx['background']
+                    pxs = np.array(y['pxs'], dtype=np.int)
+
+                    # For unassigned truths, we need to create dummy probs
+                    # where a background class has probability 1.
+                    flags = pxs > -1
+                    probs = np.zeros((len(pxs), pred_probs.shape[1]),
+                                     dtype=np.float32)
+                    if background_class is not None:
+                        bg_idx = dmet.classes.index(background_class)
                         probs[:, bg_idx] = 1
-                        probs[flags] = pred_probs[pxs[flags]]
-                        prob_accum.append(probs)
+                    probs[flags] = pred_probs[pxs[flags]]
+                    prob_accum.append(probs)
 
             y['gid'] = [gid] * len(y['pred'])
             for k, v in y.items():
