@@ -195,6 +195,7 @@ class DetectionMetrics(ub.NiceRepr):
             verbose = 1 if len(gids) > 10 else 0
 
         from ndsampler.utils import util_futures
+        workers = 0
         jobs = util_futures.JobPool(mode='process', max_workers=workers)
 
         for gid in ub.ProgIter(gids, desc='submit assign detection jobs', verbose=verbose):
@@ -220,14 +221,16 @@ class DetectionMetrics(ub.NiceRepr):
                 except KeyError:
                     TRACK_PROBS = False
                 else:
-                    pxs = np.array(y['pxs'], dtype=np.int)
-                    flags = pxs > -1
-                    probs = np.zeros((len(pxs), pred_probs.shape[1]),
-                                     dtype=np.float32)
-                    bg_idx = dmet.classes.node_to_idx['background']
-                    probs[:, bg_idx] = 1
-                    probs[flags] = pred_probs[pxs[flags]]
-                    prob_accum.append(probs)
+                    import xdev
+                    with xdev.embed_on_exception_context:
+                        pxs = np.array(y['pxs'], dtype=np.int)
+                        flags = pxs > -1
+                        probs = np.zeros((len(pxs), pred_probs.shape[1]),
+                                         dtype=np.float32)
+                        bg_idx = dmet.classes.node_to_idx['background']
+                        probs[:, bg_idx] = 1
+                        probs[flags] = pred_probs[pxs[flags]]
+                        prob_accum.append(probs)
 
             y['gid'] = [gid] * len(y['pred'])
             for k, v in y.items():
