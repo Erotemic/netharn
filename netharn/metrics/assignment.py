@@ -383,7 +383,7 @@ def _critical_loop(true_dets, pred_dets, iou_lookup, isvalid_lookup,
             # If the prediction is a finer-grained category than the truth
             # change the prediction to match the truth (because it is
             # compatible). This is the key to hierarchical scoring.
-            if true_cx in cx_to_ancestors[pred_cx]:
+            if pred_cx is not None and true_cx in cx_to_ancestors[pred_cx]:
                 pred_cx = true_cx
 
             y_pred_raw.append(raw_pred_cx)
