@@ -297,7 +297,10 @@ class DetectionMetrics(ub.NiceRepr):
                 kw['dtype'] = np.float32
             if k in {'pxs', 'txs', 'gid', 'pred', 'true', 'pred_raw'}:
                 kw['dtype'] = np.int32
-            _data[k] = np.asarray(v, **kw)
+            try:
+                _data[k] = np.asarray(v, **kw)
+            except TypeError:
+                _data[k] = np.asarray(v)
 
         # Avoid pandas when possible
         cfsn_data = kwarray.DataFrameArray(_data)
@@ -435,7 +438,8 @@ class DetectionMetrics(ub.NiceRepr):
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> dmet = DetectionMetrics.demo(
-            >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1), nclasses=8, score_noise=.5)
+            >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1), nclasses=8,
+            >>>     score_noise=.5)
             >>> print(dmet.score_voc()['mAP'])
             0.9399...
         """
@@ -576,6 +580,11 @@ class DetectionMetrics(ub.NiceRepr):
             cls_noise (float, default=0): probability that a class label will
                 change. Must be within 0 and 1.
             anchors (ndarray, default=None): used to create random boxes
+            null_pred (bool, default=0):
+                if True, predicted classes are returned as null, which means
+                only localization scoring is suitable.
+            with_probs (bool, default=1):
+                if True, includes per-class probabilities with predictions
 
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
@@ -598,6 +607,27 @@ class DetectionMetrics(ub.NiceRepr):
             <Detections(4)>
             >>> print(dmet.pred_detections(gid=0))
             <Detections(7)>
+
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> # Test case with null predicted categories
+            >>> dmet = DetectionMetrics.demo(nimgs=30, null_pred=1, nclasses=3,
+            >>>                              nboxes=10, n_fp=10, box_noise=0.3,
+            >>>                              with_probs=False)
+            >>> dmet.gid_to_pred_dets[0].data
+            >>> dmet.gid_to_true_dets[0].data
+            >>> cfsn_vecs = dmet.confusion_vectors()
+            >>> binvecs_ovr = cfsn_vecs.binarize_ovr()
+            >>> binvecs_per = cfsn_vecs.binarize_peritem()
+            >>> pr_per = binvecs_per.precision_recall()
+            >>> pr_ovr = binvecs_ovr.precision_recall()
+            >>> print('pr_per = {!r}'.format(pr_per))
+            >>> print('pr_ovr = {!r}'.format(pr_ovr))
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> pr_per.draw(fnum=1)
+            >>> pr_ovr['perclass'].draw(fnum=2)
         """
         import kwimage
         import kwarray
@@ -608,6 +638,9 @@ class DetectionMetrics(ub.NiceRepr):
         nimgs = kwargs.get('nimgs', 1)
         box_noise = kwargs.get('box_noise', 0)
         cls_noise = kwargs.get('cls_noise', 0)
+
+        null_pred = kwargs.get('null_pred', False)
+        with_probs = kwargs.get('with_probs', True)
 
         # specify an amount of overlap between true and false scores
         score_noise = kwargs.get('score_noise', 0.2)
@@ -644,8 +677,10 @@ class DetectionMetrics(ub.NiceRepr):
         true_mean  = _interp(0.5, .8, score_noise)
         false_mean = _interp(0.5, .2, score_noise)
 
-        true_score_RV = distributions.TruncNormal(mean=true_mean, std=.5, low=true_low, high=true_high, rng=rng)
-        false_score_RV = distributions.TruncNormal(mean=false_mean, std=.5, low=0, high=false_high, rng=rng)
+        true_score_RV = distributions.TruncNormal(
+            mean=true_mean, std=.5, low=true_low, high=true_high, rng=rng)
+        false_score_RV = distributions.TruncNormal(
+            mean=false_mean, std=.5, low=0, high=false_high, rng=rng)
 
         frgnd_cx_RV = distributions.DiscreteUniform(
             1, nclasses + 1, rng=rng)
@@ -734,7 +769,12 @@ class DetectionMetrics(ub.NiceRepr):
                                            scores=pred_scores)
 
             # Hack in the probs
-            pred_dets.data['probs'] = class_probs
+            if with_probs:
+                pred_dets.data['probs'] = class_probs
+
+            if null_pred:
+                pred_dets.data['class_idxs'] = np.array(
+                    [None] * len(pred_dets), dtype=object)
 
             dmet.add_truth(true_dets, imgname=imgname)
             dmet.add_predictions(pred_dets, imgname=imgname)
