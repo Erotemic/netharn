@@ -14,6 +14,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Added basic classification example that works on generic coco datasets
 * Threshold curves to ConfusionVector metrics
 
+### Fixed
+* Fixed bug in XPU auto mode which caused it always to choose GPU 0.
+
 
 ## Version 0.5.6 - Released 2020-04-16
 
