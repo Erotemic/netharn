@@ -408,7 +408,6 @@ class XPU(ub.NiceRepr):
             }
 
         """
-        gpus = gpu_info()
         info = {
             'available': 0,
             'total': 0,
@@ -427,10 +426,11 @@ class XPU(ub.NiceRepr):
             info['used'] += tup.used * MB
             info['available'] += tup.available * MB
         else:
-            for id in self._device_ids:
-                info['total'] += gpus[id]['mem_total']
-                info['used'] += gpus[id]['mem_used']
-                info['available'] += gpus[id]['mem_avail']
+            gpus = gpu_info()
+            for index in self._device_ids:
+                info['total'] += gpus[index]['mem_total']
+                info['used'] += gpus[index]['mem_used']
+                info['available'] += gpus[index]['mem_avail']
         return info
 
     def __str__(xpu):
