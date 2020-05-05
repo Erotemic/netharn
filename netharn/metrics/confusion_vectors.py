@@ -493,6 +493,7 @@ class OneVsRestConfusionVectors(ub.NiceRepr):
         # return ub.repr2(ub.map_vals(len, self.cx_to_binvecs))
         return ub.repr2(self.cx_to_binvecs, strvals=True)
 
+    @classmethod
     def demo(cls):
         cfsn_vecs = ConfusionVectors.demo()
         self = cfsn_vecs.binarize_ovr(keyby='name')
@@ -1265,7 +1266,8 @@ class PerClass_Threshold_Result(ub.NiceRepr, DictProxy):
             >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> cfsn_vecs = ConfusionVectors.demo()
             >>> ovr_cfsn = cfsn_vecs.binarize_ovr(keyby='name')
-            >>> self = self.threshold_curves()['perclass']
+            >>> self = ovr_cfsn.threshold_curves()['perclass']
+            >>> self.draw()
         """
         from netharn.metrics import drawing
         return drawing.draw_perclass_thresholds(self, prefix=prefix, **kw)
