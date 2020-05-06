@@ -91,7 +91,7 @@ def draw_perclass_roc(cx_to_rocinfo, classes=None, prefix='', fnum=1,
             if abs(z - int(z)) < 1e-8:
                 label = 'auc={:0.2f}: {} ({:d}/{:d})'.format(auc, catname, int(peritem['realpos_total']), round(nsupport, 2))
             else:
-                label = 'auc={:0.2f}: {} ({}/{:d})'.format(auc, catname, round(peritem['realpos_total'], 2), round(nsupport, 2))
+                label = 'auc={:0.2f}: {} ({:.2f}/{:d})'.format(auc, catname, round(peritem['realpos_total'], 2), round(nsupport, 2))
         else:
             label = 'auc={:0.2f}: {} ({:d})'.format(auc, catname, round(nsupport, 2))
 
@@ -168,7 +168,7 @@ def draw_perclass_prcurve(cx_to_peritem, classes=None, prefix='', fnum=1, **kw):
             if abs(z - int(z)) < 1e-8:
                 label = 'ap={:0.2f}: {} ({:d}/{:d})'.format(ap, catname, int(peritem['realpos_total']), round(nsupport, 2))
             else:
-                label = 'ap={:0.2f}: {} ({}/{:d})'.format(ap, catname, round(peritem['realpos_total'], 2), round(nsupport, 2))
+                label = 'ap={:0.2f}: {} ({:.2f}/{:d})'.format(ap, catname, round(peritem['realpos_total'], 2), round(nsupport, 2))
         else:
             label = 'ap={:0.2f}: {} ({:d})'.format(ap, catname, round(nsupport, 2))
         xydata[label] = (recall, precision)
@@ -242,7 +242,7 @@ def draw_perclass_thresholds(cx_to_peritem, key='mcc', classes=None, prefix='', 
             if abs(z - int(z)) < 1e-8:
                 label = '{}: {} ({:d}/{:d})'.format(best_label, catname, int(peritem['realpos_total']), round(nsupport, 2))
             else:
-                label = '{}: {} ({}/{:d})'.format(best_label, catname, round(peritem['realpos_total'], 2), round(nsupport, 2))
+                label = '{}: {} ({:.2f}/{:d})'.format(best_label, catname, round(peritem['realpos_total'], 2), round(nsupport, 2))
         else:
             label = '{}: {} ({:d})'.format(best_label, catname, round(nsupport, 2))
         xydata[label] = (thresholds, measure)
@@ -307,7 +307,7 @@ def draw_prcurve(peritem, prefix='', fnum=1, **kw):
         if abs(z - int(z)) < 1e-8:
             label = 'ap={:0.2f}: ({:d}/{:d})'.format(ap, int(peritem['realpos_total']), round(nsupport, 2))
         else:
-            label = 'ap={:0.2f}: ({}/{:d})'.format(ap, round(peritem['realpos_total'], 2), round(nsupport, 2))
+            label = 'ap={:0.2f}: ({:.2f}/{:d})'.format(ap, round(peritem['realpos_total'], 2), round(nsupport, 2))
     else:
         label = 'ap={:0.2f}: ({:d})'.format(ap, nsupport)
 
@@ -368,7 +368,7 @@ def draw_threshold_curves(info, keys=None, prefix='', fnum=1, **kw):
             if abs(z - int(z)) < 1e-8:
                 label = '{}: ({:d}/{:d})'.format(best_label, int(info['realpos_total']), round(nsupport, 2))
             else:
-                label = '{}: ({}/{:d})'.format(best_label, round(info['realpos_total'], 2), round(nsupport, 2))
+                label = '{}: ({:.2f}/{:d})'.format(best_label, round(info['realpos_total'], 2), round(nsupport, 2))
         else:
             label = '{}: ({:d})'.format(best_label, nsupport)
         xydata[label] = (thresh, measure)
