@@ -17,7 +17,12 @@ from netharn.data.channel_spec import ChannelSpec
 
 class ClfConfig(scfg.Config):
     """
-    This is the default configuration for running the classification example
+    This is the default configuration for running the classification example.
+
+    Instances of this class behave like a dictionary. However, they can also be
+    specified on the command line, via kwargs, or by pointing to a YAML/json
+    file. See :module:``scriptconfig`` for details of how to use
+    :class:`scriptconfig.Config` objects.
     """
     default = {
         'name': scfg.Value('clf_example', help='A human readable tag that is "name" for humans'),
@@ -72,10 +77,23 @@ class ClfConfig(scfg.Config):
 
 class ClfModel(nh.layers.Module):
     """
+    A simple pytorch classification model.
+
+    Note what I consider as "reproducibility" conventions present in this
+        model:
+
+        (1) classes can be specified as a list of class names (or
+            technically anything that is :class:`ndsampler.CategoryTree`
+            coercible)
+
+        (2) The inputs and outputs to the network are dictionaries with
+            keys hinting at the proper interpretation of the values.
+
 
     Example:
         >>> from netharn.examples.classification import *  # NOQA
-        >>> self = ClfModel(channels='gray', classes=3)
+        >>> classes = ['a', 'b', 'c']
+        >>> self = ClfModel(channels='gray', classes=classes)
         >>> inputs = torch.rand(4, 1, 256, 256)
         >>> outputs = self(inputs)
         >>> self.coder.decode_batch(outputs)
@@ -118,8 +136,21 @@ class ClfModel(nh.layers.Module):
         self.coder = ClfCoder(self.classes)
 
     def forward(self, inputs):
+        """
+        Args:
+            inputs (Tensor | dict): Either the input images  (as a regulary
+                pytorch BxCxHxW Tensor) or a dictionary mapping input
+                modalities to the input imges.
+
+        Returns:
+             Dict[str, Tensor]: model output wrapped in a dictionary so its
+                 clear what the return type is. In this case "energy" is class
+                 probabilities **before** softmax / normalization is applied.
+        """
         if isinstance(inputs, dict):
-            assert len(inputs) == 1
+            # TODO: handle channel modalities later
+            assert len(inputs) == 1, (
+                'only support one value channel mode now')
             im = ub.peek(inputs.values())
         else:
             im = inputs
@@ -440,10 +471,16 @@ class ClfHarn(nh.FitHarn):
             It is ok to do some medium lifting in this function because it is
             run relatively few times.
 
+        Returns:
+            dict: dictionary of scalar metrics for netharn to log
+
+        CommandLine:
+            xdoctest -m netharn.examples.classification ClfHarn.on_epoch
+
         Example:
-            >>> # xdoctest: +REQUIRES(--download)
             >>> harn = setup_harn().initialize()
-            >>> harn._demo_epoch('vali')
+            >>> harn._demo_epoch('vali', max_iter=10)
+            >>> harn.on_epoch()
         """
         from netharn.metrics import clf_report
         dset = harn.datasets[harn.current_tag]
@@ -495,6 +532,19 @@ class ClfHarn(nh.FitHarn):
 
 def setup_harn(cmdline=True, **kw):
     """
+    Args:
+        cmdline (bool, default=True):
+            if True, respects command line flags if specified.
+            Note this will activate ``--help`` interaction.
+
+    Kwargs:
+        **kw: the overrides the default config for :class:`ClfConfig`.
+            Note, command line flags have precidence if cmdline=True.
+
+    Returns:
+        ClfHarn: a fully-defined, but uninitialized custom :class:`FitHarn`
+            object.
+
     Example:
         >>> # xdoctest: +SKIP
         >>> kw = {'datasets': 'special:shapes256'}
