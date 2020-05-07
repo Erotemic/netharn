@@ -160,6 +160,7 @@ class ConfusionVectors(ub.NiceRepr):
         else:
             y_pred = data['pred'].copy()
 
+        # FIXME: hard-coded background class
         if 'background' in cfsn_vecs.classes:
             bg_idx = cfsn_vecs.classes.index('background')
             y_true[y_true < 0] = bg_idx
