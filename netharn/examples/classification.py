@@ -61,9 +61,9 @@ class ClfConfig(scfg.Config):
         'decay':  scfg.Value(1e-5, help='Base weight decay'),
         'schedule': scfg.Value(
             'step90-120', help=(
-                'Special coercable netharn code. Eg: onecycle50, step50, gamma')),
+                'Special coercible netharn code. Eg: onecycle50, step50, gamma')),
 
-        'init': scfg.Value('kaiming_normal', help='How to initialized weights. (can be a path to a pretrained model)'),
+        'init': scfg.Value('noop', help='How to initialized weights: e.g. noop, kaiming_normal, path-to-a-pretrained-model)'),
         'pretrained': scfg.Path(help=('alternative way to specify a path to a pretrained model')),
     }
 
@@ -123,6 +123,9 @@ class ClfModel(nh.layers.Module):
             = <class-probs>``. Or maybe you return the logits, so return
             ``outputs['class_logits'``. This is far easier to use than
             returning tuples of data. </rant over>
+
+        (5) A coder that performs postprocessing on batch outputs to
+            obtain a useable form for the predictions.
 
     Example:
         >>> from netharn.examples.classification import *  # NOQA
@@ -191,7 +194,7 @@ class ClfModel(nh.layers.Module):
         if isinstance(inputs, dict):
             # TODO: handle channel modalities later
             assert len(inputs) == 1, (
-                'only support one value channel mode now')
+                'only support one fused stream: e.g. rgb for now ')
             im = ub.peek(inputs.values())
         else:
             im = inputs
@@ -206,7 +209,9 @@ class ClfModel(nh.layers.Module):
 
 class ClfCoder(object):
     """
-    classifier coder, todo: expand
+    The coder take the output of the classifier and transforms it into a
+    standard format. Currently there is no standard "classification" format
+    that I use other than a dictionary with special keys.
     """
     def __init__(self, classes):
         self.classes = classes
@@ -230,6 +235,11 @@ class ClfDataset(torch.utils.data.Dataset):
     """
     Efficient loader for classification training on coco samplers.
 
+    This is a normal torch dataset that uses :module:`ndsampler` and
+    :module:`imgaug` for data loading an augmentation.
+
+    It also contains a ``make_loader`` method for creating a class balanced
+    DataLoader. There is little netharn-specific about this class.
 
     Example:
         >>> import ndsampler
@@ -388,6 +398,12 @@ class ClfDataset(torch.utils.data.Dataset):
 
 class ClfHarn(nh.FitHarn):
     """
+    The Classification Harness
+    ==========================
+
+    The concept of a "Harness" at the core of netharn.  This our custom
+    :class:`netharn.FitHarn` object for a classification problem.
+
     The Harness provides the important details to the training loop via the
     `run_batch` method. The rest of the loop boilerplate is taken care of by
     `nh.FitHarn` internals. In addition to `run_batch`, we also define several
@@ -573,14 +589,26 @@ class ClfHarn(nh.FitHarn):
 
 def setup_harn(cmdline=True, **kw):
     """
+    This creates the "The Classification Harness" (i.e. core ClfHarn object).
+    This is where we programmatically connect our program arguments with the
+    netharn HyperParameter standards. We are using :module:`scriptconfig` to
+    capture these, but you could use click / argparse / etc.
+
+    This function has the responsibility of creating our torch datasets,
+    lazy computing input statistics, specifying our model architecture,
+    schedule, initialization, optimizer, dynamics, XPU etc. These can usually
+    be coerced using netharn API helpers and a "standardized" config dict. See
+    the function code for details.
+
     Args:
         cmdline (bool, default=True):
-            if True, respects command line flags if specified.
-            Note this will activate ``--help`` interaction.
+            if True, behavior will be modified based on ``sys.argv``.
+            Note this will activate the scriptconfig ``--help``, ``--dump`` and
+            ``--config`` interactions.
 
     Kwargs:
         **kw: the overrides the default config for :class:`ClfConfig`.
-            Note, command line flags have precidence if cmdline=True.
+            Note, command line flags have precedence if cmdline=True.
 
     Returns:
         ClfHarn: a fully-defined, but uninitialized custom :class:`FitHarn`
@@ -750,6 +778,10 @@ def setup_harn(cmdline=True, **kw):
 
 
 def main():
+    """
+    Main function for the generic classification example with an undocumented
+    hack for the lrtest.
+    """
     harn = setup_harn()
     harn.initialize()
 
