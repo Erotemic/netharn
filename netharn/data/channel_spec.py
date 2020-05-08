@@ -72,7 +72,7 @@ class ChannelSpec(ub.NiceRepr):
         >>>     print('sizes = {!r}'.format(sizes))
         >>>     print('self.info = {}'.format(ub.repr2(self.info, nl=1)))
         >>>     #
-        >>>     item = self._demo_item((3, 5), rng=0)
+        >>>     item = self._demo_item((1, 1), rng=0)
         >>>     inputs = self.encode(item)
         >>>     components = self.decode(inputs)
         >>>     input_shapes = ub.map_vals(lambda x: x.shape, inputs)

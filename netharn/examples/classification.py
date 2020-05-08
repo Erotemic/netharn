@@ -1,6 +1,47 @@
 # -*- coding: utf-8 -*-
 """
 This is a simple generalized harness for training a classifier on a coco dataset.
+
+Given a COCO-style dataset data (you can create a sample coco dataset using the
+kwcoco CLI), this module trains a classifier on chipped regions denoted by the
+coco annotations. These chips are cropped from the image and resized to the
+specified ``input_dims``. The default network architecture is resnet50. Other
+settings like augmentation, learning rate, batch size, etc can all be specified
+via the command line, a config file, or a Python dictionary (see
+:class:`ClfConfig` for all available arguments).
+
+For details see the other docstrings in this file and / or try running
+yourself.
+
+.. code-block:: bash
+
+    # Install netharn
+    # pip3 install netharn   # TODO: uncomment once 0.5.7 is live
+    pip3 install git+https://gitlab.kitware.com/computer-vision/netharn.git@dev/0.5.7
+
+    # Install kwcoco and autogenerate a image toy datasets
+    pip3 install kwcoco
+    kwcoco toydata --dst ./toydata_train.json --key shapes1024
+    kwcoco toydata --dst ./toydata_vali.json --key shapes128  # optional
+    kwcoco toydata --dst ./toydata_test.json --key shapes256  # optional
+
+    # Train a classifier on your dataset
+    python3 -m netharn.examples.classification \
+        --name="My Classification Example" \
+        --train_dataset=./toydata_train.json \
+        --vali_dataset=./toydata_vali.json \
+        --test_dataset=./toydata_test.json \
+        --input_dims=224,244 \
+        --batch_size=32 \
+        --max_epoch=100 \
+        --patience=40 \
+        --xpu=gpu0 \
+        --schedule=ReduceLROnPlateau-p10-c10 \
+        --augmenter=medium \
+        --lr=1e-3
+
+# TODO: describe what the output of this should look like.
+
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 from os.path import join
@@ -52,7 +93,7 @@ class ClfConfig(scfg.Config):
         'augmenter': scfg.Value('simple', help='type of training dataset augmentation'),
 
         'batch_size': scfg.Value(3, help='number of items per batch'),
-        'num_batches': scfg.Value('auto', help='Number of batches per epoch'),
+        'num_batches': scfg.Value('auto', help='Number of batches per epoch (mainly for balanced batch sampling)'),
 
         'max_epoch': scfg.Value(140, help='Maximum number of epochs'),
         'patience': scfg.Value(140, help='Maximum "bad" validation epochs before early stopping'),
@@ -61,7 +102,7 @@ class ClfConfig(scfg.Config):
         'decay':  scfg.Value(1e-5, help='Base weight decay'),
         'schedule': scfg.Value(
             'step90-120', help=(
-                'Special coercible netharn code. Eg: onecycle50, step50, gamma')),
+                'Special coercible netharn code. Eg: onecycle50, step50, gamma, ReduceLROnPlateau-p10-c10')),
 
         'init': scfg.Value('noop', help='How to initialized weights: e.g. noop, kaiming_normal, path-to-a-pretrained-model)'),
         'pretrained': scfg.Path(help=('alternative way to specify a path to a pretrained model')),
