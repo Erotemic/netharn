@@ -84,16 +84,57 @@ class ClfModel(nh.layers.Module):
 
         (1) classes can be specified as a list of class names (or
             technically anything that is :class:`ndsampler.CategoryTree`
-            coercible)
+            coercible). This helps anyone with your pretrained model to
+            understand what its predicting.
 
-        (2) The inputs and outputs to the network are dictionaries with
+        (2) The expected input channels are specified, as a
+            :class:`netharn.data.ChannelSpec` coercible (e.g. a number, a
+            code like "rgb" or "rgb|disparity", or a dict like structure)
+
+            # TODO: properly define the dict structure, for now just use
+            # strings.
+
+        (3) The input statistics are specified as a dict and applied at runtime
+
+            {
+                'mean': <tensor to subtract>,
+                'std': <tensor to divide by>,
+            }
+
+            This means you don't have to remember these values when loading
+            data at test time, the network remembers them instead.
+
+            # TODO: this has to be better rectified with channel specifications
+            # for now assume only one early fused stream like rgb.
+
+        (4) The inputs and outputs to the network are dictionaries with
             keys hinting at the proper interpretation of the values.
 
+            The inputs provide a mapping from channel spec keys to early-fused
+            tensors, which can be used in specific ways (e.g. to connect input
+            rgb and disparity signals into late fused network components).
+
+            The outputs provide a mapping to whatever type of output you want
+            to provide. DONT JUST RETURN A SOMETIMES TUPLE OF LOSS AND OUTPUTS
+            IN SOME RANDOM FORMAT! Instead if your network sometimes returns
+            loss then sometimes add the value ``outputs['loss'] = <your
+            loss>``.  And maybe you do some decoding of the outputs to
+            probabilities, in that case add the value ``outputs['class_probs']
+            = <class-probs>``. Or maybe you return the logits, so return
+            ``outputs['class_logits'``. This is far easier to use than
+            returning tuples of data. </rant over>
 
     Example:
         >>> from netharn.examples.classification import *  # NOQA
         >>> classes = ['a', 'b', 'c']
-        >>> self = ClfModel(channels='gray', classes=classes)
+        >>> input_stats = {
+        >>>     'mean': torch.Tensor([[[0.1]], [[0.2]], [[0.2]]]),
+        >>>     'std': torch.Tensor([[[0.3]], [[0.3]], [[0.3]]]),
+        >>> }
+        >>> channels = 'rgb'
+        >>> self = ClfModel(
+        >>>     arch='resnet50', channels=channels,
+        >>>     input_stats=input_stats, classes=classes)
         >>> inputs = torch.rand(4, 1, 256, 256)
         >>> outputs = self(inputs)
         >>> self.coder.decode_batch(outputs)
