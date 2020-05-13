@@ -21,8 +21,8 @@ class ChannelSpec(ub.NiceRepr):
 
     Example:
         >>> # Integer spec
-        >>> ChannelSpec.coerce(3).normalize()
-        <ChannelSpec(3) ....>
+        >>> ChannelSpec.coerce(3)
+        <ChannelSpec(u0|u1|u2) ...>
 
         >>> # single mode spec
         >>> ChannelSpec.coerce('rgb')
@@ -312,3 +312,12 @@ class ChannelSpec(ub.NiceRepr):
                 components[part] = component
                 idx1 = idx2
         return components
+
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python ~/code/netharn/netharn/data/channel_spec.py all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
