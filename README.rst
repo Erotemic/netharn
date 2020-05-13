@@ -130,7 +130,6 @@ Features (continued)
   ``kwplot``. 
 
 
-
 Installation
 ============
 
