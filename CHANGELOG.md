@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 * `harn.deploy_fpath` is now populated when the model is deployed.
+* Improved docs on `netharn/data/toydata.py`
 
 ### Added
 * Ported experimental `ChannelSpec` and `DataContainser` from bioharn to netharn.data.
