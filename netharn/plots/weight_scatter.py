@@ -13,13 +13,15 @@ def plot_weight_scatter(harn):
         >>> harn.run()
 
     Ignore:
+        >>> from netharn.plots.weight_scatter import *  # NOQA
         >>> from netharn.examples import mnist
         >>> import kwplot
-        >>> kwplot.autompl(force='agg')
-        >>> kwplot.set_mpl_backend('agg')
         >>> harn = mnist.setup_harn()
-        >>> harn.preferences['eager_dump_tensorboard'] = 0
+        >>> harn.preferences['timeout'] = 60 * 1
+        >>> kwplot.autompl(force='agg')
         >>> harn.run()
+        >>> kwplot.autompl(force='auto')
+        >>> plot_weight_scatter(harn)
     """
     import netharn as nh
     cpu = nh.XPU.coerce('cpu')
@@ -53,19 +55,23 @@ def plot_weight_scatter(harn):
     # Find cosine of angle between the vectors
     import scipy
     cosangle = scipy.spatial.distance.cosine(points1, points2)
+    print('cosangle = {!r}'.format(cosangle))
 
     import kwplot
-    plt = kwplot.autoplt()
-
     import seaborn
+    seaborn.set()
+    plt = kwplot.autoplt()
+    plt.clf()
+
     x = points1[::1]
     y = points2[::1]
 
     ax = plt.gca()
     ax.figure.clf()
 
-    # seaborn.kdeplot(x, y, shade=True, gridsize=20)
+    # seaborn.kdeplot(x, y, shade=True, gridsize=50)
+
     ax = plt.gca()
-    ax.scatter(x, y, s=3, alpha=0.5, c='orange')
+    ax.scatter(x, y, s=1, alpha=0.1, c='blue')
     ax.set_xlabel('initial weights')
     ax.set_ylabel('trained weights')
