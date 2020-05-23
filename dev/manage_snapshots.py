@@ -139,13 +139,13 @@ def session_info(dpath):
     dpath = realpath(dpath)
 
     if True:
-        # Determine if we are pointed to by a nice directory or not
-        nice = basename(dirname(dpath))
-        info['nice'] = nice
+        # Determine if we are pointed to by a "name" directory or not
+        name = basename(dirname(dpath))
+        info['name'] = name
         fitdir = dirname(dirname(dirname(dpath)))
-        nice_dpath = join(fitdir, 'nice', nice)
+        name_dpath = join(fitdir, 'name', name)
         try:
-            target = realpath(ub.util_links._readlink(nice_dpath))
+            target = realpath(ub.util_links._readlink(name_dpath))
         except Exception:
             target = None
         info['linked'] = (target == dpath)
@@ -206,10 +206,10 @@ def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
         else:
             session['decision'] = 'good'
 
-    nice_groups = ub.group_items(all_sessions, lambda x: x['nice'])
+    nice_groups = ub.group_items(all_sessions, lambda x: x['name'])
 
-    for nice, group in nice_groups.items():
-        print(' --- {} --- '.format(nice))
+    for name, group in nice_groups.items():
+        print(' --- {} --- '.format(name))
         group = sorted(group, key=lambda x: x['size'])
         group_ = copy.deepcopy(group)
         for item in group_:
@@ -218,12 +218,12 @@ def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
             item['size'] = byte_str(item['size'])
         print(ub.repr2(group_, nl=1))
 
-    # Partion your "nice" sessions into broken and live symlinks.
+    # Partion your "name" sessions into broken and live symlinks.
     # For each live link remember what the real path is.
     broken_links = []
-    nice_dpath = join(workdir, 'fit', 'nice')
-    for dname in os.listdir(nice_dpath):
-        dpath = join(nice_dpath, dname)
+    name_dpath = join(workdir, 'fit', 'name')
+    for dname in os.listdir(name_dpath):
+        dpath = join(name_dpath, dname)
         if is_symlink_broken(dpath):
             broken_links.append(dpath)
 

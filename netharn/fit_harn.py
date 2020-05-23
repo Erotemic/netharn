@@ -50,7 +50,7 @@ Example:
     >>>     'name'        : 'demo',
     >>>     'xpu'         : nh.XPU.coerce('argv'),
     >>>     # workdir is a directory where intermediate results can be saved
-    >>>     # nice symlinks <workdir>/fit/nice/<name> -> ../runs/<hashid>
+    >>>     # name symlinks <workdir>/fit/name/<name> -> ../runs/<hashid>
     >>>     # XPU auto select a gpu if idle and VRAM>6GB else a cpu
     >>>     # ================
     >>>     # Data Components
@@ -93,7 +93,7 @@ Example:
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
     >>> # xdoc: +IGNORE_WANT
     RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR
-    Symlink: ...tests/demo/fit/runs/demo/keyeewlr -> ...tests/demo/fit/nice/demo
+    Symlink: ...tests/demo/fit/runs/demo/keyeewlr -> ...tests/demo/fit/name/demo
     .... already exists
     .... and points to the right place
     Initializing tensorboard (dont forget to start the tensorboard server)
@@ -101,10 +101,10 @@ Example:
     Mounting ToyNet2d model on CPU
     Initializing model weights
      * harn.train_dpath = '...tests/demo/fit/runs/demo/keyeewlr'
-     * harn.nice_dpath  = '...tests/demo/fit/nice/demo'
+     * harn.name_dpath  = '...tests/demo/fit/name/demo'
     Snapshots will save to harn.snapshot_dpath = '...tests/demo/fit/runs/demo/keyeewlr/torch_snapshots'
     dont forget to start:
-        tensorboard --logdir ...tests/demo/fit/nice
+        tensorboard --logdir ...tests/demo/fit/name
     === begin training ===
     epoch lr:0.001 │ vloss: 0.1409 (n_bad_epochs=00, best=0.1409): 100%|█| 10/10 [00:01<00:00,  9.95it/s]  0:00<?, ?it/s]
     train x64 │ loss:0.147 │: 100%|███████████████████████████████████████████████████████| 8/8 [00:00<00:00, 130.56it/s]
@@ -116,9 +116,9 @@ Example:
     training completed
     current lrs: [0.001]
     harn.train_dpath = '...tests/demo/fit/runs/demo/keyeewlr'
-    harn.nice_dpath  = '...tests/demo/fit/nice/demo'
+    harn.name_dpath  = '...tests/demo/fit/name/demo'
     view tensorboard results for this run via:
-        tensorboard --logdir ...tests/demo/fit/nice
+        tensorboard --logdir ...tests/demo/fit/name
     exiting fit harness.
 
 TODO:
@@ -130,11 +130,9 @@ TODO:
 
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
-from os.path import exists
 import glob
 import itertools as it
 import logging
-import os
 import parse
 import shutil
 import time
@@ -144,6 +142,8 @@ import warnings
 import functools
 import traceback
 from os.path import join
+from os.path import exists
+from os.path import dirname
 
 import torch
 import numpy as np
@@ -221,7 +221,7 @@ class ExtraMixins(object):
             'name'        : 'demo',
             'xpu'         : nh.XPU.coerce('cpu'),
             # workdir is a directory where intermediate results can be saved
-            # nice symlinks <workdir>/fit/nice/<name> -> ../runs/<hashid>
+            # "name" symlinks <workdir>/fit/name/<name> -> ../runs/<hashid>
             # XPU auto select a gpu if idle and VRAM>6GB else a cpu
             # ================
             # Data Components
@@ -383,7 +383,7 @@ class InitializeMixin(object):
         # train info, keep a backup of the old ones.
         if harn.train_dpath and overwrite:
             train_info_fpath = join(harn.train_dpath, 'train_info.json')
-            if os.path.exists(train_info_fpath):
+            if exists(train_info_fpath):
                 if overwrite:
                     import json
                     try:
@@ -428,7 +428,7 @@ class InitializeMixin(object):
 
         if harn.train_dpath:
             harn.info(' * harn.train_dpath = {!r}'.format(harn.train_dpath))
-            harn.info(' * harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
+            harn.info(' * harn.name_dpath  = {!r}'.format(harn.name_dpath))
             harn.info('Snapshots will save to harn.snapshot_dpath = {!r}'.format(
                 harn.snapshot_dpath))
         else:
@@ -447,8 +447,8 @@ class InitializeMixin(object):
             train_info = harn.hyper.train_info(harn.train_dpath)
             ub.ensuredir(train_info['train_dpath'])
 
-            if train_info['nice_dpath']:
-                ub.ensuredir(os.path.dirname(train_info['nice_dpath']))
+            if train_info['name_dpath']:
+                ub.ensuredir(dirname(train_info['name_dpath']))
 
                 # Make a very simple MRU (most recently used) link
                 mru_dpath = join(harn.hyper.workdir, '_mru')
@@ -458,7 +458,17 @@ class InitializeMixin(object):
                 except OSError as ex:
                     harn.warn('Unable to symlink: {!r}'.format(ex))
 
-                # Link the hashed run dir to the human friendly nice dir
+                # Link the hashed run dir to the human friendly "name" dir
+                try:
+                    ub.symlink(train_info['train_dpath'],
+                               train_info['name_dpath'], overwrite=True,
+                               verbose=3)
+                except OSError as ex:
+                    harn.warn('Unable to symlink: {!r}'.format(ex))
+
+            if 'nice_dpath' in train_info:
+                # backwards compatibility for "nice" dpaths
+                ub.ensuredir(dirname(train_info['nice_dpath']))
                 try:
                     ub.symlink(train_info['train_dpath'],
                                train_info['nice_dpath'], overwrite=True,
@@ -467,7 +477,7 @@ class InitializeMixin(object):
                     harn.warn('Unable to symlink: {!r}'.format(ex))
 
             harn.train_info = train_info
-            harn.nice_dpath = train_info['nice_dpath']
+            harn.name_dpath = train_info['name_dpath']
             harn.train_dpath = train_info['train_dpath']
             return harn.train_dpath
 
@@ -527,7 +537,7 @@ class InitializeMixin(object):
             harn.debug('Initialized logging')
 
         if tensorboard_logger and harn.preferences['use_tensorboard']:
-            # train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
+            # train_base = dirname(harn.name_dpath or harn.train_dpath)
             # harn.info('dont forget to start:\n    tensorboard --logdir ' + train_base)
             harn.info('Initializing tensorboard (dont forget to start the tensorboard server)')
             harn._tlog = tensorboard_logger.Logger(harn.train_dpath,
@@ -1415,7 +1425,7 @@ class CoreMixin(object):
         harn.info('ARGV:\n    ' + sys.executable + ' ' + ' '.join(sys.argv))
 
         if harn._tlog is not None:
-            train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
+            train_base = dirname(harn.name_dpath or harn.train_dpath)
             harn.info('dont forget to start:\n'
                       '    tensorboard --logdir ' + ub.shrinkuser(train_base))
 
@@ -1573,9 +1583,9 @@ class CoreMixin(object):
         harn.info('training completed')
 
         if harn._tlog is not None:
-            train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
+            train_base = dirname(harn.name_dpath or harn.train_dpath)
             harn.info('harn.train_dpath = {!r}'.format(harn.train_dpath))
-            harn.info('harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
+            harn.info('harn.name_dpath  = {!r}'.format(harn.name_dpath))
             harn.info('view tensorboard results for this run via:\n'
                       '    tensorboard --logdir ' + ub.shrinkuser(train_base))
 
@@ -2532,7 +2542,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             if harn.hyper.name is not None:
                 harn.hyper.name = 'DEMO_' + harn.hyper.name
             else:
-                raise AssertionError('should have a nice name in demo mode')
+                raise AssertionError('should have a nice "name" in demo mode')
 
         harn.datasets = None
         harn.loaders = None
@@ -2559,7 +2569,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
 
         # Output directories
         harn.train_dpath = train_dpath
-        harn.nice_dpath = None
+        harn.name_dpath = None
         harn.train_info = None
 
         # Progress bars
@@ -2631,6 +2641,13 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
         warnings.warn('harn.preferences is deprecated, use harn.preferences instead',
                       DeprecationWarning)
         return harn.preferences
+
+    @property
+    def nice_dpath(harn):
+        import warnings
+        warnings.warn('harn.nice_dpath is deprecated, use harn.name_dpath instead',
+                      DeprecationWarning)
+        return harn.name_dpath
 
     def check_interval(harn, tag, idx, first=False):
         """

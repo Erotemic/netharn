@@ -20,7 +20,7 @@ Example:
     >>> hyper = nh.HyperParams(**{
     >>>     # --- Data First
     >>>     'datasets'    : datasets,
-    >>>     'nice'        : 'demo',
+    >>>     'name'        : 'demo',
     >>>     'loaders'     : {'batch_size': 64},
     >>>     'xpu'         : nh.XPU.coerce('auto'),
     >>>     # --- Algorithm Second
@@ -453,14 +453,16 @@ class HyperParams(object):
                  augment=None,
                  other=None,  # incorporated into the hash
                  extra=None,  # ignored when computing the hash
-                 nice=None,  # alias of name
+                 nice=None,  # deprecated, alias of name
                  ):
         kwargs = {}
 
         hyper.datasets = datasets
         if name is None:
             import warnings
-            warnings.warn('Specify "name" instead of "nice"')
+            warnings.warn(
+                'The "nice" argument is deprecated and will be removed. '
+                'Specify "name" instead.', DeprecationWarning)
             name = nice
         hyper.name = name
         hyper.workdir = workdir
@@ -638,7 +640,7 @@ class HyperParams(object):
         _append_part('criterion', hyper.criterion_cls, hyper.criterion_params, initkw)
 
         # TODO: should other be included in initkw? I think it should.
-        # probably should also include monitor, xpu, nice
+        # probably should also include monitor, xpu, name
 
         # Loader is a bit hacked
         _append_part('loader', hyper.loader_cls, hyper.loader_params_nice, initkw)
@@ -758,7 +760,7 @@ class HyperParams(object):
             >>> hyper = nh.hyperparams.HyperParams(**{
             >>>     # --- Data First
             >>>     'datasets'    : datasets,
-            >>>     'nice'        : 'demo',
+            >>>     'name'        : 'demo',
             >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/demo'),
             >>>     'loaders'     : {'batch_size': 64},
             >>>     'xpu'         : nh.XPU.coerce('auto'),
@@ -860,8 +862,8 @@ class HyperParams(object):
             When r = 10000, it becomes had to compute the number because of
             floating point errors, but the probability is likely astronomically
             low. I doubt we will ever run training in the same work directory
-            (and with the same nice name) 10,000 different times, so using an 8
-            character hash seems safe and user friendly for this purpose.
+            (and with the same nice "name") 10,000 different times, so using an
+            8 character hash seems safe and user friendly for this purpose.
             Perhaps we may move to 12, 16, or 32+ in the future, but for the
             pre 1.0 netharn, 8 seems fine.
 
@@ -874,13 +876,19 @@ class HyperParams(object):
         name = hyper.name
 
         nice_dpath = None
+        name_dpath = None
         if not given_explicit_train_dpath:
             # setup a cannonical and a linked symlink dir
             train_dpath = normpath(
                     join(hyper.workdir, 'fit', 'runs', name, train_hashid))
-            # also setup a "nice" custom name, which may conflict, but oh well
+            # also setup a custom "name", which may conflict. This will
+            # overwrite an existing "name" symlink, but the real runs directory
+            # is based on a hash, so it wont be overwritten with astronomicaly
+            # high probability.
             if name:
                 try:
+                    name_dpath = normpath(
+                            join(hyper.workdir, 'fit', 'name', name))
                     nice_dpath = normpath(
                             join(hyper.workdir, 'fit', 'nice', name))
                 except Exception:
@@ -913,6 +921,7 @@ class HyperParams(object):
             ('init_history', init_history),
             ('init_history_hashid', _hash_data(util.make_idstr(init_history))),
 
+            ('name', hyper.name),
             ('nice', hyper.name),
 
             ('old_train_dpath', normpath(
@@ -920,11 +929,14 @@ class HyperParams(object):
 
             ('train_dpath', train_dpath),
             # ('link_dpath', link_dpath),
+
+            # "nice" will be deprecated for "name_dpath"
             ('nice_dpath', nice_dpath),
+            ('name_dpath', name_dpath),
 
             ('given_explicit_train_dpath', given_explicit_train_dpath),
 
-            # TODO, add in n_classes if applicable
+            # TODO, add in classes if applicable
             # TODO, add in centering if applicable
             # ('centering', hyper.centering),
 
@@ -950,7 +962,7 @@ class HyperParams(object):
             'name'        : 'demo',
             'xpu'         : nh.XPU.coerce('argv'),
             # workdir is a directory where intermediate results can be saved
-            # nice symlinks <workdir>/fit/nice/<nice> -> ../runs/<hashid>
+            # name symlinks <workdir>/fit/name/<name> -> ../runs/<hashid>
             # XPU auto select a gpu if idle and VRAM>6GB else a cpu
             # ================
             # Data Components

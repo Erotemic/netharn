@@ -8,6 +8,7 @@ import os
 import torch
 import ubelt as ub
 import kwarray
+import kwimage
 import scriptconfig as scfg
 from netharn.models.yolo2 import multiscale_batch_sampler  # NOQA
 from netharn.models.yolo2 import yolo2
@@ -391,10 +392,10 @@ class DetectHarn(nh.FitHarn):
             >>> harn.on_batch(batch, outputs, losses)
             >>> # xdoc: +REQUIRES(--show)
             >>> batch_dets = harn.model.module.postprocess(outputs)
-            >>> nh.util.autompl()  # xdoc: +SKIP
+            >>> kwplot.autompl()  # xdoc: +SKIP
             >>> stacked = harn.draw_batch(batch, outputs, batch_dets, thresh=0.01)
-            >>> nh.util.imshow(stacked)
-            >>> nh.util.show_if_requested()
+            >>> kwplot.imshow(stacked)
+            >>> kwplot.show_if_requested()
         """
         dmet = harn.dmets[harn.current_tag]
         inputs = batch['im']
@@ -406,12 +407,12 @@ class DetectHarn(nh.FitHarn):
             bx = harn.bxs[harn.current_tag]
             if bx < 4:
                 stacked = harn.draw_batch(batch, outputs, detections, thresh=0.1)
-                # img = nh.util.render_figure_to_image(fig)
+                # img = kwplot.render_figure_to_image(fig)
                 dump_dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag, 'batch'))
                 dump_fname = 'pred_bx{:04d}_epoch{:08d}.png'.format(bx, harn.epoch)
                 fpath = os.path.join(dump_dpath, dump_fname)
                 harn.debug('dump viz fpath = {}'.format(fpath))
-                nh.util.imwrite(fpath, stacked)
+                kwimage.imwrite(fpath, stacked)
         except Exception as ex:
             harn.error('\n\n\n')
             harn.error('ERROR: FAILED TO POSTPROCESS OUTPUTS')
@@ -583,9 +584,9 @@ class DetectHarn(nh.FitHarn):
             >>> stacked = harn.draw_batch(batch, outputs, batch_dets)
 
             >>> # xdoc: +REQUIRES(--show)
-            >>> nh.util.autompl()  # xdoc: +SKIP
-            >>> nh.util.imshow(stacked)
-            >>> nh.util.show_if_requested()
+            >>> kwplot.autompl()  # xdoc: +SKIP
+            >>> kwplot.imshow(stacked)
+            >>> kwplot.show_if_requested()
         """
         import cv2
         inputs = batch['im']
@@ -647,8 +648,8 @@ class DetectHarn(nh.FitHarn):
                 pred_dets.boxes, orig_size, target_size)
 
             # shift, scale, embed_size = letterbox._letterbox_transform(orig_size, target_size)
-            # fig = nh.util.figure(doclf=True, fnum=1)
-            # nh.util.imshow(img, colorspace='rgb')
+            # fig = kwplot.figure(doclf=True, fnum=1)
+            # kwplot.imshow(img, colorspace='rgb')
             canvas = (img * 255).astype(np.uint8)
             canvas = true_dets.draw_on(canvas, color='green')
             canvas = pred_dets.draw_on(canvas, color='blue')
@@ -656,7 +657,7 @@ class DetectHarn(nh.FitHarn):
             canvas = cv2.resize(canvas, (300, 300))
             imgs.append(canvas)
 
-        stacked = imgs[0] if len(imgs) == 1 else nh.util.stack_images_grid(imgs)
+        stacked = imgs[0] if len(imgs) == 1 else kwimage.stack_images_grid(imgs)
         return stacked
 
 

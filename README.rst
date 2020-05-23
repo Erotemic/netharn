@@ -262,10 +262,10 @@ useful to look at.  Its complexity is more than CIFAR but less than YOLO.
     >>>     # ================
     >>>     # Environment Components
     >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/demo'),
-    >>>     'nice'        : 'demo',
+    >>>     'name'        : 'demo',
     >>>     'xpu'         : netharn.XPU.cast('auto'),
     >>>     # workdir is a directory where intermediate results can be saved
-    >>>     # nice symlinks <workdir>/fit/nice/<nice> -> ../runs/<hashid>
+    >>>     # "nice" symlinks <workdir>/fit/name/<name> -> ../runs/<hashid>
     >>>     # XPU auto select a gpu if idle and VRAM>6GB else a cpu
     >>>     # ================
     >>>     # Data Components
@@ -301,10 +301,9 @@ useful to look at.  Its complexity is more than CIFAR but less than YOLO.
     >>> })
     >>> harn = netharn.FitHarn(hyper)
     >>> # non-algorithmic behavior configs (do not change learned models)
-    >>> harn.preferences['prog_backend'] = 'progiter'  # alternative: 'tqdm'
     >>> harn.preferences['num_keep'] = 10
     >>> # start training.
-    >>> harn.initialize(reset='delete')
+    >>> harn.initialize(reset='delete')  # delete removes an existing run
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
     >>> # xdoc: +IGNORE_WANT
 

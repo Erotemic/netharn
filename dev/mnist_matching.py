@@ -7,6 +7,8 @@ import torchvision
 import ubelt as ub
 from torch import nn
 from sklearn import metrics
+import kwimage
+import kwarray
 
 
 class MNISTEmbeddingNet(nh.layers.Module):
@@ -107,7 +109,7 @@ class MNIST_MatchingHarness(nh.FitHarn):
         harn._has_preselected = False
         harn.POS_LABEL = 1
         harn.NEG_LABEL = 0
-        harn.confusion_vectors = nh.util.DataFrameLight(
+        harn.confusion_vectors = kwarray.DataFrameLight(
             columns=['y_true', 'y_dist']
         )
 
@@ -158,7 +160,6 @@ class MNIST_MatchingHarness(nh.FitHarn):
         batch['cpu_chips'] = image
         return batch
 
-    @nh.util.profile
     def run_batch(harn, batch):
         """
         Two - run the batch
@@ -241,7 +242,6 @@ class MNIST_MatchingHarness(nh.FitHarn):
         outputs['distAN'] = neg_dists
         return outputs, loss
 
-    @nh.util.profile
     def on_batch(harn, batch, outputs, loss):
         """
         custom netharn callback
@@ -253,9 +253,10 @@ class MNIST_MatchingHarness(nh.FitHarn):
             >>> decoded = harn._decode(outputs)
             >>> stacked = harn._draw_batch(decoded, limit=42)
             >>> # xdoctest: +REQUIRES(--show)
-            >>> nh.util.autompl()
-            >>> nh.util.imshow(stacked)
-            >>> nh.util.show_if_requested()
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(stacked)
+            >>> kwplot.show_if_requested()
         """
         batch_metrics = ub.odict()
         for key, value in harn._loss_parts.items():
@@ -270,7 +271,7 @@ class MNIST_MatchingHarness(nh.FitHarn):
             stacked = harn._draw_batch(decoded)
             dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag))
             fpath = join(dpath, 'batch_{}_epoch_{}.jpg'.format(bx, harn.epoch))
-            nh.util.imwrite(fpath, stacked)
+            kwimage.imwrite(fpath, stacked)
 
         # Record metrics for epoch scores
         n = len(outputs['distAP'])
@@ -282,7 +283,6 @@ class MNIST_MatchingHarness(nh.FitHarn):
         harn.confusion_vectors._data['y_dist'].extend(outputs['distAN'].data.cpu().numpy().tolist())
         return batch_metrics
 
-    @nh.util.profile
     def on_epoch(harn):
         """
         custom netharn callback
@@ -345,7 +345,6 @@ class MNIST_MatchingHarness(nh.FitHarn):
         harn.confusion_vectors.clear()
         return epoch_metrics
 
-    @nh.util.profile
     def _decode(harn, outputs):
         """
         Convert raw network outputs to something interpretable
@@ -366,7 +365,6 @@ class MNIST_MatchingHarness(nh.FitHarn):
         decoded['distAN'] = outputs['distAN'].data.cpu().numpy()
         return decoded
 
-    @nh.util.profile
     def _draw_batch(harn, decoded, limit=12):
         """
         Example:
@@ -376,10 +374,10 @@ class MNIST_MatchingHarness(nh.FitHarn):
             >>> decoded = harn._decode(outputs)
             >>> stacked = harn._draw_batch(decoded)
             >>> # xdoctest: +REQUIRES(--show)
-            >>> import netharn as nh
-            >>> nh.util.autompl()
-            >>> nh.util.imshow(stacked, colorspace='rgb', doclf=True)
-            >>> nh.util.show_if_requested()
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(stacked, colorspace='rgb', doclf=True)
+            >>> kwplot.show_if_requested()
         """
         tostack = []
         fontkw = {
@@ -391,7 +389,7 @@ class MNIST_MatchingHarness(nh.FitHarn):
         for i in range(n):
             ims = [g[i].transpose(1, 2, 0) for g in decoded['triple_imgs']]
             ims = [cv2.resize(g, dsize) for g in ims]
-            ims = [nh.util.atleast_3channels(g) for g in ims]
+            ims = [kwimage.atleast_3channels(g) for g in ims]
             triple_nxs = [n[i] for n in decoded['triple_nxs']]
 
             text = 'dAP={:.3g} -- dAN={:.3g} -- {}'.format(
@@ -403,16 +401,16 @@ class MNIST_MatchingHarness(nh.FitHarn):
                 'dodgerblue' if decoded['distAP'][i] < decoded['distAN'][i]
                 else 'orangered')
 
-            img = nh.util.stack_images(
+            img = kwimage.stack_images(
                 ims, overlap=-2, axis=1,
                 bg_value=(10 / 255, 40 / 255, 30 / 255)
             )
             img = (img * 255).astype(np.uint8)
-            img = nh.util.draw_text_on_image(img, text,
+            img = kwimage.draw_text_on_image(img, text,
                                              org=(2, img.shape[0] - 2),
                                              color=color, **fontkw)
             tostack.append(img)
-        stacked = nh.util.stack_images_grid(tostack, overlap=-10,
+        stacked = kwimage.stack_images_grid(tostack, overlap=-10,
                                             bg_value=(30, 10, 40),
                                             axis=1, chunksize=3)
         return stacked
@@ -464,7 +462,7 @@ def setup_datasets(workdir=None):
             labels = dset.dataset.train_labels[dset.indices]
         else:
             labels = dset.labels
-        unique_labels, groupxs = nh.util.group_indices(labels.numpy())
+        unique_labels, groupxs = kwarray.group_indices(labels.numpy())
         dset.pccs = [xs.tolist() for xs in groupxs]
 
     # Give the training dataset an input_id
@@ -637,7 +635,8 @@ def main():
         ns['lr'] = 1e-99
 
         if args.interact:
-            nh.util.autompl()
+            import kwplot
+            kwplot.autompl()
             import matplotlib.pyplot as plt
 
         harn = setup_harn(**ns)
