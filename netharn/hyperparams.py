@@ -372,6 +372,10 @@ def _rectify_loaders(arg, kw):
     """
     Loaders are handled slightly differently than other classes
     We construct them eagerly (if they are not already constructed)
+
+    Example:
+        >>> # test that dict-base spec words
+        >>> _rectify_loaders({'batch_size': 4}, {})
     """
     if arg is None:
         arg = {}
@@ -395,8 +399,7 @@ def _rectify_loaders(arg, kw):
         else:
             # loaders is kwargs for `torch_data.DataLoader`
             arg = (torch_data.DataLoader, arg)
-            # cls, kw2 = _rectify_class(None, arg, kw)
-            rectified = _rectify_class(None, arg, kw)
+            rectified = _rectify_class(arg, kw)
             cls = rectified['cls']
             kw2 = rectified['cls_kw']
     else:
@@ -464,6 +467,9 @@ class HyperParams(object):
                 'The "nice" argument is deprecated and will be removed. '
                 'Specify "name" instead.', DeprecationWarning)
             name = nice
+        if name is None:
+            # raise ValueError('you must specify a name for HyperParams')
+            name = 'untitled'
         hyper.name = name
         hyper.workdir = workdir
         hyper.xpu = xpu

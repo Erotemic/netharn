@@ -56,10 +56,10 @@ Example:
     >>>     # Data Components
     >>>     'datasets'    : {  # dict of plain ol torch.data.Dataset instances
     >>>         'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
-    >>>         'vali': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
-    >>>         'test': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+    >>>         'vali': nh.data.ToyData2d(size=3, border=1, n=64, rng=1),
+    >>>         'test': nh.data.ToyData2d(size=3, border=1, n=64, rng=1),
     >>>     },
-    >>>     'loaders'     : {'batch_size': 64}, # DataLoader instances or kw
+    >>>     'loaders'     : {'batch_size': 8}, # DataLoader instances or kw
     >>>     # ================
     >>>     # Algorithm Components
     >>>     # Note the (cls, kw) tuple formatting
@@ -82,7 +82,7 @@ Example:
     >>>     }),
     >>>     # dynamics are a config option that modify the behavior of the main
     >>>     # training loop. These parameters effect the learned model.
-    >>>     'dynamics'   : {'batch_step': 4},
+    >>>     'dynamics'   : {'batch_step': 2},
     >>> })
     >>> harn = nh.FitHarn(hyper)
     >>> # non-algorithmic behavior configs (do not change learned models)
@@ -472,7 +472,7 @@ class InitializeMixin(object):
                 try:
                     ub.symlink(train_info['train_dpath'],
                                train_info['nice_dpath'], overwrite=True,
-                               verbose=3)
+                               verbose=0)
                 except OSError as ex:
                     harn.warn('Unable to symlink: {!r}'.format(ex))
 
@@ -733,7 +733,8 @@ class ProgMixin(object):
             import tqdm  # NOQA
             Prog = tqdm.tqdm
         elif harn.preferences['prog_backend'] == 'progiter':
-            Prog = functools.partial(ub.ProgIter, chunksize=chunksize, verbose=1)
+            Prog = functools.partial(
+                ub.ProgIter, chunksize=chunksize, verbose=1, time_thresh=2.0)
         else:
             raise KeyError(harn.preferences['prog_backend'])
         return Prog(*args, **kw)
@@ -817,14 +818,24 @@ class LogMixin(object):
         except AttributeError:
             pass
 
-    def log(harn, msg):
+    def log(harn, msg, level='info'):
         """
-        Logs an info message. Alias of :func:LogMixin.info
+        Logs a message with a specified verbosity level.
 
         Args:
             msg (str): an info message to log
+            level (str): either info, debug, error, or warn
         """
-        harn.info(msg)
+        if level == 'info':
+            harn.info(msg)
+        elif level == 'debug':
+            harn.debug(msg)
+        elif level == 'error':
+            harn.error(msg)
+        elif level == 'warn':
+            harn.warn(msg)
+        else:
+            raise KeyError(level)
 
     def info(harn, msg):
         """
@@ -1117,7 +1128,8 @@ class SnapshotMixin(object):
             raise KeyError(mode)
 
         save_fpath = join(dpath, save_fname)
-        harn.info('Saving {} snapshot to {}'.format(mode.upper(), save_fpath))
+        level = 'debug' if mode == 'checkpoint' else 'info'
+        harn.log('Saving {} snapshot to {}'.format(mode.upper(), save_fpath), level)
 
         snapshot_state = harn.get_snapshot_state()
 
@@ -1935,12 +1947,12 @@ class CoreMixin(object):
                     iter_moving_metrics.update(cur_metrics)
 
                     # display_train training info
-                    if harn.check_interval('display_' + tag, bx):
+                    if harn.check_interval('display_' + tag, bx) or bx == n_batches - 1:
                         ave_metrics = iter_moving_metrics.average()
 
                         msg = harn._batch_msg({'loss': ave_metrics['loss']},
                                               bsize, learn)
-                        prog.set_description(tag + ' ' + msg)
+                        prog.set_description(tag + ' ' + msg, refresh=False)
 
                         # log_iter_train, log_iter_test, log_iter_vali
                         if harn.check_interval('log_iter_' + tag, bx, first=True):
@@ -1956,7 +1968,14 @@ class CoreMixin(object):
                                         harn, 'iter',
                                         special_groupers=harn.preferences['tensorboard_groups'])
 
-                        prog.update(display_interval)
+                        if use_tqdm:
+                            prog.update(display_interval)
+                        else:
+                            # hack to force progiter to reach 100% at the end
+                            # This should be fixed in progiter.
+                            steps_taken = (bx - prog._iter_idx) + 1
+                            prog.update(steps_taken)
+
                         if use_tqdm:
                             harn._update_prog_postfix(prog)
 
@@ -1981,6 +2000,7 @@ class CoreMixin(object):
         #         harn.optimizer.step()
         #         harn.optimizer.zero_grad()
 
+        prog.refresh()
         prog.close()
         harn.epoch_prog = None
 

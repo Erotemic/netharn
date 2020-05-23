@@ -130,7 +130,7 @@ def _redump_measures(dpath):
     from os.path import join
 
     import kwplot
-    kwplot.set_mpl_backend('agg')
+    kwplot.autompl(force='agg')
 
     try:
         import seaborn as sns
@@ -172,14 +172,15 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.0,
         >>> mode = ['epoch', 'iter']
         >>> fpath = join(out_dpath, 'tb_data.json')
         >>> tb_data = json.load(open(fpath, 'r'))
+        >>> import kwplot
+        >>> kwplot.autompl()
         >>> _dump_measures(tb_data,  out_dpath, smoothing=0)
     """
     import ubelt as ub
     from os.path import join
     import numpy as np
-
     import kwplot
-    kwplot.autompl()
+    # kwplot.autompl()
 
     # TODO: Is it possible to get htop to show this process with some name that
     # distinguishes it from the dataloader workers?

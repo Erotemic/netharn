@@ -261,9 +261,9 @@ useful to look at.  Its complexity is more than CIFAR but less than YOLO.
     >>> hyper = netharn.HyperParams(**{
     >>>     # ================
     >>>     # Environment Components
-    >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/demo'),
     >>>     'name'        : 'demo',
-    >>>     'xpu'         : netharn.XPU.cast('auto'),
+    >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/demo'),
+    >>>     'xpu'         : netharn.XPU.coerce('auto'),
     >>>     # workdir is a directory where intermediate results can be saved
     >>>     # "nice" symlinks <workdir>/fit/name/<name> -> ../runs/<hashid>
     >>>     # XPU auto select a gpu if idle and VRAM>6GB else a cpu
@@ -271,36 +271,37 @@ useful to look at.  Its complexity is more than CIFAR but less than YOLO.
     >>>     # Data Components
     >>>     'datasets'    : {  # dict of plain ol torch.data.Dataset instances
     >>>         'train': netharn.data.ToyData2d(size=3, border=1, n=256, rng=0),
-    >>>         'vali': netharn.data.ToyData2d(size=3, border=1, n=128, rng=1),
-    >>>         'test': netharn.data.ToyData2d(size=3, border=1, n=128, rng=2),
+    >>>         'vali': netharn.data.ToyData2d(size=3, border=1, n=64, rng=1),
+    >>>         'test': netharn.data.ToyData2d(size=3, border=1, n=64, rng=2),
     >>>     },
-    >>>     'loaders'     : {'batch_size': 64}, # DataLoader instances or kw
+    >>>     'loaders'     : {'batch_size': 4}, # DataLoader instances or kw
     >>>     # ================
     >>>     # Algorithm Components
     >>>     # Note the (cls, kw) tuple formatting
     >>>     'model'       : (netharn.models.ToyNet2d, {}),
     >>>     'optimizer'   : (netharn.optimizers.SGD, {
-    >>>         'lr': 0.0001
+    >>>         'lr': 0.01
     >>>     }),
     >>>     # focal loss is usually better than netharn.criterions.CrossEntropyLoss
     >>>     'criterion'   : (netharn.criterions.FocalLoss, {}),
     >>>     'initializer' : (netharn.initializers.KaimingNormal, {
     >>>         'param': 0,
     >>>     }),
-    >>>     # these may receive an overhaul soon
+    >>>     # The scheduler adjusts learning rate over the training run
     >>>     'scheduler'   : (netharn.schedulers.ListedScheduler, {
-    >>>         'points': {'lr': {0: .0001, 2: .01, 5: .015, 6: .005, 9: .001}},
+    >>>         'points': {'lr': {0: 0.1, 2: 10.0, 4: .15, 6: .05, 9: .01}},
     >>>         'interpolation': 'linear',
     >>>     }),
     >>>     'monitor'     : (netharn.Monitor, {
     >>>         'max_epoch': 10,
+    >>>         'patience': 7,
     >>>     }),
     >>>     # dynamics are a config option that modify the behavior of the main
     >>>     # training loop. These parameters effect the learned model.
-    >>>     'dynamics'   : {'batch_step': 4},
+    >>>     'dynamics'   : {'batch_step': 2},
     >>> })
     >>> harn = netharn.FitHarn(hyper)
-    >>> # non-algorithmic behavior configs (do not change learned models)
+    >>> # non-algorithmic behavior preferences (do not change learned models)
     >>> harn.preferences['num_keep'] = 10
     >>> # start training.
     >>> harn.initialize(reset='delete')  # delete removes an existing run

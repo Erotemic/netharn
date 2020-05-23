@@ -20,6 +20,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 * Fixed bug in XPU auto mode which caused it always to choose GPU 0.
+* Bug in hyperparams where dict-based loader spec was not working.
+* Display intervals were not working correctly with ProgIter, hacked in a temporary fix.
 
 
 ## Version 0.5.6 - Released 2020-04-16
