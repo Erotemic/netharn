@@ -9,11 +9,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 * `harn.deploy_fpath` is now populated when the model is deployed.
 * Improved docs on `netharn/data/toydata.py`
+* Changed name of `torch_shapshots` directory name to `checkpoints`.
 
 ### Added
 * Ported experimental `ChannelSpec` and `DataContainser` from bioharn to netharn.data.
 * Added basic classification example that works on generic coco datasets
 * Threshold curves to ConfusionVector metrics
+* Initial weights are now saved in `initial_state` directory.
+* New `plots` submodule.
 
 ### Fixed
 * Fixed bug in XPU auto mode which caused it always to choose GPU 0.

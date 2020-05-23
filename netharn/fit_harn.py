@@ -130,6 +130,7 @@ TODO:
 
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
+from os.path import exists
 import glob
 import itertools as it
 import logging
@@ -206,6 +207,59 @@ class ExtraMixins(object):
     """
     Miscellaneous methods that will be mixed into FitHarn
     """
+
+    @classmethod
+    def demo(cls):
+        """
+        Creates a dummy FitHarn object for testing and demonstration purposes
+        """
+        import netharn as nh
+        hyper = nh.HyperParams(**{
+            # ================
+            # Environment Components
+            'workdir'     : ub.ensure_app_cache_dir('netharn/tests/demo'),
+            'name'        : 'demo',
+            'xpu'         : nh.XPU.coerce('cpu'),
+            # workdir is a directory where intermediate results can be saved
+            # nice symlinks <workdir>/fit/nice/<name> -> ../runs/<hashid>
+            # XPU auto select a gpu if idle and VRAM>6GB else a cpu
+            # ================
+            # Data Components
+            'datasets'    : {  # dict of plain ol torch.data.Dataset instances
+                'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
+                'vali': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+                'test': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+            },
+            'loaders'     : {'batch_size': 64},  # DataLoader instances or kw
+            # ================
+            # Algorithm Components
+            # Note the (cls, kw) tuple formatting
+            'model'       : (nh.models.ToyNet2d, {}),
+            'optimizer'   : (nh.optimizers.SGD, {
+                'lr': 0.0001
+            }),
+            # focal loss is usually better than nh.criterions.CrossEntropyLoss
+            'criterion'   : (nh.criterions.FocalLoss, {}),
+            'initializer' : (nh.initializers.KaimingNormal, {
+                'param': 0,
+            }),
+            # these may receive an overhaul soon
+            'scheduler'   : (nh.schedulers.ListedLR, {
+                'points': {0: .0001, 2: .01, 5: .015, 6: .005, 9: .001},
+                'interpolate': True,
+            }),
+            'monitor'     : (nh.Monitor, {
+                'max_epoch': 10,
+            }),
+            # dynamics are a config option that modify the behavior of the main
+            # training loop. These parameters effect the learned model.
+            'dynamics'   : {'batch_step': 4},
+        })
+        harn = cls(hyper)
+        # non-algorithmic behavior configs (do not change learned models)
+        harn.preferences['use_tensorboard'] = False
+        harn.preferences['timeout'] = 0.5
+        return harn
 
     def _demo_epoch(harn, tag='vali', learn=False, max_iter=np.inf,
                     call_on_epoch=False):
@@ -367,7 +421,7 @@ class InitializeMixin(object):
                 raise CannotResume
             harn.resume_from_previous_snapshots()
         except CannotResume:
-            # Abstract logic into a reset_state function?
+            # This step is only run on a fresh start.
             harn.reset_weights()
             for group in harn.optimizer.param_groups:
                 group.setdefault('initial_lr', group['lr'])
@@ -598,6 +652,9 @@ class InitializeMixin(object):
                 harn.initializer(raw_model)
         else:
             harn.warn('initializer was not specified')
+
+        # Save the original weights for analysis
+        harn.save_snapshot(mode='initial')
 
     @profiler.profile
     def resume_from_previous_snapshots(harn):
@@ -892,7 +949,8 @@ class SnapshotMixin(object):
         # snapshots or checkpoints for simplicity.
         if harn.train_dpath is None:
             raise ValueError('harn.train_dpath is None')
-        return join(harn.train_dpath, 'torch_snapshots')
+        # return join(harn.train_dpath, 'torch_snapshots')
+        return join(harn.train_dpath, 'checkpoints')
 
     def _epochs_to_remove(harn, existing_epochs, num_keep_recent,
                           num_keep_best, keep_freq):
@@ -1002,43 +1060,102 @@ class SnapshotMixin(object):
         harn.set_snapshot_state(snapshot_state)
         harn.info('Previous snapshot loaded...')
 
-    def save_snapshot(harn, explicit=False):
+    def save_snapshot(harn, explicit=False, mode='checkpoint'):
         """
         Checkpoint the current model state in an epoch-tagged snapshot.
 
         Args:
+            mode (str, default='checkpoint'): the type of snapshot this is
+                (changes the subdirectory where they are stored). Choices
+                are: checkpoint, explicit, and initial.
+
             explicit (bool, default=False): if True, the snapshot is also
                 tagged by a hash and saved to the explit_checkpoints directory.
+                DEPRECTATED, use mode.
 
         Returns:
             PathLike: save_fpath: the path to the saved snapshot
+
+        Example:
+            >>> import netharn as nh
+            >>> harn = nh.FitHarn.demo()
+            >>> # The "save_snapshot" method is called in initialize
+            >>> harn.initialize()
         """
         if explicit:
-            _dpath = join(harn.train_dpath, 'explit_checkpoints')
-            ub.ensuredir(_dpath)
+            mode = 'explicit'
 
-            try:
-                stamp = ub.timestamp()
-            except Exception:
-                stamp = ub.timestamp()
-
+        if mode == 'explicit':
+            dpath = ub.ensuredir((harn.train_dpath, 'explit_checkpoints'))
+            stamp = ub.timestamp()
             save_fname = '_epoch_{:08d}_{}.pt'.format(harn.epoch, stamp)
-            save_fpath = join(_dpath, save_fname)
+        elif mode == 'checkpoint':
+            # TODO: make the transition smoother
+            dpath = ub.ensuredir(harn.snapshot_dpath)
+            _old_snapshot_dpath = join(harn.train_dpath, 'torch_snapshots')
+            _new_snapshot_dpath = join(harn.train_dpath, 'checkpoints')
 
-            harn.info('Saving EXPLICIT snapshot to {}'.format(save_fpath))
-            snapshot_state = harn.get_snapshot_state()
-            torch.save(snapshot_state, save_fpath)
-        else:
-            ub.ensuredir(harn.snapshot_dpath)
+            if dpath == _new_snapshot_dpath:
+                if not exists(_old_snapshot_dpath):
+                    ub.symlink(_new_snapshot_dpath, _old_snapshot_dpath)
+
             save_fname = '_epoch_{:08d}.pt'.format(harn.epoch)
-            save_fpath = join(harn.snapshot_dpath, save_fname)
+        elif mode == 'initial':
+            dpath = ub.ensuredir((harn.train_dpath, 'initial_state'))
+            save_fname = 'initial_state.pt'.format(harn.epoch)
+        else:
+            raise KeyError(mode)
 
-            harn.debug('Saving snapshot to {}'.format(save_fpath))
-            snapshot_state = harn.get_snapshot_state()
-            torch.save(snapshot_state, save_fpath)
+        save_fpath = join(dpath, save_fname)
+        harn.info('Saving {} snapshot to {}'.format(mode.upper(), save_fpath))
+
+        snapshot_state = harn.get_snapshot_state()
+
+        try:
+            import safer
+            _open = safer.open
+        except ImportError:
+            _open = open
+
+        with _open(save_fpath, 'wb') as save_file:
+            torch.save(snapshot_state, save_file)
 
         harn.debug('Snapshot saved to {}'.format(save_fpath))
         return save_fpath
+
+    def best_snapshot(harn):
+        """
+        Return the path to the current "best" snapshot.
+        """
+        # Netharn should populate best_snapshot.pt if there is a validation set.
+        # Other names are to support older codebases.
+        train_dpath = harn.train_dpath
+        expected_names = [
+            'best_snapshot.pt',
+            'best_snapshot2.pt',
+            'final_snapshot.pt',
+            'deploy_snapshot.pt',
+        ]
+        for fname in expected_names:
+            fpath = join(train_dpath, fname)
+            if exists(fpath):
+                break
+
+        if not exists(fpath):
+            fpath = None
+
+        if not fpath:
+            epoch_to_fpath = {
+                parse.parse('{}_epoch_{num:d}.pt', path).named['num']: path
+                for path in harn.prev_snapshots()
+            }
+            if epoch_to_fpath:
+                fpath = epoch_to_fpath[max(epoch_to_fpath)]
+
+        if fpath is None:
+            raise Exception('cannot find / determine the best snapshot')
+
+        return fpath
 
 
 @register_mixin
