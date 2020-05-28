@@ -489,3 +489,5 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 * Early and undocumented commits
+
+## Version 0.5.8 - Unreleased
