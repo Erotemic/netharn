@@ -251,18 +251,19 @@ class Yolo(nn.Module):
             >>> dets = batch_dets[0]
             >>> # xdoc: +REQUIRES(--show)
             >>> import netharn as nh
-            >>> nh.util.autompl()  # xdoc: +SKIP
+            >>> import kwplot
+            >>> kwplot.autompl()  # xdoc: +SKIP
             >>> dets.meta['classes'] = ('aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
             >>>  'bus', 'car', 'cat', 'chair', 'cow', 'diningtable',
             >>>  'dog', 'horse', 'motorbike', 'person',
             >>>  'pottedplant', 'sheep', 'sofa', 'train',
             >>>  'tvmonitor')
-            >>> nh.util.figure(fnum=1, doclf=True)
+            >>> kwplot.figure(fnum=1, doclf=True)
             >>> sf = orig_sizes[0]
             >>> dets.boxes.scale(sf, inplace=True)
-            >>> nh.util.imshow(rgb255, colorspace='rgb')
+            >>> kwplot.imshow(rgb255, colorspace='rgb')
             >>> dets.draw()
-            >>> nh.util.show_if_requested()
+            >>> kwplot.show_if_requested()
         """
         outputs = []
 
@@ -292,10 +293,10 @@ def find_anchors(dset):
         >>> xy = -anchors / 2
         >>> wh = anchors
         >>> show_boxes = np.hstack([xy, wh])
-        >>> import netharn as nh
-        >>> nh.util.figure(doclf=True, fnum=1)
-        >>> nh.util.autompl()  # xdoc: +SKIP
-        >>> nh.util.draw_boxes(show_boxes, box_format='tlwh')
+        >>> import kwplot
+        >>> kwplot.figure(doclf=True, fnum=1)
+        >>> kwplot.autompl()  # xdoc: +SKIP
+        >>> kwplot.draw_boxes(show_boxes, box_format='tlwh')
         >>> from matplotlib import pyplot as plt
         >>> plt.gca().set_xlim(xy.min() - 1, wh.max() / 2 + 1)
         >>> plt.gca().set_ylim(xy.min() - 1, wh.max() / 2 + 1)

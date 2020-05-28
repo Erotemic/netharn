@@ -273,6 +273,8 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
         num_batches (int | str, default='auto'): number of batches to generate
         shuffle (bool, default=False): if True randomize batch ordering
         drop_last (bool): unused, exists for compatibility
+        label_to_weight (dict, default=None):
+            mapping from labels to user-specified weights
         rng (RandomState, default=None): random seed
 
     References:
@@ -289,17 +291,17 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
         >>> # Create a rare class
         >>> index_to_labels[0][0] = 42
         >>> self = GroupedBalancedBatchSampler(index_to_labels, batch_size=4)
-        >>> print('self.label_to_freq = {!r}'.format(self.label_to_freq))
+        >>> print('self.label_to_freq = {}'.format(ub.repr2(self.label_to_freq, nl=1)))
         >>> indices = list(self)
         >>> print('indices = {!r}'.format(indices))
         >>> # Print the epoch / item label frequency per epoch
         >>> label_sequence = []
         >>> index_sequence = []
-        >>> for item_indices in self:
+        >>> for item_indices, _ in zip(self, range(1000)):
         >>>     item_indices = np.array(item_indices)
         >>>     item_labels = list(ub.flatten(ub.take(index_to_labels, item_indices)))
         >>>     index_sequence.extend(item_indices)
-        >>>     label_sequence.extend(item_labels)
+        >>>     label_sequence.extend(ub.unique(item_labels))
         >>> label_hist = ub.dict_hist(label_sequence)
         >>> index_hist = ub.dict_hist(index_sequence)
         >>> label_hist = ub.sorted_vals(label_hist, reverse=True)
@@ -310,7 +312,7 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
     """
 
     def __init__(self, index_to_labels, batch_size=1, num_batches='auto',
-                 shuffle=False, rng=None):
+                 label_to_weight=None, shuffle=False, rng=None):
         import kwarray
 
         rng = kwarray.ensure_rng(rng, api='python')
@@ -322,19 +324,48 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
             for label in item_labels:
                 label_to_indices[label].add(index)
         flat_labels = np.hstack(index_to_labels)
-        self.label_to_freq = ub.dict_hist(flat_labels)
+        label_to_freq = ub.dict_hist(flat_labels)
 
         # Use tf-idf based scheme to compute sample probabilities
+        label_to_idf = {}
         label_to_tfidf = {}
         labels = sorted(set(flat_labels))
         for label in labels:
+            # tf for each img, is the number of times the label appears
             index_to_tf = np.zeros(len(index_to_labels))
             for index, item_labels in enumerate(index_to_labels):
                 index_to_tf[index] = (label == item_labels).sum()
+            # idf is the #imgs / #imgs-with-label
             idf = len(index_to_tf) / (index_to_tf > 0).sum()
+            if label_to_weight:
+                idf = idf * label_to_weight[label]
+            label_to_idf[label] = idf
             label_to_tfidf[label] = np.maximum(index_to_tf * idf, 1)
         index_to_weight = sum(label_to_tfidf.values())
         index_to_prob = index_to_weight / index_to_weight.sum()
+
+        if 0:
+            index_to_unique_labels = list(map(set, index_to_labels))
+            unique_freq = ub.dict_hist(ub.flatten(index_to_unique_labels))
+            tot = sum(unique_freq.values())
+            unweighted_odds = ub.map_vals(lambda x: x / tot, unique_freq)
+
+            label_to_indices = ub.ddict(set)
+            for index, item_labels in enumerate(index_to_labels):
+                for label in item_labels:
+                    label_to_indices[label].add(index)
+            ub.map_vals(len, label_to_indices)
+
+            label_to_odds = ub.ddict(lambda: 0)
+            for label, indices in label_to_indices.items():
+                for idx in indices:
+                    label_to_odds[label] += index_to_prob[idx]
+
+            coi = {x for x, w in label_to_weight.items() if w > 0}
+            coi_weighted = ub.dict_subset(label_to_odds, coi)
+            coi_unweighted = ub.dict_subset(unweighted_odds, coi)
+            print('coi_weighted = {}'.format(ub.repr2(coi_weighted, nl=1)))
+            print('coi_unweighted = {}'.format(ub.repr2(coi_unweighted, nl=1)))
 
         self.index_to_prob = index_to_prob
         self.indices = np.arange(len(index_to_prob))
@@ -344,6 +375,7 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
         else:
             self.num_batches = num_batches
 
+        self.label_to_freq = label_to_freq
         self.index_to_labels = index_to_labels
         self.batch_size = batch_size
         self.shuffle = shuffle
@@ -355,6 +387,25 @@ class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSam
             'batch_size': self.batch_size,
             'label_to_freq': self.label_to_freq,
         }, nl=0)
+
+    def _balance_report(self, limit=None):
+        # Print the epoch / item label frequency per epoch
+        label_sequence = []
+        index_sequence = []
+        if limit is None:
+            limit = self.num_batches
+        for item_indices, _ in zip(self, range(limit)):
+            item_indices = np.array(item_indices)
+            item_labels = list(ub.flatten(ub.take(self.index_to_labels, item_indices)))
+            index_sequence.extend(item_indices)
+            label_sequence.extend(ub.unique(item_labels))
+        label_hist = ub.dict_hist(label_sequence)
+        index_hist = ub.dict_hist(index_sequence)
+        label_hist = ub.sorted_vals(label_hist, reverse=True)
+        index_hist = ub.sorted_vals(index_hist, reverse=True)
+        index_hist = ub.dict_subset(index_hist, list(index_hist.keys())[0:5])
+        print('label_hist = {}'.format(ub.repr2(label_hist, nl=1)))
+        print('index_hist = {}'.format(ub.repr2(index_hist, nl=1)))
 
     def _auto_num_batches(self):
         # The right way to calculate num samples would be using a generalized

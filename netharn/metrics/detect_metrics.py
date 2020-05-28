@@ -133,7 +133,8 @@ class DetectionMetrics(ub.NiceRepr):
         return dmet.gid_to_pred_dets[gid]
 
     def confusion_vectors(dmet, ovthresh=0.5, bias=0, gids=None, compat='all',
-                          prioritize='iou', ignore_class='ignore'):
+                          prioritize='iou', ignore_classes='ignore',
+                          background_class=ub.NoParam, verbose='auto', workers=0):
         """
         Assigns predicted boxes to the true boxes so we can transform the
         detection problem into a classification problem for scoring.
@@ -168,8 +169,19 @@ class DetectionMetrics(ub.NiceRepr):
                 preferred over descendents of the true class, over unreleated
                 classes.
 
-            ignore_class (str, default='ignore'):
-                class name indicating ignore regions
+            ignore_classes (set, default={'ignore'}):
+                class names indicating ignore regions
+
+            background_class (str, default=ub.NoParam):
+                Name of the background class. If unspecified we try to
+                determine it with heuristics. A value of None means there is no
+                background class.
+
+            verbose (int, default='auto'): verbosity flag. In auto mode,
+                verbose=1 if len(gids) > 1000.
+
+            workers (int, default=0):
+                number of parallel assignment processes
 
         Ignore:
             globals().update(xdev.get_func_kwargs(dmet.confusion_vectors))
@@ -183,29 +195,62 @@ class DetectionMetrics(ub.NiceRepr):
 
         if gids is None:
             gids = sorted(dmet._imgname_to_gid.values())
-        for gid in gids:
+
+        if verbose == 'auto':
+            verbose = 1 if len(gids) > 10 else 0
+
+        if background_class is ub.NoParam:
+            # Try to autodetermine background class name,
+            # otherwise fallback to None
+            background_class = None
+            if dmet.classes is not None:
+                lower_classes = [c.lower() for c in dmet.classes]
+                try:
+                    idx = lower_classes.index('background')
+                    background_class = dmet.classes[idx]
+                    # TODO: if we know the background class name should we
+                    # change bg_cidx in assignment?
+                except ValueError:
+                    pass
+
+        from ndsampler.utils import util_futures
+        workers = 0
+        jobs = util_futures.JobPool(mode='process', max_workers=workers)
+
+        for gid in ub.ProgIter(gids, desc='submit assign jobs',
+                               verbose=verbose):
             true_dets = dmet.true_detections(gid)
             pred_dets = dmet.pred_detections(gid)
+            job = jobs.submit(
+                _assign_confusion_vectors, true_dets, pred_dets,
+                bg_weight=1, ovthresh=ovthresh, bg_cidx=-1, bias=bias,
+                classes=dmet.classes, compat=compat, prioritize=prioritize,
+                ignore_classes=ignore_classes)
+            job.gid = gid
 
-            y = _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1,
-                                          ovthresh=ovthresh, bg_cidx=-1,
-                                          bias=bias, classes=dmet.classes,
-                                          compat=compat, prioritize=prioritize,
-                                          ignore_class=ignore_class)
+        for job in ub.ProgIter(jobs.jobs, desc='assign detections',
+                               verbose=verbose):
+            y = job.result()
+            gid = job.gid
 
             if TRACK_PROBS:
                 # Keep track of per-class probs
+                pred_dets = dmet.pred_detections(gid)
                 try:
                     pred_probs = pred_dets.probs
                 except KeyError:
                     TRACK_PROBS = False
                 else:
                     pxs = np.array(y['pxs'], dtype=np.int)
+
+                    # For unassigned truths, we need to create dummy probs
+                    # where a background class has probability 1.
                     flags = pxs > -1
                     probs = np.zeros((len(pxs), pred_probs.shape[1]),
                                      dtype=np.float32)
-                    bg_idx = dmet.classes.node_to_idx['background']
-                    probs[:, bg_idx] = 1
+                    if background_class is not None:
+                        bg_idx = dmet.classes.index(background_class)
+                        probs[:, bg_idx] = 1
                     probs[flags] = pred_probs[pxs[flags]]
                     prob_accum.append(probs)
 
@@ -213,8 +258,60 @@ class DetectionMetrics(ub.NiceRepr):
             for k, v in y.items():
                 y_accum[k].extend(v)
 
+        # else:
+        #     for gid in ub.ProgIter(gids, desc='assign detections', verbose=verbose):
+        #         true_dets = dmet.true_detections(gid)
+        #         pred_dets = dmet.pred_detections(gid)
+
+        #         y = _assign_confusion_vectors(true_dets, pred_dets, bg_weight=1,
+        #                                       ovthresh=ovthresh, bg_cidx=-1,
+        #                                       bias=bias, classes=dmet.classes,
+        #                                       compat=compat, prioritize=prioritize,
+        #                                       ignore_classes=ignore_classes)
+
+        #         if TRACK_PROBS:
+        #             # Keep track of per-class probs
+        #             try:
+        #                 pred_probs = pred_dets.probs
+        #             except KeyError:
+        #                 TRACK_PROBS = False
+        #             else:
+        #                 pxs = np.array(y['pxs'], dtype=np.int)
+        #                 flags = pxs > -1
+        #                 probs = np.zeros((len(pxs), pred_probs.shape[1]),
+        #                                  dtype=np.float32)
+        #                 bg_idx = dmet.classes.node_to_idx['background']
+        #                 probs[:, bg_idx] = 1
+        #                 probs[flags] = pred_probs[pxs[flags]]
+        #                 prob_accum.append(probs)
+
+        #         y['gid'] = [gid] * len(y['pred'])
+        #         for k, v in y.items():
+        #             y_accum[k].extend(v)
+
+        _data = {}
+        for k, v in ub.ProgIter(list(y_accum.items()), desc='ndarray convert', verbose=verbose):
+            # Try to use 32 bit types for large evaluation problems
+            kw = dict()
+            if k in {'iou', 'score', 'weight'}:
+                kw['dtype'] = np.float32
+            if k in {'pxs', 'txs', 'gid', 'pred', 'true', 'pred_raw'}:
+                kw['dtype'] = np.int32
+            try:
+                _data[k] = np.asarray(v, **kw)
+            except TypeError:
+                _data[k] = np.asarray(v)
+
         # Avoid pandas when possible
-        cfsn_data = kwarray.DataFrameArray(ub.map_vals(np.array, y_accum))
+        cfsn_data = kwarray.DataFrameArray(_data)
+
+        if 0:
+            import xdev
+            nbytes = 0
+            for k, v in _data.items():
+                nbytes += v.size * v.dtype.itemsize
+            print(xdev.byte_str(nbytes))
+
         if TRACK_PROBS:
             y_prob = np.vstack(prob_accum)
         else:
@@ -334,14 +431,15 @@ class DetectionMetrics(ub.NiceRepr):
         return info
 
     def score_voc(dmet, ovthresh=0.5, bias=1, method='voc2012', gids=None,
-                  ignore_class='ignore'):
+                  ignore_classes='ignore'):
         """
         score using voc method
 
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
             >>> dmet = DetectionMetrics.demo(
-            >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1), nclasses=8, score_noise=.5)
+            >>>     nimgs=100, nboxes=(0, 3), n_fp=(0, 1), nclasses=8,
+            >>>     score_noise=.5)
             >>> print(dmet.score_voc()['mAP'])
             0.9399...
         """
@@ -356,10 +454,10 @@ class DetectionMetrics(ub.NiceRepr):
             true_dets = dmet.true_detections(gid)
             pred_dets = dmet.pred_detections(gid)
 
-            if ignore_class is not None:
+            if ignore_classes is not None:
                 true_ignore_flags, pred_ignore_flags = _filter_ignore_regions(
                     true_dets, pred_dets, ovthresh=ovthresh,
-                    ignore_class=ignore_class)
+                    ignore_classes=ignore_classes)
                 true_dets = true_dets.compress(~true_ignore_flags)
                 pred_dets = pred_dets.compress(~pred_ignore_flags)
 
@@ -482,6 +580,11 @@ class DetectionMetrics(ub.NiceRepr):
             cls_noise (float, default=0): probability that a class label will
                 change. Must be within 0 and 1.
             anchors (ndarray, default=None): used to create random boxes
+            null_pred (bool, default=0):
+                if True, predicted classes are returned as null, which means
+                only localization scoring is suitable.
+            with_probs (bool, default=1):
+                if True, includes per-class probabilities with predictions
 
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
@@ -504,6 +607,27 @@ class DetectionMetrics(ub.NiceRepr):
             <Detections(4)>
             >>> print(dmet.pred_detections(gid=0))
             <Detections(7)>
+
+        Example:
+            >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> # Test case with null predicted categories
+            >>> dmet = DetectionMetrics.demo(nimgs=30, null_pred=1, nclasses=3,
+            >>>                              nboxes=10, n_fp=10, box_noise=0.3,
+            >>>                              with_probs=False)
+            >>> dmet.gid_to_pred_dets[0].data
+            >>> dmet.gid_to_true_dets[0].data
+            >>> cfsn_vecs = dmet.confusion_vectors()
+            >>> binvecs_ovr = cfsn_vecs.binarize_ovr()
+            >>> binvecs_per = cfsn_vecs.binarize_peritem()
+            >>> pr_per = binvecs_per.precision_recall()
+            >>> pr_ovr = binvecs_ovr.precision_recall()
+            >>> print('pr_per = {!r}'.format(pr_per))
+            >>> print('pr_ovr = {!r}'.format(pr_ovr))
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> pr_per.draw(fnum=1)
+            >>> pr_ovr['perclass'].draw(fnum=2)
         """
         import kwimage
         import kwarray
@@ -514,6 +638,9 @@ class DetectionMetrics(ub.NiceRepr):
         nimgs = kwargs.get('nimgs', 1)
         box_noise = kwargs.get('box_noise', 0)
         cls_noise = kwargs.get('cls_noise', 0)
+
+        null_pred = kwargs.get('null_pred', False)
+        with_probs = kwargs.get('with_probs', True)
 
         # specify an amount of overlap between true and false scores
         score_noise = kwargs.get('score_noise', 0.2)
@@ -550,8 +677,10 @@ class DetectionMetrics(ub.NiceRepr):
         true_mean  = _interp(0.5, .8, score_noise)
         false_mean = _interp(0.5, .2, score_noise)
 
-        true_score_RV = distributions.TruncNormal(mean=true_mean, std=.5, low=true_low, high=true_high, rng=rng)
-        false_score_RV = distributions.TruncNormal(mean=false_mean, std=.5, low=0, high=false_high, rng=rng)
+        true_score_RV = distributions.TruncNormal(
+            mean=true_mean, std=.5, low=true_low, high=true_high, rng=rng)
+        false_score_RV = distributions.TruncNormal(
+            mean=false_mean, std=.5, low=0, high=false_high, rng=rng)
 
         frgnd_cx_RV = distributions.DiscreteUniform(
             1, nclasses + 1, rng=rng)
@@ -640,7 +769,12 @@ class DetectionMetrics(ub.NiceRepr):
                                            scores=pred_scores)
 
             # Hack in the probs
-            pred_dets.data['probs'] = class_probs
+            if with_probs:
+                pred_dets.data['probs'] = class_probs
+
+            if null_pred:
+                pred_dets.data['class_idxs'] = np.array(
+                    [None] * len(pred_dets), dtype=object)
 
             dmet.add_truth(true_dets, imgname=imgname)
             dmet.add_predictions(pred_dets, imgname=imgname)

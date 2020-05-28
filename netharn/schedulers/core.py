@@ -132,11 +132,12 @@ class YOLOScheduler(NetharnScheduler):
         >>>         self.step_batch()
         >>> #print('ydata = {}'.format(ub.repr2(ydata, precision=5, nl=0)))
         >>> # xdoc: +REQUIRES(--show)
-        >>> nh.util.autompl()
+        >>> import kwplot
+        >>> kwplot.autompl()
         >>> xticklabels = sorted({1, 20} | set(points.keys()))
-        >>> nh.util.multi_plot(xdata=xdata['epoch'], ydata=ydata, xlabel='epoch', fnum=1,
+        >>> kwplot.multi_plot(xdata=xdata['epoch'], ydata=ydata, xlabel='epoch', fnum=1,
         >>>                    ylabel='lr', xticklabels=xticklabels, xticks=xticklabels)
-        >>> nh.util.show_if_requested()
+        >>> kwplot.show_if_requested()
 
     """
     __batchaware__ = True

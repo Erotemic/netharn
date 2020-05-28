@@ -98,13 +98,13 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> norm_boxes = label['targets'].numpy().reshape(-1, 5)[:, 1:5]
             >>> inp_size = hwc01.shape[-2::-1]
             >>> # xdoc: +REQUIRES(--show)
-            >>> import netharn as nh
-            >>> nh.util.figure(doclf=True, fnum=1)
-            >>> nh.util.autompl()  # xdoc: +SKIP
-            >>> nh.util.imshow(hwc01, colorspace='rgb')
+            >>> import kwplot
+            >>> kwplot.figure(doclf=True, fnum=1)
+            >>> kwplot.autompl()  # xdoc: +SKIP
+            >>> kwplot.imshow(hwc01, colorspace='rgb')
             >>> inp_boxes = util.Boxes(norm_boxes, 'cxywh').scale(inp_size)
             >>> inp_boxes.draw()
-            >>> nh.util.show_if_requested()
+            >>> kwplot.show_if_requested()
 
         Example:
             >>> # DISABLE_DOCTSET
@@ -119,12 +119,13 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> norm_boxes = label[0].numpy().reshape(-1, 5)[:, 1:5]
             >>> inp_size = hwc01.shape[-2::-1]
             >>> # xdoc: +REQUIRES(--show)
-            >>> nh.util.figure(doclf=True, fnum=1)
-            >>> nh.util.autompl()  # xdoc: +SKIP
-            >>> nh.util.imshow(hwc01, colorspace='rgb')
+            >>> import kwplot
+            >>> kwplot.autompl()  # xdoc: +SKIP
+            >>> kwplot.figure(doclf=True, fnum=1)
+            >>> kwplot.imshow(hwc01, colorspace='rgb')
             >>> inp_boxes = util.Boxes(norm_boxes, 'cxywh').scale(inp_size)
             >>> inp_boxes.draw()
-            >>> nh.util.show_if_requested()
+            >>> kwplot.show_if_requested()
         """
         if isinstance(index, tuple):
             # Get size index from the batch loader
@@ -368,11 +369,12 @@ class YoloHarn(nh.FitHarn):
             >>> outputs, loss = harn.run_batch(batch)
             >>> harn.on_batch(batch, outputs, loss)
             >>> # xdoc: +REQUIRES(--show)
+            >>> import kwplot
             >>> batch_dets = harn.model.module.postprocess(outputs)
-            >>> nh.util.autompl()  # xdoc: +SKIP
+            >>> kwplot.autompl()  # xdoc: +SKIP
             >>> stacked = harn.draw_batch(batch, outputs, batch_dets, thresh=0.01)
-            >>> nh.util.imshow(stacked)
-            >>> nh.util.show_if_requested()
+            >>> kwplot.imshow(stacked)
+            >>> kwplot.show_if_requested()
         """
         dmet = harn.dmets[harn.current_tag]
         inputs, labels = batch
@@ -386,13 +388,14 @@ class YoloHarn(nh.FitHarn):
 
             bx = harn.bxs[harn.current_tag]
             if bx < 4:
+                import kwimage
                 stacked = harn.draw_batch(batch, outputs, batch_dets, thresh=0.1)
-                # img = nh.util.render_figure_to_image(fig)
+                # img = kwplot.render_figure_to_image(fig)
                 dump_dpath = ub.ensuredir((harn.train_dpath, 'monitor', harn.current_tag, 'batch'))
                 dump_fname = 'pred_bx{:04d}_epoch{:08d}.png'.format(bx, harn.epoch)
                 fpath = os.path.join(dump_dpath, dump_fname)
                 harn.debug('dump viz fpath = {}'.format(fpath))
-                nh.util.imwrite(fpath, stacked)
+                kwimage.imwrite(fpath, stacked)
         except Exception as ex:
             harn.error('\n\n\n')
             harn.error('ERROR: FAILED TO POSTPROCESS OUTPUTS')
@@ -573,11 +576,12 @@ class YoloHarn(nh.FitHarn):
             >>> outputs, loss = harn.run_batch(batch)
             >>> harn.on_batch(batch, outputs, loss)
             >>> # xdoc: +REQUIRES(--show)
+            >>> import kwplot
             >>> batch_dets = harn.model.module.postprocess(outputs)
-            >>> nh.util.autompl()  # xdoc: +SKIP
+            >>> kwplot.autompl()  # xdoc: +SKIP
             >>> stacked = harn.draw_batch(batch, outputs, batch_dets, thresh=0.01)
-            >>> nh.util.imshow(stacked)
-            >>> nh.util.show_if_requested()
+            >>> kwplot.imshow(stacked)
+            >>> kwplot.show_if_requested()
         """
         import cv2
         inputs, labels = batch

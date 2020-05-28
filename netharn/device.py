@@ -408,7 +408,6 @@ class XPU(ub.NiceRepr):
             }
 
         """
-        gpus = gpu_info()
         info = {
             'available': 0,
             'total': 0,
@@ -427,10 +426,11 @@ class XPU(ub.NiceRepr):
             info['used'] += tup.used * MB
             info['available'] += tup.available * MB
         else:
-            for id in self._device_ids:
-                info['total'] += gpus[id]['mem_total']
-                info['used'] += gpus[id]['mem_used']
-                info['available'] += gpus[id]['mem_avail']
+            gpus = gpu_info()
+            for index in self._device_ids:
+                info['total'] += gpus[index]['mem_total']
+                info['used'] += gpus[index]['mem_used']
+                info['available'] += gpus[index]['mem_avail']
         return info
 
     def __str__(xpu):
@@ -673,7 +673,11 @@ def find_unused_gpu(min_memory=0):
         >>>     item = find_unused_gpu()
         >>>     assert item is None or isinstance(item, int)
     """
-    gpus = gpu_info()
+    try:
+        gpus = gpu_info()
+    except NvidiaSMIError:
+        gpus = None
+
     if not gpus:
         return None
 
@@ -723,6 +727,10 @@ def _query_nvidia_smi(mode, fields):
             row = ub.dzip(fields, parts)
             rows.append(row)
     return rows
+
+
+class NvidiaSMIError(Exception):
+    pass
 
 
 def gpu_info(new_mode=True):
@@ -852,7 +860,7 @@ def gpu_info(new_mode=True):
             print(info['err'])
             warnings.warn('Problem running nvidia-smi: ret='.format(
                 info['ret']))
-            return None
+            raise NvidiaSMIError
         xml_string = info['out']
         root = ET.fromstring(xml_string)
 
@@ -900,7 +908,7 @@ def gpu_info(new_mode=True):
             gpu_rows = _query_nvidia_smi(mode, fields)
         except Exception as ex:
             warnings.warn('Problem running nvidia-smi: {!r}'.format(ex))
-            return None
+            raise NvidiaSMIError
 
         fields = ['pid', 'name', 'gpu_uuid', 'used_memory']
         mode = 'query-compute-apps'
@@ -918,7 +926,7 @@ def gpu_info(new_mode=True):
             gpu['procs'] = []
             gpus[num] = gpu
 
-        gpu_uuid_to_num = {g['gpu_uuid']: gpu['num'] for g in gpus.values()}
+        gpu_uuid_to_num = {gpu['gpu_uuid']: gpu['num'] for gpu in gpus.values()}
 
         for row in proc_rows:
             # Give each GPU info on which processes are using it
@@ -974,10 +982,10 @@ def gpu_info(new_mode=True):
             result = ub.cmd('nvidia-smi')
             if result['ret'] != 0:
                 warnings.warn('Problem running nvidia-smi.')
-                return None
+                raise NvidiaSMIError
         except Exception:
             warnings.warn('Could not run nvidia-smi.')
-            return {}
+            raise NvidiaSMIError
 
         lines = result['out'].splitlines()
 

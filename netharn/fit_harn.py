@@ -50,16 +50,16 @@ Example:
     >>>     'name'        : 'demo',
     >>>     'xpu'         : nh.XPU.coerce('argv'),
     >>>     # workdir is a directory where intermediate results can be saved
-    >>>     # nice symlinks <workdir>/fit/nice/<name> -> ../runs/<hashid>
+    >>>     # name symlinks <workdir>/fit/name/<name> -> ../runs/<hashid>
     >>>     # XPU auto select a gpu if idle and VRAM>6GB else a cpu
     >>>     # ================
     >>>     # Data Components
     >>>     'datasets'    : {  # dict of plain ol torch.data.Dataset instances
     >>>         'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
-    >>>         'vali': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
-    >>>         'test': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+    >>>         'vali': nh.data.ToyData2d(size=3, border=1, n=64, rng=1),
+    >>>         'test': nh.data.ToyData2d(size=3, border=1, n=64, rng=1),
     >>>     },
-    >>>     'loaders'     : {'batch_size': 64}, # DataLoader instances or kw
+    >>>     'loaders'     : {'batch_size': 8}, # DataLoader instances or kw
     >>>     # ================
     >>>     # Algorithm Components
     >>>     # Note the (cls, kw) tuple formatting
@@ -82,7 +82,7 @@ Example:
     >>>     }),
     >>>     # dynamics are a config option that modify the behavior of the main
     >>>     # training loop. These parameters effect the learned model.
-    >>>     'dynamics'   : {'batch_step': 4},
+    >>>     'dynamics'   : {'batch_step': 2},
     >>> })
     >>> harn = nh.FitHarn(hyper)
     >>> # non-algorithmic behavior configs (do not change learned models)
@@ -93,7 +93,7 @@ Example:
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
     >>> # xdoc: +IGNORE_WANT
     RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR
-    Symlink: ...tests/demo/fit/runs/demo/keyeewlr -> ...tests/demo/fit/nice/demo
+    Symlink: ...tests/demo/fit/runs/demo/keyeewlr -> ...tests/demo/fit/name/demo
     .... already exists
     .... and points to the right place
     Initializing tensorboard (dont forget to start the tensorboard server)
@@ -101,10 +101,10 @@ Example:
     Mounting ToyNet2d model on CPU
     Initializing model weights
      * harn.train_dpath = '...tests/demo/fit/runs/demo/keyeewlr'
-     * harn.nice_dpath  = '...tests/demo/fit/nice/demo'
+     * harn.name_dpath  = '...tests/demo/fit/name/demo'
     Snapshots will save to harn.snapshot_dpath = '...tests/demo/fit/runs/demo/keyeewlr/torch_snapshots'
     dont forget to start:
-        tensorboard --logdir ...tests/demo/fit/nice
+        tensorboard --logdir ...tests/demo/fit/name
     === begin training ===
     epoch lr:0.001 │ vloss: 0.1409 (n_bad_epochs=00, best=0.1409): 100%|█| 10/10 [00:01<00:00,  9.95it/s]  0:00<?, ?it/s]
     train x64 │ loss:0.147 │: 100%|███████████████████████████████████████████████████████| 8/8 [00:00<00:00, 130.56it/s]
@@ -116,9 +116,9 @@ Example:
     training completed
     current lrs: [0.001]
     harn.train_dpath = '...tests/demo/fit/runs/demo/keyeewlr'
-    harn.nice_dpath  = '...tests/demo/fit/nice/demo'
+    harn.name_dpath  = '...tests/demo/fit/name/demo'
     view tensorboard results for this run via:
-        tensorboard --logdir ...tests/demo/fit/nice
+        tensorboard --logdir ...tests/demo/fit/name
     exiting fit harness.
 
 TODO:
@@ -133,7 +133,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import glob
 import itertools as it
 import logging
-import os
 import parse
 import shutil
 import time
@@ -143,6 +142,8 @@ import warnings
 import functools
 import traceback
 from os.path import join
+from os.path import exists
+from os.path import dirname
 
 import torch
 import numpy as np
@@ -206,6 +207,59 @@ class ExtraMixins(object):
     """
     Miscellaneous methods that will be mixed into FitHarn
     """
+
+    @classmethod
+    def demo(cls):
+        """
+        Creates a dummy FitHarn object for testing and demonstration purposes
+        """
+        import netharn as nh
+        hyper = nh.HyperParams(**{
+            # ================
+            # Environment Components
+            'workdir'     : ub.ensure_app_cache_dir('netharn/tests/demo'),
+            'name'        : 'demo',
+            'xpu'         : nh.XPU.coerce('cpu'),
+            # workdir is a directory where intermediate results can be saved
+            # "name" symlinks <workdir>/fit/name/<name> -> ../runs/<hashid>
+            # XPU auto select a gpu if idle and VRAM>6GB else a cpu
+            # ================
+            # Data Components
+            'datasets'    : {  # dict of plain ol torch.data.Dataset instances
+                'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
+                'vali': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+                'test': nh.data.ToyData2d(size=3, border=1, n=128, rng=1),
+            },
+            'loaders'     : {'batch_size': 64},  # DataLoader instances or kw
+            # ================
+            # Algorithm Components
+            # Note the (cls, kw) tuple formatting
+            'model'       : (nh.models.ToyNet2d, {}),
+            'optimizer'   : (nh.optimizers.SGD, {
+                'lr': 0.0001
+            }),
+            # focal loss is usually better than nh.criterions.CrossEntropyLoss
+            'criterion'   : (nh.criterions.FocalLoss, {}),
+            'initializer' : (nh.initializers.KaimingNormal, {
+                'param': 0,
+            }),
+            # these may receive an overhaul soon
+            'scheduler'   : (nh.schedulers.ListedLR, {
+                'points': {0: .0001, 2: .01, 5: .015, 6: .005, 9: .001},
+                'interpolate': True,
+            }),
+            'monitor'     : (nh.Monitor, {
+                'max_epoch': 10,
+            }),
+            # dynamics are a config option that modify the behavior of the main
+            # training loop. These parameters effect the learned model.
+            'dynamics'   : {'batch_step': 4},
+        })
+        harn = cls(hyper)
+        # non-algorithmic behavior configs (do not change learned models)
+        harn.preferences['use_tensorboard'] = False
+        harn.preferences['timeout'] = 0.5
+        return harn
 
     def _demo_epoch(harn, tag='vali', learn=False, max_iter=np.inf,
                     call_on_epoch=False):
@@ -329,7 +383,7 @@ class InitializeMixin(object):
         # train info, keep a backup of the old ones.
         if harn.train_dpath and overwrite:
             train_info_fpath = join(harn.train_dpath, 'train_info.json')
-            if os.path.exists(train_info_fpath):
+            if exists(train_info_fpath):
                 if overwrite:
                     import json
                     try:
@@ -367,14 +421,14 @@ class InitializeMixin(object):
                 raise CannotResume
             harn.resume_from_previous_snapshots()
         except CannotResume:
-            # Abstract logic into a reset_state function?
+            # This step is only run on a fresh start.
             harn.reset_weights()
             for group in harn.optimizer.param_groups:
                 group.setdefault('initial_lr', group['lr'])
 
         if harn.train_dpath:
             harn.info(' * harn.train_dpath = {!r}'.format(harn.train_dpath))
-            harn.info(' * harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
+            harn.info(' * harn.name_dpath  = {!r}'.format(harn.name_dpath))
             harn.info('Snapshots will save to harn.snapshot_dpath = {!r}'.format(
                 harn.snapshot_dpath))
         else:
@@ -393,8 +447,8 @@ class InitializeMixin(object):
             train_info = harn.hyper.train_info(harn.train_dpath)
             ub.ensuredir(train_info['train_dpath'])
 
-            if train_info['nice_dpath']:
-                ub.ensuredir(os.path.dirname(train_info['nice_dpath']))
+            if train_info['name_dpath']:
+                ub.ensuredir(dirname(train_info['name_dpath']))
 
                 # Make a very simple MRU (most recently used) link
                 mru_dpath = join(harn.hyper.workdir, '_mru')
@@ -404,16 +458,26 @@ class InitializeMixin(object):
                 except OSError as ex:
                     harn.warn('Unable to symlink: {!r}'.format(ex))
 
-                # Link the hashed run dir to the human friendly nice dir
+                # Link the hashed run dir to the human friendly "name" dir
                 try:
                     ub.symlink(train_info['train_dpath'],
-                               train_info['nice_dpath'], overwrite=True,
+                               train_info['name_dpath'], overwrite=True,
                                verbose=3)
                 except OSError as ex:
                     harn.warn('Unable to symlink: {!r}'.format(ex))
 
+            if 'nice_dpath' in train_info:
+                # backwards compatibility for "nice" dpaths
+                ub.ensuredir(dirname(train_info['nice_dpath']))
+                try:
+                    ub.symlink(train_info['train_dpath'],
+                               train_info['nice_dpath'], overwrite=True,
+                               verbose=0)
+                except OSError as ex:
+                    harn.warn('Unable to symlink: {!r}'.format(ex))
+
             harn.train_info = train_info
-            harn.nice_dpath = train_info['nice_dpath']
+            harn.name_dpath = train_info['name_dpath']
             harn.train_dpath = train_info['train_dpath']
             return harn.train_dpath
 
@@ -473,7 +537,7 @@ class InitializeMixin(object):
             harn.debug('Initialized logging')
 
         if tensorboard_logger and harn.preferences['use_tensorboard']:
-            # train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
+            # train_base = dirname(harn.name_dpath or harn.train_dpath)
             # harn.info('dont forget to start:\n    tensorboard --logdir ' + train_base)
             harn.info('Initializing tensorboard (dont forget to start the tensorboard server)')
             harn._tlog = tensorboard_logger.Logger(harn.train_dpath,
@@ -599,6 +663,9 @@ class InitializeMixin(object):
         else:
             harn.warn('initializer was not specified')
 
+        # Save the original weights for analysis
+        harn.save_snapshot(mode='initial')
+
     @profiler.profile
     def resume_from_previous_snapshots(harn):
         """
@@ -666,7 +733,8 @@ class ProgMixin(object):
             import tqdm  # NOQA
             Prog = tqdm.tqdm
         elif harn.preferences['prog_backend'] == 'progiter':
-            Prog = functools.partial(ub.ProgIter, chunksize=chunksize, verbose=1)
+            Prog = functools.partial(
+                ub.ProgIter, chunksize=chunksize, verbose=1, time_thresh=2.0)
         else:
             raise KeyError(harn.preferences['prog_backend'])
         return Prog(*args, **kw)
@@ -750,14 +818,24 @@ class LogMixin(object):
         except AttributeError:
             pass
 
-    def log(harn, msg):
+    def log(harn, msg, level='info'):
         """
-        Logs an info message. Alias of :func:LogMixin.info
+        Logs a message with a specified verbosity level.
 
         Args:
             msg (str): an info message to log
+            level (str): either info, debug, error, or warn
         """
-        harn.info(msg)
+        if level == 'info':
+            harn.info(msg)
+        elif level == 'debug':
+            harn.debug(msg)
+        elif level == 'error':
+            harn.error(msg)
+        elif level == 'warn':
+            harn.warn(msg)
+        else:
+            raise KeyError(level)
 
     def info(harn, msg):
         """
@@ -892,7 +970,8 @@ class SnapshotMixin(object):
         # snapshots or checkpoints for simplicity.
         if harn.train_dpath is None:
             raise ValueError('harn.train_dpath is None')
-        return join(harn.train_dpath, 'torch_snapshots')
+        # return join(harn.train_dpath, 'torch_snapshots')
+        return join(harn.train_dpath, 'checkpoints')
 
     def _epochs_to_remove(harn, existing_epochs, num_keep_recent,
                           num_keep_best, keep_freq):
@@ -1002,43 +1081,103 @@ class SnapshotMixin(object):
         harn.set_snapshot_state(snapshot_state)
         harn.info('Previous snapshot loaded...')
 
-    def save_snapshot(harn, explicit=False):
+    def save_snapshot(harn, explicit=False, mode='checkpoint'):
         """
         Checkpoint the current model state in an epoch-tagged snapshot.
 
         Args:
+            mode (str, default='checkpoint'): the type of snapshot this is
+                (changes the subdirectory where they are stored). Choices
+                are: checkpoint, explicit, and initial.
+
             explicit (bool, default=False): if True, the snapshot is also
                 tagged by a hash and saved to the explit_checkpoints directory.
+                DEPRECTATED, use mode.
 
         Returns:
             PathLike: save_fpath: the path to the saved snapshot
+
+        Example:
+            >>> import netharn as nh
+            >>> harn = nh.FitHarn.demo()
+            >>> # The "save_snapshot" method is called in initialize
+            >>> harn.initialize()
         """
         if explicit:
-            _dpath = join(harn.train_dpath, 'explit_checkpoints')
-            ub.ensuredir(_dpath)
+            mode = 'explicit'
 
-            try:
-                stamp = ub.timestamp()
-            except Exception:
-                stamp = ub.timestamp()
-
+        if mode == 'explicit':
+            dpath = ub.ensuredir((harn.train_dpath, 'explit_checkpoints'))
+            stamp = ub.timestamp()
             save_fname = '_epoch_{:08d}_{}.pt'.format(harn.epoch, stamp)
-            save_fpath = join(_dpath, save_fname)
+        elif mode == 'checkpoint':
+            # TODO: make the transition smoother
+            dpath = ub.ensuredir(harn.snapshot_dpath)
+            _old_snapshot_dpath = join(harn.train_dpath, 'torch_snapshots')
+            _new_snapshot_dpath = join(harn.train_dpath, 'checkpoints')
 
-            harn.info('Saving EXPLICIT snapshot to {}'.format(save_fpath))
-            snapshot_state = harn.get_snapshot_state()
-            torch.save(snapshot_state, save_fpath)
-        else:
-            ub.ensuredir(harn.snapshot_dpath)
+            if dpath == _new_snapshot_dpath:
+                if not exists(_old_snapshot_dpath):
+                    ub.symlink(_new_snapshot_dpath, _old_snapshot_dpath)
+
             save_fname = '_epoch_{:08d}.pt'.format(harn.epoch)
-            save_fpath = join(harn.snapshot_dpath, save_fname)
+        elif mode == 'initial':
+            dpath = ub.ensuredir((harn.train_dpath, 'initial_state'))
+            save_fname = 'initial_state.pt'.format(harn.epoch)
+        else:
+            raise KeyError(mode)
 
-            harn.debug('Saving snapshot to {}'.format(save_fpath))
-            snapshot_state = harn.get_snapshot_state()
-            torch.save(snapshot_state, save_fpath)
+        save_fpath = join(dpath, save_fname)
+        level = 'debug' if mode == 'checkpoint' else 'info'
+        harn.log('Saving {} snapshot to {}'.format(mode.upper(), save_fpath), level)
+
+        snapshot_state = harn.get_snapshot_state()
+
+        try:
+            import safer
+            _open = safer.open
+        except ImportError:
+            _open = open
+
+        with _open(save_fpath, 'wb') as save_file:
+            torch.save(snapshot_state, save_file)
 
         harn.debug('Snapshot saved to {}'.format(save_fpath))
         return save_fpath
+
+    def best_snapshot(harn):
+        """
+        Return the path to the current "best" snapshot.
+        """
+        # Netharn should populate best_snapshot.pt if there is a validation set.
+        # Other names are to support older codebases.
+        train_dpath = harn.train_dpath
+        expected_names = [
+            'best_snapshot.pt',
+            'best_snapshot2.pt',
+            'final_snapshot.pt',
+            'deploy_snapshot.pt',
+        ]
+        for fname in expected_names:
+            fpath = join(train_dpath, fname)
+            if exists(fpath):
+                break
+
+        if not exists(fpath):
+            fpath = None
+
+        if not fpath:
+            epoch_to_fpath = {
+                parse.parse('{}_epoch_{num:d}.pt', path).named['num']: path
+                for path in harn.prev_snapshots()
+            }
+            if epoch_to_fpath:
+                fpath = epoch_to_fpath[max(epoch_to_fpath)]
+
+        if fpath is None:
+            raise Exception('cannot find / determine the best snapshot')
+
+        return fpath
 
 
 @register_mixin
@@ -1182,7 +1321,7 @@ class ScheduleMixin(object):
                             warmup_lr = [_lr * (1 - k) for _lr in regular_lr]
                         else:
                             raise KeyError(warmup)
-                        harn.debug('warmup_lr = {}'.format(warmup_lr))
+                        # harn.debug('warmup_lr = {}'.format(warmup_lr))
                         _set_optimizer_values(harn.optimizer, 'lr', warmup_lr)
 
         # TODO: REFACTOR SO NETHARN HAS A PROPER ITERATION MODE
@@ -1298,7 +1437,7 @@ class CoreMixin(object):
         harn.info('ARGV:\n    ' + sys.executable + ' ' + ' '.join(sys.argv))
 
         if harn._tlog is not None:
-            train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
+            train_base = dirname(harn.name_dpath or harn.train_dpath)
             harn.info('dont forget to start:\n'
                       '    tensorboard --logdir ' + ub.shrinkuser(train_base))
 
@@ -1456,17 +1595,17 @@ class CoreMixin(object):
         harn.info('training completed')
 
         if harn._tlog is not None:
-            train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
+            train_base = dirname(harn.name_dpath or harn.train_dpath)
             harn.info('harn.train_dpath = {!r}'.format(harn.train_dpath))
-            harn.info('harn.nice_dpath  = {!r}'.format(harn.nice_dpath))
+            harn.info('harn.name_dpath  = {!r}'.format(harn.name_dpath))
             harn.info('view tensorboard results for this run via:\n'
                       '    tensorboard --logdir ' + ub.shrinkuser(train_base))
 
-        deploy_fpath = harn._deploy()
+        harn.deploy_fpath = harn._deploy()
 
         harn.on_complete()
         harn.info('exiting fit harness.')
-        return deploy_fpath
+        return harn.deploy_fpath
 
     def _export(harn):
         """
@@ -1526,6 +1665,7 @@ class CoreMixin(object):
             deploy_fpath = None
             harn.warn('Failed to deploy: {}'.format(repr(ex)))
 
+        harn.deploy_fpath = deploy_fpath
         return deploy_fpath
 
     @profiler.profile
@@ -1807,12 +1947,12 @@ class CoreMixin(object):
                     iter_moving_metrics.update(cur_metrics)
 
                     # display_train training info
-                    if harn.check_interval('display_' + tag, bx):
+                    if harn.check_interval('display_' + tag, bx) or bx == n_batches - 1:
                         ave_metrics = iter_moving_metrics.average()
 
                         msg = harn._batch_msg({'loss': ave_metrics['loss']},
                                               bsize, learn)
-                        prog.set_description(tag + ' ' + msg)
+                        prog.set_description(tag + ' ' + msg, refresh=False)
 
                         # log_iter_train, log_iter_test, log_iter_vali
                         if harn.check_interval('log_iter_' + tag, bx, first=True):
@@ -1828,7 +1968,14 @@ class CoreMixin(object):
                                         harn, 'iter',
                                         special_groupers=harn.preferences['tensorboard_groups'])
 
-                        prog.update(display_interval)
+                        if use_tqdm:
+                            prog.update(display_interval)
+                        else:
+                            # hack to force progiter to reach 100% at the end
+                            # This should be fixed in progiter.
+                            steps_taken = (bx - prog._iter_idx) + 1
+                            prog.update(steps_taken)
+
                         if use_tqdm:
                             harn._update_prog_postfix(prog)
 
@@ -1853,6 +2000,7 @@ class CoreMixin(object):
         #         harn.optimizer.step()
         #         harn.optimizer.zero_grad()
 
+        prog.refresh()
         prog.close()
         harn.epoch_prog = None
 
@@ -2414,7 +2562,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
             if harn.hyper.name is not None:
                 harn.hyper.name = 'DEMO_' + harn.hyper.name
             else:
-                raise AssertionError('should have a nice name in demo mode')
+                raise AssertionError('should have a nice "name" in demo mode')
 
         harn.datasets = None
         harn.loaders = None
@@ -2441,7 +2589,7 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
 
         # Output directories
         harn.train_dpath = train_dpath
-        harn.nice_dpath = None
+        harn.name_dpath = None
         harn.train_info = None
 
         # Progress bars
@@ -2513,6 +2661,13 @@ class FitHarn(ExtraMixins, InitializeMixin, ProgMixin, LogMixin, SnapshotMixin,
         warnings.warn('harn.preferences is deprecated, use harn.preferences instead',
                       DeprecationWarning)
         return harn.preferences
+
+    @property
+    def nice_dpath(harn):
+        import warnings
+        warnings.warn('harn.nice_dpath is deprecated, use harn.name_dpath instead',
+                      DeprecationWarning)
+        return harn.name_dpath
 
     def check_interval(harn, tag, idx, first=False):
         """

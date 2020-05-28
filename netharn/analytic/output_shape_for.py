@@ -9,10 +9,7 @@ import torchvision
 from collections import OrderedDict
 from six.moves import builtins
 from netharn.analytic import analytic_for
-# try:
 from netharn.device import DataSerial
-# except ImportError:
-#     DataSerial = None
 
 REGISTERED_TYPES = []
 

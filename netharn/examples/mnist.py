@@ -246,7 +246,7 @@ def setup_harn(**kw):
     # They nh.HyperParams object keeps track of and helps log all declarative
     # info related to training a model.
     hyper = nh.hyperparams.HyperParams(
-        nice='my-mnist-demo',
+        name='my-mnist-demo',
         xpu=xpu,
         workdir=workdir,
         datasets=datasets,

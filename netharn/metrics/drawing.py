@@ -80,13 +80,9 @@ def draw_perclass_roc(cx_to_rocinfo, classes=None, prefix='', fnum=1,
     for cx in cxs:
         peritem = cx_to_rocinfo[cx]
 
-        if isinstance(cx, int):
-            catname = classes[cx]
-        else:
-            catname = cx
+        catname = classes[cx] if isinstance(cx, int) else cx
 
         auc = peritem['auc']
-
         tpr = peritem['tpr']
 
         nsupport = int(peritem['nsupport'])
@@ -95,7 +91,7 @@ def draw_perclass_roc(cx_to_rocinfo, classes=None, prefix='', fnum=1,
             if abs(z - int(z)) < 1e-8:
                 label = 'auc={:0.2f}: {} ({:d}/{:d})'.format(auc, catname, int(peritem['realpos_total']), round(nsupport, 2))
             else:
-                label = 'auc={:0.2f}: {} ({}/{:d})'.format(auc, catname, round(peritem['realpos_total'], 2), round(nsupport, 2))
+                label = 'auc={:0.2f}: {} ({:.2f}/{:d})'.format(auc, catname, round(peritem['realpos_total'], 2), round(nsupport, 2))
         else:
             label = 'auc={:0.2f}: {} ({:d})'.format(auc, catname, round(nsupport, 2))
 
@@ -144,10 +140,7 @@ def draw_perclass_prcurve(cx_to_peritem, classes=None, prefix='', fnum=1, **kw):
     xydata = ub.odict()
     for cx in cxs:
         peritem = cx_to_peritem[cx]
-        if isinstance(cx, int):
-            catname = classes[cx]
-        else:
-            catname = cx
+        catname = classes[cx] if isinstance(cx, int) else cx
         ap = peritem['ap']
         if 'pr' in peritem:
             pr = peritem['pr']
@@ -173,11 +166,11 @@ def draw_perclass_prcurve(cx_to_peritem, classes=None, prefix='', fnum=1, **kw):
         if 'realpos_total' in peritem:
             z = peritem['realpos_total']
             if abs(z - int(z)) < 1e-8:
-                label = 'ap={:0.2f}: {} ({:d}/{:d})'.format(ap, catname, int(peritem['realpos_total']), nsupport)
+                label = 'ap={:0.2f}: {} ({:d}/{:d})'.format(ap, catname, int(peritem['realpos_total']), round(nsupport, 2))
             else:
-                label = 'ap={:0.2f}: {} ({}/{:d})'.format(ap, catname, round(peritem['realpos_total'], 2), nsupport)
+                label = 'ap={:0.2f}: {} ({:.2f}/{:d})'.format(ap, catname, round(peritem['realpos_total'], 2), round(nsupport, 2))
         else:
-            label = 'ap={:0.2f}: {} ({:d})'.format(ap, catname, nsupport)
+            label = 'ap={:0.2f}: {} ({:d})'.format(ap, catname, round(nsupport, 2))
         xydata[label] = (recall, precision)
 
     with warnings.catch_warnings():
@@ -195,7 +188,80 @@ def draw_perclass_prcurve(cx_to_peritem, classes=None, prefix='', fnum=1, **kw):
     return ax
 
 
-def draw_peritem_prcurve(peritem, prefix='', fnum=1, **kw):
+def draw_perclass_thresholds(cx_to_peritem, key='mcc', classes=None, prefix='', fnum=1, **kw):
+    """
+    Notes:
+        Each category is inspected independently of one another, there is no
+        notion of confusion.
+
+    Example:
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
+        >>> # xdoctest: +REQUIRES(module:kwplot)
+        >>> from netharn.metrics.drawing import *  # NOQA
+        >>> from netharn.metrics import ConfusionVectors
+        >>> cfsn_vecs = ConfusionVectors.demo()
+        >>> classes = cfsn_vecs.classes
+        >>> ovr_cfsn = cfsn_vecs.binarize_ovr(keyby='name')
+        >>> cx_to_peritem = ovr_cfsn.threshold_curves()['perclass']
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> key = 'mcc'
+        >>> draw_perclass_thresholds(cx_to_peritem, key, classes)
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> kwplot.show_if_requested()
+    """
+    import kwplot
+    # Sort by descending "best value"
+    cxs = list(cx_to_peritem.keys())
+
+    try:
+        priority = np.array([item['_max_' + key][0] for item in cx_to_peritem.values()])
+        priority[np.isnan(priority)] = -np.inf
+        cxs = list(ub.take(cxs, np.argsort(priority)))[::-1]
+    except KeyError:
+        pass
+
+    xydata = ub.odict()
+    for cx in cxs:
+        peritem = cx_to_peritem[cx]
+        catname = classes[cx] if isinstance(cx, int) else cx
+
+        thresholds = peritem['thresholds']
+        measure = peritem[key]
+        try:
+            best_label = peritem['max_{}'.format(key)]
+        except KeyError:
+            max_idx = measure.argmax()
+            best_thresh = thresholds[max_idx]
+            best_measure = measure[max_idx]
+            best_label = '{}={:0.2f}@{:0.2f}'.format(key, best_measure, best_thresh)
+
+        nsupport = int(peritem['nsupport'])
+        if 'realpos_total' in peritem:
+            z = peritem['realpos_total']
+            if abs(z - int(z)) < 1e-8:
+                label = '{}: {} ({:d}/{:d})'.format(best_label, catname, int(peritem['realpos_total']), round(nsupport, 2))
+            else:
+                label = '{}: {} ({:.2f}/{:d})'.format(best_label, catname, round(peritem['realpos_total'], 2), round(nsupport, 2))
+        else:
+            label = '{}: {} ({:d})'.format(best_label, catname, round(nsupport, 2))
+        xydata[label] = (thresholds, measure)
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', 'Mean of empty slice', RuntimeWarning)
+
+    ax = kwplot.multi_plot(
+        xydata=xydata, fnum=fnum,
+        xlim=(0, 1), ylim=(0, 1), xpad=0.01, ypad=0.01,
+        xlabel='threshold', ylabel=key,
+        title=prefix + 'perclass {}'.format(key),
+        legend_loc='lower right',
+        color='distinct', linestyle='cycle', marker='cycle', **kw
+    )
+    return ax
+
+
+def draw_prcurve(peritem, prefix='', fnum=1, **kw):
     """
     TODO: rename to draw prcurve. Just draws a single pr curve.
 
@@ -211,7 +277,7 @@ def draw_peritem_prcurve(peritem, prefix='', fnum=1, **kw):
         >>> peritem = cfsn_vecs.binarize_peritem().precision_recall()
         >>> import kwplot
         >>> kwplot.autompl()
-        >>> draw_peritem_prcurve(peritem)
+        >>> draw_prcurve(peritem)
         >>> # xdoctest: +REQUIRES(--show)
         >>> kwplot.show_if_requested()
     """
@@ -239,9 +305,9 @@ def draw_peritem_prcurve(peritem, prefix='', fnum=1, **kw):
     if 'realpos_total' in peritem:
         z = peritem['realpos_total']
         if abs(z - int(z)) < 1e-8:
-            label = 'ap={:0.2f}: ({:d}/{:d})'.format(ap, int(peritem['realpos_total']), nsupport)
+            label = 'ap={:0.2f}: ({:d}/{:d})'.format(ap, int(peritem['realpos_total']), round(nsupport, 2))
         else:
-            label = 'ap={:0.2f}: ({}/{:d})'.format(ap, peritem['realpos_total'], nsupport)
+            label = 'ap={:0.2f}: ({:.2f}/{:d})'.format(ap, round(peritem['realpos_total'], 2), round(nsupport, 2))
     else:
         label = 'ap={:0.2f}: ({:d})'.format(ap, nsupport)
 
@@ -254,3 +320,80 @@ def draw_peritem_prcurve(peritem, prefix='', fnum=1, **kw):
         color='distinct', linestyle='cycle', marker='cycle', **kw
     )
     return ax
+
+
+def draw_threshold_curves(info, keys=None, prefix='', fnum=1, **kw):
+    """
+    Example:
+        >>> # xdoctest: +REQUIRES(module:ndsampler)
+        >>> # xdoctest: +REQUIRES(module:kwplot)
+        >>> import sys, ubelt
+        >>> sys.path.append(ubelt.expandpath('~/code/netharn'))
+        >>> from netharn.metrics.drawing import *  # NOQA
+        >>> from netharn.metrics import DetectionMetrics
+        >>> dmet = DetectionMetrics.demo(
+        >>>     nimgs=10, nboxes=(0, 10), n_fp=(0, 1), nclasses=3)
+        >>> cfsn_vecs = dmet.confusion_vectors()
+        >>> info = cfsn_vecs.binarize_peritem().threshold_curves()
+        >>> keys = None
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> draw_threshold_curves(info, keys)
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> kwplot.show_if_requested()
+    """
+    import kwplot
+    import kwimage
+    thresh = info['thresholds']
+
+    if keys is None:
+        keys = {'g1', 'f1', 'acc', 'mcc'}
+
+    idx_to_colors = kwimage.Color.distinct(len(keys), space='rgba')
+    idx_to_best_pt = {}
+
+    xydata = {}
+    colors = {}
+    for idx, key in enumerate(keys):
+        color = idx_to_colors[idx]
+        measure = info[key]
+        max_idx = measure.argmax()
+        best_thresh = thresh[max_idx]
+        best_measure = measure[max_idx]
+        best_label = '{}={:0.2f}@{:0.2f}'.format(key, best_measure, best_thresh)
+
+        nsupport = int(info['nsupport'])
+        if 'realpos_total' in info:
+            z = info['realpos_total']
+            if abs(z - int(z)) < 1e-8:
+                label = '{}: ({:d}/{:d})'.format(best_label, int(info['realpos_total']), round(nsupport, 2))
+            else:
+                label = '{}: ({:.2f}/{:d})'.format(best_label, round(info['realpos_total'], 2), round(nsupport, 2))
+        else:
+            label = '{}: ({:d})'.format(best_label, nsupport)
+        xydata[label] = (thresh, measure)
+        colors[label] = color
+        idx_to_best_pt[idx] = (best_thresh, best_measure)
+
+    ax = kwplot.multi_plot(
+        xydata=xydata, fnum=fnum,
+        xlim=(0, 1), ylim=(0, 1), xpad=0.01, ypad=0.01,
+        xlabel='threshold', ylabel=key,
+        title=prefix + 'threshold curves',
+        legend_loc='lower right',
+        color=colors,
+        linestyle='cycle', marker='cycle', **kw
+    )
+    for idx, best_pt in idx_to_best_pt.items():
+        best_thresh, best_measure = best_pt
+        color = idx_to_colors[idx]
+        ax.plot(best_thresh, best_measure, '*', color=color)
+    return ax
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python ~/code/netharn/netharn/metrics/drawing.py
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

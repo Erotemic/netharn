@@ -27,7 +27,7 @@ Example:
     >>> # This will train a toy model with toy data using netharn
     >>> hyper = nh.HyperParams(**{
     >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/tests/deploy'),
-    >>>     'nice'        : 'deploy_demo',
+    >>>     'name'        : 'deploy_demo',
     >>>     'xpu'         : nh.XPU.coerce('cpu'),
     >>>     'datasets'    : {
     >>>         'train': nh.data.ToyData2d(size=3, border=1, n=256, rng=0),
@@ -61,7 +61,7 @@ Example:
     INFO: Exported model topology to .../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/ToyNet2d_2a3f49.py
     INFO: Initializing model weights with: <netharn.initializers.nninit_core.KaimingNormal object at 0x7fc67efdf8d0>
     INFO:  * harn.train_dpath = '.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww'
-    INFO:  * harn.nice_dpath  = '.../.cache/netharn/tests/deploy/fit/nice/deploy_demo'
+    INFO:  * harn.name_dpath  = '.../.cache/netharn/tests/deploy/fit/name/deploy_demo'
     INFO: Snapshots will save to harn.snapshot_dpath = '.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/torch_snapshots'
     INFO: ARGV:
         .../.local/conda/envs/py36/bin/python .../.local/conda/envs/py36/bin/ipython
@@ -84,9 +84,9 @@ Example:
     INFO:
     INFO: training completed
     INFO: harn.train_dpath = '.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww'
-    INFO: harn.nice_dpath  = '.../.cache/netharn/tests/deploy/fit/nice/deploy_demo'
+    INFO: harn.name_dpath  = '.../.cache/netharn/tests/deploy/fit/name/deploy_demo'
     INFO: view tensorboard results for this run via:
-        tensorboard --logdir ~/.cache/netharn/tests/deploy/fit/nice
+        tensorboard --logdir ~/.cache/netharn/tests/deploy/fit/name
     [DEPLOYER] Deployed zipfpath=.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/deploy_ToyNet2d_onnxqaww_002_TXZBYL.zip
     INFO: wrote single-file deployment to: '.../.cache/netharn/tests/deploy/fit/runs/deploy_demo/onnxqaww/deploy_ToyNet2d_onnxqaww_002_TXZBYL.zip'
     INFO: exiting fit harness.
@@ -313,7 +313,7 @@ def _package_deploy2(dpath, info, name=None):
 
     Ignore:
         dpath = '/home/joncrall/.cache/netharn/tests/_package_custom'
-        path = '/home/joncrall/work/opir/fit/nice/_Sim3-kw6-99-finetune_ML3D_BEST_2018-9-20_LR1e-4_f2_vel0.0_hn0.25_bs64_nr5.0'
+        path = '/home/joncrall/work/opir/fit/name/_Sim3-kw6-99-finetune_ML3D_BEST_2018-9-20_LR1e-4_f2_vel0.0_hn0.25_bs64_nr5.0'
         info = unpack_model_info(path)
         zipfpath = _package_deploy2(dpath, info)
 
@@ -699,7 +699,7 @@ def _demodata_toy_harn():
     import netharn as nh
     hyper = nh.HyperParams(**{
         'workdir'     : ub.ensure_app_cache_dir('netharn/tests/deploy'),
-        'nice'        : 'deploy_demo_static',
+        'name'        : 'deploy_demo_static',
         'xpu'         : nh.XPU.coerce('cpu'),
         'datasets'    : {'train': nh.data.ToyData2d(size=3, rng=0)},
         'loaders'     : {'batch_size': 64},

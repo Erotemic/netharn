@@ -1,49 +1,61 @@
-import torch
+"""
+Simple arbitrary-sized datasets for testing / demo purposes
+"""
 import numpy as np
 import itertools as it
-from torch.utils import data as torch_data
-from netharn.data import base
-from netharn import util
 import ubelt as ub
+import torch
+from torch.utils import data as torch_data
+
+import kwarray
 
 
-class ToyData1d(torch_data.Dataset, base.DataMixin):
-    def __init__(self, rng=None):
-        """
-        Spiral 2d data points
+class ToyData1d(torch_data.Dataset):
+    """
+    Spiral xy-data points
 
-        CommandLine:
-            python ~/code/netharn/netharn/data/toydata.py ToyData1d --show
+    Args:
+        n (int, default=2000): dataset size
+        rng (RandomCoercable, default=None): seed or random state
 
-        Example:
-            >>> dset = ToyData1d()
-            >>> data, labels = next(iter(dset.make_loader(batch_size=2000)))
-            >>> # xdoctest: +REQUIRES(--show)
-            >>> from netharn.util import mplutil
-            >>> mplutil.qtensure()  # xdoc: +SKIP
-            >>> mplutil.figure(fnum=1, doclf=True)
-            >>> cls1 = data[labels == 0]
-            >>> cls2 = data[labels == 1]
-            >>> from matplotlib import pyplot as plt
-            >>> a, b = cls1.T.numpy()
-            >>> c, d = cls2.T.numpy()
-            >>> plt.plot(a, b, 'rx')
-            >>> plt.plot(c, d, 'bx')
-            >>> mplutil.show_if_requested()
-        """
-        rng = util.ensure_rng(rng)
+    Note:
+        this is 1d in the sense that each data point has shape with len(1),
+        even though they can be interpreted as 2d vector points.
+
+    CommandLine:
+        python -m netharn.data.toydata ToyData1d --show
+
+    Example:
+        >>> dset = ToyData1d()
+        >>> data, labels = next(iter(dset.make_loader(batch_size=2000)))
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> plt = kwplot.autoplt()
+        >>> kwplot.figure(fnum=1, doclf=True)
+        >>> cls1 = data[labels == 0]
+        >>> cls2 = data[labels == 1]
+        >>> a, b = cls1.T.numpy()
+        >>> c, d = cls2.T.numpy()
+        >>> plt.plot(a, b, 'rx')
+        >>> plt.plot(c, d, 'bx')
+        >>> kwplot.show_if_requested()
+    """
+
+    def __init__(self, n=2000, rng=None):
+        rng = kwarray.ensure_rng(rng)
 
         # spiral equation in parameteric form:
         # x(t) = r(t) * cos(t)
         # y(t) = r(t) * sin(t)
 
         # class 1
-        n = 1000
-        theta1 = rng.rand(n) * 10
+        n1 = n // 2
+        theta1 = rng.rand(n1) * 10
         x1 = theta1 * np.cos(theta1)
         y1 = theta1 * np.sin(theta1)
 
-        theta2 = rng.rand(n) * 10
+        n2 = n - n1
+        theta2 = rng.rand(n2) * 10
         x2 = -theta2 * np.cos(theta2)
         y2 = -theta2 * np.sin(theta2)
 
@@ -51,10 +63,10 @@ class ToyData1d(torch_data.Dataset, base.DataMixin):
         labels = []
 
         data.extend(list(zip(x1, y1)))
-        labels.extend([0] * n)
+        labels.extend([0] * n1)
 
         data.extend(list(zip(x2, y2)))
-        labels.extend([1] * n)
+        labels.extend([1] * n2)
 
         data = np.array(data)
         labels = np.array(labels)
@@ -62,7 +74,8 @@ class ToyData1d(torch_data.Dataset, base.DataMixin):
         self.data = data
         self.labels = labels
 
-        suffix = ub.hash_data([rng], base='abc', hasher='sha1')[0:16]
+        suffix = ub.hash_data([
+            rng], base='abc', hasher='sha1')[0:16]
         self.input_id = 'TD1D_{}_'.format(n) + suffix
 
     def __len__(self):
@@ -73,26 +86,38 @@ class ToyData1d(torch_data.Dataset, base.DataMixin):
         label = int(self.labels[index])
         return data, label
 
+    def make_loader(self, *args, **kwargs):
+        loader = torch_data.DataLoader(self, *args, **kwargs)
+        return loader
 
-class ToyData2d(torch_data.Dataset, base.DataMixin):
+
+class ToyData2d(torch_data.Dataset):
     """
+    Simple black-on-white and white-on-black images.
+
+    Args:
+        n (int, default=100): dataset size
+        size (int, default=4): width / height
+        border (int, default=1): border mode
+        rng (RandomCoercable, default=None): seed or random state
+
     CommandLine:
-        python ~/code/netharn/netharn/data/toydata.py ToyData2d --show
+        python -m netharn.data.toydata ToyData2d --show
 
     Example:
         >>> self = ToyData2d()
         >>> data1, label1 = self[0]
         >>> data2, label2 = self[-1]
         >>> # xdoctest: +REQUIRES(--show)
-        >>> from netharn.util import mplutil
-        >>> mplutil.qtensure()
-        >>> mplutil.figure(fnum=1, doclf=True)
-        >>> mplutil.imshow(data1.numpy().squeeze(), pnum=(1, 2, 1))
-        >>> mplutil.imshow(data2.numpy().squeeze(), pnum=(1, 2, 2))
-        >>> mplutil.show_if_requested()
+        >>> import kwplot
+        >>> plt = kwplot.autoplt()
+        >>> kwplot.figure(fnum=1, doclf=True)
+        >>> kwplot.imshow(data1.numpy().squeeze(), pnum=(1, 2, 1))
+        >>> kwplot.imshow(data2.numpy().squeeze(), pnum=(1, 2, 2))
+        >>> kwplot.show_if_requested()
     """
     def __init__(self, size=4, border=1, n=100, rng=None):
-        rng = util.ensure_rng(rng)
+        rng = kwarray.ensure_rng(rng)
 
         h = w = size
 
@@ -129,6 +154,10 @@ class ToyData2d(torch_data.Dataset, base.DataMixin):
         data = torch.FloatTensor(self.data[index])
         label = int(self.labels[index])
         return data, label
+
+    def make_loader(self, *args, **kwargs):
+        loader = torch_data.DataLoader(self, *args, **kwargs)
+        return loader
 
 
 if __name__ == '__main__':
