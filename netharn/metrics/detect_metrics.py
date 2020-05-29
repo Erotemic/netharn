@@ -46,7 +46,7 @@ class DetectionMetrics(ub.NiceRepr):
         return ub.repr2(info)
 
     @classmethod
-    def from_coco(DetectionMetrics, true_coco, pred_coco):
+    def from_coco(DetectionMetrics, true_coco, pred_coco, verbose=0):
         """
         Create detection metrics from two coco files representing the truth and
         predictions.
@@ -68,8 +68,10 @@ class DetectionMetrics(ub.NiceRepr):
         classes = true_coco.object_categories()
         self = DetectionMetrics(classes)
 
-        def _coco_to_dets(coco_dset):
-            for img in coco_dset.imgs.values():
+        def _coco_to_dets(coco_dset, desc=''):
+            for img in ub.ProgIter(coco_dset.imgs.values(),
+                                   total=len(coco_dset.imgs),
+                                   desc=desc, verbose=verbose):
                 gid = img['id']
                 imgname = img['file_name']
                 aids = coco_dset.gid_to_aids[gid]
@@ -77,10 +79,10 @@ class DetectionMetrics(ub.NiceRepr):
                 dets = kwimage.Detections.from_coco_annots(annots, dset=coco_dset)
                 yield dets, imgname, gid
 
-        for dets, imgname, gid in _coco_to_dets(true_coco):
+        for dets, imgname, gid in _coco_to_dets(true_coco, desc='add truth'):
             self.add_truth(dets, imgname, gid=gid)
 
-        for dets, imgname, gid in _coco_to_dets(pred_coco):
+        for dets, imgname, gid in _coco_to_dets(pred_coco, desc='add pred'):
             self.add_predictions(dets, imgname, gid=gid)
 
         return self
