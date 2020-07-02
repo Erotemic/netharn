@@ -117,3 +117,29 @@ class ParamatarizedAugmenter(imgaug.augmenters.Augmenter):
                 info['__str__'] = str(aug)
         else:
             return str(aug)
+
+
+def imgaug_json_id(aug):
+    """
+    Creates a json-like encoding that represents an imgaug augmentor
+    """
+    import imgaug
+    if isinstance(aug, tuple):
+        return [imgaug_json_id(item) for item in aug]
+    elif isinstance(aug, imgaug.parameters.StochasticParameter):
+        return str(aug)
+    else:
+        try:
+            info = OrderedDict()
+            info['__class__'] = aug.__class__.__name__
+            params = aug.get_parameters()
+            if params:
+                info['params'] = [imgaug_json_id(p) for p in params]
+            if isinstance(aug, list):
+                children = aug[:]
+                children = [imgaug_json_id(c) for c in children]
+                info['children'] = children
+            return info
+        except Exception:
+            # imgaug is weird and buggy
+            return str(aug)
