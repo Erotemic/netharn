@@ -140,7 +140,6 @@ def ensure_json_serializable(dict_, normalize_containers=False, verbose=0):
             structures.
 
     Example:
-        >>> from netharn.hyperparams import *  # NOQA
         >>> data = ub.ddict(lambda: int)
         >>> data['foo'] = ub.ddict(lambda: int)
         >>> data['bar'] = np.array([1, 2, 3])

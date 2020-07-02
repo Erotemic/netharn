@@ -262,6 +262,25 @@ class BalancedBatchSampler(
         ]))
         return batch_idxs
 
+    def _balance_report(self, limit=None):
+        # Print the epoch / item label frequency per epoch
+        label_sequence = []
+        index_sequence = []
+        if limit is None:
+            limit = self.num_batches
+        for item_indices, _ in zip(self, range(limit)):
+            item_indices = np.array(item_indices)
+            item_labels = list(ub.take(self.index_to_label, item_indices))
+            index_sequence.extend(item_indices)
+            label_sequence.extend(ub.unique(item_labels))
+        label_hist = ub.dict_hist(label_sequence)
+        index_hist = ub.dict_hist(index_sequence)
+        label_hist = ub.sorted_vals(label_hist, reverse=True)
+        index_hist = ub.sorted_vals(index_hist, reverse=True)
+        index_hist = ub.dict_subset(index_hist, list(index_hist.keys())[0:5])
+        print('label_hist = {}'.format(ub.repr2(label_hist, nl=1)))
+        print('index_hist = {}'.format(ub.repr2(index_hist, nl=1)))
+
 
 class GroupedBalancedBatchSampler(ub.NiceRepr, torch.utils.data.sampler.BatchSampler):
     """
