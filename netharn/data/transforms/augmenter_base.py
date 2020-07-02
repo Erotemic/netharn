@@ -122,6 +122,15 @@ class ParamatarizedAugmenter(imgaug.augmenters.Augmenter):
 def imgaug_json_id(aug):
     """
     Creates a json-like encoding that represents an imgaug augmentor
+
+    Example:
+        >>> import imgaug.augmenters as iaa
+        >>> import imgaug
+        >>> import netharn as nh
+        >>> augment = imgaug.augmenters.Affine()
+        >>> info = nh.data.transforms.imgaug_json_id(augment)
+        >>> import ubelt as ub
+        >>> print(ub.repr2(info, nl=2, precision=2))
     """
     import imgaug
     if isinstance(aug, tuple):
