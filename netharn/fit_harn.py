@@ -2755,8 +2755,11 @@ class FitHarnPreferences(scfg.Config):
         ),
 
         'tensorboard_groups': scfg.Value(['loss'], help=(
-            'patterns to be grouped in tensorboard')
-        ),
+            'patterns to be grouped in tensorboard. '
+            'Each metric key is split into parts by "_". '
+            'For every token X in this list, we group all metrics where '
+            'token X is in their parts',
+        )),
 
         'export_modules': scfg.Value([], help=(
             'Set this to a list of modules that the final standalone deployed'

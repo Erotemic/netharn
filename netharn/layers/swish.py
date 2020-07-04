@@ -28,10 +28,13 @@ class Swish(nn.Module):
     """
     When beta=1 this is Sigmoid-weighted Linear Unit (SiL)
 
+    ``x * torch.sigmoid(x)``
+
     References:
         https://arxiv.org/pdf/1710.05941.pdf
 
     Example:
+        >>> from netharn.layers.swish import *  # NOQA
         >>> x = torch.linspace(-20, 20, 100, requires_grad=True)
         >>> self = Swish()
         >>> y = self(x)
@@ -39,8 +42,10 @@ class Swish(nn.Module):
         >>> # xdoctest: +REQUIRES(--show)
         >>> import kwplot
         >>> kwplot.autompl()
-        >>> kwplot.multi_plot(xydata={'beta=1': (x.data, y.data)}, fnum=1, pnum=(1, 2, 1))
-        >>> kwplot.multi_plot(xydata={'beta=1': (x.data, x.grad)}, fnum=1, pnum=(1, 2, 2))
+        >>> kwplot.multi_plot(xydata={'beta=1': (x.data, y.data)}, fnum=1, pnum=(1, 2, 1),
+        >>>         ylabel='swish(x)', xlabel='x', title='activation')
+        >>> kwplot.multi_plot(xydata={'beta=1': (x.data, x.grad)}, fnum=1, pnum=(1, 2, 2),
+        >>>         ylabel='𝛿swish(x) / 𝛿(x)', xlabel='x', title='gradient')
         >>> kwplot.show_if_requested()
 
     """
