@@ -13,7 +13,6 @@ import imgaug.augmenters as iaa
 import netharn as nh
 from netharn.models.yolo2 import multiscale_batch_sampler
 from netharn.models.yolo2 import light_yolo
-from netharn import util
 from netharn.data.transforms import HSVShift
 
 
@@ -87,9 +86,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
         Example:
             >>> # DISABLE_DOCTSET
-            >>> import sys, ubelt
-            >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
-            >>> from yolo_voc import *
+            >>> import kwimage
             >>> self = YoloVOCDataset(split='train')
             >>> index = 7
             >>> chw01, label = self[index]
@@ -102,15 +99,13 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> kwplot.figure(doclf=True, fnum=1)
             >>> kwplot.autompl()  # xdoc: +SKIP
             >>> kwplot.imshow(hwc01, colorspace='rgb')
-            >>> inp_boxes = util.Boxes(norm_boxes, 'cxywh').scale(inp_size)
+            >>> inp_boxes = kwimage.Boxes(norm_boxes, 'cxywh').scale(inp_size)
             >>> inp_boxes.draw()
             >>> kwplot.show_if_requested()
 
         Example:
             >>> # DISABLE_DOCTSET
-            >>> import sys, ubelt
-            >>> sys.path.append(ubelt.expandpath('~/code/netharn/examples'))
-            >>> from yolo_voc import *
+            >>> import kwimage
             >>> self = YoloVOCDataset(split='test')
             >>> index = 0
             >>> chw01, label = self[index]
@@ -123,10 +118,11 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
             >>> kwplot.autompl()  # xdoc: +SKIP
             >>> kwplot.figure(doclf=True, fnum=1)
             >>> kwplot.imshow(hwc01, colorspace='rgb')
-            >>> inp_boxes = util.Boxes(norm_boxes, 'cxywh').scale(inp_size)
+            >>> inp_boxes = kwimage.Boxes(norm_boxes, 'cxywh').scale(inp_size)
             >>> inp_boxes.draw()
             >>> kwplot.show_if_requested()
         """
+        import kwimage
         if isinstance(index, tuple):
             # Get size index from the batch loader
             index, size_index = index
@@ -140,7 +136,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
         image, tlbr, gt_classes, gt_weights = self._load_item(index)
         orig_size = np.array(image.shape[0:2][::-1])
-        bbs = util.Boxes(tlbr, 'tlbr').to_imgaug(shape=image.shape)
+        bbs = kwimage.Boxes(tlbr, 'tlbr').to_imgaug(shape=image.shape)
 
         if self.augmenter:
             # Ensure the same augmentor is used for bboxes and iamges
@@ -151,7 +147,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
 
             # Clip any bounding boxes that went out of bounds
             h, w = image.shape[0:2]
-            tlbr = util.Boxes.from_imgaug(bbs)
+            tlbr = kwimage.Boxes.from_imgaug(bbs)
 
             old_area = tlbr.area
             tlbr = tlbr.clip(0, 0, w - 1, h - 1, inplace=True)
@@ -171,7 +167,7 @@ class YoloVOCDataset(nh.data.voc.VOCDataset):
         self.letterbox.target_size = inp_size
         image = self.letterbox.augment_image(image)
         bbs = self.letterbox.augment_bounding_boxes([bbs])[0]
-        tlbr_inp = util.Boxes.from_imgaug(bbs)
+        tlbr_inp = kwimage.Boxes.from_imgaug(bbs)
 
         # Remove any boxes that are no longer visible or out of bounds
         flags = (tlbr_inp.area > 0).ravel()
@@ -303,7 +299,6 @@ class YoloHarn(nh.FitHarn):
         batch = (inputs, labels)
         return batch
 
-    @util.profile
     def run_batch(harn, batch):
         """
         Connect data -> network -> loss
@@ -331,8 +326,8 @@ class YoloHarn(nh.FitHarn):
         n_seen = (bx * bsize) + (nitems * harn.epoch)
 
         inputs, labels = batch
-        if util.IS_PROFILING:
-            torch.cuda.synchronize()
+        # if IS_PROFILING:
+        #     torch.cuda.synchronize()
 
         outputs = harn.model(inputs)
 
@@ -340,17 +335,16 @@ class YoloHarn(nh.FitHarn):
             'target': labels['targets'],
             'gt_weights': labels['gt_weights'],
         }
-        if util.IS_PROFILING:
-            torch.cuda.synchronize()
+        # if IS_PROFILING:
+        #     torch.cuda.synchronize()
 
         loss = harn.criterion(outputs, target2, seen=n_seen)
 
-        if util.IS_PROFILING:
-            torch.cuda.synchronize()
+        # if IS_PROFILING:
+        #     torch.cuda.synchronize()
 
         return outputs, loss
 
-    @util.profile
     def on_batch(harn, batch, outputs, loss):
         """
         custom callback
@@ -380,8 +374,8 @@ class YoloHarn(nh.FitHarn):
         inputs, labels = batch
         inp_size = np.array(inputs.shape[-2:][::-1])
 
-        if util.IS_PROFILING:
-            torch.cuda.synchronize()
+        # if IS_PROFILING:
+        #     torch.cuda.synchronize()
 
         try:
             batch_dets = harn.model.module.postprocess(outputs)
@@ -402,8 +396,8 @@ class YoloHarn(nh.FitHarn):
             harn.error('DETAILS: {!r}'.format(ex))
             raise
 
-        if util.IS_PROFILING:
-            torch.cuda.synchronize()
+        # if IS_PROFILING:
+        #     torch.cuda.synchronize()
 
         for gx, pred_dets in harn._postout_to_pred_dets(inp_size, labels, batch_dets, _aidbase=dmet._pred_aidbase):
             dmet._pred_aidbase += (len(pred_dets) + 1)
@@ -413,8 +407,8 @@ class YoloHarn(nh.FitHarn):
             dmet._true_aidbase += (len(true_dets) + 1)
             dmet.add_truth(true_dets, gid=gx)
 
-        if util.IS_PROFILING:
-            torch.cuda.synchronize()
+        # if IS_PROFILING:
+        #     torch.cuda.synchronize()
 
         metrics_dict = ub.odict()
         metrics_dict['L_bbox'] = float(harn.criterion.loss_coord)
@@ -425,7 +419,6 @@ class YoloHarn(nh.FitHarn):
                 raise ValueError('{}={} is not finite'.format(k, v))
         return metrics_dict
 
-    @util.profile
     def _postout_to_pred_dets(harn, inp_size, labels, batch_dets, _aidbase=1,
                               undo_lb=True):
         """ Convert batch predictions to coco-style annotations for scoring """
@@ -458,14 +451,14 @@ class YoloHarn(nh.FitHarn):
             _aidbase += len(pred_dets)
             gx = int(indices[ix].data)
 
-            if util.IS_PROFILING:
-                torch.cuda.synchronize()
+            # if IS_PROFILING:
+            #     torch.cuda.synchronize()
 
             yield gx, pred_dets
 
-    @util.profile
     def _labels_to_true_dets(harn, inp_size, labels, _aidbase=1, undo_lb=True):
         """ Convert batch groundtruth to coco-style annotations for scoring """
+        import kwimage
         indices = labels['indices']
         orig_sizes = labels['orig_sizes']
         targets = labels['targets']
@@ -477,8 +470,8 @@ class YoloHarn(nh.FitHarn):
         for ix in range(bsize):
             target = targets[ix].view(-1, 5)
 
-            true_det = util.Detections(
-                boxes=util.Boxes(target[:, 1:5].float(), 'cxywh'),
+            true_det = kwimage.Detections(
+                boxes=kwimage.Boxes(target[:, 1:5].float(), 'cxywh'),
                 class_idxs=target[:, 0].long(),
                 weights=gt_weights[ix],
             )
@@ -494,12 +487,11 @@ class YoloHarn(nh.FitHarn):
             true_det.data['aids'] = np.arange(_aidbase, _aidbase + len(true_det))
             gx = int(indices[ix].data.cpu().numpy())
 
-            if util.IS_PROFILING:
-                torch.cuda.synchronize()
+            # if IS_PROFILING:
+            #     torch.cuda.synchronize()
 
             yield gx, true_det
 
-    @util.profile
     def on_epoch(harn):
         """
         custom callback
@@ -509,9 +501,6 @@ class YoloHarn(nh.FitHarn):
 
         Example:
             >>> # DISABLE_DOCTSET
-            >>> import sys, os
-            >>> sys.path.append(os.path.expanduser('~/code/netharn/examples'))
-            >>> from yolo_voc import *
             >>> harn = setup_yolo_harness(bsize=4)
             >>> harn.initialize()
             >>> weights_fpath = light_yolo.demo_voc_weights()
@@ -558,7 +547,6 @@ class YoloHarn(nh.FitHarn):
         dmet._true_aidbase = 1
         return metrics_dict
 
-    @util.profile
     def draw_batch(harn, batch, outputs, batch_dets, idx=None, thresh=None,
                    orig_img=None):
         """
@@ -584,6 +572,7 @@ class YoloHarn(nh.FitHarn):
             >>> kwplot.show_if_requested()
         """
         import cv2
+        import kwimage
         inputs, labels = batch
 
         targets = labels['targets']
@@ -603,8 +592,8 @@ class YoloHarn(nh.FitHarn):
             label_names = harn.datasets[harn.current_tag].label_names
             pred_dets.meta['classes'] = label_names
 
-            true_dets = util.Detections(
-                boxes=util.Boxes(target[:, 1:5], 'cxywh'),
+            true_dets = kwimage.Detections(
+                boxes=kwimage.Boxes(target[:, 1:5], 'cxywh'),
                 class_idxs=target[:, 0].int(),
                 classes=label_names
             )
@@ -638,8 +627,8 @@ class YoloHarn(nh.FitHarn):
                 pred_dets.boxes, orig_size, target_size)
 
             # shift, scale, embed_size = letterbox._letterbox_transform(orig_size, target_size)
-            # fig = nh.util.figure(doclf=True, fnum=1)
-            # nh.util.imshow(img, colorspace='rgb')
+            # fig = kwplot.figure(doclf=True, fnum=1)
+            # kwplot.imshow(img, colorspace='rgb')
             canvas = (img * 255).astype(np.uint8)
             canvas = true_dets.draw_on(canvas, color='green')
             canvas = pred_dets.draw_on(canvas, color='blue')
@@ -647,10 +636,10 @@ class YoloHarn(nh.FitHarn):
             canvas = cv2.resize(canvas, (300, 300))
             imgs.append(canvas)
 
-        if util.IS_PROFILING:
-            torch.cuda.synchronize()
+        # if IS_PROFILING:
+        #     torch.cuda.synchronize()
 
-        stacked = imgs[0] if len(imgs) == 1 else nh.util.stack_images_grid(imgs)
+        stacked = imgs[0] if len(imgs) == 1 else kwimage.stack_images_grid(imgs)
         return stacked
 
 

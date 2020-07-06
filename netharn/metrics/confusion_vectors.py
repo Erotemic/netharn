@@ -1,3 +1,8 @@
+"""
+DEPRECATED
+
+USE kwcoco.metrics instead!
+"""
 import numpy as np
 import ubelt as ub
 import warnings
@@ -1265,9 +1270,12 @@ class PerClass_Threshold_Result(ub.NiceRepr, DictProxy):
         """
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> # xdoctest: +REQUIRES(module:kwplot)
             >>> cfsn_vecs = ConfusionVectors.demo()
             >>> ovr_cfsn = cfsn_vecs.binarize_ovr(keyby='name')
             >>> self = ovr_cfsn.threshold_curves()['perclass']
+            >>> import kwplot
+            >>> kwplot.autompl()
             >>> self.draw()
         """
         from netharn.metrics import drawing

@@ -2,7 +2,6 @@
 import torch  # NOQA
 import torch.nn.functional as F
 import torch.nn.modules
-import kwarray
 from distutils.version import LooseVersion
 
 
@@ -80,6 +79,7 @@ def _kuangliu_focal_loss(x, y):
         >>> print('l1 = {!r}'.format(l1))
         >>> print('l2 = {!r}'.format(l2))
     '''
+    import kwarray
     alpha = 0.25
     gamma = 2
 
@@ -103,6 +103,7 @@ def _kuangliu_focal_loss_alt(x, y):
     Return:
       (tensor) focal loss.
     '''
+    import kwarray
     alpha = 0.25
 
     num_classes = x.shape[1]
@@ -152,6 +153,7 @@ def nll_focal_loss(log_probs, targets, focus, dim=1, weight=None,
         >>> ignore_index = 0
         >>> output = nll_focal_loss(log_probs, targets, focus, dim, weight, ignore_index)
     """
+    import kwarray
     if focus == 0 and dim == 1:
         # In this case nll_focal_loss is nll_loss, but nll_loss is faster
         if ignore_index is None:

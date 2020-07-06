@@ -4,7 +4,6 @@ Decode YOLO network outputs into netharn-style Detections
 Adapted from code by EAVISE
 """
 import torch
-from netharn import util
 import numpy as np  # NOQA
 import ubelt as ub  # NOQA
 
@@ -18,13 +17,14 @@ class GetBoundingBoxes(object):
         nms_thresh(Number [0-1]): Overlapping threshold to filter detections with non-maxima suppresion
 
     Returns:
-        List[netharn.util.Detections]:
+        List[kwimage.Detections]:
             detection object for each image in the batch.
 
     Note:
         The boxes in the detections use relative values for its coordinates.
 
     Examples:
+        >>> # xdoctest: +REQUIRES(module:kwimage)
         >>> import torch
         >>> torch.random.manual_seed(0)
         >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
@@ -42,13 +42,13 @@ class GetBoundingBoxes(object):
         self.conf_thresh = conf_thresh
         self.nms_thresh = nms_thresh
 
-    @util.profile
+    # @util.profile
     def __call__(self, output):
         """ Compute bounding boxes after thresholding and nms """
         batch_dets = self._decode(output.data)
         return batch_dets
 
-    @util.profile
+    # @util.profile
     def _decode(self, output):
         """
         Returns array of detections for every image in batch
@@ -57,6 +57,7 @@ class GetBoundingBoxes(object):
             python ~/code/netharn/netharn/box_models/yolo2/light_postproc.py GetBoundingBoxes._decode
 
         Examples:
+            >>> # xdoctest: +REQUIRES(module:kwimage)
             >>> import torch
             >>> torch.random.manual_seed(0)
             >>> anchors = np.array([(1.3221, 1.73145), (3.19275, 4.00944), (5.05587, 8.09892), (9.47112, 4.84053), (11.2364, 10.0071)])
@@ -85,6 +86,7 @@ class GetBoundingBoxes(object):
             >>> dets.scores
 
         """
+        import kwimage
         # dont modify inplace
         raw_ = output.clone()
 
@@ -135,8 +137,8 @@ class GetBoundingBoxes(object):
         if score_thresh.sum() == 0:
             batch_dets = []
             for i in range(bsize):
-                batch_dets.append(util.Detections(
-                    boxes=util.Boxes(torch.empty((0, 4), dtype=torch.float32, device=device), 'cxywh'),
+                batch_dets.append(kwimage.Detections(
+                    boxes=kwimage.Boxes(torch.empty((0, 4), dtype=torch.float32, device=device), 'cxywh'),
                     scores=torch.empty(0, dtype=torch.float32, device=device),
                     class_idxs=torch.empty(0, dtype=torch.int64, device=device),
                 ))
@@ -149,8 +151,8 @@ class GetBoundingBoxes(object):
 
             class_idxs = cls_max_idx[score_thresh]
 
-            stacked_dets = util.Detections(
-                boxes=util.Boxes(coords, 'cxywh'),
+            stacked_dets = kwimage.Detections(
+                boxes=kwimage.Boxes(coords, 'cxywh'),
                 scores=scores,
                 class_idxs=class_idxs,
             )

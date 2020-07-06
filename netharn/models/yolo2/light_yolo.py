@@ -123,6 +123,7 @@ class Yolo(nn.Module):
         python ~/code/netharn/netharn/models/yolo2/light_yolo.py Yolo
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:kwimage)
         >>> from netharn.models.yolo2.light_yolo import *
         >>> torch.random.manual_seed(0)
         >>> B, C, Win, Hin = 2, 20, 96, 96
@@ -237,6 +238,7 @@ class Yolo(nn.Module):
         """
         Example:
             >>> # xdoc: +REQUIRES(--download)
+            >>> # xdoctest: +REQUIRES(module:kwimage)
             >>> from netharn.models.yolo2.light_yolo import *
             >>> inp_size = (288, 288)
             >>> self = Yolo(num_classes=20, conf_thresh=0.01, nms_thresh=0.4)

@@ -78,6 +78,7 @@ class GitURL(ub.NiceRepr):
         .. [3] https://git-scm.com/docs/git-clone#URLS
 
     Example:
+        >>> # xdoctest: +SKIP
         >>> self = GitURL('git@gitlab.kitware.com:computer-vision/netharn.git')
         >>> print(ub.repr2(self.parts()))
         >>> print(self.format('ssh'))

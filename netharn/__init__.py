@@ -11,7 +11,7 @@ try:
     # back in.
     import PIL
     PIL.PILLOW_VERSION = PIL.__version__
-except AttributeError:
+except (AttributeError, Exception):
     pass
 
 
@@ -19,7 +19,7 @@ except AttributeError:
 try:
     import numpy as np
     np.random.bit_generator = np.random._bit_generator
-except AttributeError:
+except (AttributeError, Exception):
     pass
 
 

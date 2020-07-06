@@ -1,4 +1,3 @@
-import netharn as nh
 import ubelt as ub
 import torch.utils
 import torch
@@ -36,6 +35,7 @@ class MatchingSamplerPK(ub.NiceRepr, torch.utils.data.sampler.BatchSampler):
     """
     def __init__(self, pccs, p=21, k=4, batch_size=None, drop_last=False,
                  rng=None, shuffle=False, num_batches=None, replace=True):
+        import kwarray
         self.drop_last = drop_last
         self.replace = replace
         self.shuffle = shuffle
@@ -97,7 +97,7 @@ class MatchingSamplerPK(ub.NiceRepr, torch.utils.data.sampler.BatchSampler):
         self.num_batches = num_batches
         self.p = p  # PCCs per batch
         self.k = k  # Items per PCC per batch
-        self.rng = nh.util.ensure_rng(rng, api='python')
+        self.rng = kwarray.ensure_rng(rng, api='python')
 
     def __nice__(self):
         return ('p={p}, k={k}, batch_size={batch_size}, '
@@ -110,7 +110,8 @@ class MatchingSamplerPK(ub.NiceRepr, torch.utils.data.sampler.BatchSampler):
 
     def __getitem__(self, index):
         if not self.shuffle:
-            self.rng = nh.util.ensure_rng(index, api='python')
+            import kwarray
+            self.rng = kwarray.ensure_rng(index, api='python')
 
         sub_pccs = self.rng.sample(self.multitons, self.p)
 

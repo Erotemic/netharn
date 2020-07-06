@@ -3,7 +3,6 @@
 Mostly deprecated in favor of kwplot
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
-import cv2
 import itertools as it
 import numpy as np
 import six
@@ -263,6 +262,7 @@ def copy_figure_to_clipboard(fig):
         https://stackoverflow.com/questions/17676373/python-matplotlib-pyqt-copy-image-to-clipboard
     """
     print('Copying figure %d to the clipboard' % fig.number)
+    import cv2
     import matplotlib as mpl
     app = mpl.backends.backend_qt5.qApp
     QtGui = mpl.backends.backend_qt5.QtGui

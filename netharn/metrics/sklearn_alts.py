@@ -1,4 +1,8 @@
 """
+DEPRECATED
+
+USE kwcoco.metrics instead!
+
 Faster pure-python versions of sklearn functions that avoid expensive checks
 and label rectifications. It is assumed that all labels are consecutive
 non-negative integers.

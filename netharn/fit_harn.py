@@ -2785,7 +2785,7 @@ class FitHarnPreferences(scfg.Config):
         ),
 
         'timeout': scfg.Value(float('inf'), help=(
-                'limits the amount of time training can take')
+            'limits the amount of time training can take')
         ),
 
         # Deprecated

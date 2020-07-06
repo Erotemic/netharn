@@ -185,17 +185,19 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
 
         Example:
             >>> # xdoc: +REQUIRES(--voc)
+            >>> from netharn.data.voc import *  # NOQA
             >>> self = VOCDataset()
             >>> chw, label = self[1]
             >>> hwc = chw.numpy().transpose(1, 2, 0)
             >>> boxes, class_idxs = label
             >>> # xdoc: +REQUIRES(--show)
-            >>> import netharn as nh
-            >>> nh.util.qtensure()  # xdoc: +SKIP
-            >>> nh.util.figure(fnum=1, doclf=True)
-            >>> nh.util.imshow(hwc, colorspace='rgb')
-            >>> nh.util.draw_boxes(boxes.numpy(), box_format='tlbr')
-            >>> nh.util.show_if_requested()
+            >>> import kwplot
+            >>> import kwimage
+            >>> kwplot.autompl()  # xdoc: +SKIP
+            >>> kwplot.figure(fnum=1, doclf=True)
+            >>> kwplot.imshow(hwc, colorspace='rgb')
+            >>> kwimage.Boxes(boxes.numpy(), 'tlbr').draw()
+            >>> kwplot.show_if_requested()
         """
         if isinstance(index, tuple):
             # Get size index from the batch loader

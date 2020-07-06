@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 from collections import OrderedDict
-import imgaug
+try:
+    import imgaug
+    _Augmenter = imgaug.augmenters.Augmenter
+except Exception:
+    import warnings
+    warnings.warn('imgaug is not availble')
+    _Augmenter = object
 
 
-class ParamatarizedAugmenter(imgaug.augmenters.Augmenter):
+class ParamatarizedAugmenter(_Augmenter):
     """
     Helper that automatically registers stochastic parameters
     """
