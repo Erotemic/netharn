@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+DEPRECATED
+
+USE kwcoco.metrics instead!
+"""
 from __future__ import absolute_import, division, print_function, unicode_literals
 import warnings
 import numpy as np

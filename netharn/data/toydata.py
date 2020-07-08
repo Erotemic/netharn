@@ -7,8 +7,6 @@ import ubelt as ub
 import torch
 from torch.utils import data as torch_data
 
-import kwarray
-
 
 class ToyData1d(torch_data.Dataset):
     """
@@ -42,6 +40,7 @@ class ToyData1d(torch_data.Dataset):
     """
 
     def __init__(self, n=2000, rng=None):
+        import kwarray
         rng = kwarray.ensure_rng(rng)
 
         # spiral equation in parameteric form:
@@ -117,6 +116,7 @@ class ToyData2d(torch_data.Dataset):
         >>> kwplot.show_if_requested()
     """
     def __init__(self, size=4, border=1, n=100, rng=None):
+        import kwarray
         rng = kwarray.ensure_rng(rng)
 
         h = w = size

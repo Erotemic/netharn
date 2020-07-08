@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import itertools as it
-import netharn as nh
 import numpy as np
 import torch
 import ubelt as ub
-import cv2
 import torch.utils.data as torch_data
 
 
@@ -121,7 +119,9 @@ class SlidingSlices(ub.NiceRepr):
 
         # NOTE: if we have overshot, then basis shape will not perfectly
         # align to the original image. This shape will be a bit bigger.
-        slider.basis_slices = [tuple(nh.util.wide_strides_1d(**kw))
+        from netharn.util import wide_strides_1d
+        # nh.util.wide_strides_1d
+        slider.basis_slices = [tuple(wide_strides_1d(**kw))
                                for kw in stide_kw]
         slider.basis_shape = [len(b) for b in slider.basis_slices]
         slider.n_total = np.prod(slider.basis_shape)
@@ -215,6 +215,8 @@ class SlidingSlices(ub.NiceRepr):
             dims (tuple): indices of the spatial (height and width) dimensions
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:kwimage)
+            >>> import cv2
             >>> source = np.zeros((3, 25, 25))
             >>> window = (3, 5, 5)
             >>> step = 2
@@ -229,7 +231,8 @@ class SlidingSlices(ub.NiceRepr):
             >>> resized = cv2.resize(pred.astype(np.uint8), prepad_shape)
             >>> resized = np.pad(resized, padding, mode='constant')
             >>> # FIXME: Following scale doesnt work right
-            >>> nh.util.imscale(pred.astype(np.uint8), (xscale, yscale))[0].shape
+            >>> import kwimage
+            >>> kwimage.imscale(pred.astype(np.uint8), (xscale, yscale))[0].shape
         """
         def slcenter(sl):
             """ center of the window defined by a slice """
@@ -326,6 +329,7 @@ class SlidingSlices(ub.NiceRepr):
             >>> # upscale using computed transforms
             >>> upscaled = slider.upscale_overlay(pred)
         """
+        import cv2
         # We can model this with a simple affine transform.  First allocate the
         # required output size, then construct the transform. Padding and
         # cropping will occur naturally.

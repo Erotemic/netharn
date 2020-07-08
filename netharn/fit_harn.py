@@ -2737,8 +2737,8 @@ class FitHarnPreferences(scfg.Config):
         ),
 
         'ignore_inf_loss_parts': scfg.Value(False, help=(
-            'If your loss criterion returns a dictionary of parts,'
-            ' ignore any infinite values before summing the total loss.')
+            'If your loss criterion returns a dictionary of parts, '
+            'ignore any infinite values before summing the total loss.')
         ),
 
         'log_gradients': scfg.Value(False, help=(
@@ -2750,12 +2750,15 @@ class FitHarnPreferences(scfg.Config):
         ),
 
         'eager_dump_tensorboard': scfg.Value(True, help=(
-            'If True, logs tensorboard within inner iteration'
-            ' (experimental)')
+            'If True, logs tensorboard within inner iteration '
+            '(experimental)')
         ),
 
         'tensorboard_groups': scfg.Value(['loss'], help=(
-            'patterns to be grouped in tensorboard')
+            'patterns to be grouped in tensorboard. '
+            'Each metric key is split into parts by "_". '
+            'For every token X in this list, we group all metrics where '
+            'token X is in their parts')
         ),
 
         'export_modules': scfg.Value([], help=(
@@ -2782,7 +2785,7 @@ class FitHarnPreferences(scfg.Config):
         ),
 
         'timeout': scfg.Value(float('inf'), help=(
-                'limits the amount of time training can take')
+            'limits the amount of time training can take')
         ),
 
         # Deprecated

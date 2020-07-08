@@ -70,9 +70,12 @@ class GaussianBlurNd(common.Module):
             `dim=2`.
 
     Example:
+        >>> # xdoc: +REQUIRES(module:kwimage)
+        >>> from netharn.layers.gauss import *  # NOQA
         >>> import netharn as nh
         >>> from torchvision.transforms.functional import to_tensor
-        >>> input = to_tensor(nh.util.grab_test_image())[None, :]
+        >>> import kwimage
+        >>> input = to_tensor(kwimage.grab_test_image())[None, :]
         >>> self = GaussianBlurNd(2, num_features=input.shape[1], sigma=1.4)
         >>> assert self.number_of_parameters() == 0
         >>> output = self(input)
@@ -88,11 +91,12 @@ class GaussianBlurNd(common.Module):
 
     Benchmark:
         import netharn as nh
+        import kwimage
         import cv2
         import ubelt as ub
         from torchvision.transforms.functional import to_tensor
 
-        image = nh.util.grab_test_image('carl')
+        image = kwimage.grab_test_image('carl')
         image = cv2.resize(image, (256, 256))
         im = to_tensor(image)
         input = torch.stack([im] * 16, dim=0)

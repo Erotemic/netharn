@@ -1,3 +1,8 @@
+"""
+DEPRECATED
+
+USE kwcoco.metrics instead!
+"""
 import numpy as np
 import ubelt as ub
 import warnings

@@ -488,6 +488,7 @@ class UNet(nh.layers.Module):
         """
         Example:
             >>> # xdoctest: +REQUIRES(module:ndsampler)
+            >>> # xdoctest: +REQUIRES(module:sympy)
             >>> import torch
             >>> B, C, W, H = (1, 1, 256, 256)
             >>> n_classes = 2

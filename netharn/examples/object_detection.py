@@ -91,6 +91,8 @@ class DetectDataset(torch.utils.data.Dataset):
     object detection.
 
     Example:
+        >>> # DISABLE_DOCTEST
+        >>> # xdoctest: +REQUIRES(module:kwarray)
         >>> self = DetectDataset.demo()
     """
     def __init__(self, sampler, augment='simple', input_dims=[416, 416],

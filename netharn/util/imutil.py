@@ -3,7 +3,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import glob
 from os.path import expanduser, exists, join, basename
 import numpy as np
-import cv2
 # try:
 #     # Don't import skimage.io immediately because it imports pyplot
 #     # See GH Issue https://github.com/scikit-image/scikit-image/issues/3347
@@ -186,6 +185,7 @@ def get_num_channels(img):
 def ensure_grayscale(img, colorspace_hint='BGR'):
     """
     Example:
+        >>> # xdoctest: +REQUIRES(module:kwimage)
         >>> import numpy as np
         >>> ensure_grayscale(np.array([[[0, 0, 1]]], dtype=np.float32))
         array([[0.299]], dtype=float32)
@@ -225,6 +225,7 @@ def adjust_gamma(img, gamma=1.0):
         >>> pt.imshow(adjust_gamma(img, 2), pnum=(3, 3, 8), fnum=1)
         >>> pt.imshow(adjust_gamma(imgf, 2), pnum=(3, 3, 9), fnum=1)
     """
+    import cv2
     if img.dtype.kind in ('i', 'u'):
         # build a lookup table mapping the pixel values [0, 255] to
         # their adjusted gamma values
@@ -245,6 +246,7 @@ def adjust_gamma(img, gamma=1.0):
 
 
 def _lookup_cv2_colorspace_conversion_code(src_space, dst_space):
+    import cv2
     src = src_space.upper()
     dst = dst_space.upper()
     convert_attr = 'COLOR_{}2{}'.format(src, dst)

@@ -37,21 +37,24 @@ def make_short_idstr(params, precision=None):
     Make id-string where they keys are shortened
 
     Args:
-        params (dict):
+        params (dict): a configuration dictionary to be summarized
+        precision (int): maximum number of decimal points for float values
 
     Returns:
-        str:
+        str: a short string roughly summarizing the dictionary contents
 
     CommandLine:
         python -m netharn.util.misc make_short_idstr
 
     Example:
         >>> # xdoctest: +SKIP
+        >>> from netharn.util.util_idstr import *  # NOQA
         >>> params = {'input_shape': (None, 3, 212, 212),
         >>>           'a': 'b',
         >>>           'center': {'im_mean': .5, 'std': 1},
         >>>           'alphabet': 'abc'}
         >>> print(make_short_idstr(params))
+        a=b,al=abc,c=dictim_mean=0.5,std=1,i=None,3,212,212
     """
     if params is None:
         return ''
@@ -70,7 +73,12 @@ def make_short_idstr(params, precision=None):
     def make_idstr(d):
         # Note: we are not using sort=True, because repr2 sorts sets and dicts
         # by default.
-        return ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0, si=True,
-                        precision=precision).replace(' ', '').replace('[', '').replace(']', '').replace('(', '').replace(')', '').replace('{', '').replace('}', '')
+        remove_chars = [' ', '[', ']', '(', ')', '{', '}']
+        idstr = ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0, si=True,
+                         precision=precision)
+        for c in remove_chars:
+            idstr = idstr.replace(c, '')
+        return idstr
+
     short_idstr = make_idstr(d)
     return short_idstr

@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 from collections import OrderedDict
-import imgaug
+try:
+    import imgaug
+    _Augmenter = imgaug.augmenters.Augmenter
+except Exception:
+    import warnings
+    warnings.warn('imgaug is not availble')
+    _Augmenter = object
 
 
-class ParamatarizedAugmenter(imgaug.augmenters.Augmenter):
+class ParamatarizedAugmenter(_Augmenter):
     """
     Helper that automatically registers stochastic parameters
     """
@@ -116,4 +122,39 @@ class ParamatarizedAugmenter(imgaug.augmenters.Augmenter):
                 # imgaug is weird and buggy
                 info['__str__'] = str(aug)
         else:
+            return str(aug)
+
+
+def imgaug_json_id(aug):
+    """
+    Creates a json-like encoding that represents an imgaug augmentor
+
+    Example:
+        >>> import imgaug.augmenters as iaa
+        >>> import imgaug
+        >>> import netharn as nh
+        >>> augment = imgaug.augmenters.Affine()
+        >>> info = nh.data.transforms.imgaug_json_id(augment)
+        >>> import ubelt as ub
+        >>> print(ub.repr2(info, nl=2, precision=2))
+    """
+    import imgaug
+    if isinstance(aug, tuple):
+        return [imgaug_json_id(item) for item in aug]
+    elif isinstance(aug, imgaug.parameters.StochasticParameter):
+        return str(aug)
+    else:
+        try:
+            info = OrderedDict()
+            info['__class__'] = aug.__class__.__name__
+            params = aug.get_parameters()
+            if params:
+                info['params'] = [imgaug_json_id(p) for p in params]
+            if isinstance(aug, list):
+                children = aug[:]
+                children = [imgaug_json_id(c) for c in children]
+                info['children'] = children
+            return info
+        except Exception:
+            # imgaug is weird and buggy
             return str(aug)

@@ -78,6 +78,7 @@ class GitURL(ub.NiceRepr):
         .. [3] https://git-scm.com/docs/git-clone#URLS
 
     Example:
+        >>> # xdoctest: +SKIP
         >>> self = GitURL('git@gitlab.kitware.com:computer-vision/netharn.git')
         >>> print(ub.repr2(self.parts()))
         >>> print(self.format('ssh'))
@@ -686,11 +687,11 @@ def make_netharn_registry():
 
         # The util libs
         CommonRepo(
-            name='kwarray', branch='dev/0.5.9', remote='public',
+            name='kwarray', branch='dev/0.5.10', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
         ),
         CommonRepo(
-            name='kwimage', branch='dev/0.6.3', remote='public',
+            name='kwimage', branch='dev/0.6.4', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
         ),
         # CommonRepo(  # TODO
@@ -698,11 +699,11 @@ def make_netharn_registry():
         #     remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwannot.git'},
         # ),
         CommonRepo(
-            name='kwcoco', branch='dev/0.1.2', remote='public',
+            name='kwcoco', branch='dev/0.1.4', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwcoco.git'},
         ),
         CommonRepo(
-            name='kwplot', branch='dev/0.4.6', remote='public',
+            name='kwplot', branch='dev/0.4.7', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwplot.git'},
         ),
 
@@ -712,7 +713,7 @@ def make_netharn_registry():
             remotes={'public': 'git@gitlab.kitware.com:python/liberator.git'},
         ),
         CommonRepo(
-            name='torch_liberator', branch='dev/0.0.3', remote='public',
+            name='torch_liberator', branch='dev/0.0.4', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/torch_liberator.git'},
         ),
 
@@ -729,7 +730,7 @@ def make_netharn_registry():
 
         # netharn - training harness
         CommonRepo(
-            name='netharn', branch='dev/0.5.7', remote='public',
+            name='netharn', branch='dev/0.5.8', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
         ),
     ]

@@ -1,4 +1,9 @@
 """
+DEPRECATED
+
+USE kwcoco.metrics instead!
+
+
 mkinit netharn.metrics -w
 """
 # flake8: noqa

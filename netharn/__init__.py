@@ -4,14 +4,14 @@
 mkinit netharn --noattrs --dry
 mkinit netharn --noattrs
 """
-__version__ = '0.5.7'
+__version__ = '0.5.8'
 
 try:
     # PIL 7.0.0 removed PIL_VERSION, which breaks torchvision, monkey patch it
     # back in.
     import PIL
     PIL.PILLOW_VERSION = PIL.__version__
-except AttributeError:
+except (AttributeError, Exception):
     pass
 
 
@@ -19,7 +19,7 @@ except AttributeError:
 try:
     import numpy as np
     np.random.bit_generator = np.random._bit_generator
-except AttributeError:
+except (AttributeError, Exception):
     pass
 
 

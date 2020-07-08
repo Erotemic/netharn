@@ -1,17 +1,22 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
-import cv2
 import six
-from imgaug.parameters import (Uniform, Binomial)
 from netharn.data.transforms import augmenter_base
-import kwimage
-import imgaug
+
+try:
+    import imgaug
+    from imgaug.parameters import (Uniform, Binomial)
+except Exception:
+    import warnings
+    warnings.warn('imgaug is not availble')
 
 
 def demodata_hsv_image(w=200, h=200):
     """
     Example:
+        >>> # xdoctest: +REQUIRES(module:imgaug)
+        >>> # xdoctest: +REQUIRES(module:cv2)
         >>> rgb255 = demodata_hsv_image()
         >>> # xdoctest: +REQUIRES(--show)
         >>> import kwplot
@@ -20,7 +25,7 @@ def demodata_hsv_image(w=200, h=200):
         >>> kwplot.imshow(rgb255, colorspace='rgb')
         >>> kwplot.show_if_requested()
     """
-
+    import cv2
     hsv = np.zeros((h, w, 3), dtype=np.float32)
 
     hue = np.linspace(0, 360, num=w)
@@ -64,6 +69,8 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         python -m netharn.data.transforms.augmenters HSVShift --show
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:imgaug)
+        >>> # xdoctest: +REQUIRES(module:kwimage)
         >>> self = HSVShift(0.1, 1.5, 1.5)
         >>> img = demodata_hsv_image()
         >>> aug = self.augment_image(img)
@@ -87,6 +94,8 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         >>> kwplot.show_if_requested()
 
     Ignore:
+        >>> # xdoctest: +REQUIRES(module:imgaug)
+        >>> # xdoctest: +REQUIRES(module:kwimage)
         >>> from netharn.data.transforms.augmenters import *
         >>> lnpre = ub.import_module_from_path(ub.expandpath('~/code/lightnet/lightnet/data/transform/_preprocess.py'))
         >>> self = lnpre.HSVShift(0.1, 1.5, 1.5)
@@ -137,6 +146,7 @@ class HSVShift(augmenter_base.ParamatarizedAugmenter):
         return keypoints_on_images
 
     def forward(self, img, random_state=None):
+        import cv2
         assert self.input_colorspace == 'rgb'
         assert img.dtype.kind == 'u' and img.dtype.itemsize == 1
 
@@ -198,7 +208,10 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         xdoctest -m /home/joncrall/code/netharn/netharn/data/transforms/augmenters.py Resize:0
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:imgaug)
+        >>> # xdoctest: +REQUIRES(module:kwimage)
         >>> from netharn.data.transforms.augmenters import *  # NOQA
+        >>> import kwimage
         >>> img = demodata_hsv_image()
         >>> box = kwimage.Boxes([[.45, .05, .10, .05], [0., 0.0, .199, .199], [.24, .05, .01, .05]], format='xywh').to_tlbr()
         >>> bboi = box.to_imgaug(shape=tuple(img.shape))
@@ -211,7 +224,10 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         >>> assert tuple(aug1.shape[0:2]) == (30, 40)
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:imgaug)
+        >>> # xdoctest: +REQUIRES(module:kwimage)
         >>> from netharn.data.transforms.augmenters import *  # NOQA
+        >>> import kwimage
         >>> img = demodata_hsv_image()
         >>> box = kwimage.Boxes([[450, 50, 100, 50], [0.0, 0, 199, 199], [240, 50, 10, 50]], format='xywh').to_tlbr()
         >>> bboi = box.to_imgaug(shape=img.shape)
@@ -262,6 +278,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
     """
     def __init__(self, target_size, fill_color=127, mode='letterbox',
                  border='constant', random_state=None):
+        import cv2
         super(Resize, self).__init__(random_state=random_state)
         self.target_size = None if target_size is None else np.array(target_size)
         self.mode = mode
@@ -331,7 +348,10 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
                            hooks):
         """
         Example:
+            >>> # xdoctest: +REQUIRES(module:imgaug)
+            >>> # xdoctest: +REQUIRES(module:kwimage)
             >>> import imgaug
+            >>> import kwimage
             >>> tlbr = [[0, 0, 10, 10], [1, 2, 8, 9]]
             >>> shape = (20, 40, 3)
             >>> bboi = kwimage.Boxes(tlbr, 'tlbr').to_imgaug(shape)
@@ -385,6 +405,8 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             target_size : network input wh
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:kwimage)
+            >>> # xdoctest: +REQUIRES(module:imgaug)
             >>> orig_img = demodata_hsv_image(w=100, h=200)
             >>> orig_size = np.array(orig_img.shape[0:2][::-1])
             >>> target_size = (416, 416)
@@ -398,6 +420,7 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             >>> kwplot.imshow(img, fnum=1, pnum=(1, 3, 2))
             >>> kwplot.imshow(inverted_img, fnum=1, pnum=(1, 3, 3))
         """
+        import cv2
         shift, scale, embed_size = self._letterbox_transform(orig_size, target_size)
         top, bot, left, right = self._padding(embed_size, shift, target_size)
 
@@ -433,8 +456,11 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
             target_size : network input wh (i.e. inp_size)
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:imgaug)
+            >>> # xdoctest: +REQUIRES(module:kwimage)
             >>> target_size = (416, 416)
             >>> orig_size = (1000, 400)
+            >>> import kwimage
             >>> cxywh_norm = kwimage.Boxes(np.array([[.5, .5, .2, .2]]), 'cxywh')
             >>> self = Resize(target_size)
             >>> cxywh = self._boxes_letterbox_invert(cxywh_norm, orig_size, target_size)
@@ -494,6 +520,8 @@ class Resize(augmenter_base.ParamatarizedAugmenter):
         return top, bot, left, right
 
     def _img_letterbox_apply(self, img, embed_size, shift, target_size):
+        import kwimage
+        import cv2
         top, bot, left, right = self._padding(embed_size, shift, target_size)
 
         orig_size = np.array(img.shape[0:2][::-1])

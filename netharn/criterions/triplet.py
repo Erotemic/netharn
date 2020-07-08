@@ -114,10 +114,10 @@ def labels_to_adjacency_matrix(labels, symmetric=True, diagonal=True):
                [0, 0, 0, 1],
                [0, 0, 0, 0]], dtype=uint8)
     """
-    import netharn as nh
+    import kwarray
     n = len(labels)
     adjm = np.zeros((n, n), dtype=np.uint8)
-    unique_labels, groupxs = nh.util.group_indices(labels)
+    unique_labels, groupxs = kwarray.group_indices(labels)
     pos_idxs = [(i, j) for g in groupxs for (i, j) in it.combinations(sorted(g), 2)]
     pos_multi_idxs = tuple(zip(*pos_idxs))
     adjm[pos_multi_idxs] = 1
@@ -143,7 +143,6 @@ class TripletLoss(torch.nn.TripletMarginLoss):
         >>> loss_h = TripletLoss(margin=1, reduction='none')(pos_dists, neg_dists)
 
     Ignore:
-        >>> import netharn as nh
         >>> xdata = torch.linspace(-10, 10)
         >>> ydata = {
         >>>     'soft_margin[0]': F.softplus(0 + xdata).numpy(),
@@ -231,7 +230,7 @@ class TripletLoss(torch.nn.TripletMarginLoss):
             >>>         assert x == y, str([a, p, n])
             >>>         assert x != z, str([a, p, n])
         """
-        import netharn as nh
+        import kwarray
         dist = all_pairwise_distances(dvecs, squared=True, approx=True)
 
         with torch.no_grad():
@@ -338,10 +337,10 @@ class TripletLoss(torch.nn.TripletMarginLoss):
 
             elif mode == 'consistent':
                 # Choose the same triples every time
-                rng = nh.util.ensure_rng(0)
-                pos_cands_list = [nh.util.shuffle(np.where(m)[0], rng=rng)
+                rng = kwarray.ensure_rng(0)
+                pos_cands_list = [kwarray.shuffle(np.where(m)[0], rng=rng)
                                   for m in pos_adjm_]
-                neg_cands_list = [nh.util.shuffle(np.where(n)[0], rng=rng)
+                neg_cands_list = [kwarray.shuffle(np.where(n)[0], rng=rng)
                                   for n in neg_adjm_]
                 triples = []
                 _iter = zip(anchors_idxs, pos_cands_list, neg_cands_list)

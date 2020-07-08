@@ -12,7 +12,6 @@ Speedups
 import torch
 import torch.nn as nn
 import numpy as np  # NOQA
-from netharn import util
 from distutils.version import LooseVersion
 
 
@@ -90,6 +89,7 @@ class RegionLoss(BaseLossWithCudaState):
 
     Example:
         >>> # DISABLE_DOCTEST
+        >>> # xdoctest: +REQUIRES(module:kwimage)
         >>> from netharn.models.yolo2.light_yolo import Yolo
         >>> torch.random.manual_seed(0)
         >>> network = Yolo(num_classes=2, conf_thresh=4e-2)
@@ -150,6 +150,7 @@ class RegionLoss(BaseLossWithCudaState):
                  thresh=0.6, seen_thresh=12800,
                  small_boxes=False,
                  mse_factor=0.5):
+        import kwimage
         super(RegionLoss, self).__init__()
 
         self.num_classes = num_classes
@@ -176,12 +177,11 @@ class RegionLoss(BaseLossWithCudaState):
 
         # Precompute relative anchors in tlbr format for iou computation
         rel_anchors_cxywh = torch.cat([torch.zeros_like(self.anchors), self.anchors], 1)
-        self.rel_anchors_boxes = util.Boxes(rel_anchors_cxywh, 'cxywh')
+        self.rel_anchors_boxes = kwimage.Boxes(rel_anchors_cxywh, 'cxywh')
 
         self.small_boxes = small_boxes
         self.mse_factor = mse_factor
 
-    @util.profile
     def forward(self, output, target, seen=0, gt_weights=None):
         """ Compute Region loss.
 
@@ -204,7 +204,8 @@ class RegionLoss(BaseLossWithCudaState):
             >>> self = RegionLoss(num_classes=nC, anchors=np.array([[1, 1]]))
             >>> nA = len(self.anchors)
             >>> # one batch, with one anchor, with 2 classes and 3x3 grid cells
-            >>> rng = nh.util.ensure_rng(0)
+            >>> import kwarray
+            >>> rng = kwarray.ensure_rng(0)
             >>> output = torch.Tensor(rng.rand(1, nA, 5 + nC, 3, 3))
             >>> # one batch, with one true box
             >>> target = torch.Tensor(rng.rand(1, 1, 5))
@@ -315,7 +316,6 @@ class RegionLoss(BaseLossWithCudaState):
 
         return loss_tot
 
-    @util.profile
     def build_targets(self, pred_cxywh, target, nH, nW, seen=0, gt_weights=None):
         """
         Compare prediction boxes and targets, convert targets to network output tensors
@@ -328,6 +328,7 @@ class RegionLoss(BaseLossWithCudaState):
             python ~/code/netharn/netharn/models/yolo2/light_region_loss.py RegionLoss.build_targets:1
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:kwimage)
             >>> from netharn.models.yolo2.light_yolo import Yolo
             >>> torch.random.manual_seed(0)
             >>> network = Yolo(num_classes=2, conf_thresh=4e-2)
@@ -343,6 +344,7 @@ class RegionLoss(BaseLossWithCudaState):
             >>> self.build_targets(pred_cxywh, target, nH, nW, seen, gt_weights)
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:kwimage)
             >>> torch.random.manual_seed(0)
             >>> anchors = np.array([[.75, .75], [1.0, .3], [.3, 1.0]])
             >>> self = RegionLoss(num_classes=2, anchors=anchors)
@@ -367,6 +369,8 @@ class RegionLoss(BaseLossWithCudaState):
             >>> seen = 0
             >>> coord_mask, conf_mask, cls_mask, tcoord, tconf, tcls = self.build_targets(pred_cxywh, target, nH, nW, seen, gt_weights)
         """
+        import kwimage
+        from netharn.util import torch_ravel_multi_index
         gtempty = (target.numel() == 0)
 
         # Parameters
@@ -439,10 +443,10 @@ class RegionLoss(BaseLossWithCudaState):
 
         # Put this back into a non-flat view
         pred_cxywh = pred_cxywh.view(nB, nA, nH, nW, 4)
-        pred_boxes = util.Boxes(pred_cxywh, 'cxywh')
+        pred_boxes = kwimage.Boxes(pred_cxywh, 'cxywh')
 
         gt_class = target[..., 0].data
-        gt_boxes_norm = util.Boxes(target[..., 1:5], 'cxywh')
+        gt_boxes_norm = kwimage.Boxes(target[..., 1:5], 'cxywh')
 
         # Put GT boxes into output coordinates
         gt_boxes = gt_boxes_norm.scale([nW, nH])
@@ -556,7 +560,7 @@ class RegionLoss(BaseLossWithCudaState):
                 raveled_idxs_b2 = raveled_idxs_b0 + nPixels * 2
                 raveled_idxs_b3 = raveled_idxs_b0 + nPixels * 3
             else:
-                iou_raveled_idxs = util.torch_ravel_multi_index([
+                iou_raveled_idxs = torch_ravel_multi_index([
                     cur_true_anchor_axs, cur_true_js, cur_true_is,
                     torch.arange(nT, device=device, dtype=torch.long)
                 ], cur_pred_true_ious.shape, device)
@@ -568,12 +572,12 @@ class RegionLoss(BaseLossWithCudaState):
 
                 multi_index = [Bxs, cur_true_anchor_axs, Zxs, cur_true_js, cur_true_is]
                 multi_index = torch.cat([x.view(-1, 1) for x in multi_index], dim=1)
-                raveled_idxs = util.torch_ravel_multi_index(multi_index, coord_mask.shape, device)
+                raveled_idxs = torch_ravel_multi_index(multi_index, coord_mask.shape, device)
 
                 # --------------------------------------------
                 # We reuse the previous multi-index because the dims are
                 # broadcastable at [:, :, [0], :, :]
-                raveled_idxs_b0 = util.torch_ravel_multi_index(multi_index, tcoord.shape, device)
+                raveled_idxs_b0 = torch_ravel_multi_index(multi_index, tcoord.shape, device)
                 # A bit faster than ravel_multi_indexes with [1], [2], and [3]
                 raveled_idxs_b1 = raveled_idxs_b0 + nPixels
                 raveled_idxs_b2 = raveled_idxs_b0 + nPixels * 2
