@@ -691,7 +691,7 @@ def make_netharn_registry():
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
         ),
         CommonRepo(
-            name='kwimage', branch='dev/0.6.4', remote='public',
+            name='kwimage', branch='dev/0.6.5', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
         ),
         # CommonRepo(  # TODO
@@ -730,7 +730,7 @@ def make_netharn_registry():
 
         # netharn - training harness
         CommonRepo(
-            name='netharn', branch='dev/0.5.8', remote='public',
+            name='netharn', branch='dev/0.5.9', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
         ),
     ]
