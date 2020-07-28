@@ -11,6 +11,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `_dump_monitor_tensorboard` now additionally writes a bash script to quickly
   let the user re-visualize results in the case of mpl backend failure.
 
+
+### Added
+
+* `BatchContainer.pack` for easier use of non-container aware models.
+
+
 ## Version 0.5.8 - Released
 
 ## Version 0.5.7 - Released
