@@ -9,6 +9,7 @@ The purpose of this file is to contain functions that might not general-purpose
 enough to add to FitHarn itself, but they are also common enough, where it
 makes no sense to write them from scratch for each new project.
 """
+from distutils.version import LooseVersion
 
 
 def _dump_monitor_tensorboard(harn, mode='epoch', special_groupers=['loss'],
@@ -206,6 +207,7 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.0,
     from os.path import join
     import numpy as np
     import kwplot
+    import matplotlib as mpl
 
     from kwplot.auto_backends import BackendContext
 
@@ -367,7 +369,10 @@ def _dump_measures(tb_data, out_dpath, mode=None, smoothing=0.0,
                                       yscale=yscale, title=title, fnum=1, ax=ax,
                                       **kw)
                     if yscale == 'symlog':
-                        ax.set_yscale('symlog', linthreshy=min_abs_y)
+                        if LooseVersion(mpl.__version__) >= LooseVersion('3.3'):
+                            ax.set_yscale('symlog', linthresh=min_abs_y)
+                        else:
+                            ax.set_yscale('symlog', linthreshy=min_abs_y)
                     fname = '_'.join([tag, mode, 'multiloss', yscale]) + '.png'
                     fpath = join(out_dpath, fname)
                     ax.figure.savefig(fpath)
