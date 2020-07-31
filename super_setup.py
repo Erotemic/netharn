@@ -713,7 +713,7 @@ def make_netharn_registry():
             remotes={'public': 'git@gitlab.kitware.com:python/liberator.git'},
         ),
         CommonRepo(
-            name='torch_liberator', branch='dev/0.0.4', remote='public',
+            name='torch_liberator', branch='dev/0.0.5', remote='public',
             remotes={'public': 'git@gitlab.kitware.com:computer-vision/torch_liberator.git'},
         ),
 
