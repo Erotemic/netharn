@@ -150,6 +150,16 @@ class BatchContainer(ub.NiceRepr):
             packed = padded_collate(inbatch, fill_value=self.padding_value)
         return packed
 
+    def to(self, device):
+        """ inplace move data onto a device """
+        for item in self.data:
+            if torch.is_tensor(item):
+                item.to(item)
+            else:
+                for subitem in item:
+                    subitem.to(device)
+        return self
+
 
 class ItemContainer(ub.NiceRepr):
     """
@@ -837,6 +847,25 @@ class ContainerXPU(XPU):
         else:
             model = DataSerial(model)
         return model
+
+    def move(xpu, data, **kwargs):
+        try:
+            if xpu.is_gpu():
+                return data.to(xpu._main_device_id, **kwargs)
+            else:
+                return data.to('cpu')
+        except AttributeError:
+            # Recursive move
+            if isinstance(data, container_abcs.Mapping):
+                cls = data.__class__
+                return cls((k, xpu.move(v)) for k, v in data.items())
+            elif isinstance(data, (container_abcs.Sequence, container_abcs.Set)):
+                cls = data.__class__
+                return cls(xpu.move(v) for v in data)
+            elif isinstance(data, BatchContainer):
+                return data.to(xpu._main_device_id, **kwargs)
+            else:
+                raise TypeError('Unknown type {}'.format(type(data)))
 
 
 def nestshape(data):
