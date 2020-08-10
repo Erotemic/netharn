@@ -215,6 +215,8 @@ def load_partial_state(model, model_state_dict, leftover=None,
                 def remove_prefix(k, prefix):
                     if k.startswith(prefix):
                         return k[len(prefix):]
+                # set1 = other_keys
+                # target_set2 = self_keys
                 found = _best_prefix_transform(other_keys, self_keys)
                 if found is not None:
                     for action, prefix in found['transform']:
@@ -366,7 +368,10 @@ def _best_prefix_transform(set1, target_set2):
         >>>      'bar.foo.extra.f.3.w',
         >>> }
         >>> _best_prefix_transform(set1, target_set2)
+        >>> target_set2.add('JUNK')
+        >>> _best_prefix_transform(set1, target_set2)
     """
+
     # probably an efficient way to do this with a trie
     from os.path import commonprefix
     prefixes1 = commonprefix(list(set1)).split('.')
@@ -381,6 +386,17 @@ def _best_prefix_transform(set1, target_set2):
             break
     prefixes1 = prefixes1[:-num_same]
     prefixes2 = prefixes2[:-num_same]
+
+    ALLOW_FUZZY = 1
+    if ALLOW_FUZZY and len(prefixes2) == 0:
+        # SUPER HACK FOR CASE WHERE THERE IS JUST ONE SPOILER ELEMENT IN THE
+        # TARGET SET. THE ALGORITHM NEEDS TO BE RETHOUGHT FOR THAT CASE
+        possible_prefixes = [k.split('.') for k in target_set2]
+        prefix_hist = ub.ddict(lambda: 0)
+        for item in possible_prefixes:
+            for i in range(1, len(item)):
+                prefix_hist[tuple(item[0:i])] += 1
+        prefixes2 = ['.'.join(ub.argmax(prefix_hist))]
 
     def add_prefix(items, prefix):
         return {prefix + k for k in items}
