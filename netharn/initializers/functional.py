@@ -169,6 +169,11 @@ def load_partial_state(model, model_state_dict, leftover=None,
         >>> self2 = xpu.mount(self1)
         >>> load_partial_state(self2, self1.state_dict())
         >>> load_partial_state(self1, self2.state_dict())
+        >>> # Add extra nonsense to state-dict
+        >>> extra_state_dict = {'extra.' + k: v for k, v in self1.state_dict().items()}
+        >>> model = self2
+        >>> model_state_dict = extra_state_dict
+        >>> load_partial_state(self2, extra_state_dict)
     """
     if initializer is not None:
         import warnings
@@ -185,21 +190,41 @@ def load_partial_state(model, model_state_dict, leftover=None,
         """
         other_keys = set(model_state_dict)
         self_keys = set(self_state)
+        common_keys = other_keys.intersection(self_keys)
+        if not common_keys:
 
-        if not other_keys.intersection(self_keys):
-            prefix = 'module.'
-            def smap(f, ss):
-                return set(map(f, ss))
-            def fix1(k):
-                return prefix + k
-            def fix2(k):
-                if k.startswith(prefix):
-                    return k[len(prefix):]
-            if smap(fix1, other_keys).intersection(self_keys):
-                model_state_dict = ub.map_keys(fix1, model_state_dict)
-            elif smap(fix2, other_keys).intersection(self_keys):
-                model_state_dict = ub.map_keys(fix2, model_state_dict)
-
+            OLD_WAY = 0
+            if OLD_WAY:
+                # If there are no common keys try a hack
+                prefix = 'module.'
+                def smap(f, ss):
+                    return set(map(f, ss))
+                def fix1(k):
+                    return prefix + k
+                def fix2(k):
+                    if k.startswith(prefix):
+                        return k[len(prefix):]
+                if smap(fix1, other_keys).intersection(self_keys):
+                    model_state_dict = ub.map_keys(fix1, model_state_dict)
+                elif smap(fix2, other_keys).intersection(self_keys):
+                    model_state_dict = ub.map_keys(fix2, model_state_dict)
+            else:
+                import functools
+                def add_prefix(k, prefix):
+                    return prefix + k
+                def remove_prefix(k, prefix):
+                    if k.startswith(prefix):
+                        return k[len(prefix):]
+                found = _best_prefix_transform(other_keys, self_keys)
+                if found is not None:
+                    for action, prefix in found['transform']:
+                        if action == 'add':
+                            func = functools.partial(add_prefix, prefix=prefix)
+                        elif action == 'remove':
+                            func = functools.partial(remove_prefix, prefix=prefix)
+                        else:
+                            raise AssertionError
+                        model_state_dict = ub.map_keys(func, model_state_dict)
         return model_state_dict
 
     other_state = _fix_keys(model_state_dict)
@@ -321,3 +346,86 @@ def load_partial_state(model, model_state_dict, leftover=None,
         'other_unused': other_unused_keys
     }
     return info
+
+
+def _best_prefix_transform(set1, target_set2):
+    """
+    Find a way to transform prefixes of items in set1 to match target_set2
+
+    Example:
+        >>> set1 = {'mod.f.0.w',
+        >>>         'mod.f.1.b',
+        >>>         'mod.f.1.n',
+        >>>         'mod.f.1.rm',
+        >>>         'mod.f.1.rv',}
+        >>> #
+        >>> target_set2 = {
+        >>>      'bar.foo.extra.f.1.b',
+        >>>      'bar.foo.extra.f.1.n',
+        >>>      'bar.foo.extra.f.1.w',
+        >>>      'bar.foo.extra.f.3.w',
+        >>> }
+        >>> _best_prefix_transform(set1, target_set2)
+    """
+    # probably an efficient way to do this with a trie
+    from os.path import commonprefix
+    prefixes1 = commonprefix(list(set1)).split('.')
+    prefixes2 = commonprefix(list(target_set2)).split('.')
+
+    # Remove the trailing prefixes that are the same
+    num_same = 0
+    for i in range(1, min(len(prefixes1), len(prefixes2))):
+        if prefixes1[-i] == prefixes2[-i]:
+            num_same = i
+        else:
+            break
+    prefixes1 = prefixes1[:-num_same]
+    prefixes2 = prefixes2[:-num_same]
+
+    def add_prefix(items, prefix):
+        return {prefix + k for k in items}
+    def remove_prefix(items, prefix):
+        return {k[len(prefix):] if k.startswith(prefix) else k for k in items}
+
+    import itertools as it
+    found_cand = []
+    for i1, i2 in it.product(range(len(prefixes1) + 1), range(len(prefixes2) + 1)):
+        if i1 == 0 and i2 == 0:
+            continue
+        # Very inefficient, we should be able to do better
+        prefix1 = '.'.join(prefixes1[:i1])
+        prefix2 = '.'.join(prefixes2[:i2])
+        if prefix1:
+            prefix1 = prefix1 + '.'
+        if prefix2:
+            prefix2 = prefix2 + '.'
+
+        # We are allowed to remove a prefix from a set, add the other
+        # prefix to the set, or remove and then add.
+        set1_cand1 = remove_prefix(set1, prefix1)
+        set1_cand2 = add_prefix(set1, prefix2)
+        set1_cand3 = add_prefix(set1_cand1, prefix2)
+
+        common1 = set1_cand1 & target_set2
+        common2 = set1_cand2 & target_set2
+        common3 = set1_cand3 & target_set2
+        if common1:
+            found_cand.append({
+                'transform': [('remove', prefix1)],
+                'value': len(common1),
+            })
+        if common2:
+            found_cand.append({
+                'transform': [('add', prefix2)],
+                'value': len(common2),
+            })
+        if common3:
+            found_cand.append({
+                'transform': [('remove', prefix1), ('add', prefix2)],
+                'value': len(common3),
+            })
+    if len(found_cand):
+        found = max(found_cand, key=lambda x: x['value'])
+    else:
+        found = None
+    return found

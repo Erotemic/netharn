@@ -11,6 +11,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `_dump_monitor_tensorboard` now additionally writes a bash script to quickly
   let the user re-visualize results in the case of mpl backend failure.
 
+* `load_partial_state` now has an algorithm to better match model keys when the
+  only difference is in key prefixes.
+
 
 ### Added
 
