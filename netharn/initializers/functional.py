@@ -373,6 +373,25 @@ def _best_prefix_transform(set1, target_set2):
     """
 
     # probably an efficient way to do this with a trie
+
+    # NOTE: In general this is a graph-isomorphism problem or a  maximum common
+    # subgraph problem. However, we can look only at the special case of
+    # "maximum common subtrees". Given two directory structures (as trees)
+    # we find the common bits.
+    # https://perso.ensta-paris.fr/~diam/ro/online/viggo_wwwcompendium/node168.html
+    # We can approximate to O(log log n / log^2 n)
+    # Can get algorithm from maximum independent set
+    # https://arxiv.org/abs/1602.07210
+
+    # The most efficient algorithm here would be for solving
+    # "Maximum common labeled subtrees"
+    # APX-hard for unordered trees, but polytime solveable for ordered trees
+    # For directory structures we can induce an order, and hense obtain a
+    # polytime solution
+    # #
+    # On the Maximum Common Embedded Subtree Problem for Ordered Trees
+    # https://pdfs.semanticscholar.org/0b6e/061af02353f7d9b887f9a378be70be64d165.pdf
+
     from os.path import commonprefix
     prefixes1 = commonprefix(list(set1)).split('.')
     prefixes2 = commonprefix(list(target_set2)).split('.')
