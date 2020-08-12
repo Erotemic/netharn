@@ -1,7 +1,7 @@
 import numpy as np
-import operator
 import torch
 import ubelt as ub
+from netharn.initializers import _nx_extensions
 
 
 def trainable_layers(model, names=False):
@@ -549,58 +549,76 @@ def _best_prefix_transform(set1, target_set2):
     return found
 
 
-def maximum_common_ordered_subpaths(paths1, paths2):
+def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
     """
-    paths1 = [
-        'stats',
-        'z.mod.f.0.w',
-        'a.z.mod.f.0.b',
-        'z.mod.f.1.b',
-        'z.mod.f.1.n',
-        'z.mod.f.1.m',
-        'z.mod.f.1.v',
-        'z.mod.f.2.m',
-        'z.mod.z.q'
-    ]
-    # paths1 = ['mod']
+    CommandLine:
+        xdoctest -m /home/joncrall/code/netharn/netharn/initializers/functional.py maximum_common_ordered_subpaths:0 --profile
 
-    paths2 = [
-        'stats',
-        'bar.f.0.w',
-        'bar.foo.extra.z.q',
-        'bar.foo.extra.f.0.w',
-        'bar.foo.extra.f.1.b',
-        'bar.foo.extra.f.1.n',
-        'bar.foo.extra.f.1.w',
-        'bar.foo.extra.f.3.z',  # FIXME we need to handle label comparision operators
-        # I think we allow labels to match if they have the same suffix
-    ]
+    Example:
+        >>> rng = None
+        >>> import kwarray
+        >>> rng = kwarray.ensure_rng(rng)
+        >>> def random_paths(rng, max_depth=10):
+        >>>     depth = rng.randint(1, max_depth)
+        >>>     parts = list(map(chr, rng.randint(ord('a'), ord('z'), size=depth)))
+        >>>     path = '.'.join(parts)
+        >>>     return path
+        >>> n = 6
+        >>> paths1 = sorted({random_paths(rng) for _ in range(n)})
+        >>> paths2 = sorted({random_paths(rng) for _ in range(n)})
+        >>> paths1 = paths1 + ['a.' + k for k in paths2[0:n // 3]]
+        >>> subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2)
 
-    subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2)
-    mapping = ub.dzip(subpaths1, subpaths2)
-    print('mapping = {}'.format(ub.repr2(mapping, nl=1)))
-
-    print([n for n in tree1.nodes if tree1.in_degree[n] > 1])
-    print([n for n in tree2.nodes if tree2.in_degree[n] > 1])
-    _print_forest(tree1)
-    _print_forest(tree2)
-
-    # for n in subtree1.nodes:
-    #     subtree1.nodes[n]['label'] = n[-1]
-    _print_forest(subtree1)
-    _print_forest(subtree2)
-
-    tree1_remain = tree1.copy()
-    tree1_remain.remove_nodes_from(subtree1.nodes)
-    _print_forest(tree1_remain)
+    Example:
+        >>> paths1 = [
+        >>>     'stats',
+        >>>     'z.mod.f.0.w',
+        >>>     'a.z.mod.f.0.b',
+        >>>     'z.mod.f.1.b',
+        >>>     'z.mod.f.1.n',
+        >>>     'z.mod.f.1.m',
+        >>>     'z.mod.f.1.v',
+        >>>     'z.mod.f.2.m',
+        >>>     'z.mod.z.q'
+        >>> ]
+        >>> # paths1 = ['mod']
+        >>> #
+        >>> paths2 = [
+        >>>     'stats',
+        >>>     'bar.f.0.w',
+        >>>     'bar.foo.extra.z.q',
+        >>>     'bar.foo.extra.f.0.w',
+        >>>     'bar.foo.extra.f.1.b',
+        >>>     'bar.foo.extra.f.1.n',
+        >>>     'bar.foo.extra.f.1.w',
+        >>>     'bar.foo.extra.f.3.z',  # FIXME we need to handle label comparision operators
+        >>>     # I think we allow labels to match if they have the same suffix
+        >>> ]
+        >>> #
+        >>> subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2)
+        >>> mapping = ub.dzip(subpaths1, subpaths2)
+        >>> print('mapping = {}'.format(ub.repr2(mapping, nl=1)))
+        >>> #
+        >>> print([n for n in tree1.nodes if tree1.in_degree[n] > 1])
+        >>> print([n for n in tree2.nodes if tree2.in_degree[n] > 1])
+        >>> _print_forest(tree1)
+        >>> _print_forest(tree2)
+        >>> #
+        >>> # for n in subtree1.nodes:
+        >>> #     subtree1.nodes[n]['label'] = n[-1]
+        >>> _print_forest(subtree1)
+        >>> _print_forest(subtree2)
+        >>> #
+        >>> tree1_remain = tree1.copy()
+        >>> tree1_remain.remove_nodes_from(subtree1.nodes)
+        >>> _print_forest(tree1_remain)
     """
+    import networkx as nx
+
     # the longest common balanced sequence problem
     def _matchable(tok1, tok2):
         return tok1.value[-1] == tok2.value[-1]
 
-    sep = '.'
-
-    import networkx as nx
     def paths_to_tree(paths):
         tree = nx.OrderedDiGraph()
         for path in sorted(paths):
@@ -624,359 +642,8 @@ def maximum_common_ordered_subpaths(paths1, paths2):
     #     list(DiGM.subgraph_isomorphisms_iter())
 
     eq = _matchable
-    subtree1, subtree2 = maximum_common_ordered_tree_embedding(tree1, tree2, eq=eq)
+    subtree1, subtree2 = _nx_extensions.maximum_common_ordered_tree_embedding(tree1, tree2, eq=eq)
 
     subpaths1 = [sep.join(node) for node in subtree1.nodes if subtree1.out_degree[node] == 0]
     subpaths2 = [sep.join(node) for node in subtree2.nodes if subtree2.out_degree[node] == 0]
     return subpaths1, subpaths2
-
-
-def maximum_common_ordered_tree_embedding(tree1, tree2, eq=None):
-    """
-    Finds the maximum common subtree-embedding between two ordered trees.
-
-    Note this produces a subtree embedding, which is not necessarilly a
-    subgraph isomorphism (although a subgraph isomorphism is also an
-    embedding.)
-
-    Implements algorithm described in [1]_.
-
-    References:
-        On the Maximum Common Embedded Subtree Problem for Ordered Trees
-        https://pdfs.semanticscholar.org/0b6e/061af02353f7d9b887f9a378be70be64d165.pdf
-
-    Notes:
-        Exact algorithms for computing the tree edit distance between unordered trees - https://pdf.sciencedirectassets.com/271538/1-s2.0-S0304397510X00299/1-s2.0-S0304397510005463/main.pdf?
-
-        Tree Edit Distance and Common Subtrees - https://upcommons.upc.edu/bitstream/handle/2117/97554/R02-20.pdf
-
-        A Survey on Tree Edit Distance and Related Problems - https://grfia.dlsi.ua.es/ml/algorithms/references/editsurvey_bille.pdf
-
-    Args:
-
-        tree1 (nx.OrderedDiGraph): first ordered tree
-        tree2 (nx.OrderedDiGraph): second ordered tree
-        eq (callable): function
-
-    Example:
-
-        >>> def random_ordered_tree(n, seed=None):
-        >>>     tree = nx.dfs_tree(nx.random_tree(n, seed=seed))
-        >>>     otree = nx.OrderedDiGraph()
-        >>>     otree.add_edges_from(tree.edges)
-        >>>     return otree
-        >>> tree1 = random_ordered_tree(10, seed=1)
-        >>> tree2 = random_ordered_tree(10, seed=2)
-        >>> _print_forest(tree1)
-        >>> _print_forest(tree2)
-
-        >>> subtree1, subtree2 = maximum_common_ordered_tree_embedding(tree1, tree2 )
-        >>> _print_forest(subtree1)
-        >>> _print_forest(subtree2)
-
-        >>> assert isomorphism.DiGraphMatcher(tree1, subtree1).subgraph_is_isomorphic()
-        >>> assert isomorphism.DiGraphMatcher(tree2, subtree2).subgraph_is_isomorphic()
-
-        >>> from networkx import isomorphism
-        >>> list(isomorphism.DiGraphMatcher(tree1, tree2).subgraph_isomorphisms_iter())
-        >>> list(isomorphism.DiGraphMatcher(tree1, tree2).subgraph_monomorphisms_iter())
-
-        >>> list(isomorphism.DiGraphMatcher(subtree1, subtree2).subgraph_isomorphisms_iter())
-
-
-        >>> from networkx import isomorphism
-        >>> tree1 = nx.DiGraph(nx.path_graph(4, create_using=nx.OrderedDiGraph()))
-        >>> tree2 = nx.DiGraph(nx.path_graph(4, create_using=nx.OrderedDiGraph()))
-
-        >>> DiGM = isomorphism.DiGraphMatcher(tree1, tree2)
-        >>> DiGM.is_isomorphic()
-
-        >>> list(DiGM.subgraph_isomorphisms_iter())
-
-        # the longest common balanced sequence problem
-        def _matchable(tok1, tok2):
-            return tok1.value[-1] == tok2.value[-1]
-        eq = _matchable
-        print([n for n in tree1.nodes if tree1.in_degree[n] > 1])
-        print([n for n in tree2.nodes if tree2.in_degree[n] > 1])
-        _print_forest(tree1)
-        _print_forest(tree2)
-        subtree1, subtree2 = maximum_common_ordered_tree_embedding(tree1, tree2, eq=eq)
-        # for n in subtree1.nodes:
-        #     subtree1.nodes[n]['label'] = n[-1]
-        _print_forest(subtree1)
-        _print_forest(subtree2)
-
-        tree1_remain = tree1.copy()
-        tree1_remain.remove_nodes_from(subtree1.nodes)
-        _print_forest(tree1_remain)
-
-        tree = tree1
-    """
-    import networkx as nx
-    from collections import namedtuple
-
-    Token = namedtuple('Token', ['action', 'value'])
-    def tree_to_balanced_sequence(tree, open_to_close=None, toks=None):
-        # mapping between opening and closing tokens
-        sources = [n for n in tree.nodes if tree.in_degree[n] == 0]
-        sequence = []
-
-        if open_to_close is None:
-            open_to_close = {}
-        if toks is None:
-            toks = {}
-
-        for source in sources:
-            for u, v, etype in nx.dfs_labeled_edges(tree, source=source):
-                if etype == 'forward':
-                    # u has been visited by v has not
-                    if v not in toks:
-                        if 1:
-                            # TODO: token encoding scheme where subdirectories
-                            # are matchable via a custom operation.
-                            # open_tok = '<{}>'.format(v)
-                            # close_tok = '</{}>'.format(v)
-                            open_tok = Token('open', v)
-                            close_tok = Token('close', v)
-                        else:
-                            open_tok = len(toks)
-                            close_tok = -open_tok
-                        toks[v] = open_tok
-                        open_to_close[open_tok] = close_tok
-                    open_tok = toks[v]
-                    sequence.append(open_tok)
-                elif etype == 'reverse':
-                    # Both u and v are visited and the edge is in the tree
-                    close_tok = open_to_close[toks[v]]
-                    sequence.append(close_tok)
-                else:
-                    raise KeyError(etype)
-        sequence = tuple(sequence)
-        return sequence, open_to_close, toks
-
-    def seq_to_tree(subseq, open_to_close, toks):
-        open_to_tok = ub.invert_dict(toks)
-        subtree = nx.OrderedDiGraph()
-        stack = []
-        for token in subseq:
-            if token in open_to_close:
-                node = open_to_tok[token]
-                if stack:
-                    parent = open_to_tok[stack[-1]]
-                    subtree.add_edge(parent, node)
-                else:
-                    subtree.add_node(node)
-                stack.append(token)
-            else:
-                if not stack:
-                    raise Exception
-                prev_open = stack.pop()
-                want_close = open_to_close[prev_open]
-                if token != want_close:
-                    raise Exception
-        return subtree
-
-    if not (isinstance(tree1, nx.OrderedDiGraph) and nx.is_forest(tree1)):
-        raise nx.NetworkXNotImplemented('only implemented for directed ordered trees')
-    if not (isinstance(tree1, nx.OrderedDiGraph) and nx.is_forest(tree2)):
-        raise nx.NetworkXNotImplemented('only implemented for directed ordered trees')
-
-    # Convert the trees to balanced sequences
-    sequence1, open_to_close, toks = tree_to_balanced_sequence(tree1, open_to_close=None, toks=None)
-    sequence2, open_to_close, toks = tree_to_balanced_sequence(tree2, open_to_close, toks)
-    seq1 = sequence1
-    seq2 = sequence2
-
-    # Solve the longest common balanced sequence problem
-    best, value = longest_common_balanced_sequence(
-        seq1, seq2, open_to_close, eq=eq)
-    subseq1, subseq2 = best
-
-    # Convert the subsequence back into a tree
-    subtree1 = seq_to_tree(subseq1, open_to_close, toks)
-    subtree2 = seq_to_tree(subseq2, open_to_close, toks)
-    return subtree1, subtree2
-
-
-def generate_balance(sequence, open_to_close):
-    """
-    open_to_close = {0: 1}
-    sequence = [0, 0, 0, 1, 1, 1]
-    gen = generate_balance(sequence, open_to_close)
-    for flag, token in gen:
-        print('flag={:d}, token={}'.format(flag, token))
-    """
-    stack = []
-
-    class UnbalancedException(Exception):
-        pass
-
-    # Traversing the Expression
-    for token in sequence:
-
-        if token in open_to_close:
-            # Push opening elements onto the stack
-            stack.append(token)
-        else:
-            if not stack:
-                raise UnbalancedException
-            prev_open = stack.pop()
-            want_close = open_to_close[prev_open]
-
-            if token != want_close:
-                raise UnbalancedException
-
-        # If the stack is empty the sequence is currently balanced
-        currently_balanced = not bool(stack)
-        yield currently_balanced, token
-
-    if stack:
-        raise UnbalancedException
-
-
-def head_tail(sequence, open_to_close):
-    """
-    open_to_close = {0: 1}
-    sequence = [0, 0, 0, 1, 1, 1, 0, 1]
-    open_to_close = {'{': '}', '(': ')', '[': ']'}
-    sequence = '({[[]]})[[][]]'
-    a1, b1, head, tail = head_tail(sequence, open_to_close)
-    a2, b2, tail1, tail2 = head_tail(tail, open_to_close)
-    """
-    gen = generate_balance(sequence, open_to_close)
-
-    bal_curr, tok_curr = next(gen)
-    pop_open = sequence[0:1]
-    want_close = open_to_close[tok_curr]
-
-    head_stop = 1
-    for head_stop, (bal_curr, tok_curr) in enumerate(gen, start=1):
-        if tok_curr is None:
-            break
-        elif bal_curr and tok_curr == want_close:
-            pop_close = sequence[head_stop:head_stop + 1]
-            break
-    head = sequence[1:head_stop]
-    if __debug__:
-        list(gen)  # exhaust the generator to check we are balanced
-    tail = sequence[head_stop + 1:]
-    return pop_open, pop_close, head, tail
-
-
-def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None):
-    """
-
-    open_to_close = {'0': '1'}
-    seq1 = '0010010010111100001011011011'
-    seq2 = '001000101101110001000100101110111011'
-
-    open_to_close = {'(': ')'}
-    seq1 = '(()(()(()())))(((()())())())'
-    seq2 = '(()((()())()))((()((()(()()))()))())'
-    longest_common_balanced_sequence(seq1, seq2, open_to_close)
-
-    open_to_close = {'0': '1'}
-    seq1 = '0010010010111100001011011011'
-    seq2 = '001000101101110001000100101110111011'
-    longest_common_balanced_sequence(seq1, seq2, open_to_close)
-
-    open_to_close = {'0': '1'}
-    seq1 = '001101'
-    seq2 = '00110011'
-    seq1 = '001101'
-    seq2 = '00110011'
-    longest_common_balanced_sequence(seq1, seq2, open_to_close)
-
-    open_to_close = {'{': '}', '(': ')', '[': ']'}
-    seq1 = '(({}{([])}[{}]))'
-    seq2 = '((({}[{{}}])))'
-
-    seq1 = '({[[[]]]}){}'
-    seq2 = '{}{[[[]]]}'
-    best, value = longest_common_balanced_sequence(seq1, seq2, open_to_close)
-    subseq1, subseq2 = best
-    print('subseq1 = {!r}'.format(subseq1))
-    """
-    if eq is None:
-        eq = operator.eq
-
-    _memo = {}
-    def _lcs(seq1, seq2):
-        if not seq1:
-            return (seq1, seq1), 0
-        elif not seq2:
-            return (seq2, seq2), 0
-        else:
-            # if len(seq2) < len(seq1):
-            #     seq1, seq2 = seq2, seq1
-            key = (seq1, seq2)
-            if key in _memo:
-                return _memo[key]
-
-            a1, b1, head1, tail1 = head_tail(seq1, open_to_close)
-            a2, b2, head2, tail2 = head_tail(seq2, open_to_close)
-
-            candidates = {}
-
-            # Case 1: The LCS involves this edge
-            if eq(a1[0], a2[0]):
-                # TODO: need to return the correspondence between the
-                # matches and the original nodes.
-                new_heads, pval_h = _lcs(head1, head2)
-                new_tails, pval_t = _lcs(tail1, tail2)
-
-                new_head1, new_head2 = new_heads
-                new_tail1, new_tail2 = new_tails
-
-                subseq1 = a1 + new_head1 + b1 + new_tail1
-                subseq2 = a2 + new_head2 + b2 + new_tail2
-                cand1 = (subseq1, subseq2)
-                candidates[cand1] = pval_h + pval_t + 1
-
-            # Case 2: The current edge in sequence1 is deleted
-            cand2, val2 = _lcs(head1 + tail1, seq2)
-            candidates[cand2] = val2
-
-            # Case 3: The current edge in sequence2 is deleted
-            cand3, val3 = _lcs(seq1, head2 + tail2)
-            candidates[cand3] = val3
-
-            best = ub.argmax(candidates)
-            value = candidates[best]
-            # print('key={!r}, best={!r}, value={!r}'.format(key, best, value))
-            _memo[key] = (best, value)
-            return best, value
-
-    best = _lcs(seq1, seq2)
-    return best
-
-
-def _print_forest(graph):
-    """
-    Nice ascii representation of a forest
-
-    Ignore:
-        graph = nx.balanced_tree(r=2, h=3, create_using=nx.DiGraph)
-        _print_forest(graph)
-
-        graph = CategoryTree.demo('coco').graph
-        _print_forest(graph)
-    """
-    import networkx as nx
-    assert nx.is_forest(graph)
-    from kwcoco.category_tree import to_directed_nested_tuples
-    encoding = to_directed_nested_tuples(graph)
-    def _recurse(encoding, indent=''):
-        for idx, item in enumerate(encoding):
-            node, data, children = item
-            if idx == len(encoding) - 1:
-                this_prefix = indent + '└── '
-                next_prefix = indent + '    '
-            else:
-                this_prefix = indent + '├── '
-                next_prefix = indent + '│   '
-            label = graph.nodes[node].get('label', node)
-            print(this_prefix + str(label))
-            _recurse(children, indent=next_prefix)
-    _recurse(encoding)
