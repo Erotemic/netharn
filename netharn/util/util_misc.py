@@ -49,9 +49,58 @@ class FlatIndexer(ub.NiceRepr):
         >>> self.unravel(4)
         >>> self.ravel(2, 1)
     """
-    def __init__(self, lens):
+    def __init__(self, lens, cums=None):
         self.lens = lens
-        self.cums = np.cumsum(lens)
+        if cums is None:
+            self.cums = np.cumsum(lens)
+        else:
+            self.cums = cums
+
+    def concat(self, other):
+        """
+        >>> self = FlatIndexer([1, 2, 3])
+        >>> self = self.concat(self).concat(self)
+        >>> len(self)
+        """
+        new_lens = self.lens + other.lens
+        new_cums = np.concatenate([self.cums, other.cums + self.cums[-1]], axis=0)
+        new = self.__class__(new_lens, new_cums)
+        return new
+
+    def subslice(self, start, stop):
+        """
+        >>> self = FlatIndexer([3, 7, 9, 4, 5] + [3] * 50)
+        >>> start = 4
+        >>> stop = 150
+        >>> self.subslice(start, stop)
+        >>> self.subslice(0, 10).cums
+        """
+        outer1, inner1  = self.unravel(start)
+        outer2, inner2  = self.unravel(stop)
+        return self._subslice(outer1, outer2, inner1, inner2)
+
+    def _subslice(self, outer1, outer2, inner1, inner2):
+        inner2 = min(self.lens[outer2], inner2)
+        if outer1 == outer2:
+            new_lens = [inner2 - inner1]
+            new_cums = np.array(new_lens)
+        else:
+            first = [self.lens[outer1] - inner1]
+            inner = self.lens[outer1 + 1:outer2]
+            last = [inner2]
+
+            new_lens = first + inner + last
+            # Oddly, this is faster than just redoing the cumsum
+            # or is it now that we added a copy?
+            new_cums = self.cums[outer1:outer2 + 1].copy()
+            new_cums -= (new_cums[0] - first[0])
+            new_cums[-1] = new_cums[-2] + inner2
+
+            if new_lens[-1] == 0:
+                new_lens = new_lens[:-1]
+                new_cums = new_cums[:-1]
+        new = self.__class__(new_lens, new_cums)
+        return new
 
     @classmethod
     def fromlist(cls, items):
@@ -68,8 +117,15 @@ class FlatIndexer(ub.NiceRepr):
 
         Returns:
             Tuple[int, int]: outer and inner indices
+
+        Example:
+            >>> self = FlatIndexer([1, 1])
+            >>> index = 2
+            >>> self.unravel(2)
         """
-        outer = np.where(self.cums > index)[0][0]
+        found = np.where(self.cums > index)[0]
+        # Keep indexing past the end of the last bucket for slicing
+        outer = found[0] if len(found) else len(self.cums) - 1
         base = self.cums[outer] - self.lens[outer]
         inner = index - base
         return (outer, inner)

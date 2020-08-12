@@ -552,7 +552,8 @@ def _best_prefix_transform(set1, target_set2):
 def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
     """
     CommandLine:
-        xdoctest -m /home/joncrall/code/netharn/netharn/initializers/functional.py maximum_common_ordered_subpaths:0 --profile
+        xdoctest -m /home/joncrall/code/netharn/netharn/initializers/functional.py maximum_common_ordered_subpaths:0 --profile && cat profile_out.txt
+        xdoctest -m /home/joncrall/code/netharn/netharn/initializers/functional.py maximum_common_ordered_subpaths:0
 
     Example:
         >>> rng = None
@@ -563,7 +564,7 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
         >>>     parts = list(map(chr, rng.randint(ord('a'), ord('z'), size=depth)))
         >>>     path = '.'.join(parts)
         >>>     return path
-        >>> n = 6
+        >>> n = 50
         >>> paths1 = sorted({random_paths(rng) for _ in range(n)})
         >>> paths2 = sorted({random_paths(rng) for _ in range(n)})
         >>> paths1 = paths1 + ['a.' + k for k in paths2[0:n // 3]]

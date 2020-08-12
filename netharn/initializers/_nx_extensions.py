@@ -2,6 +2,12 @@ import numpy as np
 import operator
 import ubelt as ub
 import xdev
+from netharn.util.util_misc import FlatIndexer
+
+
+# These did not help the speed
+DECOMP_SEQ_INDEX = 0
+USE_FAST_CAT_SHIFT_INDEX = 0
 
 
 @xdev.profile
@@ -328,9 +334,7 @@ def balanced_decomp_unsafe(sequence, open_to_close):
 
     head_stop = 1
     for head_stop, (bal_curr, tok_curr) in enumerate(gen, start=1):
-        if tok_curr is None:
-            break
-        elif bal_curr and tok_curr == want_close:
+        if bal_curr and tok_curr == want_close:
             pop_close = sequence[head_stop:head_stop + 1]
             break
     head = sequence[1:head_stop]
@@ -413,7 +417,10 @@ def balanced_decomp_index(sequence, open_to_close):
             if token != want_close:
                 raise UnbalancedException
 
-    paired_idxs = np.array(paired_idxs)
+    if USE_FAST_CAT_SHIFT_INDEX:
+        paired_idxs = FastCatShiftIndex.from_single(paired_idxs)
+    else:
+        paired_idxs = np.array(paired_idxs)
     self = DecomposableSequence(sequence, paired_idxs, 0, len(sequence))
     return self
     # open_tok, close_tok, head, tail = self.decomp()
@@ -452,12 +459,15 @@ class DecomposableSequence(ub.NiceRepr):
     @xdev.profile
     def decomp(self):
         """
+        from netharn.initializers._nx_extensions import *  # NOQA
         open_to_close = {0: 1}
         sequence = [0, 0, 0, 1, 1, 1, 0, 1]
         open_to_close = {'{': '}', '(': ')', '[': ']'}
         sequence = '({[[]]})[[][]]{{}}'
-        seq = balanced_decomp_index(sequence, open_to_close)
-        a1, b1, head1, tail1, head_tail = seq.decomp()
+        self = balanced_decomp_index(sequence, open_to_close)
+        a1, b1, head1, tail1, head_tail = self.decomp()
+
+        tail1.decomp()
         """
         offset = self.offset
         open_idx = offset
@@ -486,10 +496,16 @@ class DecomposableSequence(ub.NiceRepr):
 
     @xdev.profile
     def rebase(self, new_offset=0):
-        sl = slice(self.offset, self.offset + self.length)
+        offset = self.offset
+        shift = (offset - new_offset)
+        sl = slice(offset, offset + self.length)
         newseq = self.seq[sl]
         new_paired_idxs = self.paired_idxs[sl]
-        new_paired_idxs -= (self.offset - new_offset)
+        if shift:
+            if USE_FAST_CAT_SHIFT_INDEX:
+                new_paired_idxs.add_inplace(-shift)
+            else:
+                new_paired_idxs = new_paired_idxs - shift
         return newseq, new_paired_idxs
 
     @xdev.profile
@@ -498,10 +514,15 @@ class DecomposableSequence(ub.NiceRepr):
         self = head1
         other = tail1
         """
+        # Each rebase is 37% of the computation for a total 74%
         newseq1, new_paired_idxs1 = self.rebase()
         newseq2, new_paired_idxs2 = other.rebase(new_offset=len(newseq1))
         newseq = newseq1 + newseq2
-        new_paired_idxs = np.r_[new_paired_idxs1, new_paired_idxs2]
+        # This is about 15% of the computation
+        if USE_FAST_CAT_SHIFT_INDEX:
+            new_paired_idxs = new_paired_idxs1.concat(new_paired_idxs2)
+        else:
+            new_paired_idxs = np.concatenate([new_paired_idxs1, new_paired_idxs2], axis=0)
         new = DecomposableSequence(newseq, new_paired_idxs, 0, len(newseq))
         return new
 
@@ -515,20 +536,97 @@ class DecomposableSequence(ub.NiceRepr):
         new_head_len = len(newseq1)
         newseq2, new_paired_idxs2 = other.rebase(new_offset=(new_head_len + 2))
         newseq = a + newseq1 + b + newseq2
-        new_paired_idxs = np.r_[new_head_len + 1, new_paired_idxs1, 0, new_paired_idxs2]
+
+        if USE_FAST_CAT_SHIFT_INDEX:
+            apart = FastCatShiftIndex.from_single([new_head_len + 1])
+            bpart = FastCatShiftIndex.from_single([0])
+            new_paired_idxs = apart + new_paired_idxs1 + bpart + new_paired_idxs2
+        else:
+            new_paired_idxs = np.r_[new_head_len + 1, new_paired_idxs1, 0, new_paired_idxs2]
         new = DecomposableSequence(newseq, new_paired_idxs, 0, len(newseq))
         return new
 
 
-class PairedIndex:
+class FastCatShiftIndex(ub.NiceRepr):
+    """
+    The idea is to make the operations very fast:
+        * adding an offset to each item
+        * concatenating two arrays
+        * slicing within an array
+
+    Example:
+        >>> self = FastCatShiftIndex.from_single([1, 2, 3])
+        >>> other = FastCatShiftIndex.from_single([1, 2, 3])
+        >>> other.add_inplace(10)
+        >>> new = self.concat(other)
+
+        >>> self = FastCatShiftIndex.from_single([1] * 20)
+        >>> start = 0
+        >>> stop = 16
+        >>> self.subslice(0, 25)
+
+        >>> self = new
+        >>> start, stop = 4, 5
+        >>> new = self.subslice(start, stop)
+        >>> index = slice(start, stop)
+        >>> self[index]
+    """
     # Can we make an efficient data structure fo this?  The concats and the
     # offsets are the culprit for most of the runtime.
-    def __init__(self, data=[], offset=0):
-        self.data = data
-        self.offset = offset
+    def __init__(self, datas, offsets, indexer):
+        self.datas = datas
+        self.offsets = offsets
+        self.indexer = indexer
 
+    def add_inplace(self, offset):
+        self.offsets = [o + offset for o in self.offsets]
 
-DECOMP_SEQ_INDEX = 0
+    def subslice(self, start, stop):
+        outer1, inner1  = self.indexer.unravel(start)
+        outer2, inner2  = self.indexer.unravel(stop)
+
+        if outer1 == outer2:
+            new_datas = [self.datas[outer1][inner1:inner2]]
+            new_offsets = [self.offsets[outer1]]
+        else:
+            first = [self.datas[outer1][inner1:]]
+            inner = self.datas[outer1 + 1:outer2]
+            ender = [self.datas[outer2][:inner2]]
+            new_datas = first + inner + ender
+            new_offsets = self.offsets[outer1:outer2 + 1]
+        new_indexer = self.indexer._subslice(outer1, outer2, inner1, inner2)
+        new = self.__class__(new_datas, new_offsets, new_indexer)
+        return new
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return self.subslice(index.start, index.stop)
+        else:
+            outer, inner  = self.indexer.unravel(index)
+            offset = self.offsets[outer]
+            return self.datas[outer][inner] + offset
+
+    @classmethod
+    def from_single(cls, data, offset=0):
+        indexer = FlatIndexer([len(data)], np.array([len(data)]))
+        self = cls([data], [offset], indexer)
+        return self
+
+    def __nice__(self):
+        return self.resolve()
+
+    def __add__(self, other):
+        return self.concat(other)
+
+    def concat(self, other):
+        new_indexer = self.indexer.concat(other.indexer)
+        new_datas = self.datas + other.datas
+        new_offsets = self.offsets + other.offsets
+        new = self.__class__(new_datas, new_offsets, new_indexer)
+        return new
+
+    def resolve(self):
+        return [d + offset for data, offset in zip(self.datas, self.offsets) for d in data]
 
 
 def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None):
@@ -537,8 +635,8 @@ def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None):
         xdoctest -m /home/joncrall/code/netharn/netharn/initializers/_nx_extensions.py longest_common_balanced_sequence:0 --profile
 
     Example:
-        >>> tree1 = random_ordered_tree(20, seed=1)
-        >>> tree2 = random_ordered_tree(20, seed=2)
+        >>> tree1 = random_ordered_tree(100, seed=1)
+        >>> tree2 = random_ordered_tree(100, seed=2)
         >>> seq1, open_to_close, toks = tree_to_balanced_sequence(tree1)
         >>> seq2, open_to_close, toks = tree_to_balanced_sequence(tree2, open_to_close, toks)
         >>> longest_common_balanced_sequence(seq1, seq2, open_to_close)
@@ -636,8 +734,17 @@ def _lcs(seq1, seq2, open_to_close, eq, _memo):
             a1, b1, head1, tail1, head1_tail1 = seq1.decomp()
             a2, b2, head2, tail2, head2_tail2 = seq2.decomp()
         else:
-            a1, b1, head1, tail1 = balanced_decomp_unsafe(seq1, open_to_close)
-            a2, b2, head2, tail2 = balanced_decomp_unsafe(seq2, open_to_close)
+            if seq1 in _memo:
+                a1, b1, head1, tail1 = _memo[seq1]
+            else:
+                a1, b1, head1, tail1 = balanced_decomp_unsafe(seq1, open_to_close)
+                _memo[seq1] = a1, b1, head1, tail1
+
+            if seq2 in _memo:
+                a2, b2, head2, tail2 = _memo[seq2]
+            else:
+                a2, b2, head2, tail2 = balanced_decomp_unsafe(seq2, open_to_close)
+                _memo[seq2] = a2, b2, head2, tail2
             head1_tail1 = head1 + tail1
             head2_tail2 = head2 + tail2
 
