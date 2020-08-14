@@ -102,7 +102,7 @@ class Initializer(object):
             >>> print(ub.repr2(nh.Initializer.coerce(config)))
             (
                 <class 'netharn.initializers.pretrained.Pretrained'>,
-                {'fpath': '/fit/nice/untitled', 'leftover': None, 'mangle': True},
+                {... 'fpath': '/fit/nice/untitled', 'leftover': None, 'mangle': True},
             )
             >>> print(ub.repr2(nh.Initializer.coerce({'init': 'kaiming_normal'})))
             (
@@ -151,6 +151,7 @@ class Initializer(object):
                 'fpath': ub.expandpath(config['pretrained_fpath']),
                 'leftover': kw.get('leftover', None),
                 'mangle': kw.get('mangle', True),
+                'association': kw.get('association', None),
             })
         elif config['init'] == 'cls':
             # Indicate that the model will initialize itself

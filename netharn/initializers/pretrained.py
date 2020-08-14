@@ -40,6 +40,9 @@ class Pretrained(api.Initializer, ub.NiceRepr):
             placed in a larger one. Note be careful when mangling a
             classification layer if class indexes are not aligned.
 
+        association (str): controls how we search for the association between
+            the two model states. Can be strict, module-hack, prefix-hack, or embedding.
+
         info (dict, optional): specify explicit history info
 
         initializer (netharn.Initializer): DEPRECATED use the `leftover`.
@@ -82,7 +85,7 @@ class Pretrained(api.Initializer, ub.NiceRepr):
         >>> self(model2)
     """
     def __init__(self, fpath, leftover=None, mangle=True, info=None,
-                 initializer=None):
+                 initializer=None, association=None):
         if initializer is not None:
             import warnings
             warnings.warn('Pretrained `initializer` kwarg is deprecated '
@@ -95,6 +98,7 @@ class Pretrained(api.Initializer, ub.NiceRepr):
             leftover = initializer_[0](**initializer_[1])
 
         self.leftover = leftover
+        self.association = association
         self.mangle = mangle
         self.info = info
 
@@ -196,6 +200,7 @@ class Pretrained(api.Initializer, ub.NiceRepr):
         info = load_partial_state(raw_model, model_state_dict,
                                   leftover=self.leftover,
                                   mangle=self.mangle,
+                                  association=self.association,
                                   verbose=verbose)
         return info
 

@@ -13,6 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 * `load_partial_state` now has an algorithm to better match model keys when the
   only difference is in key prefixes.
+    - adds keyword arg association which defaults to prefix-hack, the old default was module-hack, and embedding is more theoretically correct but too slow.
 
 
 ### Added

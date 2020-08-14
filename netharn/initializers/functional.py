@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import ubelt as ub
-from netharn.initializers import _nx_extensions
 
 
 def trainable_layers(model, names=False):
@@ -124,7 +123,7 @@ def apply_initializer(input, func, funckw):
 
 def load_partial_state(model, model_state_dict, leftover=None,
                        ignore_unset=False, verbose=2,
-                       mangle=True, association='module-hack',
+                       mangle=True, association=None,
                        initializer=None):
     """
     CommandLine:
@@ -139,7 +138,8 @@ def load_partial_state(model, model_state_dict, leftover=None,
              areas, if none then those areas are left as-is.
 
         association (str): controls how we search for the association between
-            the two model states. Can be strict, module-hack, prefix-hack, or embedding.
+            the two model states. Can be strict, module-hack, prefix-hack, or
+            embedding.  Default is: prefix-hack.
 
         mangle (bool, default=True): If True, mangles tensors that have the
             same key, but different shapes forcing them to fit. This might
@@ -249,7 +249,42 @@ def load_partial_state(model, model_state_dict, leftover=None,
         >>> model = self2
         >>> model_state_dict = extra_state_dict
         >>> load_partial_state(self2, extra_state_dict)
+
+    Example:
+        >>> # xdoctest: +REQUIRES(--slow)
+        >>> from netharn.initializers.functional import *  # NOQA
+        >>> import torchvision
+        >>> import torch
+        >>> resnet50 = torchvision.models.resnet50()
+        >>> class CustomModel(torch.nn.Module):
+        >>>     def __init__(self):
+        >>>         super().__init__()
+        >>>         self.module = resnet50
+        >>>         self.extra = torch.nn.Linear(1, 1)
+        >>> model = CustomModel()
+        >>> model_state_dict = resnet50.state_dict()
+        >>> model_state_dict2 = {'prefix.' + k: v for k, v in model_state_dict.items()}
+        >>> import ubelt as ub
+        >>> with ub.Timer(verbose=2, label='strict'):
+        >>>     load_partial_state(model, model_state_dict, association='strict', verbose=0)
+        >>> with ub.Timer(verbose=2, label='prefix-hack'):
+        >>>     load_partial_state(model, model_state_dict, association='prefix-hack', verbose=0)
+        >>> with ub.Timer(verbose=2, label='module-hack'):
+        >>>     load_partial_state(model, model_state_dict, association='module-hack', verbose=0)
+        >>> with ub.Timer(verbose=2, label='embedding'):
+        >>>     load_partial_state(model, model_state_dict, association='embedding', verbose=0)
+
+        >>> load_partial_state(model, model_state_dict, association='prefix-hack', verbose=1)
+        >>> load_partial_state(model, model_state_dict, association='module-hack', verbose=1)
+
+    CommandLine:
+        xdoctest -m /home/joncrall/code/netharn/netharn/initializers/functional.py load_partial_state:2 --slow
+
     """
+    if association is None:
+        # association = 'module-hack'  # old default
+        association = 'prefix-hack'  # new default
+
     if initializer is not None:
         import warnings
         warnings.warn('initializer is deprecated use leftover')
@@ -267,7 +302,9 @@ def load_partial_state(model, model_state_dict, leftover=None,
         self_keys = set(self_state)
         common_keys = other_keys.intersection(self_keys)
         if not common_keys:
-            if association == 'module-hack':
+            if association == 'strict':
+                pass
+            elif association == 'module-hack':
                 # If there are no common keys try a hack
                 prefix = 'module.'
                 def smap(f, ss):
@@ -301,12 +338,15 @@ def load_partial_state(model, model_state_dict, leftover=None,
                             raise AssertionError
                         model_state_dict = ub.map_keys(func, model_state_dict)
             elif association == 'embedding':
+                if verbose > 1:
+                    print('Using subpath embedding assocation, may take some time')
                 # I believe this is the correct way to solve the problem
                 paths1 = sorted(other_keys)
                 paths2 = sorted(self_state)
                 subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2)
                 mapping = ub.dzip(subpaths1, subpaths2)
-                print('mapping = {}'.format(ub.repr2(mapping, nl=1)))
+                if verbose > 1:
+                    print('mapping = {}'.format(ub.repr2(mapping, nl=1)))
                 model_state_dict = ub.map_keys(lambda k: mapping.get(k, k), model_state_dict)
             else:
                 raise KeyError(association)
@@ -552,8 +592,16 @@ def _best_prefix_transform(set1, target_set2):
 def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
     """
     CommandLine:
-        xdoctest -m /home/joncrall/code/netharn/netharn/initializers/functional.py maximum_common_ordered_subpaths:0 --profile && cat profile_out.txt
+        xdoctest -m /home/joncrall/code/netharn/netharn/initializers/functional.py maximum_common_ordered_subpaths:0 --profile && cat profile_output.txt
         xdoctest -m /home/joncrall/code/netharn/netharn/initializers/functional.py maximum_common_ordered_subpaths:0
+
+    Example:
+        >>> import torchvision
+        >>> resnet50 = torchvision.models.resnet50()
+        >>> paths1 = sorted(resnet50.state_dict().keys())[0:100]
+        >>> paths2 = ['prefix.' + k for k in paths1]
+        >>> paths2.append('extra_key')
+        >>> maximum_common_ordered_subpaths(paths1, paths2)
 
     Example:
         >>> rng = None
@@ -564,7 +612,7 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
         >>>     parts = list(map(chr, rng.randint(ord('a'), ord('z'), size=depth)))
         >>>     path = '.'.join(parts)
         >>>     return path
-        >>> n = 50
+        >>> n = 20
         >>> paths1 = sorted({random_paths(rng) for _ in range(n)})
         >>> paths2 = sorted({random_paths(rng) for _ in range(n)})
         >>> paths1 = paths1 + ['a.' + k for k in paths2[0:n // 3]]
@@ -599,26 +647,15 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
         >>> subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2)
         >>> mapping = ub.dzip(subpaths1, subpaths2)
         >>> print('mapping = {}'.format(ub.repr2(mapping, nl=1)))
-        >>> #
-        >>> print([n for n in tree1.nodes if tree1.in_degree[n] > 1])
-        >>> print([n for n in tree2.nodes if tree2.in_degree[n] > 1])
-        >>> _print_forest(tree1)
-        >>> _print_forest(tree2)
-        >>> #
-        >>> # for n in subtree1.nodes:
-        >>> #     subtree1.nodes[n]['label'] = n[-1]
-        >>> _print_forest(subtree1)
-        >>> _print_forest(subtree2)
-        >>> #
-        >>> tree1_remain = tree1.copy()
-        >>> tree1_remain.remove_nodes_from(subtree1.nodes)
-        >>> _print_forest(tree1_remain)
     """
     import networkx as nx
 
     # the longest common balanced sequence problem
     def _matchable(tok1, tok2):
-        return tok1.value[-1] == tok2.value[-1]
+        return tok1[-1] == tok2[-1]
+    eq = _matchable
+    # import operator
+    # eq = operator.eq
 
     def paths_to_tree(paths):
         tree = nx.OrderedDiGraph()
@@ -642,7 +679,7 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
     #     DiGM.is_isomorphic()
     #     list(DiGM.subgraph_isomorphisms_iter())
 
-    eq = _matchable
+    from netharn.initializers import _nx_extensions
     subtree1, subtree2 = _nx_extensions.maximum_common_ordered_tree_embedding(tree1, tree2, eq=eq)
 
     subpaths1 = [sep.join(node) for node in subtree1.nodes if subtree1.out_degree[node] == 0]

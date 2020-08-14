@@ -1,16 +1,23 @@
 import numpy as np
 import operator
 import ubelt as ub
-import xdev
 from netharn.util.util_misc import FlatIndexer
+import networkx as nx
+
+try:
+    import xdev
+    profile = xdev.profile
+except Exception:
+    profile = ub.identity
 
 
 # These did not help the speed
 DECOMP_SEQ_INDEX = 0
 USE_FAST_CAT_SHIFT_INDEX = 0
+TRY_USE_CYTHON = 1
 
 
-@xdev.profile
+@profile
 def maximum_common_ordered_tree_embedding(tree1, tree2, eq=None):
     """
     Finds the maximum common subtree-embedding between two ordered trees.
@@ -44,7 +51,7 @@ def maximum_common_ordered_tree_embedding(tree1, tree2, eq=None):
 
     Example:
         >>> from netharn.initializers._nx_extensions import *  # NOQA
-        >>> from netharn.initializers.functional import _best_prefix_transform, _print_forest
+        >>> from netharn.initializers.functional import _best_prefix_transform
         >>> def random_ordered_tree(n, seed=None):
         >>>     tree = nx.dfs_tree(nx.random_tree(n, seed=seed))
         >>>     otree = nx.OrderedDiGraph()
@@ -59,10 +66,11 @@ def maximum_common_ordered_tree_embedding(tree1, tree2, eq=None):
         >>> _print_forest(subtree1)
         >>> _print_forest(subtree2)
 
+    Ignore:
+        >>> from networkx import isomorphism
         >>> assert isomorphism.DiGraphMatcher(tree1, subtree1).subgraph_is_isomorphic()
         >>> assert isomorphism.DiGraphMatcher(tree2, subtree2).subgraph_is_isomorphic()
 
-        >>> from networkx import isomorphism
         >>> list(isomorphism.DiGraphMatcher(tree1, tree2).subgraph_isomorphisms_iter())
         >>> list(isomorphism.DiGraphMatcher(tree1, tree2).subgraph_monomorphisms_iter())
 
@@ -98,7 +106,6 @@ def maximum_common_ordered_tree_embedding(tree1, tree2, eq=None):
 
         tree = tree1
     """
-    import networkx as nx
     if not (isinstance(tree1, nx.OrderedDiGraph) and nx.is_forest(tree1)):
         raise nx.NetworkXNotImplemented('only implemented for directed ordered trees')
     if not (isinstance(tree1, nx.OrderedDiGraph) and nx.is_forest(tree2)):
@@ -110,9 +117,11 @@ def maximum_common_ordered_tree_embedding(tree1, tree2, eq=None):
     seq1 = sequence1
     seq2 = sequence2
 
+    open_to_tok = ub.invert_dict(toks)
+
     # Solve the longest common balanced sequence problem
     best, value = longest_common_balanced_sequence(
-        seq1, seq2, open_to_close, eq=eq)
+        seq1, seq2, open_to_close, open_to_tok=open_to_tok, eq=eq)
     subseq1, subseq2 = best
 
     # Convert the subsequence back into a tree
@@ -125,8 +134,7 @@ class UnbalancedException(Exception):
     pass
 
 
-def tree_to_balanced_sequence(tree, open_to_close=None, toks=None):
-    import networkx as nx
+def tree_to_balanced_sequence(tree, open_to_close=None, toks=None, mode='number'):
     from collections import namedtuple
     Token = namedtuple('Token', ['action', 'value'])
     # mapping between opening and closing tokens
@@ -143,15 +151,15 @@ def tree_to_balanced_sequence(tree, open_to_close=None, toks=None):
             if etype == 'forward':
                 # u has been visited by v has not
                 if v not in toks:
-                    if 1:
+                    if mode == 'tuple':
                         # TODO: token encoding scheme where subdirectories
                         # are matchable via a custom operation.
                         # open_tok = '<{}>'.format(v)
                         # close_tok = '</{}>'.format(v)
                         open_tok = Token('open', v)
                         close_tok = Token('close', v)
-                    else:
-                        open_tok = len(toks)
+                    elif mode == 'number':
+                        open_tok = len(toks) + 1
                         close_tok = -open_tok
                     toks[v] = open_tok
                     open_to_close[open_tok] = close_tok
@@ -168,7 +176,6 @@ def tree_to_balanced_sequence(tree, open_to_close=None, toks=None):
 
 
 def seq_to_tree(subseq, open_to_close, toks):
-    import networkx as nx
     open_to_tok = ub.invert_dict(toks)
     subtree = nx.OrderedDiGraph()
     stack = []
@@ -192,22 +199,155 @@ def seq_to_tree(subseq, open_to_close, toks):
 
 
 def random_ordered_tree(n, seed=None):
-    import networkx as nx
     tree = nx.dfs_tree(nx.random_tree(n, seed=seed))
     otree = nx.OrderedDiGraph()
     otree.add_edges_from(tree.edges)
     return otree
 
 
-# @xdev.profile
-def generate_balance_unsafe(sequence, open_to_close):
+@profile
+def generate_balance_unsafe_python(sequence, open_to_close):
+    """
+    Benchmark:
+        >>> tree = random_ordered_tree(1000)
+        >>> sequence, open_to_close, toks = tree_to_balanced_sequence(tree, mode='tuple')
+        >>> sequence, open_to_close, toks = tree_to_balanced_sequence(tree, mode='number')
+        >>> import timerit
+        >>> ti = timerit.Timerit(100, bestof=10, verbose=2)
+        >>> for timer in ti.reset('time'):
+        >>>     with timer:
+        >>>         list(generate_balance_unsafe(sequence, open_to_close))
+        >>> import timerit
+        >>> ti = timerit.Timerit(100, bestof=10, verbose=2)
+        >>> for timer in ti.reset('time'):
+        >>>     with timer:
+        >>>         list(generate_balance_unsafe_cython(sequence, open_to_close))
+    """
     stacklen = 0
     for token in sequence:
         if token in open_to_close:
             stacklen += 1
         else:
             stacklen -= 1
-        yield not stacklen, token
+        yield stacklen == 0, token
+
+
+@profile
+def balanced_decomp(sequence, open_to_close):
+    """
+    Note this is not exactly the same as the decomposition in the paper.
+    That is because we also return the "wrapping" element, and we let the
+    user do the head + tail concatenation.
+
+    Example:
+        >>> open_to_close = {0: 1}
+        >>> sequence = [0, 0, 0, 1, 1, 1, 0, 1]
+        >>> open_to_close = {'{': '}', '(': ')', '[': ']'}
+        >>> sequence = '({[[]]})[[][]]'
+        >>> a1, b1, head, tail = balanced_decomp(sequence, open_to_close)
+        >>> a2, b2, tail1, tail2 = balanced_decomp(tail, open_to_close)
+    """
+    gen = generate_balance(sequence, open_to_close)
+
+    bal_curr, tok_curr = next(gen)
+    pop_open = sequence[0:1]
+    want_close = open_to_close[tok_curr]
+
+    head_stop = 1
+    for head_stop, (bal_curr, tok_curr) in enumerate(gen, start=1):
+        if tok_curr is None:
+            break
+        elif bal_curr and tok_curr == want_close:
+            pop_close = sequence[head_stop:head_stop + 1]
+            break
+    head = sequence[1:head_stop]
+    # if __debug__:
+    #     list(gen)  # exhaust the generator to check we are balanced
+    tail = sequence[head_stop + 1:]
+    return pop_open, pop_close, head, tail
+
+
+@profile
+def balanced_decomp_unsafe(sequence, open_to_close):
+    """
+    open_to_close = {0: 1}
+    sequence = [0, 0, 0, 1, 1, 1, 0, 1]
+    open_to_close = {'{': '}', '(': ')', '[': ']'}
+    sequence = '({[[]]})[[][]]'
+    a1, b1, head, tail = balanced_decomp(sequence, open_to_close)
+    a2, b2, tail1, tail2 = balanced_decomp(tail, open_to_close)
+
+    Benchmark:
+        >>> from netharn.initializers._nx_extensions import *  # NOQA
+        >>> tree = random_ordered_tree(100)
+        >>> sequence, open_to_close, toks = tree_to_balanced_sequence(tree)
+        >>> import timerit
+        >>> ti = timerit.Timerit(100, bestof=10, verbose=2, unit='us')
+        >>> for timer in ti.reset('safe-python'):
+        >>>     with timer:
+        >>>         list(balanced_decomp(sequence, open_to_close))
+        >>> for timer in ti.reset('unsafe-python'):
+        >>>     with timer:
+        >>>         list(balanced_decomp_unsafe(sequence, open_to_close))
+        >>> for timer in ti.reset('unsafe-python-v2'):
+        >>>     with timer:
+        >>>         list(balanced_decomp_unsafe2_python(sequence, open_to_close))
+        >>> for timer in ti.reset('unsafe-c/python-v2'):
+        >>>     with timer:
+        >>>         list(balanced_decomp_unsafe2(sequence, open_to_close))
+    """
+    gen = generate_balance_unsafe(sequence, open_to_close)
+
+    bal_curr, tok_curr = next(gen)
+    pop_open = sequence[0:1]
+    want_close = open_to_close[tok_curr]
+
+    head_stop = 1
+    for head_stop, (bal_curr, tok_curr) in enumerate(gen, start=1):
+        if bal_curr and tok_curr == want_close:
+            pop_close = sequence[head_stop:head_stop + 1]
+            break
+    head = sequence[1:head_stop]
+    tail = sequence[head_stop + 1:]
+    return pop_open, pop_close, head, tail
+
+
+@profile
+def balanced_decomp_unsafe2_python(sequence, open_to_close):
+    stacklen = 0
+    seq_iter = iter(sequence)
+    tok_curr = next(seq_iter)
+    stacklen += 1 if tok_curr in open_to_close else -1
+    want_close = open_to_close[tok_curr]
+
+    head_stop = 1
+    for head_stop, tok_curr in enumerate(seq_iter, start=1):
+        stacklen += 1 if tok_curr in open_to_close else -1
+        if stacklen == 0 and tok_curr == want_close:
+            break
+
+    pop_close = sequence[head_stop:head_stop + 1]
+    pop_open = sequence[0:1]
+    head = sequence[1:head_stop]
+    tail = sequence[head_stop + 1:]
+    return pop_open, pop_close, head, tail
+
+
+generate_balance_unsafe = generate_balance_unsafe_python
+balanced_decomp_unsafe2 = balanced_decomp_unsafe2_python
+
+
+if TRY_USE_CYTHON:
+    try:
+        from netharn.initializers import _nx_extensions_cython_backend as cyb
+
+        generate_balance_unsafe_cython = cyb.generate_balance_unsafe_cython
+        generate_balance_unsafe        = cyb.generate_balance_unsafe_cython
+
+        balanced_decomp_unsafe2_cython = cyb.balanced_decomp_unsafe2_cython
+        balanced_decomp_unsafe2        = cyb.balanced_decomp_unsafe2_cython
+    except Exception:
+        pass
 
 
 def generate_balance(sequence, open_to_close, safe=True):
@@ -303,82 +443,6 @@ def generate_balance(sequence, open_to_close, safe=True):
         yield from generate_balance_unsafe(sequence, open_to_close)
 
 
-@xdev.profile
-def balanced_decomp_unsafe(sequence, open_to_close):
-    """
-    open_to_close = {0: 1}
-    sequence = [0, 0, 0, 1, 1, 1, 0, 1]
-    open_to_close = {'{': '}', '(': ')', '[': ']'}
-    sequence = '({[[]]})[[][]]'
-    a1, b1, head, tail = balanced_decomp(sequence, open_to_close)
-    a2, b2, tail1, tail2 = balanced_decomp(tail, open_to_close)
-
-    Benchmark:
-        >>> from netharn.initializers._nx_extensions import *  # NOQA
-        >>> tree = random_ordered_tree(100)
-        >>> sequence, open_to_close, toks = tree_to_balanced_sequence(tree)
-        >>> import timerit
-        >>> ti = timerit.Timerit(100, bestof=10, verbose=2, unit='us')
-        >>> for timer in ti.reset('safe-python'):
-        >>>     with timer:
-        >>>         list(balanced_decomp(sequence, open_to_close))
-        >>> for timer in ti.reset('unsafe-python'):
-        >>>     with timer:
-        >>>         list(balanced_decomp_unsafe(sequence, open_to_close))
-    """
-    gen = generate_balance_unsafe(sequence, open_to_close)
-
-    bal_curr, tok_curr = next(gen)
-    pop_open = sequence[0:1]
-    want_close = open_to_close[tok_curr]
-
-    head_stop = 1
-    for head_stop, (bal_curr, tok_curr) in enumerate(gen, start=1):
-        if bal_curr and tok_curr == want_close:
-            pop_close = sequence[head_stop:head_stop + 1]
-            break
-    head = sequence[1:head_stop]
-    # if __debug__:
-    #     list(gen)  # exhaust the generator to check we are balanced
-    tail = sequence[head_stop + 1:]
-    return pop_open, pop_close, head, tail
-
-
-@xdev.profile
-def balanced_decomp(sequence, open_to_close):
-    """
-    Note this is not exactly the same as the decomposition in the paper.
-    That is because we also return the "wrapping" element, and we let the
-    user do the head + tail concatenation.
-
-    Example:
-        >>> open_to_close = {0: 1}
-        >>> sequence = [0, 0, 0, 1, 1, 1, 0, 1]
-        >>> open_to_close = {'{': '}', '(': ')', '[': ']'}
-        >>> sequence = '({[[]]})[[][]]'
-        >>> a1, b1, head, tail = balanced_decomp(sequence, open_to_close)
-        >>> a2, b2, tail1, tail2 = balanced_decomp(tail, open_to_close)
-    """
-    gen = generate_balance(sequence, open_to_close)
-
-    bal_curr, tok_curr = next(gen)
-    pop_open = sequence[0:1]
-    want_close = open_to_close[tok_curr]
-
-    head_stop = 1
-    for head_stop, (bal_curr, tok_curr) in enumerate(gen, start=1):
-        if tok_curr is None:
-            break
-        elif bal_curr and tok_curr == want_close:
-            pop_close = sequence[head_stop:head_stop + 1]
-            break
-    head = sequence[1:head_stop]
-    # if __debug__:
-    #     list(gen)  # exhaust the generator to check we are balanced
-    tail = sequence[head_stop + 1:]
-    return pop_open, pop_close, head, tail
-
-
 def balanced_decomp_index(sequence, open_to_close):
     """
     open_to_close = {0: 1}
@@ -393,7 +457,7 @@ def balanced_decomp_index(sequence, open_to_close):
     print('head_tail = {!r}'.format(head_tail))
 
 
-    a1, b1, head1, tail1 = balanced_decomp_unsafe(sequence, open_to_close)
+    a1, b1, head1, tail1 = balanced_decomp_unsafe2(sequence, open_to_close)
     head_tail = head1 + tail1
     print('tail1 = {!r}'.format(tail1))
     print('head1 = {!r}'.format(head1))
@@ -456,7 +520,7 @@ class DecomposableSequence(ub.NiceRepr):
     def __getitem__(self, idx):
         return self.seq[idx + self.offset]
 
-    @xdev.profile
+    @profile
     def decomp(self):
         """
         from netharn.initializers._nx_extensions import *  # NOQA
@@ -494,7 +558,7 @@ class DecomposableSequence(ub.NiceRepr):
     def __hash__(self):
         return hash(self.seq)
 
-    @xdev.profile
+    @profile
     def rebase(self, new_offset=0):
         offset = self.offset
         shift = (offset - new_offset)
@@ -508,7 +572,7 @@ class DecomposableSequence(ub.NiceRepr):
                 new_paired_idxs = new_paired_idxs - shift
         return newseq, new_paired_idxs
 
-    @xdev.profile
+    @profile
     def __add__(self, other):
         """
         self = head1
@@ -526,7 +590,7 @@ class DecomposableSequence(ub.NiceRepr):
         new = DecomposableSequence(newseq, new_paired_idxs, 0, len(newseq))
         return new
 
-    @xdev.profile
+    @profile
     def combine(self, a, b, other):
         """
         self = head1
@@ -629,7 +693,7 @@ class FastCatShiftIndex(ub.NiceRepr):
         return [d + offset for data, offset in zip(self.datas, self.offsets) for d in data]
 
 
-def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None):
+def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None, open_to_tok=None):
     """
     CommandLine:
         xdoctest -m /home/joncrall/code/netharn/netharn/initializers/_nx_extensions.py longest_common_balanced_sequence:0 --profile
@@ -699,12 +763,19 @@ def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None):
     if eq is None:
         eq = operator.eq
     _memo = {}
+    _seq_memo = {}
 
     if DECOMP_SEQ_INDEX:
         seq1 = balanced_decomp_index(seq1, open_to_close)
         seq2 = balanced_decomp_index(seq2, open_to_close)
 
-    best, value = _lcs(seq1, seq2, open_to_close, eq, _memo)
+    if open_to_tok is None:
+        class Dummy:
+            def __getitem__(self, key):
+                return key
+        open_to_tok = Dummy()
+
+    best, value = _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
 
     if DECOMP_SEQ_INDEX:
         # unpack
@@ -713,8 +784,8 @@ def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None):
     return best, value
 
 
-@xdev.profile
-def _lcs(seq1, seq2, open_to_close, eq, _memo):
+@profile
+def _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo):
     if not seq1:
         return (seq1, seq1), 0
     elif not seq2:
@@ -734,28 +805,31 @@ def _lcs(seq1, seq2, open_to_close, eq, _memo):
             a1, b1, head1, tail1, head1_tail1 = seq1.decomp()
             a2, b2, head2, tail2, head2_tail2 = seq2.decomp()
         else:
-            if seq1 in _memo:
-                a1, b1, head1, tail1 = _memo[seq1]
+            if seq1 in _seq_memo:
+                a1, b1, head1, tail1 = _seq_memo[seq1]
             else:
-                a1, b1, head1, tail1 = balanced_decomp_unsafe(seq1, open_to_close)
-                _memo[seq1] = a1, b1, head1, tail1
+                a1, b1, head1, tail1 = balanced_decomp_unsafe2(seq1, open_to_close)
+                _seq_memo[seq1] = a1, b1, head1, tail1
 
-            if seq2 in _memo:
-                a2, b2, head2, tail2 = _memo[seq2]
+            if seq2 in _seq_memo:
+                a2, b2, head2, tail2 = _seq_memo[seq2]
             else:
-                a2, b2, head2, tail2 = balanced_decomp_unsafe(seq2, open_to_close)
-                _memo[seq2] = a2, b2, head2, tail2
+                a2, b2, head2, tail2 = balanced_decomp_unsafe2(seq2, open_to_close)
+                _seq_memo[seq2] = a2, b2, head2, tail2
             head1_tail1 = head1 + tail1
             head2_tail2 = head2 + tail2
 
         candidates = {}
 
         # Case 1: The LCS involves this edge
-        if eq(a1[0], a2[0]):
+        t1 = open_to_tok[a1[0]]
+        t2 = open_to_tok[a2[0]]
+        # if eq(a1[0], a2[0]):
+        if eq(t1, t2):
             # TODO: need to return the correspondence between the
             # matches and the original nodes.
-            new_heads, pval_h = _lcs(head1, head2, open_to_close, eq, _memo)
-            new_tails, pval_t = _lcs(tail1, tail2, open_to_close, eq, _memo)
+            new_heads, pval_h = _lcs(head1, head2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
+            new_tails, pval_t = _lcs(tail1, tail2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
 
             new_head1, new_head2 = new_heads
             new_tail1, new_tail2 = new_tails
@@ -771,11 +845,11 @@ def _lcs(seq1, seq2, open_to_close, eq, _memo):
             candidates[cand1] = pval_h + pval_t + 1
 
         # Case 2: The current edge in sequence1 is deleted
-        cand2, val2 = _lcs(head1_tail1, seq2, open_to_close, eq, _memo)
+        cand2, val2 = _lcs(head1_tail1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
         candidates[cand2] = val2
 
         # Case 3: The current edge in sequence2 is deleted
-        cand3, val3 = _lcs(seq1, head2_tail2, open_to_close, eq, _memo)
+        cand3, val3 = _lcs(seq1, head2_tail2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
         candidates[cand3] = val3
 
         best = ub.argmax(candidates)
@@ -796,7 +870,6 @@ def _print_forest(graph):
         graph = CategoryTree.demo('coco').graph
         _print_forest(graph)
     """
-    import networkx as nx
     assert nx.is_forest(graph)
     from kwcoco.category_tree import to_directed_nested_tuples
     encoding = to_directed_nested_tuples(graph)
