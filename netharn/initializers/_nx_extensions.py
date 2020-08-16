@@ -54,7 +54,7 @@ def _generate_all_decompositions(seq, open_to_close):
 
 
 @profile
-def maximum_common_ordered_tree_embedding(tree1, tree2, eq=None):
+def maximum_common_ordered_tree_embedding(tree1, tree2, node_affinity=None):
     """
     Finds the maximum common subtree-embedding between two ordered trees.
 
@@ -85,7 +85,7 @@ def maximum_common_ordered_tree_embedding(tree1, tree2, eq=None):
 
         tree1 (nx.OrderedDiGraph): first ordered tree
         tree2 (nx.OrderedDiGraph): second ordered tree
-        eq (callable): function
+        node_affinity (callable): function
 
     Example:
         >>> from netharn.initializers._nx_extensions import *  # NOQA
@@ -127,12 +127,12 @@ def maximum_common_ordered_tree_embedding(tree1, tree2, eq=None):
         # the longest common balanced sequence problem
         def _matchable(tok1, tok2):
             return tok1.value[-1] == tok2.value[-1]
-        eq = _matchable
+        node_affinity = _matchable
         print([n for n in tree1.nodes if tree1.in_degree[n] > 1])
         print([n for n in tree2.nodes if tree2.in_degree[n] > 1])
         _print_forest(tree1)
         _print_forest(tree2)
-        subtree1, subtree2 = maximum_common_ordered_tree_embedding(tree1, tree2, eq=eq)
+        subtree1, subtree2 = maximum_common_ordered_tree_embedding(tree1, tree2, node_affinity=node_affinity)
         # for n in subtree1.nodes:
         #     subtree1.nodes[n]['label'] = n[-1]
         _print_forest(subtree1)
@@ -159,7 +159,7 @@ def maximum_common_ordered_tree_embedding(tree1, tree2, eq=None):
 
     # Solve the longest common balanced sequence problem
     best, value = longest_common_balanced_sequence(
-        seq1, seq2, open_to_close, open_to_tok=open_to_tok, eq=eq)
+        seq1, seq2, open_to_close, open_to_tok=open_to_tok, node_affinity=node_affinity)
     subseq1, subseq2 = best
 
     # Convert the subsequence back into a tree
@@ -732,7 +732,7 @@ class FastCatShiftIndex(ub.NiceRepr):
 
 
 @profile
-def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None, open_to_tok=None):
+def longest_common_balanced_sequence(seq1, seq2, open_to_close, node_affinity=None, open_to_tok=None):
     """
     CommandLine:
         xdoctest -m /home/joncrall/code/netharn/netharn/initializers/_nx_extensions.py longest_common_balanced_sequence:0 --profile && cat profile_output.txt
@@ -799,8 +799,8 @@ def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None, open_to
     subseq1, subseq2 = best
     print('subseq1 = {!r}'.format(subseq1))
     """
-    if eq is None:
-        eq = operator.eq
+    if node_affinity is None:
+        node_affinity = operator.eq
     _memo = {}
     _seq_memo = {}
 
@@ -838,9 +838,9 @@ def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None, open_to
         hash1 = seq_to_hash1[seq1]
         hash2 = seq_to_hash2[seq2]
 
-        best, value = _lcs2(hash1, hash2, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
+        best, value = _lcs2(hash1, hash2, open_to_close, node_affinity, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
     else:
-        best, value = _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
+        best, value = _lcs(seq1, seq2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
 
     if DECOMP_SEQ_INDEX:
         # unpack
@@ -850,7 +850,7 @@ def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None, open_to
 
 
 @profile
-def _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo):
+def _lcs(seq1, seq2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo):
     if not seq1:
         return (seq1, seq1), 0
     elif not seq2:
@@ -887,10 +887,10 @@ def _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo):
                 _seq_memo[key2] = a2, b2, head2, tail2, head2_tail2
 
         # Case 2: The current edge in sequence1 is deleted
-        best, val = _lcs(head1_tail1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
+        best, val = _lcs(head1_tail1, seq2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
 
         # Case 3: The current edge in sequence2 is deleted
-        cand, val_alt = _lcs(seq1, head2_tail2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
+        cand, val_alt = _lcs(seq1, head2_tail2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
         if val_alt > val:
             best = cand
             val = val_alt
@@ -898,12 +898,13 @@ def _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo):
         # Case 1: The LCS involves this edge
         t1 = open_to_tok[a1[0]]
         t2 = open_to_tok[a2[0]]
-        # if eq(a1[0], a2[0]):
-        if eq(t1, t2):
+        # if node_affinity(a1[0], a2[0]):
+        affinity = node_affinity(t1, t2)
+        if affinity:
             # TODO: need to return the correspondence between the
             # matches and the original nodes.
-            new_heads, pval_h = _lcs(head1, head2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
-            new_tails, pval_t = _lcs(tail1, tail2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
+            new_heads, pval_h = _lcs(head1, head2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
+            new_tails, pval_t = _lcs(tail1, tail2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
 
             new_head1, new_head2 = new_heads
             new_tail1, new_tail2 = new_tails
@@ -916,7 +917,7 @@ def _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo):
                 subseq2 = a2 + new_head2 + b2 + new_tail2
 
             cand = (subseq1, subseq2)
-            val_alt = pval_h + pval_t + 1
+            val_alt = pval_h + pval_t + affinity
             if val_alt > val:
                 best = cand
                 val = val_alt
@@ -927,7 +928,7 @@ def _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo):
 
 
 @profile
-def _lcs2(hash1, hash2, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2):
+def _lcs2(hash1, hash2, open_to_close, node_affinity, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2):
     if not hash_decomp1[hash1][0] or not hash_decomp1[hash2][0]:
         seq1, a1, b1, head1, tail1, head1_tail1 = hash_decomp1[hash1]
         seq2, a2, b2, head2, tail2, head2_tail2 = hash_decomp2[hash2]
@@ -946,22 +947,23 @@ def _lcs2(hash1, hash2, open_to_close, eq, open_to_tok, _memo, hash_decomp1, has
         seq2, a2, b2, head2_hash, tail2_hash, head2_tail2_hash = hash_decomp2[hash2]
 
         # Case 2: The current edge in sequence1 is deleted
-        best, val = _lcs2(head1_tail1_hash, hash2, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
+        best, val = _lcs2(head1_tail1_hash, hash2, open_to_close, node_affinity, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
 
         # Case 3: The current edge in sequence2 is deleted
-        cand, val_alt = _lcs2(hash1, head2_tail2_hash, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
+        cand, val_alt = _lcs2(hash1, head2_tail2_hash, open_to_close, node_affinity, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
         if val_alt > val:
             best = cand
 
         # Case 1: The LCS involves this edge
         t1 = open_to_tok[a1[0]]
         t2 = open_to_tok[a2[0]]
-        # if eq(a1[0], a2[0]):
-        if eq(t1, t2):
+        # if node_affinity(a1[0], a2[0]):
+        affinity
+        if node_affinity(t1, t2):
             # TODO: need to return the correspondence between the
             # matches and the original nodes.
-            new_heads, pval_h = _lcs2(head1_hash, head2_hash, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
-            new_tails, pval_t = _lcs2(tail1_hash, tail2_hash, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
+            new_heads, pval_h = _lcs2(head1_hash, head2_hash, open_to_close, node_affinity, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
+            new_tails, pval_t = _lcs2(tail1_hash, tail2_hash, open_to_close, node_affinity, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
 
             new_head1, new_head2 = new_heads
             new_tail1, new_tail2 = new_tails

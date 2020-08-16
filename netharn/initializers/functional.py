@@ -612,7 +612,7 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
         >>>     parts = list(map(chr, rng.randint(ord('a'), ord('z'), size=depth)))
         >>>     path = '.'.join(parts)
         >>>     return path
-        >>> n = 20
+        >>> n = 50
         >>> paths1 = sorted({random_paths(rng) for _ in range(n)})
         >>> paths2 = sorted({random_paths(rng) for _ in range(n)})
         >>> paths1 = paths1 + ['a.' + k for k in paths2[0:n // 3]]
@@ -671,9 +671,16 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
     import networkx as nx
 
     # the longest common balanced sequence problem
-    def _matchable(tok1, tok2):
-        return tok1[-1] == tok2[-1]
-    eq = _matchable
+    def _affinity(tok1, tok2):
+        score = 0
+        for t1, t2 in zip(tok1[::-1], tok2[::-1]):
+            if t1 == t2:
+                score += 1
+            else:
+                break
+        return score
+        # return tok1[-1] == tok2[-1]
+    node_affinity = _affinity
     # import operator
     # eq = operator.eq
 
@@ -703,7 +710,7 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
     #     list(DiGM.subgraph_isomorphisms_iter())
 
     from netharn.initializers import _nx_extensions
-    subtree1, subtree2 = _nx_extensions.maximum_common_ordered_tree_embedding(tree1, tree2, eq=eq)
+    subtree1, subtree2 = _nx_extensions.maximum_common_ordered_tree_embedding(tree1, tree2, node_affinity=node_affinity)
 
     subpaths1 = [sep.join(node) for node in subtree1.nodes if subtree1.out_degree[node] == 0]
     subpaths2 = [sep.join(node) for node in subtree2.nodes if subtree2.out_degree[node] == 0]
