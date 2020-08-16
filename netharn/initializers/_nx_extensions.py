@@ -859,9 +859,9 @@ def _lcs(seq1, seq2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo
         # if len(seq2) < len(seq1):
         #     seq1, seq2 = seq2, seq1
         # key = (seq1, seq2)
-        key1 = (seq1)
-        key2 = (seq2)
-        key = ((key1, key2))
+        key1 = hash(seq1)
+        key2 = hash(seq2)
+        key = hash((key1, key2))
         if key in _memo:
             return _memo[key]
 
@@ -886,14 +886,35 @@ def _lcs(seq1, seq2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo
                 head2_tail2 = head2 + tail2
                 _seq_memo[key2] = a2, b2, head2, tail2, head2_tail2
 
-        # Case 2: The current edge in sequence1 is deleted
-        best, val = _lcs(head1_tail1, seq2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
+        if 1:
+            # TODO: IS THIS THE CORRECT MODIFICATION TO THE RECURRANCE TO
+            # ACHIEVE A SUBTREE ISOMORPHISM INSTEAD OF AN EMBEDDING?
+            best, val = _lcs(head1, seq2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
 
-        # Case 3: The current edge in sequence2 is deleted
-        cand, val_alt = _lcs(seq1, head2_tail2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
-        if val_alt > val:
-            best = cand
-            val = val_alt
+            cand, val_alt = _lcs(tail1, seq2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
+            if val_alt > val:
+                best = cand
+                val = val_alt
+
+            cand, val_alt = _lcs(seq1, head2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
+            if val_alt > val:
+                best = cand
+                val = val_alt
+
+            cand, val_alt = _lcs(seq1, tail2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
+            if val_alt > val:
+                best = cand
+                val = val_alt
+
+        else:
+            # Case 2: The current edge in sequence1 is deleted
+            best, val = _lcs(head1_tail1, seq2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
+
+            # Case 3: The current edge in sequence2 is deleted
+            cand, val_alt = _lcs(seq1, head2_tail2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
+            if val_alt > val:
+                best = cand
+                val = val_alt
 
         # Case 1: The LCS involves this edge
         t1 = open_to_tok[a1[0]]
@@ -958,7 +979,6 @@ def _lcs2(hash1, hash2, open_to_close, node_affinity, open_to_tok, _memo, hash_d
         t1 = open_to_tok[a1[0]]
         t2 = open_to_tok[a2[0]]
         # if node_affinity(a1[0], a2[0]):
-        affinity
         if node_affinity(t1, t2):
             # TODO: need to return the correspondence between the
             # matches and the original nodes.

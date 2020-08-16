@@ -601,7 +601,9 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
         >>> paths1 = sorted(resnet50.state_dict().keys())[0:100]
         >>> paths2 = ['prefix.' + k for k in paths1]
         >>> paths2.append('extra_key')
-        >>> maximum_common_ordered_subpaths(paths1, paths2)
+        >>> subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2)
+        >>> mapping = ub.dzip(subpaths1, subpaths2)
+        >>> print('mapping = {}'.format(ub.repr2(mapping, nl=1)))
 
     Example:
         >>> rng = None
@@ -617,6 +619,8 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
         >>> paths2 = sorted({random_paths(rng) for _ in range(n)})
         >>> paths1 = paths1 + ['a.' + k for k in paths2[0:n // 3]]
         >>> subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2)
+        >>> mapping = ub.dzip(subpaths1, subpaths2)
+        >>> print('mapping = {}'.format(ub.repr2(mapping, nl=1)))
 
     Example:
         >>> from netharn.initializers.functional import *  # NOQA
