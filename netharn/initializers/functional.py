@@ -619,6 +619,7 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
         >>> subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2)
 
     Example:
+        >>> from netharn.initializers.functional import *  # NOQA
         >>> paths1 = [
         >>>     'stats',
         >>>     'z.mod.f.0.w',

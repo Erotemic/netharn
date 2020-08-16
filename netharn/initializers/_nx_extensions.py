@@ -850,6 +850,83 @@ def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None, open_to
 
 
 @profile
+def _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo):
+    if not seq1:
+        return (seq1, seq1), 0
+    elif not seq2:
+        return (seq2, seq2), 0
+    else:
+        # if len(seq2) < len(seq1):
+        #     seq1, seq2 = seq2, seq1
+        # key = (seq1, seq2)
+        key1 = (seq1)
+        key2 = (seq2)
+        key = ((key1, key2))
+        if key in _memo:
+            return _memo[key]
+
+        # TODO: we can probably just do a single linear run through the
+        # sequences to index the sub-sequence locations and then apply an
+        # offset when we run the decomposed sequence.
+        if DECOMP_SEQ_INDEX:
+            a1, b1, head1, tail1, head1_tail1 = seq1.decomp()
+            a2, b2, head2, tail2, head2_tail2 = seq2.decomp()
+        else:
+            if key1 in _seq_memo:
+                a1, b1, head1, tail1, head1_tail1 = _seq_memo[key1]
+            else:
+                a1, b1, head1, tail1 = balanced_decomp_unsafe2(seq1, open_to_close)
+                head1_tail1 = head1 + tail1
+                _seq_memo[key1] = a1, b1, head1, tail1, head1_tail1
+
+            if key2 in _seq_memo:
+                a2, b2, head2, tail2, head2_tail2 = _seq_memo[key2]
+            else:
+                a2, b2, head2, tail2 = balanced_decomp_unsafe2(seq2, open_to_close)
+                head2_tail2 = head2 + tail2
+                _seq_memo[key2] = a2, b2, head2, tail2, head2_tail2
+
+        # Case 2: The current edge in sequence1 is deleted
+        best, val = _lcs(head1_tail1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
+
+        # Case 3: The current edge in sequence2 is deleted
+        cand, val_alt = _lcs(seq1, head2_tail2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
+        if val_alt > val:
+            best = cand
+            val = val_alt
+
+        # Case 1: The LCS involves this edge
+        t1 = open_to_tok[a1[0]]
+        t2 = open_to_tok[a2[0]]
+        # if eq(a1[0], a2[0]):
+        if eq(t1, t2):
+            # TODO: need to return the correspondence between the
+            # matches and the original nodes.
+            new_heads, pval_h = _lcs(head1, head2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
+            new_tails, pval_t = _lcs(tail1, tail2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
+
+            new_head1, new_head2 = new_heads
+            new_tail1, new_tail2 = new_tails
+
+            if DECOMP_SEQ_INDEX:
+                subseq1 = new_head1.combine(a1, b1, new_tail1)
+                subseq2 = new_head2.combine(a2, b2, new_tail2)
+            else:
+                subseq1 = a1 + new_head1 + b1 + new_tail1
+                subseq2 = a2 + new_head2 + b2 + new_tail2
+
+            cand = (subseq1, subseq2)
+            val_alt = pval_h + pval_t + 1
+            if val_alt > val:
+                best = cand
+                val = val_alt
+
+        found = (best, val)
+        _memo[key] = found
+        return found
+
+
+@profile
 def _lcs2(hash1, hash2, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2):
     if not hash_decomp1[hash1][0] or not hash_decomp1[hash2][0]:
         seq1, a1, b1, head1, tail1, head1_tail1 = hash_decomp1[hash1]
@@ -891,81 +968,6 @@ def _lcs2(hash1, hash2, open_to_close, eq, open_to_tok, _memo, hash_decomp1, has
 
             subseq1 = a1 + new_head1 + b1 + new_tail1
             subseq2 = a2 + new_head2 + b2 + new_tail2
-
-            cand = (subseq1, subseq2)
-            val_alt = pval_h + pval_t + 1
-            if val_alt > val:
-                best = cand
-
-        found = (best, val)
-        _memo[key] = found
-        return found
-
-
-@profile
-def _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo):
-    if not seq1:
-        return (seq1, seq1), 0
-    elif not seq2:
-        return (seq2, seq2), 0
-    else:
-        # if len(seq2) < len(seq1):
-        #     seq1, seq2 = seq2, seq1
-        # key = (seq1, seq2)
-        key1 = hash(seq1)
-        key2 = hash(seq2)
-        key = hash((key1, key2))
-        if key in _memo:
-            return _memo[key]
-
-        # TODO: we can probably just do a single linear run through the
-        # sequences to index the sub-sequence locations and then apply an
-        # offset when we run the decomposed sequence.
-        if DECOMP_SEQ_INDEX:
-            a1, b1, head1, tail1, head1_tail1 = seq1.decomp()
-            a2, b2, head2, tail2, head2_tail2 = seq2.decomp()
-        else:
-            if key1 in _seq_memo:
-                a1, b1, head1, tail1, head1_tail1 = _seq_memo[key1]
-            else:
-                a1, b1, head1, tail1 = balanced_decomp_unsafe2(seq1, open_to_close)
-                head1_tail1 = head1 + tail1
-                _seq_memo[key1] = a1, b1, head1, tail1, head1_tail1
-
-            if key2 in _seq_memo:
-                a2, b2, head2, tail2, head2_tail2 = _seq_memo[key2]
-            else:
-                a2, b2, head2, tail2 = balanced_decomp_unsafe2(seq2, open_to_close)
-                head2_tail2 = head2 + tail2
-                _seq_memo[key2] = a2, b2, head2, tail2, head2_tail2
-
-        # Case 2: The current edge in sequence1 is deleted
-        best, val = _lcs(head1_tail1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
-
-        # Case 3: The current edge in sequence2 is deleted
-        cand, val_alt = _lcs(seq1, head2_tail2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
-        if val_alt > val:
-            best = cand
-
-        # Case 1: The LCS involves this edge
-        t1 = open_to_tok[a1[0]]
-        t2 = open_to_tok[a2[0]]
-        # if eq(a1[0], a2[0]):
-        if eq(t1, t2):
-            # TODO: need to return the correspondence between the
-            # matches and the original nodes.
-            new_heads, pval_h = _lcs(head1, head2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
-            new_tails, pval_t = _lcs(tail1, tail2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
-
-            new_head1, new_head2 = new_heads
-            new_tail1, new_tail2 = new_tails
-
-            if DECOMP_SEQ_INDEX:
-                subseq1 = new_head1.combine(a1, b1, new_tail1)
-                subseq2 = new_head2.combine(a2, b2, new_tail2)
-            else:
-                subseq1 = a1 + new_head1 + b1 + new_tail1
-                subseq2 = a2 + new_head2 + b2 + new_tail2
 
             cand = (subseq1, subseq2)
             val_alt = pval_h + pval_t + 1
