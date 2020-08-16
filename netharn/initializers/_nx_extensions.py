@@ -14,7 +14,43 @@ except Exception:
 # These did not help the speed
 DECOMP_SEQ_INDEX = 0
 USE_FAST_CAT_SHIFT_INDEX = 0
-TRY_USE_CYTHON = 1
+TRY_USE_CYTHON = 0
+
+USE_PRE_DECOMP = 0
+
+
+def _generate_all_decompositions(seq, open_to_close):
+    """
+    Can doing this a-priori speed up the algorithm?
+
+    open_to_close = {0: 1}
+    sequence = [0, 0, 0, 1, 1, 1, 0, 1]
+    open_to_close = {'{': '}', '(': ')', '[': ']'}
+    seq = '({[[]]})[[][]]{{}}'
+    pop_open, pop_close, head, tail = balanced_decomp(seq, open_to_close)
+
+    >>> tree = random_ordered_tree(1000)
+    >>> seq, open_to_close, toks = tree_to_balanced_sequence(tree)
+    >>> all_decomp = _generate_all_decompositions(seq, open_to_close)
+    """
+    _memo = {}
+    def _gen(seq):
+        if not seq:
+            pass
+            # yield None
+        elif seq in _memo:
+            pass
+            # yield (seq, _memo[seq])
+        else:
+            pop_open, pop_close, head, tail = balanced_decomp(seq, open_to_close)
+            head_tail = head + tail
+            _memo[seq] = (pop_open, pop_close, head, tail, head_tail)
+            yield (seq, _memo[seq])
+            yield from _gen(head_tail)
+            yield from _gen(head)
+            yield from _gen(tail)
+    all_decomp = dict(_gen(seq))
+    return all_decomp
 
 
 @profile
@@ -36,8 +72,10 @@ def maximum_common_ordered_tree_embedding(tree1, tree2, eq=None):
         On the Maximum Common Embedded Subtree Problem for Ordered Trees
         https://pdfs.semanticscholar.org/0b6e/061af02353f7d9b887f9a378be70be64d165.pdf
 
+        http://algo.inria.fr/flajolet/Publications/FlSiSt90.pdf
+
     Notes:
-        Exact algorithms for computing the tree edit distance between unordered trees - https://pdf.sciencedirectassets.com/271538/1-s2.0-S0304397510X00299/1-s2.0-S0304397510005463/main.pdf?
+        Exact algorithms for computing the tree edit distance between unordered trees - https://pdf.sciencedirectassets.com/271538/1-s2.0-S0304397510X00299/1-s2.0-S0304397510005463/main.pdf ?
 
         Tree Edit Distance and Common Subtrees - https://upcommons.upc.edu/bitstream/handle/2117/97554/R02-20.pdf
 
@@ -134,7 +172,7 @@ class UnbalancedException(Exception):
     pass
 
 
-def tree_to_balanced_sequence(tree, open_to_close=None, toks=None, mode='number'):
+def tree_to_balanced_sequence(tree, open_to_close=None, toks=None, mode='tuple'):
     from collections import namedtuple
     Token = namedtuple('Token', ['action', 'value'])
     # mapping between opening and closing tokens
@@ -693,10 +731,11 @@ class FastCatShiftIndex(ub.NiceRepr):
         return [d + offset for data, offset in zip(self.datas, self.offsets) for d in data]
 
 
+@profile
 def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None, open_to_tok=None):
     """
     CommandLine:
-        xdoctest -m /home/joncrall/code/netharn/netharn/initializers/_nx_extensions.py longest_common_balanced_sequence:0 --profile
+        xdoctest -m /home/joncrall/code/netharn/netharn/initializers/_nx_extensions.py longest_common_balanced_sequence:0 --profile && cat profile_output.txt
 
     Example:
         >>> tree1 = random_ordered_tree(100, seed=1)
@@ -775,13 +814,92 @@ def longest_common_balanced_sequence(seq1, seq2, open_to_close, eq=None, open_to
                 return key
         open_to_tok = Dummy()
 
-    best, value = _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
+    if USE_PRE_DECOMP:
+        all_decomp1 = _generate_all_decompositions(seq1, open_to_close)
+        all_decomp2 = _generate_all_decompositions(seq2, open_to_close)
+
+        def _make_hash_decomp(all_decomp):
+            seq_to_hash = {}
+            hash_to_decomp = {}
+
+            for seq, decomp1 in all_decomp.items():
+                a, b, head, tail, head_tail = decomp1
+                seq_hash = hash(seq)
+                head_hash = hash(head)
+                tail_hash = hash(tail)
+                head_tail_hash = hash(head_tail)
+                seq_to_hash[seq] = seq_hash
+                hash_to_decomp[seq_hash] = seq, a, b, head_hash, tail_hash, head_tail_hash
+            return seq_to_hash, hash_to_decomp
+
+        seq_to_hash1, hash_decomp1 = _make_hash_decomp(all_decomp1)
+        seq_to_hash2, hash_decomp2 = _make_hash_decomp(all_decomp2)
+
+        hash1 = seq_to_hash1[seq1]
+        hash2 = seq_to_hash2[seq2]
+
+        best, value = _lcs2(hash1, hash2, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
+    else:
+        best, value = _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
 
     if DECOMP_SEQ_INDEX:
         # unpack
         a, b = best
         best = (a.seq, b.seq)
     return best, value
+
+
+@profile
+def _lcs2(hash1, hash2, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2):
+    if not hash_decomp1[hash1][0] or not hash_decomp1[hash2][0]:
+        seq1, a1, b1, head1, tail1, head1_tail1 = hash_decomp1[hash1]
+        seq2, a2, b2, head2, tail2, head2_tail2 = hash_decomp2[hash2]
+        return (seq1, seq2), 0
+    else:
+        # if len(seq2) < len(seq1):
+        #     seq1, seq2 = seq2, seq1
+        # key = (seq1, seq2)
+        key1 = hash1
+        key2 = hash2
+        key = hash((key1, key2))
+        if key in _memo:
+            return _memo[key]
+
+        seq1, a1, b1, head1_hash, tail1_hash, head1_tail1_hash = hash_decomp1[hash1]
+        seq2, a2, b2, head2_hash, tail2_hash, head2_tail2_hash = hash_decomp2[hash2]
+
+        # Case 2: The current edge in sequence1 is deleted
+        best, val = _lcs2(head1_tail1_hash, hash2, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
+
+        # Case 3: The current edge in sequence2 is deleted
+        cand, val_alt = _lcs2(hash1, head2_tail2_hash, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
+        if val_alt > val:
+            best = cand
+
+        # Case 1: The LCS involves this edge
+        t1 = open_to_tok[a1[0]]
+        t2 = open_to_tok[a2[0]]
+        # if eq(a1[0], a2[0]):
+        if eq(t1, t2):
+            # TODO: need to return the correspondence between the
+            # matches and the original nodes.
+            new_heads, pval_h = _lcs2(head1_hash, head2_hash, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
+            new_tails, pval_t = _lcs2(tail1_hash, tail2_hash, open_to_close, eq, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
+
+            new_head1, new_head2 = new_heads
+            new_tail1, new_tail2 = new_tails
+
+            subseq1 = a1 + new_head1 + b1 + new_tail1
+            subseq2 = a2 + new_head2 + b2 + new_tail2
+
+            cand = (subseq1, subseq2)
+            val_alt = pval_h + pval_t + 1
+            if val_alt > val:
+                best = cand
+
+        found = (best, val)
+        _memo[key] = found
+        return found
 
 
 @profile
@@ -793,33 +911,41 @@ def _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo):
     else:
         # if len(seq2) < len(seq1):
         #     seq1, seq2 = seq2, seq1
-        key = (seq1, seq2)
+        # key = (seq1, seq2)
+        key1 = hash(seq1)
+        key2 = hash(seq2)
+        key = hash((key1, key2))
         if key in _memo:
             return _memo[key]
 
         # TODO: we can probably just do a single linear run through the
         # sequences to index the sub-sequence locations and then apply an
         # offset when we run the decomposed sequence.
-
         if DECOMP_SEQ_INDEX:
             a1, b1, head1, tail1, head1_tail1 = seq1.decomp()
             a2, b2, head2, tail2, head2_tail2 = seq2.decomp()
         else:
-            if seq1 in _seq_memo:
-                a1, b1, head1, tail1 = _seq_memo[seq1]
+            if key1 in _seq_memo:
+                a1, b1, head1, tail1, head1_tail1 = _seq_memo[key1]
             else:
                 a1, b1, head1, tail1 = balanced_decomp_unsafe2(seq1, open_to_close)
-                _seq_memo[seq1] = a1, b1, head1, tail1
+                head1_tail1 = head1 + tail1
+                _seq_memo[key1] = a1, b1, head1, tail1, head1_tail1
 
-            if seq2 in _seq_memo:
-                a2, b2, head2, tail2 = _seq_memo[seq2]
+            if key2 in _seq_memo:
+                a2, b2, head2, tail2, head2_tail2 = _seq_memo[key2]
             else:
                 a2, b2, head2, tail2 = balanced_decomp_unsafe2(seq2, open_to_close)
-                _seq_memo[seq2] = a2, b2, head2, tail2
-            head1_tail1 = head1 + tail1
-            head2_tail2 = head2 + tail2
+                head2_tail2 = head2 + tail2
+                _seq_memo[key2] = a2, b2, head2, tail2, head2_tail2
 
-        candidates = {}
+        # Case 2: The current edge in sequence1 is deleted
+        best, val = _lcs(head1_tail1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
+
+        # Case 3: The current edge in sequence2 is deleted
+        cand, val_alt = _lcs(seq1, head2_tail2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
+        if val_alt > val:
+            best = cand
 
         # Case 1: The LCS involves this edge
         t1 = open_to_tok[a1[0]]
@@ -841,22 +967,14 @@ def _lcs(seq1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo):
                 subseq1 = a1 + new_head1 + b1 + new_tail1
                 subseq2 = a2 + new_head2 + b2 + new_tail2
 
-            cand1 = (subseq1, subseq2)
-            candidates[cand1] = pval_h + pval_t + 1
+            cand = (subseq1, subseq2)
+            val_alt = pval_h + pval_t + 1
+            if val_alt > val:
+                best = cand
 
-        # Case 2: The current edge in sequence1 is deleted
-        cand2, val2 = _lcs(head1_tail1, seq2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
-        candidates[cand2] = val2
-
-        # Case 3: The current edge in sequence2 is deleted
-        cand3, val3 = _lcs(seq1, head2_tail2, open_to_close, eq, open_to_tok, _memo, _seq_memo)
-        candidates[cand3] = val3
-
-        best = ub.argmax(candidates)
-        value = candidates[best]
-        # print('key={!r}, best={!r}, value={!r}'.format(key, best, value))
-        _memo[key] = (best, value)
-        return best, value
+        found = (best, val)
+        _memo[key] = found
+        return found
 
 
 def _print_forest(graph):

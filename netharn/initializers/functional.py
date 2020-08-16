@@ -643,8 +643,27 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
         >>>     'bar.foo.extra.f.3.z',  # FIXME we need to handle label comparision operators
         >>>     # I think we allow labels to match if they have the same suffix
         >>> ]
-        >>> #
-        >>> subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2)
+        >>> sep = '.'
+        >>> subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2, sep)
+        >>> mapping = ub.dzip(subpaths1, subpaths2)
+        >>> print('mapping = {}'.format(ub.repr2(mapping, nl=1)))
+
+
+    Example:
+        >>> sep = '.'
+        >>> paths1 = ['a.b']
+        >>> paths2 = ['a.b']
+        >>> subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2, sep)
+        >>> mapping = ub.dzip(subpaths1, subpaths2)
+        >>> print('mapping = {}'.format(ub.repr2(mapping, nl=1)))
+        >>> paths1 = ['c.a.b']
+        >>> paths2 = ['a.b']
+        >>> subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2, sep)
+        >>> mapping = ub.dzip(subpaths1, subpaths2)
+        >>> print('mapping = {}'.format(ub.repr2(mapping, nl=1)))
+        >>> paths1 = ['c.a.b', 'c.a.e', 'c.a.q']
+        >>> paths2 = ['a.b', 'c.e', 'c.a', 'a.q']
+        >>> subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2, sep)
         >>> mapping = ub.dzip(subpaths1, subpaths2)
         >>> print('mapping = {}'.format(ub.repr2(mapping, nl=1)))
     """
@@ -673,6 +692,9 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
 
     tree1 = paths_to_tree(paths1)
     tree2 = paths_to_tree(paths2)
+
+    # _print_forest(tree1)
+    # _print_forest(tree2)
 
     # if 0:
     #     DiGM = isomorphism.DiGraphMatcher(tree1, tree2)
