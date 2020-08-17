@@ -641,7 +641,7 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
         >>>     'stats',
         >>>     'bar.f.0.w',
         >>>     'bar.foo.extra.z.q',
-        >>>     'bar.foo.extra.f.0.w',
+        >>>     'bar.foo.extra',
         >>>     'bar.foo.extra.f.1.b',
         >>>     'bar.foo.extra.f.1.n',
         >>>     'bar.foo.extra.f.1.w',
@@ -714,7 +714,8 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
     #     list(DiGM.subgraph_isomorphisms_iter())
 
     from netharn.initializers import _nx_extensions
-    subtree1, subtree2 = _nx_extensions.maximum_common_ordered_tree_embedding(tree1, tree2, node_affinity=node_affinity)
+    # subtree1, subtree2 = _nx_extensions.maximum_common_ordered_tree_embedding(tree1, tree2, node_affinity=node_affinity)
+    subtree1, subtree2 = _nx_extensions.maximum_common_ordered_subtree_isomorphism(tree1, tree2, node_affinity=node_affinity)
 
     subpaths1 = [sep.join(node) for node in subtree1.nodes if subtree1.out_degree[node] == 0]
     subpaths2 = [sep.join(node) for node in subtree2.nodes if subtree2.out_degree[node] == 0]
