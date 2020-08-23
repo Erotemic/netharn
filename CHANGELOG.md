@@ -16,6 +16,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     - adds keyword arg association which defaults to prefix-hack, the old default was module-hack, and embedding is more theoretically correct but too slow.
 
 
+### Fixes
+* Optimizer.coerce now works correctly with any `torch.optim` or `torch_optimizer` optimizer.
+
 ### Added
 
 * `BatchContainer.pack` for easier use of non-container aware models.

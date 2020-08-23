@@ -52,160 +52,6 @@ def _lcs2(hash1, hash2, open_to_close, node_affinity, open_to_tok, _memo, hash_d
 
 
 
-@profile
-def longest_common_balanced_sequence(seq1, seq2, open_to_close, node_affinity=None, open_to_tok=None):
-    """
-    CommandLine:
-        xdoctest -m /home/joncrall/code/netharn/netharn/initializers/_nx_extensions.py longest_common_balanced_sequence:0 --profile && cat profile_output.txt
-
-    Example:
-        >>> tree1 = random_ordered_tree(100, seed=1)
-        >>> tree2 = random_ordered_tree(100, seed=2)
-        >>> seq1, open_to_close, toks = tree_to_balanced_sequence(tree1)
-        >>> seq2, open_to_close, toks = tree_to_balanced_sequence(tree2, open_to_close, toks)
-        >>> longest_common_balanced_sequence(seq1, seq2, open_to_close)
-
-    Benchmark:
-        >>> tree1 = random_ordered_tree(20, seed=1)
-        >>> tree2 = random_ordered_tree(20, seed=2)
-        >>> seq1, open_to_close, toks = tree_to_balanced_sequence(tree1)
-        >>> seq2, open_to_close, toks = tree_to_balanced_sequence(tree2, open_to_close, toks)
-        >>> longest_common_balanced_sequence(seq1, seq2, open_to_close)
-
-        >>> import timerit
-        >>> ti = timerit.Timerit(10, bestof=10, verbose=2, unit='ms')
-        >>> from netharn.initializers import _nx_extensions
-        >>> _nx_extensions.DECOMP_SEQ_INDEX = 0
-        >>> for timer in ti.reset('without-index'):
-        >>>     with timer:
-        >>>         _nx_extensions.longest_common_balanced_sequence(seq1, seq2, open_to_close)
-        >>> _nx_extensions.DECOMP_SEQ_INDEX = 1
-        >>> for timer in ti.reset('with-index'):
-        >>>     with timer:
-        >>>         _nx_extensions.longest_common_balanced_sequence(seq1, seq2, open_to_close)
-
-        import sys, ubelt
-        sys.path.append(ubelt.expandpath('~/code/netharn'))
-        from netharn.initializers._nx_extensions import *  # NOQA
-        from netharn.initializers._nx_extensions import _best_prefix_transform, _lcs, _print_forest
-
-    open_to_close = {'0': '1'}
-    seq1 = '0010010010111100001011011011'
-    seq2 = '001000101101110001000100101110111011'
-
-    open_to_close = {'(': ')'}
-    seq1 = '(()(()(()())))(((()())())())'
-    seq2 = '(()((()())()))((()((()(()()))()))())'
-    longest_common_balanced_sequence(seq1, seq2, open_to_close)
-
-    open_to_close = {'0': '1'}
-    seq1 = '0010010010111100001011011011'
-    seq2 = '001000101101110001000100101110111011'
-    longest_common_balanced_sequence(seq1, seq2, open_to_close)
-
-    open_to_close = {'0': '1'}
-    seq1 = '001101'
-    seq2 = '00110011'
-    seq1 = '001101'
-    seq2 = '00110011'
-    longest_common_balanced_sequence(seq1, seq2, open_to_close)
-
-    open_to_close = {'{': '}', '(': ')', '[': ']'}
-    seq1 = '(({}{([])}[{}]))'
-    seq2 = '((({}[{{}}])))'
-
-    seq1 = '({[[[]]]}){}'
-    seq2 = '{}{[[[]]]}'
-    best, value = longest_common_balanced_sequence(seq1, seq2, open_to_close)
-    subseq1, subseq2 = best
-    print('subseq1 = {!r}'.format(subseq1))
-    """
-    if node_affinity is None:
-        node_affinity = operator.eq
-    _memo = {}
-    _seq_memo = {}
-
-    if DECOMP_SEQ_INDEX:
-        seq1 = balanced_decomp_index(seq1, open_to_close)
-        seq2 = balanced_decomp_index(seq2, open_to_close)
-
-    if open_to_tok is None:
-        class Dummy:
-            def __getitem__(self, key):
-                return key
-        open_to_tok = Dummy()
-
-    if USE_PRE_DECOMP:
-        raise NotImplementedError
-        all_decomp1 = _generate_all_decompositions(seq1, open_to_close)
-        all_decomp2 = _generate_all_decompositions(seq2, open_to_close)
-
-        def _make_hash_decomp(all_decomp):
-            seq_to_hash = {}
-            hash_to_decomp = {}
-
-            for seq, decomp1 in all_decomp.items():
-                a, b, head, tail, head_tail = decomp1
-                seq_hash = hash(seq)
-                head_hash = hash(head)
-                tail_hash = hash(tail)
-                head_tail_hash = hash(head_tail)
-                seq_to_hash[seq] = seq_hash
-                hash_to_decomp[seq_hash] = seq, a, b, head_hash, tail_hash, head_tail_hash
-            return seq_to_hash, hash_to_decomp
-
-        seq_to_hash1, hash_decomp1 = _make_hash_decomp(all_decomp1)
-        seq_to_hash2, hash_decomp2 = _make_hash_decomp(all_decomp2)
-
-        hash1 = seq_to_hash1[seq1]
-        hash2 = seq_to_hash2[seq2]
-
-        best, value = _lcs2(hash1, hash2, open_to_close, node_affinity, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
-    else:
-        best, value = _lcs(seq1, seq2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
-
-    if DECOMP_SEQ_INDEX:
-        # unpack
-        a, b = best
-        best = (a.seq, b.seq)
-    return best, value
-
-
-def _generate_all_decompositions(seq, open_to_close):
-    """
-    Can doing this a-priori speed up the algorithm?
-
-    open_to_close = {0: 1}
-    sequence = [0, 0, 0, 1, 1, 1, 0, 1]
-    open_to_close = {'{': '}', '(': ')', '[': ']'}
-    seq = '({[[]]})[[][]]{{}}'
-    pop_open, pop_close, head, tail = balanced_decomp(seq, open_to_close)
-
-    >>> tree = random_ordered_tree(1000)
-    >>> seq, open_to_close, toks = tree_to_balanced_sequence(tree)
-    >>> all_decomp = _generate_all_decompositions(seq, open_to_close)
-    """
-    _memo = {}
-    def _gen(seq):
-        if not seq:
-            pass
-            # yield None
-        elif seq in _memo:
-            pass
-            # yield (seq, _memo[seq])
-        else:
-            pop_open, pop_close, head, tail = balanced_decomp(seq, open_to_close)
-            head_tail = head + tail
-            _memo[seq] = (pop_open, pop_close, head, tail, head_tail)
-            yield (seq, _memo[seq])
-            yield from _gen(head_tail)
-            yield from _gen(head)
-            yield from _gen(tail)
-    all_decomp = dict(_gen(seq))
-    return all_decomp
-
-
-
 def balanced_decomp_index(sequence, open_to_close):
     """
     open_to_close = {0: 1}
@@ -551,3 +397,175 @@ def _lcs(seq1, seq2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo
         found = (best, val)
         _memo[key] = found
         return found
+
+
+"""
+
+    ndata = [1, 10, 20, 50, 75, 100, 150, 200, 250, 300, 350, 400, 450, 500, 600, 700, 800, 900, 1000]
+    ndata = [1200, 1500, 1700]
+    ydata = []
+    for n in ndata:
+        print('n = {!r}'.format(n))
+        with ub.Timer('check') as timer:
+            data3 = data1[0:n]
+            data4 = data2[0:n]
+            matching = maximum_common_ordered_paths(data3, data4, sep='/')
+        ydata.append(timer.elapsed)
+
+    res2 = numpy.polyfit(ndata, ydata, deg=2, full=True)
+    coeff2 = res2[0]
+    xs2 = np.arange(0, 1200)
+    ys2 = np.polyval(coeff2, xs2)
+
+    np.polyval(coeff2, [2000, 3000]) / 60 / 60
+    np.polyval(coeff3, [2000, 3000]) / 60 / 60
+    np.polyval(coeff4, [2000, 3000]) / 60 / 60
+
+    #  Hours for 2000, 3000 based on coeff2
+    # 0.18249042, 0.43731033
+
+    # For Coeff 3
+    # 0.31122992, 1.05361379
+
+    # For Coeff 4
+    # array([0.3522069 , 1.38993684])
+
+
+    np.polyval(coeff3, [10000]) / 60 / 60
+    np.polyval(coeff4, [10000]) / 60 / 60
+
+    res3 = numpy.polyfit(ndata, ydata, deg=3, full=True)
+    coeff3 = res3[0]
+    xs3 = np.arange(0, 1200, step=50)
+    ys3 = np.polyval(coeff3, xs3)
+
+    res4 = numpy.polyfit(ndata, ydata, deg=4, full=True)
+    coeff4 = res4[0]
+    xs4 = np.arange(0, 1200, step=50)
+    ys4 = np.polyval(coeff4, xs4)
+    print('coeff2 = {}'.format(ub.repr2(coeff2, nl=1, precision=3)))
+    print('coeff3 = {}'.format(ub.repr2(coeff3, nl=1, precision=3)))
+    print('coeff4 = {}'.format(ub.repr2(coeff4, nl=1, precision=3)))
+
+    import kwplot
+    xydata = {
+        'measured': [ndata, ydata],
+        'fit_deg2': [xs2, ys2],
+        'fit_deg4': [xs4, ys4],
+        'fit_deg3': [xs3, ys3],
+    }
+    marker = {
+        'measured': 'o',
+        'fit_deg2': '',
+        'fit_deg4': '+',
+        'fit_deg3': 'x',
+    }
+    linestyle = {
+        'measured': '-',
+        'fit_deg2': '--',
+        'fit_deg3': '--',
+        'fit_deg4': '--',
+    }
+    kwplot.multi_plot(xydata=xydata, xlabel='n', ylabel='seconds', linestyle=linestyle, marker=marker, fnum=1, doclf=True)
+
+
+"""
+
+
+
+@profile
+def longest_common_balanced_sequence(seq1, seq2, open_to_close, node_affinity=None, open_to_tok=None):
+    """
+    CommandLine:
+        xdoctest -m /home/joncrall/code/netharn/netharn/initializers/_nx_extensions.py longest_common_balanced_sequence:0 --profile && cat profile_output.txt
+
+    Example:
+        >>> tree1 = random_ordered_tree(100, seed=1)
+        >>> tree2 = random_ordered_tree(100, seed=2)
+        >>> seq1, open_to_close, toks = tree_to_balanced_sequence(tree1)
+        >>> seq2, open_to_close, toks = tree_to_balanced_sequence(tree2, open_to_close, toks)
+        >>> longest_common_balanced_sequence(seq1, seq2, open_to_close)
+    """
+    if node_affinity is None:
+        node_affinity = operator.eq
+    _memo = {}
+    _seq_memo = {}
+
+    if DECOMP_SEQ_INDEX:
+        seq1 = balanced_decomp_index(seq1, open_to_close)
+        seq2 = balanced_decomp_index(seq2, open_to_close)
+
+    if open_to_tok is None:
+        class Dummy:
+            def __getitem__(self, key):
+                return key
+        open_to_tok = Dummy()
+
+    if USE_PRE_DECOMP:
+        raise NotImplementedError
+        all_decomp1 = _generate_all_decompositions(seq1, open_to_close)
+        all_decomp2 = _generate_all_decompositions(seq2, open_to_close)
+
+        def _make_hash_decomp(all_decomp):
+            seq_to_hash = {}
+            hash_to_decomp = {}
+
+            for seq, decomp1 in all_decomp.items():
+                a, b, head, tail, head_tail = decomp1
+                seq_hash = hash(seq)
+                head_hash = hash(head)
+                tail_hash = hash(tail)
+                head_tail_hash = hash(head_tail)
+                seq_to_hash[seq] = seq_hash
+                hash_to_decomp[seq_hash] = seq, a, b, head_hash, tail_hash, head_tail_hash
+            return seq_to_hash, hash_to_decomp
+
+        seq_to_hash1, hash_decomp1 = _make_hash_decomp(all_decomp1)
+        seq_to_hash2, hash_decomp2 = _make_hash_decomp(all_decomp2)
+
+        hash1 = seq_to_hash1[seq1]
+        hash2 = seq_to_hash2[seq2]
+
+        best, value = _lcs2(hash1, hash2, open_to_close, node_affinity, open_to_tok, _memo, hash_decomp1, hash_decomp2, seq_to_hash1, seq_to_hash2)
+    else:
+        best, value = _lcs(seq1, seq2, open_to_close, node_affinity, open_to_tok, _memo, _seq_memo)
+
+    if DECOMP_SEQ_INDEX:
+        # unpack
+        a, b = best
+        best = (a.seq, b.seq)
+    return best, value
+
+
+def _generate_all_decompositions(seq, open_to_close):
+    """
+    Can doing this a-priori speed up the algorithm?
+
+    open_to_close = {0: 1}
+    sequence = [0, 0, 0, 1, 1, 1, 0, 1]
+    open_to_close = {'{': '}', '(': ')', '[': ']'}
+    seq = '({[[]]})[[][]]{{}}'
+    pop_open, pop_close, head, tail = balanced_decomp(seq, open_to_close)
+
+    >>> tree = random_ordered_tree(1000)
+    >>> seq, open_to_close, toks = tree_to_balanced_sequence(tree)
+    >>> all_decomp = _generate_all_decompositions(seq, open_to_close)
+    """
+    _memo = {}
+    def _gen(seq):
+        if not seq:
+            pass
+            # yield None
+        elif seq in _memo:
+            pass
+            # yield (seq, _memo[seq])
+        else:
+            pop_open, pop_close, head, tail = balanced_decomp(seq, open_to_close)
+            head_tail = head + tail
+            _memo[seq] = (pop_open, pop_close, head, tail, head_tail)
+            yield (seq, _memo[seq])
+            yield from _gen(head_tail)
+            yield from _gen(head)
+            yield from _gen(tail)
+    all_decomp = dict(_gen(seq))
+    return all_decomp

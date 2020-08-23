@@ -311,6 +311,20 @@ def _devcheck_manage_monitor(workdir, dry=True):
         _choose_action(file_infos)
         all_files.extend(file_infos)
 
+        dpath = join(session.dpath, 'monitor', 'train')
+        fpaths = list(glob.glob(join(dpath, '*.jpg')))
+        file_infos = [{'size': os.stat(p).st_size, 'fpath': p}
+                      for p in fpaths]
+        _choose_action(file_infos)
+        all_files.extend(file_infos)
+
+        dpath = join(session.dpath, 'monitor', 'vali')
+        fpaths = list(glob.glob(join(dpath, '*.jpg')))
+        file_infos = [{'size': os.stat(p).st_size, 'fpath': p}
+                      for p in fpaths]
+        _choose_action(file_infos)
+        all_files.extend(file_infos)
+
     grouped_actions = ub.group_items(all_files, lambda x: x['action'])
 
     for key, group in grouped_actions.items():
@@ -450,8 +464,9 @@ def main():
     if mode == 'runs':
         _devcheck_remove_dead_runs(workdir=ns['workdir'], dry=ns['dry'])
     elif mode == 'snapshots':
-        print("A")
         _devcheck_manage_snapshots(**ns)
+    elif mode == 'monitor':
+        _devcheck_manage_monitor(workdir=ns['workdir'], dry=ns['dry'])
     else:
         raise KeyError(mode)
 
@@ -463,9 +478,16 @@ if __name__ == '__main__':
 
         find . -iname "explit_checkpoints" -d
 
-        python ~/code/netharn/dev/manage_snapshots.py --mode=snapshots --workdir=~/work/voc_yolo2/
+        python ~/code/netharn/dev/manage_snapshots.py --mode=snapshots --workdir=~/work/voc_yolo2/  --recent 2 --factor 40
         python ~/code/netharn/dev/manage_snapshots.py --mode=runs --workdir=~/work/voc_yolo2/
+        python ~/code/netharn/dev/manage_snapshots.py --mode=monitor --workdir=~/work/voc_yolo2/
 
-        python ~/code/netharn/dev/manage_snapshots.py --mode=snapshots --workdir=~/work/mc_harn3/ --recent 2 --factor 40
+    Notes:
+        # Remove random files
+        # https://superuser.com/questions/1186350/delete-all-but-1000-random-files-in-a-directory
+        find . -type f -print0 | sort -zR | tail -zn +501 | xargs -0 rm
+
+
+
     """
     main()
