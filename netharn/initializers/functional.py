@@ -282,8 +282,8 @@ def load_partial_state(model, model_state_dict, leftover=None,
 
     """
     if association is None:
-        # association = 'module-hack'  # old default
-        association = 'prefix-hack'  # new default
+        association = 'module-hack'  # old default
+        # association = 'prefix-hack'  # new default
 
     if initializer is not None:
         import warnings
