@@ -88,6 +88,7 @@ Example:
     >>> # non-algorithmic behavior configs (do not change learned models)
     >>> harn.preferences['use_tensorboard'] = False
     >>> harn.preferences['timeout'] = 0.5
+    >>> # harn.preferences['colored'] = False
     >>> # start training.
     >>> harn.initialize(reset='delete')
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
@@ -788,6 +789,8 @@ class ProgMixin(object):
             desc = 'epoch lr:{} | {}'.format(lr_str, harn.monitor.message())
         else:
             desc = 'epoch lr:{} │ {}'.format(lr_str, harn.monitor.message())
+        if not harn.preferences['colored']:
+            desc = strip_ansi(desc)
         harn.debug(desc)
         harn.main_prog.set_description(desc, refresh=False)
         if isinstance(harn.main_prog, ub.ProgIter):
@@ -844,6 +847,8 @@ class LogMixin(object):
         Args:
             msg (str): an info message to log
         """
+        if not harn.preferences['colored']:
+            msg = strip_ansi(msg)
         harn._ensure_prog_newline()
         if harn._log:
             try:
@@ -865,6 +870,8 @@ class LogMixin(object):
             msg = strip_ansi(msg)
             harn._log.error(msg)
         else:
+            if not harn.preferences['colored']:
+                msg = strip_ansi(msg)
             print(msg)
 
     def warn(harn, msg):
@@ -879,6 +886,8 @@ class LogMixin(object):
             msg = strip_ansi(msg)
             harn._log.warning(msg)
         else:
+            if not harn.preferences['colored']:
+                msg = strip_ansi(msg)
             print(msg)
 
     def debug(harn, msg):
@@ -1952,6 +1961,8 @@ class CoreMixin(object):
 
                         msg = harn._batch_msg({'loss': ave_metrics['loss']},
                                               bsize, learn)
+                        if not harn.preferences['colored']:
+                            desc = strip_ansi(desc)
                         prog.set_description(tag + ' ' + msg, refresh=False)
 
                         # log_iter_train, log_iter_test, log_iter_vali
@@ -2790,6 +2801,10 @@ class FitHarnPreferences(scfg.Config):
 
         # Deprecated
         'use_tqdm': scfg.Value(None, help='deprecated'),
+
+        'colored': scfg.Value(True, help=(
+            'allow for ANSI colored text in stdout logs, '
+            'otherwise it is stripped')),
     }
 
 

@@ -22,6 +22,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 * `BatchContainer.pack` for easier use of non-container aware models.
+* `colored` option to `FitHarnPreferences`, which can be set to False to disable ANSI coloring
 
 
 ## Version 0.5.8 - Released
