@@ -26,6 +26,7 @@ stages:
         # Tags define which runners will accept which jobs
         - docker
         - linux
+        - build
 
     variables:
         # Change pip's cache directory to be inside the project directory since we can
@@ -75,6 +76,8 @@ stages:
         - python -V  # Print out python version for debugging
         - pip install --progress-bar off -r requirements.txt
         - pip install .
+        # FIXME: we should start from a docker iamge that already has LibGL setup
+        - apt update && apt install libgl1-mesa-glx -y && rm -rf /var/lib/apt/lists/*  
 
     script: 
         - ./run_tests.py
