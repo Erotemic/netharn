@@ -445,6 +445,11 @@ def load_partial_state(model, model_state_dict, leftover=None,
             print('Seen Keys: {}'.format(ub.repr2(seen_keys, nl=2)))
             print('Self Unset Keys: {}'.format(ub.repr2(self_unset_keys, nl=1)))
             print('Other Unused keys: {}'.format(ub.repr2(other_unused_keys, nl=1)))
+            print('summary:')
+            seen_sum = ub.map_vals(len, seen_keys)
+            print('Seen Num: {}'.format(ub.repr2(seen_sum, nl=2)))
+            print('Self Unset Num: {}'.format(ub.repr2(len(self_unset_keys), nl=1)))
+            print('Other Unused Num: {}'.format(ub.repr2(len(other_unused_keys), nl=1)))
         if leftover:
             if verbose > 0:
                 print('Initializing unused keys using {}'.format(leftover))
