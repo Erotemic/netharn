@@ -952,7 +952,8 @@ class OutputShapeFor(analytic_for.OutputFor):
             >>> from netharn.analytic.output_shape_for import *
             >>> module = torchvision.models.resnet50()
             >>> input_shape = (1, 3, 224, 224)
-            >>> field = OutputShapeFor(module)(input_shape=input_shape)
+            >>> shape = OutputShapeFor(module)(input_shape=input_shape)
+            >>> print(ub.repr2(shape.hidden, nl=-1))
         """
         shape = input_shape
 

@@ -187,6 +187,9 @@ class Optimizer(object):
             https://datascience.stackexchange.com/questions/26792/difference-between-rmsprop-with-momentum-and-adam-optimizers
             https://github.com/jettify/pytorch-optimizer
 
+        CommandLine:
+            xdoctest -m /home/joncrall/code/netharn/netharn/api.py Optimizer.coerce
+
         Example:
             >>> config = {'optimizer': 'sgd'}
             >>> optim_ = Optimizer.coerce(config)
@@ -270,8 +273,8 @@ class Optimizer(object):
                 #         print('defaultkw = {!r}'.format(defaultkw))
                 # _lut.update({k.lower(): k for k in known})
                 _lut.update({
-                    k.lower(): k for k in dir(torch.optim)
-                    if not k.startswith('_')})
+                    k: c.__name__
+                    for k, c in torch_optimizer._NAME_OPTIM_MAP.items()})
 
             _lut.update({
                 k.lower(): k for k in dir(torch.optim)

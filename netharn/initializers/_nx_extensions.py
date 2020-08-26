@@ -1,3 +1,9 @@
+"""
+EXPERIMENTAL : NEW WORK ON THIS IS HAPPENING IN NETWORKX ITSELF
+
+ONCE THAT IS DONE I WILL MODIFY THE ALGORITHMS HERE.
+"""
+
 import operator
 import ubelt as ub
 import networkx as nx
@@ -9,7 +15,7 @@ except Exception:
     profile = ub.identity
 
 
-# These did not help the speed
+# Cython gives a 40x speed boost in the nx version but not here
 TRY_USE_CYTHON = 0
 
 
@@ -103,7 +109,7 @@ def maximum_common_ordered_subtree_isomorphism(tree1, tree2, node_affinity='auto
     CommandLine:
         xdoctest -m /home/joncrall/code/netharn/netharn/initializers/_nx_extensions.py maximum_common_ordered_subtree_isomorphism:1 --profile && cat profile_output.txt
 
-    Example:
+    Ignore:
         >>> from netharn.initializers._nx_extensions import *  # NOQA
         >>> from netharn.initializers._nx_extensions import _lcs, _print_forest
         >>> def random_ordered_tree(n, seed=None):
@@ -117,7 +123,6 @@ def maximum_common_ordered_subtree_isomorphism(tree1, tree2, node_affinity='auto
         >>> tree1 = nx.minimum_spanning_arborescence(tree1)
         >>> tree2.add_edges_from(tree1.edges, weight=1)
         >>> tree2 = nx.minimum_spanning_arborescence(tree2)
-
         >>> tree1.remove_edge(4, 7)
         >>> tree1.remove_edge(4, 9)
         >>> tree1.add_edge(4, 10)
@@ -138,7 +143,6 @@ def maximum_common_ordered_subtree_isomorphism(tree1, tree2, node_affinity='auto
         >>> tree1.add_edge(2000, 2001)
         >>> tree1.add_edge(2001, 2002)
         >>> tree1.add_edge(2002, 2003)
-
         >>> tree2.add_edge(5, 202)
         >>> tree2.add_edge(5, 203)
         >>> tree2.add_edge(5, 201)
@@ -146,27 +150,23 @@ def maximum_common_ordered_subtree_isomorphism(tree1, tree2, node_affinity='auto
         >>> tree2.add_edge(2000, 2001)
         >>> tree2.add_edge(2001, 2002)
         >>> tree2.add_edge(2002, 2003)
-
         >>> print('-----')
         >>> print('tree1')
         >>> _print_forest(tree1)
         >>> print('tree2')
         >>> _print_forest(tree2)
-
         >>> subtree1, subtree2 = maximum_common_ordered_subtree_isomorphism(tree1, tree2 )
         >>> print('-----')
         >>> print('subtree1')
         >>> _print_forest(subtree1)
         >>> print('subtree2')
         >>> _print_forest(subtree2)
-
         >>> embedding1, embedding2 = maximum_common_ordered_tree_embedding(tree1, tree2)
         >>> print('-----')
         >>> print('embedding1')
         >>> _print_forest(embedding1)
         >>> print('embedding2')
         >>> _print_forest(embedding2)
-
         >>> if 0:
         >>>     ti = timerit.Timerit(6, bestof=2, verbose=2)
         >>>     for timer in ti.reset('isomorphism'):
@@ -175,19 +175,16 @@ def maximum_common_ordered_subtree_isomorphism(tree1, tree2, node_affinity='auto
         >>>     for timer in ti.reset('embedding'):
         >>>         with timer:
         >>>             maximum_common_ordered_tree_embedding(tree1, tree2 )
-
         >>> from networkx import isomorphism
         >>> assert isomorphism.DiGraphMatcher(tree1, subtree1).subgraph_is_isomorphic()
         >>> assert isomorphism.DiGraphMatcher(tree2, subtree2).subgraph_is_isomorphic()
-
         >>> list(isomorphism.DiGraphMatcher(tree1, tree2).subgraph_isomorphisms_iter())
         >>> list(isomorphism.DiGraphMatcher(tree1, tree2).subgraph_monomorphisms_iter())
-
         >>> list(isomorphism.DiGraphMatcher(subtree1, subtree2).subgraph_isomorphisms_iter())
         >>> list(isomorphism.DiGraphMatcher(tree1, subtree1).subgraph_isomorphisms_iter())
         >>> list(isomorphism.DiGraphMatcher(tree2, subtree2).subgraph_isomorphisms_iter())
 
-    Example:
+    Ignore:
         >>> from netharn.initializers._nx_extensions import *  # NOQA
         >>> from netharn.initializers._nx_extensions import _lcs, _print_forest
         >>> def random_ordered_tree(n, seed=None):
