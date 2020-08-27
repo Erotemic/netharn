@@ -230,15 +230,14 @@ def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
     # Partion your "name" sessions into broken and live symlinks.
     # For each live link remember what the real path is.
     broken_links = []
-    dnames = []
     nice_dpath = join(workdir, 'fit', 'nice')
     name_dpath = join(workdir, 'fit', 'name')
+    dpaths = []
     if exists(name_dpath):
-        dnames += os.listdir(name_dpath)
+        dpaths += [join(name_dpath, d) for d in os.listdir(name_dpath)]
     if exists(nice_dpath):
-        dnames += os.listdir(nice_dpath)
-    for dname in dnames:
-        dpath = join(name_dpath, dname)
+        dpaths += [join(name_dpath, d) for d in os.listdir(nice_dpath)]
+    for dpath in dpaths:
         if is_symlink_broken(dpath):
             broken_links.append(dpath)
 
