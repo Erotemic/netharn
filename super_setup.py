@@ -719,15 +719,15 @@ def make_netharn_registry():
             'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
         },
         {
-            'name': 'kwimage', 'branch': 'dev/0.6.5', 'remote': 'public',
+            'name': 'kwimage', 'branch': 'dev/0.6.6', 'remote': 'public',
             'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
         },
         {
-            'name': 'kwcoco', 'branch': 'dev/0.1.5', 'remote': 'public',
+            'name': 'kwcoco', 'branch': 'dev/0.1.6', 'remote': 'public',
             'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwcoco.git'},
         },
         {
-            'name': 'kwplot', 'branch': 'dev/0.4.7', 'remote': 'public',
+            'name': 'kwplot', 'branch': 'dev/0.4.8', 'remote': 'public',
             'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwplot.git'},
         },
 
@@ -743,11 +743,11 @@ def make_netharn_registry():
 
         # For example data and CLI
         {
-            'name': 'scriptconfig', 'branch': 'dev/0.5.7', 'remote': 'public',
+            'name': 'scriptconfig', 'branch': 'dev/0.5.8', 'remote': 'public',
             'remotes': {'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
         },
         {
-            'name': 'ndsampler', 'branch': 'dev/0.5.11', 'remote': 'public',
+            'name': 'ndsampler', 'branch': 'dev/0.5.12', 'remote': 'public',
             'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
         },
 

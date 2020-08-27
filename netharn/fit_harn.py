@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
+r"""
 Notes:
     when profiling ensure CUDA_LAUNCH_BLOCKING=1 <needs-citation>
 
