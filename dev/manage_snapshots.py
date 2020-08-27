@@ -236,7 +236,7 @@ def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
     if exists(name_dpath):
         dpaths += [join(name_dpath, d) for d in os.listdir(name_dpath)]
     if exists(nice_dpath):
-        dpaths += [join(name_dpath, d) for d in os.listdir(nice_dpath)]
+        dpaths += [join(nice_dpath, d) for d in os.listdir(nice_dpath)]
     for dpath in dpaths:
         if is_symlink_broken(dpath):
             broken_links.append(dpath)
