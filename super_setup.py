@@ -753,7 +753,7 @@ def make_netharn_registry():
 
         # netharn - training harness
         {
-            'name': 'netharn', 'branch': 'dev/0.5.9', 'remote': 'public',
+            'name': 'netharn', 'branch': 'dev/0.5.10', 'remote': 'public',
             'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
         },
     ]
