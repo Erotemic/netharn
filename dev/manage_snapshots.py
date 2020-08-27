@@ -269,7 +269,7 @@ def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
         for p in empty_dpaths:
             ub.delete(p)
         for p in broken_links:
-            os.unlink(info['dpath'])
+            os.unlink(p)
 
 
 class Session(ub.NiceRepr):
