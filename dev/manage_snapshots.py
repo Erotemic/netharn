@@ -143,11 +143,20 @@ def session_info(dpath):
         name = basename(dirname(dpath))
         info['name'] = name
         fitdir = dirname(dirname(dirname(dpath)))
+        target = None
         name_dpath = join(fitdir, 'name', name)
-        try:
-            target = realpath(ub.util_links._readlink(name_dpath))
-        except Exception:
-            target = None
+        if exists(name_dpath):
+            try:
+                target = realpath(ub.util_links._readlink(name_dpath))
+            except Exception:
+                target = None
+        else:
+            nice_dpath = join(fitdir, 'nice', name)
+            if exists(nice_dpath):
+                try:
+                    target = realpath(ub.util_links._readlink(nice_dpath))
+                except Exception:
+                    target = None
         info['linked'] = (target == dpath)
 
     info['dpath'] = dpath
