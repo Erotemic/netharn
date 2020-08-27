@@ -23,6 +23,12 @@ def all_pairwise_distances(x, y=None, squared=False, approx=False):
     References:
         https://discuss.pytorch.org/t/efficient-distance-matrix-computation/9065
 
+    SeeAlso:
+        torch.nn.functional.pairwise_distance
+        torch.nn.functional.pdist
+        torch.norm(input[:, None] - input, dim=2, p=p)
+
+
     Example:
         >>> from netharn.criterions.triplet import *
         >>> N, d = 5, 3

@@ -4,7 +4,30 @@ This changelog follows the specifications detailed in: [Keep a Changelog](https:
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
 
-## Version 0.5.7 - Unreleased
+## Version 0.5.9 - Unreleased
+
+### Changed
+ 
+* `_dump_monitor_tensorboard` now additionally writes a bash script to quickly
+  let the user re-visualize results in the case of mpl backend failure.
+
+* `load_partial_state` now has an algorithm to better match model keys when the
+  only difference is in key prefixes.
+    - adds keyword arg association which defaults to prefix-hack, the old default was module-hack, and embedding is more theoretically correct but too slow.
+
+
+### Fixes
+* Optimizer.coerce now works correctly with any `torch.optim` or `torch_optimizer` optimizer.
+
+### Added
+
+* `BatchContainer.pack` for easier use of non-container aware models.
+* `colored` option to `FitHarnPreferences`, which can be set to False to disable ANSI coloring
+
+
+## Version 0.5.8 - Released
+
+## Version 0.5.7 - Released
 
 ### Changed
 * `harn.deploy_fpath` is now populated when the model is deployed.
@@ -489,5 +512,3 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 * Early and undocumented commits
-
-## Version 0.5.8 - Unreleased

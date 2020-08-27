@@ -56,6 +56,10 @@ class BatchContainer(ub.NiceRepr):
     Attributes:
         data (List): Unlike ItemContainer, data is always a list where
             len(data) is the number of devices this batch will run on.
+            Each item in the list may be either a pre-batched Tensor (in the
+            case where the each item in the batch has the same shape) or a list
+            of individual item Tensors (in the case where different batch items
+            may have different shapes).
     """
     def __init__(self, data, stack=False, padding_value=-1, cpu_only=False,
                  pad_dims=2):
@@ -68,9 +72,11 @@ class BatchContainer(ub.NiceRepr):
         }
 
     def __nice__(self):
-        shape_repr = ub.repr2(nestshape(self.data), nl=-2)
-        # return 'nestshape(data)={}, **{}'.format(shape_repr, ub.repr2(self.meta, nl=0))
-        return 'nestshape(data)={}'.format(shape_repr)
+        try:
+            shape_repr = ub.repr2(nestshape(self.data), nl=-2)
+            return 'nestshape(data)={}'.format(shape_repr)
+        except Exception:
+            return super().__repr__()
 
     def __getitem__(self, index):
         cls = self.__class__
@@ -98,10 +104,10 @@ class BatchContainer(ub.NiceRepr):
         Concatenate data in multiple BatchContainers
 
         Example:
-            d1 = BatchContainer([torch.rand(3, 3, 1, 1), torch.rand(2, 3, 1, 1)])
-            d2 = BatchContainer([torch.rand(3, 1, 1, 1), torch.rand(2, 1, 1, 1)])
-            items = [d1, d2]
-            self = BatchContainer.cat(items, dim=1)
+            >>> d1 = BatchContainer([torch.rand(3, 3, 1, 1), torch.rand(2, 3, 1, 1)])
+            >>> d2 = BatchContainer([torch.rand(3, 1, 1, 1), torch.rand(2, 1, 1, 1)])
+            >>> items = [d1, d2]
+            >>> self = BatchContainer.cat(items, dim=1)
         """
         newdata = []
         num_devices = len(items[0].data)
@@ -110,6 +116,48 @@ class BatchContainer(ub.NiceRepr):
             newpart = torch.cat(parts, dim=dim)
             newdata.append(newpart)
         self = cls(newdata, **items[0].meta)
+        return self
+
+    @classmethod
+    def demo(cls, key='img', n=5, num_devices=1):
+        inbatch = [ItemContainer.demo(key) for _ in range(n)]
+        self = ItemContainer._collate(inbatch, num_devices=num_devices)
+        return self
+
+    def pack(self):
+        """
+        Pack all of the data in this container into a single tensor.
+
+        Returns:
+            Tensor: packed data, padded with ``self.padding_value`` if
+            ``self.stack`` is False.
+
+        Example:
+            >>> self = BatchContainer.demo('img')
+            >>> print(self.pack())
+            >>> self = BatchContainer.demo('box')
+            >>> print(self.pack())
+            >>> self = BatchContainer.demo('labels')
+            >>> print(self.pack())
+        """
+        if self.stack:
+            # Should be a straight forward concatenation
+            packed = torch.cat(self.data, dim=0)
+        else:
+            # Need to account for padding values
+            from netharn.data.collate import padded_collate
+            inbatch = list(ub.flatten(self.data))
+            packed = padded_collate(inbatch, fill_value=self.padding_value)
+        return packed
+
+    def to(self, device):
+        """ inplace move data onto a device """
+        for item in self.data:
+            if torch.is_tensor(item):
+                item.to(item)
+            else:
+                for subitem in item:
+                    subitem.to(device)
         return self
 
 
@@ -137,14 +185,24 @@ class ItemContainer(ub.NiceRepr):
         }
 
     def __nice__(self):
-        shape_repr = ub.repr2(nestshape(self.data), nl=-2)
-        return 'nestshape(data)={}'.format(shape_repr)
+        try:
+            shape_repr = ub.repr2(nestshape(self.data), nl=-2)
+            return 'nestshape(data)={}'.format(shape_repr)
+        except Exception:
+            return super().__repr__()
         # return 'nestshape(data)={}, **{}'.format(shape_repr, ub.repr2(self.meta, nl=0))
 
     @classmethod
     def demo(cls, key='img', rng=None, **kwargs):
         """
         Create data for tests
+
+        Example:
+            >>> from netharn.data.data_containers import *  # NOQA
+            >>> print(ItemContainer.demo('img'))
+            >>> print(ItemContainer.demo('labels'))
+            >>> print(ItemContainer.demo('box'))
+
         """
         import kwarray
         rng = kwarray.ensure_rng(rng)
@@ -156,6 +214,11 @@ class ItemContainer(ub.NiceRepr):
         elif key == 'labels':
             n = rng.randint(0, 10)
             data = rng.randint(0, 10, n)
+            data = torch.from_numpy(data)
+            self = cls(data, stack=False)
+        elif key == 'box':
+            n = rng.randint(0, 10)
+            data = rng.rand(n, 4)
             data = torch.from_numpy(data)
             self = cls(data, stack=False)
         else:
@@ -219,11 +282,11 @@ class ItemContainer(ub.NiceRepr):
             >>> print('Collate Image ItemContainer')
             >>> inbatch = [ItemContainer.demo('img') for _ in range(5)]
             >>> print('inbatch = {}'.format(ub.repr2(inbatch)))
-            >>> result = ItemContainer._collate(inbatch, 2)
+            >>> result = ItemContainer._collate(inbatch, num_devices=2)
             >>> print('result1 = {}'.format(ub.repr2(result, nl=1)))
-            >>> result = ItemContainer._collate(inbatch, 1)
+            >>> result = ItemContainer._collate(inbatch, num_devices=1)
             >>> print('result2 = {}'.format(ub.repr2(result, nl=1)))
-            >>> result = ItemContainer._collate(inbatch, None)
+            >>> result = ItemContainer._collate(inbatch, num_devices=None)
             >>> print('resultN = {}'.format(ub.repr2(result, nl=1)))
 
             >>> print('Collate Label ItemContainer')
@@ -722,15 +785,12 @@ def container_gather(outputs, target_device, dim=0):
             #     xdev.embed()
             return OrigGather.apply(target_device, dim, *outputs_)
         if isinstance(out, BatchContainer):
-            # if out.datatype is list:
             newdata = [d for dc in outputs_ for d in dc.data]
             if not out.cpu_only:
                 import netharn as nh
                 target_xpu = nh.XPU(target_device)
                 newdata = target_xpu.move(newdata)
             return newdata
-            # else:
-            #     raise NotImplementedError(repr(out.datatype))
         if out is None:
             return None
         if isinstance(out, dict):
@@ -788,6 +848,25 @@ class ContainerXPU(XPU):
             model = DataSerial(model)
         return model
 
+    def move(xpu, data, **kwargs):
+        try:
+            if xpu.is_gpu():
+                return data.to(xpu._main_device_id, **kwargs)
+            else:
+                return data.to('cpu')
+        except AttributeError:
+            # Recursive move
+            if isinstance(data, container_abcs.Mapping):
+                cls = data.__class__
+                return cls((k, xpu.move(v)) for k, v in data.items())
+            elif isinstance(data, (container_abcs.Sequence, container_abcs.Set)):
+                cls = data.__class__
+                return cls(xpu.move(v) for v in data)
+            elif isinstance(data, BatchContainer):
+                return data.to(xpu._main_device_id, **kwargs)
+            else:
+                raise TypeError('Unknown type {}'.format(type(data)))
+
 
 def nestshape(data):
     import ubelt as ub
@@ -844,3 +923,12 @@ def _debug_inbatch_shapes(inbatch):
         return ub.repr2(dict(type=str(type(data)), shape=data.shape), nl=1, sv=1)
 
     print('inbatch = ' + ub.repr2(inbatch, extensions=extensions, nl=True))
+
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        xdoctest netharn.data.data_containers all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

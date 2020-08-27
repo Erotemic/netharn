@@ -15,13 +15,41 @@ try:
     import click
     import git as gitpython
     import functools
-except ImportError as ex:
-    print('ex = {!r}'.format(ex))
-    print('!!!!!!!!!')
-    print('NEED TO INSTALL SUPER SETUP DEPENDENCIES. RUN:')
-    print('pip install -r requirements/super_setup.txt')
-    print('!!!!!!!!!')
-    raise
+except Exception as ex:
+
+    ALLOW_FALLBACK = True
+    if ALLOW_FALLBACK:
+        print('Attempting to install requirements/super_setup.txt')
+        import subprocess
+        import sys
+        try:
+            super_setup_dpath = dirname(__file__)
+        except NameError:
+            super_setup_dpath = '.'  # For Ipython (assume in repo root)
+        superreq_fpath = join(super_setup_dpath, 'requirements/super_setup.txt')
+        args = [sys.executable, '-m', 'pip', 'install', '-r', superreq_fpath]
+        proc = subprocess.Popen(args)
+        out, err = proc.communicate()
+        print(out)
+        print(err)
+
+    try:
+        import ubelt as ub
+        import click
+        import git as gitpython
+        import functools
+    except Exception:
+        FALLBACK_FAILED = True
+    else:
+        FALLBACK_FAILED = False
+
+    if FALLBACK_FAILED:
+        print('ex = {!r}'.format(ex))
+        print('!!!!!!!!!')
+        print('NEED TO INSTALL SUPER SETUP DEPENDENCIES. RUN:')
+        print('pip install -r requirements/super_setup.txt')
+        print('!!!!!!!!!')
+        raise
 
 
 class ShellException(Exception):
@@ -683,57 +711,55 @@ def determine_code_dpath():
 def make_netharn_registry():
     code_dpath = determine_code_dpath()
     CommonRepo = functools.partial(Repo, code_dpath=code_dpath)
-    repos = [
 
+    devel_repos = [
         # The util libs
-        CommonRepo(
-            name='kwarray', branch='dev/0.5.10', remote='public',
-            remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
-        ),
-        CommonRepo(
-            name='kwimage', branch='dev/0.6.4', remote='public',
-            remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
-        ),
-        # CommonRepo(  # TODO
-        #     name='kwannot', branch='dev/0.1.0', remote='public',
-        #     remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwannot.git'},
-        # ),
-        CommonRepo(
-            name='kwcoco', branch='dev/0.1.4', remote='public',
-            remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwcoco.git'},
-        ),
-        CommonRepo(
-            name='kwplot', branch='dev/0.4.7', remote='public',
-            remotes={'public': 'git@gitlab.kitware.com:computer-vision/kwplot.git'},
-        ),
+        {
+            'name': 'kwarray', 'branch': 'dev/0.5.10', 'remote': 'public',
+            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
+        },
+        {
+            'name': 'kwimage', 'branch': 'dev/0.6.6', 'remote': 'public',
+            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
+        },
+        {
+            'name': 'kwcoco', 'branch': 'dev/0.1.6', 'remote': 'public',
+            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwcoco.git'},
+        },
+        {
+            'name': 'kwplot', 'branch': 'dev/0.4.8', 'remote': 'public',
+            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwplot.git'},
+        },
 
         # Pytorch deployer / exporter
-        CommonRepo(
-            name='liberator', branch='dev/0.0.2', remote='public',
-            remotes={'public': 'git@gitlab.kitware.com:python/liberator.git'},
-        ),
-        CommonRepo(
-            name='torch_liberator', branch='dev/0.0.4', remote='public',
-            remotes={'public': 'git@gitlab.kitware.com:computer-vision/torch_liberator.git'},
-        ),
-
+        {
+            'name': 'liberator', 'branch': 'dev/0.0.2', 'remote': 'public',
+            'remotes': {'public': 'git@gitlab.kitware.com:python/liberator.git'},
+        },
+        {
+            'name': 'torch_liberator', 'branch': 'dev/0.0.5', 'remote': 'public',
+            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/torch_liberator.git'},
+        },
 
         # For example data and CLI
-        CommonRepo(
-            name='scriptconfig', branch='dev/0.5.7', remote='public',
-            remotes={'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
-        ),
-        CommonRepo(
-            name='ndsampler', branch='dev/0.5.10', remote='public',
-            remotes={'public': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
-        ),
+        {
+            'name': 'scriptconfig', 'branch': 'dev/0.5.8', 'remote': 'public',
+            'remotes': {'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
+        },
+        {
+            'name': 'ndsampler', 'branch': 'dev/0.5.12', 'remote': 'public',
+            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
+        },
 
         # netharn - training harness
-        CommonRepo(
-            name='netharn', branch='dev/0.5.8', remote='public',
-            remotes={'public': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
-        ),
+        {
+            'name': 'netharn', 'branch': 'dev/0.5.9', 'remote': 'public',
+            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
+        },
     ]
+
+    repos = [CommonRepo(**kw) for kw in devel_repos]
+
     registery = RepoRegistry(repos)
     return registery
 

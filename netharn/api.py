@@ -102,7 +102,7 @@ class Initializer(object):
             >>> print(ub.repr2(nh.Initializer.coerce(config)))
             (
                 <class 'netharn.initializers.pretrained.Pretrained'>,
-                {'fpath': '/fit/nice/untitled', 'leftover': None, 'mangle': True},
+                {... 'fpath': '/fit/nice/untitled', 'leftover': None, 'mangle': True},
             )
             >>> print(ub.repr2(nh.Initializer.coerce({'init': 'kaiming_normal'})))
             (
@@ -151,6 +151,7 @@ class Initializer(object):
                 'fpath': ub.expandpath(config['pretrained_fpath']),
                 'leftover': kw.get('leftover', None),
                 'mangle': kw.get('mangle', True),
+                'association': kw.get('association', None),
             })
         elif config['init'] == 'cls':
             # Indicate that the model will initialize itself
@@ -186,6 +187,9 @@ class Optimizer(object):
             https://datascience.stackexchange.com/questions/26792/difference-between-rmsprop-with-momentum-and-adam-optimizers
             https://github.com/jettify/pytorch-optimizer
 
+        CommandLine:
+            xdoctest -m /home/joncrall/code/netharn/netharn/api.py Optimizer.coerce
+
         Example:
             >>> config = {'optimizer': 'sgd'}
             >>> optim_ = Optimizer.coerce(config)
@@ -198,6 +202,14 @@ class Optimizer(object):
             >>> config = {'optimizer': 'Yogi'}
             >>> optim_ = Optimizer.coerce(config)
             >>> print('optim_ = {!r}'.format(optim_))
+
+            >>> from netharn.api import *  # NOQA
+            >>> Optimizer.coerce({'optimizer': 'ASGD'})
+
+        TODO:
+            - [ ] https://pytorch.org/blog/stochastic-weight-averaging-in-pytorch/
+
+
         """
         import netharn as nh
         _update_defaults(config, kw)
@@ -242,27 +254,43 @@ class Optimizer(object):
                 'alpha': 0.9,
             })
         else:
+            from netharn.util import util_inspect
             try:
                 import torch_optimizer
             except Exception:
                 torch_optimizer = None
-                raise KeyError(key)
+
+            _lut = {}
+
+            if torch_optimizer is not None:
+                # known = ['AccSGD', 'AdaBound', 'AdaMod', 'DiffGrad', 'Lamb',
+                #          'Lookahead', 'NovoGrad', 'RAdam', 'SGDW', 'Yogi']
+                # if 0:
+                #     for key in known:
+                #         cls = getattr(torch_optimizer, key, None)
+                #         print('cls = {!r}'.format(cls))
+                #         defaultkw = util_inspect.default_kwargs(cls)
+                #         print('defaultkw = {!r}'.format(defaultkw))
+                # _lut.update({k.lower(): k for k in known})
+                _lut.update({
+                    k: c.__name__
+                    for k, c in torch_optimizer._NAME_OPTIM_MAP.items()})
+
+            _lut.update({
+                k.lower(): k for k in dir(torch.optim)
+                if not k.startswith('_')})
+
+            key = _lut[key]
+
+            cls = getattr(torch.optim, key, None)
+            if cls is not None:
+                defaultkw = util_inspect.default_kwargs(cls)
+                kw = defaultkw.copy()
+                kw.update()
+                optim_ = (cls, kw)
             else:
-
-                known = ['AccSGD', 'AdaBound', 'AdaMod', 'DiffGrad', 'Lamb',
-                         'Lookahead', 'NovoGrad', 'RAdam', 'SGDW', 'Yogi']
-
-                from netharn.util import util_inspect
-                if 0:
-                    for key in known:
-                        cls = getattr(torch_optimizer, key, None)
-                        print('cls = {!r}'.format(cls))
-                        defaultkw = util_inspect.default_kwargs(cls)
-                        print('defaultkw = {!r}'.format(defaultkw))
-
-                _lut = {k.lower(): k for k in known}
-                key = _lut[key]
-
+                if torch_optimizer is None:
+                    raise KeyError(key)
                 cls = getattr(torch_optimizer, key, None)
                 if cls is not None:
                     defaultkw = util_inspect.default_kwargs(cls)

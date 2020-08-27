@@ -1,6 +1,128 @@
 """
 Code for commonalities between "X for" objects that compute analytic properties
 of networks like OutputShapeFor and ReceptiveFieldFor
+
+
+The purpose of analysic modules is to make it easy to introspect both the final
+and intermediate tensor shapes and receptive fields. As long as the relevant
+``output_shape_for`` ``receptive_field_for`` OR ``_analytic_forward`` methods
+are defined the computation will be fully symbolic. SeeAlso
+:class:`netharn.layers.AnalyticModule`.
+
+
+Example:
+    >>> import torch
+    >>> import netharn as nh
+    >>> # Inheriting from nh.layers.AnalyticModule lets us define _analytic_forward
+    >>> class MyNetwork(nh.layers.AnalyticModule):
+    >>>     def __init__(self, classes):
+    >>>         super().__init__()
+    >>>         self.classes = classes
+    >>>         # Note we are just using regular torch layers here
+    >>>         # No special tricks required as long as the computation for
+    >>>         # receptive field / output shape is registered.
+    >>>         self.backbone = torch.nn.Sequential(*[
+    >>>             torch.nn.Conv2d(3, 32, kernel_size=3),
+    >>>             torch.nn.BatchNorm2d(32),
+    >>>             torch.nn.MaxPool2d(2, stride=2),
+    >>>             torch.nn.ReLU(),
+    >>>             torch.nn.Conv2d(32, 256, kernel_size=3, stride=2),
+    >>>             torch.nn.BatchNorm2d(256),
+    >>>         ])
+    >>>         self.clf_head = torch.nn.Conv2d(256, len(self.classes), kernel_size=1)
+    >>>     def _analytic_forward(self, inputs, _OutputFor, _Output, _Hidden,
+    >>>                       **kwargs):
+    >>>         # Defining the analytic forward function and using the _OutputFor
+    >>>         # wrappers instead of calling each module directly will
+    >>>         # automatically define the symbolic computation for
+    >>>         # output_shape_for, receptive_field_for, and the real
+    >>>         # computation for forward. Using Hidden will track any
+    >>>         # intermediate states.
+    >>>         x = inputs
+    >>>         hidden = _Hidden()
+    >>>         x = hidden['backbone'] = _OutputFor(self.backbone)(x)
+    >>>         x = hidden['clf_head'] = _OutputFor(self.clf_head)(x)
+    >>>         outputs = {
+    >>>             'class_energy': x,
+    >>>         }
+    >>>         outputs = _Output.coerce(outputs, hidden)
+    >>>         return outputs
+    >>> # We can create an instance of our network
+    >>> self = MyNetwork(['a', 'b'])
+    >>> # Asking about the output shape for any input shape is computed
+    >>> # without directly invoking any tensor operations.
+    >>> output_shape = self.output_shape_for((None, 3, 32, 32))
+    >>> print('output_shape = {!r}'.format(output_shape))
+    >>> print(ub.repr2(output_shape.hidden, nl=-1))
+    output_shape = OutputShapeDict([('class_energy', (None, 2, 7, 7))])
+    {
+        'backbone': {
+            '0': (None, 32, 30, 30),
+            '1': (None, 32, 30, 30),
+            '2': (None, 32, 15, 15),
+            '3': (None, 32, 15, 15),
+            '4': (None, 256, 7, 7),
+            '5': (None, 256, 7, 7)
+        },
+        'clf_head': (None, 2, 7, 7)
+    }
+    >>> # In most cases the receptive field does not need to know about the
+    >>> # input shape (adaptive layers are the exception here)
+    >>> rf = self.receptive_field_for()
+    >>> print('rf = {}'.format(ub.repr2(rf, nl=2)))
+    >>> print(ub.repr2(rf.hidden, nl=3))
+    rf = {
+        'class_energy': {
+            'crop': np.array([3.5, 3.5], dtype=np.float64),
+            'shape': np.array([8., 8.], dtype=np.float64),
+            'stride': np.array([4., 4.], dtype=np.float64),
+        },
+    }
+    {
+        'backbone': {
+            '0': {
+                'crop': np.array([1., 1.], dtype=np.float64),
+                'shape': np.array([3., 3.], dtype=np.float64),
+                'stride': np.array([1., 1.], dtype=np.float64),
+            },
+            '1': {
+                'crop': np.array([1., 1.], dtype=np.float64),
+                'shape': np.array([3., 3.], dtype=np.float64),
+                'stride': np.array([1., 1.], dtype=np.float64),
+            },
+            '2': {
+                'crop': np.array([1.5, 1.5], dtype=np.float64),
+                'shape': np.array([4., 4.], dtype=np.float64),
+                'stride': np.array([2., 2.], dtype=np.float64),
+            },
+            '3': {
+                'crop': np.array([1.5, 1.5], dtype=np.float64),
+                'shape': np.array([4., 4.], dtype=np.float64),
+                'stride': np.array([2., 2.], dtype=np.float64),
+            },
+            '4': {
+                'crop': np.array([3.5, 3.5], dtype=np.float64),
+                'shape': np.array([8., 8.], dtype=np.float64),
+                'stride': np.array([4., 4.], dtype=np.float64),
+            },
+            '5': {
+                'crop': np.array([3.5, 3.5], dtype=np.float64),
+                'shape': np.array([8., 8.], dtype=np.float64),
+                'stride': np.array([4., 4.], dtype=np.float64),
+            },
+        },
+        'clf_head': {
+            'crop': np.array([3.5, 3.5], dtype=np.float64),
+            'shape': np.array([8., 8.], dtype=np.float64),
+            'stride': np.array([4., 4.], dtype=np.float64),
+        },
+    }
+    >>> # analytic forward ensures that your forward definition is consistent
+    >>> # with output_shape_for and analytic_for
+    >>> inputs = torch.rand(1, 3, 32, 32)
+    >>> outputs = self.forward(inputs)
+    >>> print('class_energy = {}'.format(outputs['class_energy'].shape))
+    class_energy = torch.Size([1, 2, 7, 7])
 """
 import ubelt as ub
 from collections import OrderedDict
