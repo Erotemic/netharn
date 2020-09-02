@@ -87,6 +87,26 @@ class InputNorm(common.Module):
         >>> # Specifying either the mean or the std is ok.
         >>> partial1 = InputNorm(mean=50)(inputs)
         >>> partial2 = InputNorm(std=29)(inputs)
+
+        import torch
+
+        model = torch.nn.Sequential(*[
+            InputNorm(mean=10, std=0.2),
+            torch.nn.Conv2d(3, 3, 3),
+        ])
+        inputs = torch.rand(2, 3, 5, 7) * 100
+        optim = torch.optim.SGD(model.parameters(), lr=1e-3)
+
+        for i in range(100):
+            optim.zero_grad()
+            x = model(inputs).sum()
+            x.backward()
+            optim.step()
+
+            std = model[0].mean
+            mean = model[0].std
+            print('std = {!r}'.format(std))
+            print('mean = {!r}'.format(mean))
     """
 
     def __init__(self, mean=None, std=None):

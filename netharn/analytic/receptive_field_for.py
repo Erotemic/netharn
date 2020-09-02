@@ -1001,13 +1001,42 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         >>> kwplot.imshow(emperical_field['impact'], doclf=True)
 
     Ignore:
+        >>> def forward(self, x):
+        >>>     # See note [TorchScript super()]
+        >>>     x = self.conv1(x)
+        >>>     x = self.bn1(x)
+        >>>     x = self.relu(x)
+        >>>     x = self.maxpool(x)
+        >>> #
+        >>>     x = self.layer1(x)
+        >>>     x = self.layer2(x)
+        >>>     x = self.layer3(x)
+        >>>     x = self.layer4(x)
+        >>> #
+        >>>     #x = self.avgpool(x)
+        >>>     #x = torch.flatten(x, 1)
+        >>>     #x = self.fc(x)
+        >>>     return x
         >>> xpu = nh.XPU.coerce('auto')
-        >>> module = xpu.move(torchvision.models.resnet50())
-        >>> inputs = xpu.move(torch.rand(8, 3, 224, 224))
-        >>> emperical_field = effective_receptive_feild(module, inputs)
+        >>> module1 = torchvision.models.resnet50()
+        >>> ub.inject_method(module1, forward)
+        >>> module1 = xpu.move(module1)
+        >>> module2 = torchvision.models.resnet50(pretrained=True)
+        >>> module2 = xpu.move(module2)
+        >>> ub.inject_method(module2, forward)
+        >>> import kwimage
+        >>> img = kwimage.grab_test_image(dsize=(224, 224))
+        >>> inputs = torch.from_numpy(img.transpose(2, 0, 1)[None, :] / 255.).float()
+        >>> inputs = xpu.move(inputs)
+        >>> #inputs = xpu.move(torch.rand(8, 3, 224, 224))
+        >>> ignore_norms = 1
+        >>> emperical_field1 = effective_receptive_feild(module1, inputs, ignore_norms=ignore_norms)
+        >>> emperical_field2 = effective_receptive_feild(module2, inputs, ignore_norms=ignore_norms)
         >>> import kwplot
         >>> kwplot.autompl()
-        >>> kwplot.imshow(emperical_field['impact'], doclf=True)
+        >>> kwplot.imshow(inputs[0].data.cpu().numpy(), fnum=1, pnum=(1, 3, 1), title='input', doclf=1)
+        >>> kwplot.imshow(emperical_field1['impact'], fnum=1, pnum=(1, 3, 2), title='pretrained=False')
+        >>> kwplot.imshow(emperical_field2['impact'], doclf=0, fnum=1, pnum=(1, 3, 3), title='pretrained=True')
     """
     import netharn as nh
 
@@ -1043,10 +1072,10 @@ def effective_receptive_feild(module, inputs, output_key=None, sigma=0,
         outputs = module(inputs)
 
     # Note: grab a single (likely FCN) output channel
-    if callable(output_key):
-        output_y = output_key(outputs)
-    elif output_key is None:
+    if output_key is None:
         output_y = outputs
+    elif callable(output_key):
+        output_y = output_key(outputs)
     else:
         output_y = outputs[output_key]
     # elif isinstance(output_key, (six.string_types, int)):

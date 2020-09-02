@@ -88,7 +88,6 @@ Example:
     >>> # non-algorithmic behavior configs (do not change learned models)
     >>> harn.preferences['use_tensorboard'] = False
     >>> harn.preferences['timeout'] = 0.5
-    >>> # harn.preferences['colored'] = False
     >>> # start training.
     >>> harn.initialize(reset='delete')
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
@@ -763,7 +762,7 @@ class ProgMixin(object):
             else:
                 bs = 'x{}'.format(batch_size)
             parts = [bs] + parts
-        if six.PY2:
+        if not harn.preferences['allow_unicode'] or six.PY2:
             # work around a unicode issue with tqdm in python2
             msg = ' | ' .join(parts) + ' |'
         else:
@@ -900,7 +899,8 @@ class LogMixin(object):
         if harn._log:
             msg = strip_ansi(six.text_type(msg))
             # Encode to prevent errors on windows terminals
-            # On windows there is a sometimes a UnicodeEncodeError: For more details see: https://wiki.python.org/moin/PrintFails
+            # On windows there is a sometimes a UnicodeEncodeError:
+            # For more details see: https://wiki.python.org/moin/PrintFails
             if sys.platform.startswith('win32'):
                 harn._log.debug(msg.encode('utf8'))
             else:
@@ -1100,7 +1100,7 @@ class SnapshotMixin(object):
                 are: checkpoint, explicit, and initial.
 
             explicit (bool, default=False): if True, the snapshot is also
-                tagged by a hash and saved to the explit_checkpoints directory.
+                tagged by a hash and saved to the explicit_checkpoints directory.
                 DEPRECTATED, use mode.
 
         Returns:
@@ -1116,7 +1116,7 @@ class SnapshotMixin(object):
             mode = 'explicit'
 
         if mode == 'explicit':
-            dpath = ub.ensuredir((harn.train_dpath, 'explit_checkpoints'))
+            dpath = ub.ensuredir((harn.train_dpath, 'explicit_checkpoints'))
             stamp = ub.timestamp()
             save_fname = '_epoch_{:08d}_{}.pt'.format(harn.epoch, stamp)
         elif mode == 'checkpoint':
@@ -2804,7 +2804,12 @@ class FitHarnPreferences(scfg.Config):
 
         'colored': scfg.Value(True, help=(
             'allow for ANSI colored text in stdout logs, '
-            'otherwise it is stripped')),
+            'otherwise it is stripped. '
+            'DEPRECATED use NO_COLOR environ instead')),
+
+        'allow_unicode': scfg.Value(True, help=(
+            'allow for unicode characters in messages, otherwise '
+            ' we approximate them with ascii')),
     }
 
 

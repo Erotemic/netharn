@@ -13,6 +13,7 @@ import numpy as np
 import os
 import parse
 import ubelt as ub
+import copy
 
 
 def byte_str(num, unit='auto', precision=2):
@@ -129,13 +130,97 @@ def get_file_info(fpath):
     return info
 
 
+def _demodata_workdir():
+    """
+    Make a work directory with various types of sessions
+    """
+    workdir = ub.ensure_app_cache_dir('netharn/tests/sessions')
+    def _demodata_toy_sesssion(workdir, name='demo_session', lr=1e-4):
+        """
+        workdir = ub.ensure_app_cache_dir('netharn/tests/sessions')
+        workdir
+        """
+        # This will train a toy model with toy data using netharn
+        import netharn as nh
+        hyper = nh.HyperParams(**{
+            'workdir'     : ub.ensure_app_cache_dir('netharn/tests/sessions'),
+            'name'        : name,
+            'xpu'         : nh.XPU.coerce('cpu'),
+            'datasets'    : {'train': nh.data.ToyData2d(size=3, rng=0), 'vali': nh.data.ToyData2d(size=3, rng=0)},
+            'loaders'     : {'batch_size': 64},
+            'model'       : (nh.models.ToyNet2d, {}),
+            'optimizer'   : (nh.optimizers.SGD, {'lr': lr}),
+            'criterion'   : (nh.criterions.FocalLoss, {}),
+            'initializer' : (nh.initializers.KaimingNormal, {}),
+            'monitor'     : (nh.Monitor, {'max_epoch': 1}),
+        })
+        harn = nh.FitHarn(hyper)
+        harn.preferences['use_tensorboard'] = False
+        harn.preferences['timeout'] = 1
+        harn.run()  # TODO: make this run faster if we don't need to rerun
+
+    _demodata_toy_sesssion(workdir, name='demo_session1', lr=1e-3)
+    _demodata_toy_sesssion(workdir, name='demo_session2', lr=1e-3)
+    _demodata_toy_sesssion(workdir, name='demo_session3', lr=1e-3)
+    _demodata_toy_sesssion(workdir, name='demo_session2', lr=1e-4)
+    _demodata_toy_sesssion(workdir, name='demo_session3', lr=1e-4)
+    _demodata_toy_sesssion(workdir, name='demo_session3', lr=1e-5)
+    return workdir
+
+
+def collect_sessions(workdir):
+    """
+    Netharn writes all training runs into a work directory under
+    <workdir>/fit/runs/<hash>/<name>.  And makes symlinks in
+    <workdir>/fit/name/<name>. This collects all sessions within a workdir that
+    match the filter criteria.
+
+    workdir = _demodata_workdir()
+    all_sessions = collect_sessions(workdir)
+
+    """
+    run_dpath = join(workdir, 'fit', 'runs')
+    training_dpaths = list(glob.glob(join(run_dpath, '*/*')))
+
+    all_sessions = []
+    for dpath in training_dpaths:
+        session = Session(dpath)
+        all_sessions.append(session)
+    return all_sessions
+
+
+class Session(ub.NiceRepr):
+    """
+    NEW: object to maintain info / manipulate a specific training directory
+
+    TODO:
+        - [ ] Lazy properties
+        - [ ] Better convinience methods
+        - [ ] Log parsing
+    """
+    def __init__(session, dpath):
+        session.dpath = dpath
+        info, details = session_info(session.dpath)
+        session.info = info
+        session.details = details
+
+    def __nice__(session):
+        return repr(session.info)
+
+
 def session_info(dpath):
     """
     Stats about a training session
     """
     info = {}
     snap_dpath = join(dpath, 'torch_snapshots')
-    snapshots = os.listdir(snap_dpath) if exists(snap_dpath) else []
+    check_dpath = join(dpath, 'checkpoints')
+    if exists(check_dpath):
+        snapshots = os.listdir(snap_dpath) if exists(snap_dpath) else []
+    elif exists(snap_dpath):
+        pass
+    else:
+        snapshots = []
     dpath = realpath(dpath)
 
     if True:
@@ -159,7 +244,15 @@ def session_info(dpath):
                     target = None
         info['linked'] = (target == dpath)
 
+    best_snapshot_fpath = join(dpath, 'best_snapshot.pt')
+    details = {}
+    details['best_snapshot'] = best_snapshot_fpath if exists(best_snapshot_fpath) else None
+    details['deployed'] = list(glob.glob(join(dpath, '*.zip')))
+    details['snapshots'] = snapshots
+
     info['dpath'] = dpath
+    info['has_deploy'] = bool(details['deployed'])
+    info['has_best'] = bool(details['best_snapshot'])
     info['num_snapshots'] = len(snapshots)
     info['size'] = float(ub.cmd('du -s ' + dpath)['out'].split('\t')[0])
     if len(snapshots) > 0:
@@ -168,7 +261,7 @@ def session_info(dpath):
         unixtime = max(timestamps)
         dt = datetime.datetime.fromtimestamp(unixtime)
         info['last_modified'] = dt
-    return info
+    return info, details
 
 
 def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
@@ -186,37 +279,35 @@ def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
         workdir = '.'
         import xdev
         globals().update(xdev.get_func_kwargs(_devcheck_remove_dead_runs))
+
+        workdir = _demodata_workdir()
+        _devcheck_remove_dead_runs(workdir)
     """
-    import ubelt as ub
-    import copy
     print('Checking for dead / dangling sessions in your runs dir')
 
-    # Find if any run directory is empty
     run_dpath = join(workdir, 'fit', 'runs')
-    training_dpaths = list(glob.glob(join(run_dpath, '*/*')))
+    all_sessions = collect_sessions(workdir)
 
-    all_sessions = []
-    for dpath in training_dpaths:
-        session = session_info(dpath)
-        all_sessions.append(session)
-
+    # Find if any run directory is empty
     now = datetime.datetime.now()
     long_time_ago = now - datetime.timedelta(days=safe_num_days)
 
     for session in all_sessions:
-        if session['num_snapshots'] == 0:
-            session['decision'] = 'bad'
-        elif session['num_snapshots'] < dead_num_snap_thresh:
-            dt = session['last_modified']
+        info = session.info
+        if not (info['has_deploy'] or info['num_snapshots'] or info['has_best']):
+            info['decision'] = 'bad'
+        elif info['num_snapshots'] < dead_num_snap_thresh:
+            dt = info['last_modified']
             if dt < long_time_ago:
-                session['decision'] = 'iffy'
+                info['decision'] = 'iffy'
             else:
-                session['decision'] = 'good'
+                info['decision'] = 'good'
         else:
-            session['decision'] = 'good'
+            info['decision'] = 'good'
 
-    nice_groups = ub.group_items(all_sessions, lambda x: x['name'])
+    all_info = [s.info for s in all_sessions]
 
+    nice_groups = ub.group_items(all_info, lambda x: x['name'])
     for name, group in nice_groups.items():
         print(' --- {} --- '.format(name))
         group = sorted(group, key=lambda x: x['size'])
@@ -247,7 +338,7 @@ def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
         if len(os.listdir(dpath)) == 0:
             empty_dpaths.append(dpath)
 
-    decision_groups = ub.group_items(all_sessions, lambda x: x['decision'])
+    decision_groups = ub.group_items(all_info, lambda x: x['decision'])
 
     print('Empty dpaths:  {:>4}'.format(len(empty_dpaths)))
     print('Broken links:  {:>4}'.format(len(broken_links)))
@@ -272,30 +363,12 @@ def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
             os.unlink(p)
 
 
-class Session(ub.NiceRepr):
-    """
-    UNFINISHED:
-    NEW: object to maintain info / manipulate a specific training directory
-    """
-    def __init__(session, dpath):
-        session.dpath = dpath
-        session.info = session_info(session.dpath)
-
-    def __nice__(session):
-        return repr(session.info)
-
-
 def _devcheck_manage_monitor(workdir, dry=True):
+
+    all_sessions = collect_sessions(workdir)
+
     # Get all the images in the monitor directories
     # (this is a convention and not something netharn does by default)
-    run_dpath = join(workdir, 'fit', 'runs')
-    training_dpaths = list(glob.glob(join(run_dpath, '*/*')))
-
-    all_sessions = []
-    for dpath in training_dpaths:
-        session = Session(dpath)
-        all_sessions.append(session)
-        # UNFINISHED
 
     all_files = []
     factor = 100
@@ -382,15 +455,14 @@ def _devcheck_manage_snapshots(workdir, recent=5, factor=10, dry=True):
 
     USE_RANGE_HUERISTIC = True
 
-    run_dpath = join(workdir, 'fit', 'runs')
-    snapshot_dpaths = list(glob.glob(join(run_dpath, '**/torch_snapshots'), recursive=True))
-    print('checking {} snapshot paths'.format(len(snapshot_dpaths)))
+    all_sessions = collect_sessions(workdir)
+    print('Checking sessions = {}'.format(ub.repr2(all_sessions, nl=1)))
 
     all_keep = []
     all_remove = []
 
-    for snapshot_dpath in snapshot_dpaths:
-        snapshots = sorted(glob.glob(join(snapshot_dpath, '_epoch_*.pt')))
+    for session in all_sessions:
+        snapshots = session.details['snapshots']
         epoch_to_snap = {
             int(parse.parse('{}_epoch_{num:d}.pt', path).named['num']): path
             for path in snapshots
@@ -425,7 +497,7 @@ def _devcheck_manage_snapshots(workdir, recent=5, factor=10, dry=True):
             print('keep = {!r}'.format(sorted(keep)))
             print('kill = {!r}'.format(sorted(kill)))
 
-        print('Keep {}/{} from {}'.format(len(keep), len(existing_epochs), snapshot_dpath))
+        print('Keep {}/{} from {}'.format(len(keep), len(existing_epochs), session.info['dpath']))
         all_keep += [tokeep]
         all_remove += [toremove]
 
@@ -440,12 +512,11 @@ def _devcheck_manage_snapshots(workdir, recent=5, factor=10, dry=True):
     for path in ub.flatten(all_remove):
         total += os.path.getsize(path)
 
-    total_mb = total / 2 ** 20
     if dry:
-        print('Cleanup would delete {} snapshots and free {!r} MB'.format(len(all_remove), total_mb))
+        print('Cleanup would delete {} snapshots and free {}'.format(len(all_remove), byte_str(total)))
         print('Use -f to confirm and force cleanup')
     else:
-        print('About to free {!r} MB'.format(total_mb))
+        print('About to free {}'.format(byte_str(total)))
         for path in ub.flatten(all_remove):
             ub.delete(path, verbose=True)
 
