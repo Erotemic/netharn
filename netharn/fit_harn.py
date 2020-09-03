@@ -784,7 +784,7 @@ class ProgMixin(object):
     def _update_main_prog_desc(harn):
         lrs = set(harn._current_lrs())
         lr_str = ','.join(['{:.4g}'.format(lr) for lr in lrs])
-        if six.PY2:
+        if not harn.preferences['allow_unicode'] or six.PY2:
             desc = 'epoch lr:{} | {}'.format(lr_str, harn.monitor.message())
         else:
             desc = 'epoch lr:{} │ {}'.format(lr_str, harn.monitor.message())

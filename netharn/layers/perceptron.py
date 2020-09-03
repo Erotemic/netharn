@@ -20,7 +20,8 @@ class MultiLayerPerceptronNd(common.Module):
             input and output channels)
         out_channels (int):
         dropout (float, default=0): amount of dropout to use
-        norm (str, default='batch'): type of normalization layer (e.g. batch or group)
+        norm (str, default='batch'): type of normalization layer
+            (e.g. batch or group), set to None for no normalization.
         noli (str, default='relu'): type of nonlinearity
         residual (bool, default=False):
             if true includes a resitual skip connection between inputs and
