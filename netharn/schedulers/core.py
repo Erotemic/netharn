@@ -1,6 +1,56 @@
 import torch.optim.lr_scheduler
 from collections import defaultdict
 
+"""
+
+# Notes on torch schedulers
+
+import torch
+from torch.optim import lr_scheduler
+from torch import optim
+
+
+parameters = list(torch.nn.Conv1d(1, 1, 1).parameters())
+
+base_lr = 1e-3
+optimizer = optim.SGD(parameters, lr=base_lr)
+
+
+schedulers = {}
+scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=20)
+schedulers[scheduler.__class__.__name__] = scheduler
+scheduler = lr_scheduler.OneCycleLR(optimizer, max_lr=base_lr, total_steps=100)
+schedulers[scheduler.__class__.__name__] = scheduler
+scheduler = lr_scheduler.StepLR(optimizer, step_size=30)
+schedulers[scheduler.__class__.__name__] = scheduler
+scheduler = lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+schedulers[scheduler.__class__.__name__] = scheduler
+
+key = scheduler.__class__.__name__
+
+
+xdata = list(range(100))
+ydata = ub.ddict(list)
+
+for key, scheduler in schedulers.items():
+
+    # Reset optimizer LR
+    for g in optimizer.param_groups:
+        g['lr'] = base_lr
+
+    for x in xdata:
+        lr = scheduler.get_last_lr()[0]
+        scheduler.step()
+        ydata[key].append(lr)
+
+import kwplot
+kwplot.autompl()
+
+kwplot.multi_plot(xdata=xdata, ydata=ydata)
+
+
+"""
+
 
 class CommonMixin(object):
 

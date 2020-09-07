@@ -603,7 +603,7 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
     Example:
         >>> import torchvision
         >>> resnet50 = torchvision.models.resnet50()
-        >>> paths1 = sorted(resnet50.state_dict().keys())[0:100]
+        >>> paths1 = sorted(resnet50.state_dict().keys())
         >>> paths2 = ['prefix.' + k for k in paths1]
         >>> paths2.append('extra_key')
         >>> subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2)
@@ -718,9 +718,9 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
     #     DiGM.is_isomorphic()
     #     list(DiGM.subgraph_isomorphisms_iter())
 
-    from netharn.initializers import _nx_extensions
-    subtree1, subtree2 = _nx_extensions.maximum_common_ordered_tree_embedding(tree1, tree2, node_affinity=node_affinity)
-    # subtree1, subtree2 = _nx_extensions.maximum_common_ordered_subtree_isomorphism(tree1, tree2, node_affinity=node_affinity)
+    from netharn.initializers import _nx_ext
+    subtree1, subtree2 = _nx_ext.maximum_common_ordered_tree_embedding(tree1, tree2, node_affinity=node_affinity)
+    # subtree1, subtree2 = _nx_ext.maximum_common_ordered_subtree_isomorphism(tree1, tree2, node_affinity=node_affinity)
 
     subpaths1 = [sep.join(node) for node in subtree1.nodes if subtree1.out_degree[node] == 0]
     subpaths2 = [sep.join(node) for node in subtree2.nodes if subtree2.out_degree[node] == 0]
