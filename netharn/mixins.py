@@ -25,9 +25,9 @@ def _dump_monitor_tensorboard(harn, mode='epoch', special_groupers=['loss'],
         xdoctest -m netharn.mixins _dump_monitor_tensorboard --profile
 
     Example:
-        >>> from netharn.export.deployer import _demodata_toy_harn
+        >>> import netharn as nh
         >>> from netharn.mixins import _dump_monitor_tensorboard
-        >>> harn = _demodata_toy_harn()
+        >>> harn = nh.FitHarn.demo()
         >>> harn.run()
         >>> try:
         >>>     _dump_monitor_tensorboard(harn)

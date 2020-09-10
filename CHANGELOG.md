@@ -19,6 +19,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Deprecate `colored` option in `FitHarnPreferences`. Use `NO_COLOR` environ to
   disable ANSI coloring instead.
 
+* `netharn.export` has been deprecated for `torch_liberator` and `liberator`,
+  and will be removed in the future. 
+
 
 ## Version 0.5.9 - Released 2020-08-26
 

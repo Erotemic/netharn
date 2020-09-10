@@ -128,6 +128,14 @@ TODO:
     [ ] - ability to run an iteration of the validation data within an epoch,
           perhaps we could allow the user to redefine how long an epoch is.
 
+    [ ] - Update for torch 1.1 lr scheduler behavior. Allow schedulers to be
+          called either after each epoch or after each batch iteration (for
+          schedulers like CyclicLR, OneCycleLR).
+
+          [ ] - Show LR in the batch progress bar (if updated on an iteration basis)
+          [ ] - How does the netharn scheduler redesign interact with torch 1.1?
+          [ ] - Stochastic Weight Averaging - https://pytorch.org/docs/stable/optim.html#putting-it-all-together
+
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import glob
@@ -150,10 +158,10 @@ import numpy as np
 import ubelt as ub
 
 import scriptconfig as scfg
+import torch_liberator
 
 from netharn import hyperparams
 from netharn import util
-from netharn import export
 from netharn.util import profiler
 from netharn.util import strip_ansi
 from netharn.exceptions import (CannotResume, SkipBatch, StopTraining,
@@ -1630,7 +1638,7 @@ class CoreMixin(object):
             model_class = harn.hyper.model_cls
             model_params = harn.hyper.model_params
             export_modules = harn.preferences['export_modules']
-            static_modpath = export.export_model_code(
+            static_modpath = torch_liberator.export_model_code(
                 harn.train_dpath, model_class, initkw=model_params,
                 export_modules=export_modules)
             harn.info('Exported model topology to {}'.format(static_modpath))
@@ -1652,11 +1660,48 @@ class CoreMixin(object):
 
         if True:
             # HOTFIX: if the best snapshot doesnt exist we need to make one
-            if export.deployer.find_best_snapshot(harn.train_dpath) is None:
+            def _find_best_snapshot(train_dpath):
+                """
+                Returns snapshot written by monitor if available otherwise takes the last
+                one.
+
+                Hack for a hotfix
+                """
+                # NOTE: Specific to netharn directory structure
+                # Netharn should populate best_snapshot.pt if there is a validation set.
+                # Other names are to support older codebases.
+                expected_names = [
+                    'best_snapshot.pt',
+                    'best_snapshot2.pt',
+                    'final_snapshot.pt',
+                    'deploy_snapshot.pt',
+                ]
+                def _existing_snapshots(train_dpath):
+                    # NOTE: Specific to netharn directory structure
+                    import parse
+                    snapshot_dpath = join(train_dpath, 'torch_snapshots/')
+                    prev_states = sorted(glob.glob(join(snapshot_dpath, '_epoch_*.pt')))
+                    snapshots = {parse.parse('{}_epoch_{num:d}.pt', path).named['num']: path
+                                 for path in prev_states}
+                    return snapshots
+                for snap_fname in expected_names:
+                    snap_fpath = join(train_dpath, snap_fname)
+                    if exists(snap_fpath):
+                        break
+
+                if not exists(snap_fpath):
+                    snap_fpath = None
+
+                if not snap_fpath:
+                    epoch_to_fpath = _existing_snapshots(train_dpath)
+                    if epoch_to_fpath:
+                        snap_fpath = epoch_to_fpath[max(epoch_to_fpath)]
+                return snap_fpath
+            if _find_best_snapshot(harn.train_dpath) is None:
                 harn.save_snapshot()
 
         try:
-            deploy_fpath = export.DeployedModel(harn.train_dpath).package()
+            deploy_fpath = torch_liberator.DeployedModel(harn.train_dpath).package()
             harn.info('wrote single-file deployment to: {!r}'.format(
                 deploy_fpath))
 

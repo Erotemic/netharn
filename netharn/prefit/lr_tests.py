@@ -37,8 +37,8 @@ def lr_range_test(harn, init_value=1e-8, final_value=10., beta=0.98,
 
     Example:
         >>> from netharn.prefit.lr_tests import *
-        >>> from netharn.export.deployer import _demodata_toy_harn
-        >>> harn = _demodata_toy_harn().initialize()
+        >>> import netharn as nh
+        >>> harn = nh.FitHarn.demo().initialize()
         >>> result = lr_range_test(harn)
         >>> print('result = {!r}'.format(result))
         >>> # xdoctest: +REQUIRES(--show)
@@ -247,8 +247,8 @@ def lr_range_scan(harn, low=1e-6, high=10.0, num=8, niter_train=1,
 
     Example:
         >>> from netharn.prefit.lr_tests import *
-        >>> from netharn.export.deployer import _demodata_toy_harn
-        >>> harn = _demodata_toy_harn().initialize()
+        >>> import netharn as nh
+        >>> harn = nh.FitHarn.demo().initialize()
         >>> result = lr_range_scan(harn)
         >>> print('result = {!r}'.format(result))
         >>> # xdoctest: +REQUIRES(--show)
