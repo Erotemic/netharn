@@ -92,8 +92,8 @@ Features (continued)
 * Hyperparameter tracking: The hash of your hyperparameters determines the
   directory data will be written to. We also allow for a "nicer" means to
   manage directory structures. Given a ``HyperParams`` object, we create the
-  symlink ``{workdir}/fit/nice/{nice}`` which points to
-  ``{workdir}/fit/runs/{nice}/{hashid}``.
+  symlink ``{workdir}/fit/name/{name}`` which points to
+  ``{workdir}/fit/runs/{name}/{hashid}``.
 
 * Automatic restarts: 
   Calling ``FitHarn.run`` twice restarts training from where you left off by
@@ -265,7 +265,7 @@ useful to look at.  Its complexity is more than CIFAR but less than YOLO.
     >>>     'workdir'     : ub.ensure_app_cache_dir('netharn/demo'),
     >>>     'xpu'         : netharn.XPU.coerce('auto'),
     >>>     # workdir is a directory where intermediate results can be saved
-    >>>     # "nice" symlinks <workdir>/fit/name/<name> -> ../runs/<hashid>
+    >>>     # "name" symlinks <workdir>/fit/name/<name> -> ../runs/<hashid>
     >>>     # XPU auto select a gpu if idle and VRAM>6GB else a cpu
     >>>     # ================
     >>>     # Data Components
@@ -315,7 +315,7 @@ Running this code produes the following output:
    RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR
    Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum -> /home/joncrall/.cache/netharn/demo/_mru
    ... already exists
-   Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum -> /home/joncrall/.cache/netharn/demo/fit/nice/demo
+   Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum -> /home/joncrall/.cache/netharn/demo/fit/name/demo
    ... already exists
    ... and points to the right place
    INFO: Initializing tensorboard (dont forget to start the tensorboard server)
@@ -324,12 +324,12 @@ Running this code produes the following output:
    INFO: Exported model topology to /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/ToyNet2d_2a3f49.py
    INFO: Initializing model weights with: <netharn.initializers.nninit_core.KaimingNormal object at 0x7fc67eff0278>
    INFO:  * harn.train_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum'
-   INFO:  * harn.nice_dpath  = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
+   INFO:  * harn.name_dpath  = '/home/joncrall/.cache/netharn/demo/fit/name/demo'
    INFO: Snapshots will save to harn.snapshot_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/torch_snapshots'
    INFO: ARGV:
        /home/joncrall/.local/conda/envs/py36/bin/python /home/joncrall/.local/conda/envs/py36/bin/ipython
    INFO: dont forget to start:
-       tensorboard --logdir ~/.cache/netharn/demo/fit/nice
+       tensorboard --logdir ~/.cache/netharn/demo/fit/name
    INFO: === begin training 0 / 10 : demo ===
    epoch lr:0.0001 │ vloss is unevaluated  0/10... rate=0 Hz, eta=?, total=0:00:00, wall=19:36 EST
    train loss:0.173 │ 100.00% of 64x8... rate=11762.01 Hz, eta=0:00:00, total=0:00:00, wall=19:36 EST
@@ -366,9 +366,9 @@ Running this code produes the following output:
 
    INFO: training completed
    INFO: harn.train_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum'
-   INFO: harn.nice_dpath  = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
+   INFO: harn.name_dpath  = '/home/joncrall/.cache/netharn/demo/fit/name/demo'
    INFO: view tensorboard results for this run via:
-       tensorboard --logdir ~/.cache/netharn/demo/fit/nice
+       tensorboard --logdir ~/.cache/netharn/demo/fit/name
    [DEPLOYER] Deployed zipfpath=/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_009_GAEYQT.zip
    INFO: wrote single-file deployment to: '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_009_GAEYQT.zip'
    INFO: exiting fit harness.
@@ -381,7 +381,7 @@ then it would produce this more detailed description of what it was doing:
    RESET HARNESS BY DELETING EVERYTHING IN TRAINING DIR
    Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum -> /home/joncrall/.cache/netharn/demo/_mru
    ... already exists
-   Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum -> /home/joncrall/.cache/netharn/demo/fit/nice/demo
+   Symlink: /home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum -> /home/joncrall/.cache/netharn/demo/fit/name/demo
    ... already exists
    ... and points to the right place
    DEBUG: Initialized logging
@@ -476,12 +476,12 @@ then it would produce this more detailed description of what it was doing:
    INFO: Initializing model weights with: <netharn.initializers.nninit_core.KaimingNormal object at 0x7fb129e732b0>
    DEBUG: calling harn.initializer=<netharn.initializers.nninit_core.KaimingNormal object at 0x7fb129e732b0>
    INFO:  * harn.train_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum'
-   INFO:  * harn.nice_dpath  = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
+   INFO:  * harn.name_dpath  = '/home/joncrall/.cache/netharn/demo/fit/name/demo'
    INFO: Snapshots will save to harn.snapshot_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/torch_snapshots'
    INFO: ARGV:
        /home/joncrall/.local/conda/envs/py36/bin/python /home/joncrall/.local/conda/envs/py36/bin/ipython --verbose
    INFO: dont forget to start:
-       tensorboard --logdir ~/.cache/netharn/demo/fit/nice
+       tensorboard --logdir ~/.cache/netharn/demo/fit/name
    INFO: === begin training 0 / 10 : demo ===
    DEBUG: epoch lr:0.0001 │ vloss is unevaluated
    epoch lr:0.0001 │ vloss is unevaluated  0/10... rate=0 Hz, eta=?, total=0:00:00, wall=19:56 EST
@@ -570,9 +570,9 @@ then it would produce this more detailed description of what it was doing:
 
    INFO: training completed
    INFO: harn.train_dpath = '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum'
-   INFO: harn.nice_dpath  = '/home/joncrall/.cache/netharn/demo/fit/nice/demo'
+   INFO: harn.name_dpath  = '/home/joncrall/.cache/netharn/demo/fit/name/demo'
    INFO: view tensorboard results for this run via:
-       tensorboard --logdir ~/.cache/netharn/demo/fit/nice
+       tensorboard --logdir ~/.cache/netharn/demo/fit/name
    [DEPLOYER] Deployed zipfpath=/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_000_JWPNDC.zip
    INFO: wrote single-file deployment to: '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_000_JWPNDC.zip'
    INFO: exiting fit harness.

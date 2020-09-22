@@ -403,10 +403,20 @@ class Repo(ub.NiceRepr):
         if exists(repo.dpath):
             raise ValueError('cannot clone into non-empty directory')
         args = '--recursive'
+        # NOTE: if the remote branch does not exist this will fail
         if repo.branch is not None:
             args += ' -b {}'.format(repo.branch)
-        command = 'git clone {args} {url} {dpath}'.format(args=args, url=repo.url, dpath=repo.dpath)
-        repo._cmd(command, cwd=repo.code_dpath)
+        try:
+            command = 'git clone {args} {url} {dpath}'.format(
+                args=args, url=repo.url, dpath=repo.dpath)
+            repo._cmd(command, cwd=repo.code_dpath)
+        except Exception as ex:
+            text = repr(ex)
+            if 'Remote branch' in text and 'not found' in text:
+                print('ERROR: It looks like the remote branch you asked for doesnt exist')
+                print('ERROR: Caused by: ex = {}'.format(text))
+                raise Exception('Cannot find branch {} for repo {}'.format(repo.branch, repo))
+            raise
 
     def _assert_clean(repo):
         if repo.pygit.is_dirty():
@@ -708,65 +718,68 @@ def determine_code_dpath():
     return code_dpath
 
 
-def make_netharn_registry():
+DEVEL_REPOS = [
+    # The util libs
+    {
+        'name': 'kwarray', 'branch': 'dev/0.5.10', 'remote': 'public',
+        'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
+    },
+    {
+        'name': 'kwimage', 'branch': 'dev/0.6.6', 'remote': 'public',
+        'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
+    },
+    {
+        'name': 'kwannot', 'branch': 'dev/1.1.0', 'remote': 'public',
+        'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwannot.git'},
+    },
+    {
+        'name': 'kwcoco', 'branch': 'dev/0.1.0', 'remote': 'public',
+        'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwcoco.git'},
+    },
+    {
+        'name': 'kwplot', 'branch': 'dev/0.4.8', 'remote': 'public',
+        'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwplot.git'},
+    },
+
+    # Pytorch deployer / exporter
+    {
+        'name': 'liberator', 'branch': 'dev/0.0.2', 'remote': 'public',
+        'remotes': {'public': 'git@gitlab.kitware.com:python/liberator.git'},
+    },
+    {
+        'name': 'torch_liberator', 'branch': 'dev/0.0.5', 'remote': 'public',
+        'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/torch_liberator.git'},
+    },
+
+    # For example data and CLI
+    {
+        'name': 'scriptconfig', 'branch': 'dev/0.5.8', 'remote': 'public',
+        'remotes': {'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
+    },
+    {
+        'name': 'ndsampler', 'branch': 'dev/0.5.12', 'remote': 'public',
+        'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
+    },
+
+    # netharn - training harness
+    {
+        'name': 'netharn', 'branch': 'dev/0.5.10', 'remote': 'public',
+        'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
+    },
+]
+
+
+def make_registry(devel_repos):
     code_dpath = determine_code_dpath()
     CommonRepo = functools.partial(Repo, code_dpath=code_dpath)
-
-    devel_repos = [
-        # The util libs
-        {
-            'name': 'kwarray', 'branch': 'dev/0.5.10', 'remote': 'public',
-            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwarray.git'},
-        },
-        {
-            'name': 'kwimage', 'branch': 'dev/0.6.6', 'remote': 'public',
-            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
-        },
-        {
-            'name': 'kwcoco', 'branch': 'dev/0.1.6', 'remote': 'public',
-            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwcoco.git'},
-        },
-        {
-            'name': 'kwplot', 'branch': 'dev/0.4.8', 'remote': 'public',
-            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwplot.git'},
-        },
-
-        # Pytorch deployer / exporter
-        {
-            'name': 'liberator', 'branch': 'dev/0.0.2', 'remote': 'public',
-            'remotes': {'public': 'git@gitlab.kitware.com:python/liberator.git'},
-        },
-        {
-            'name': 'torch_liberator', 'branch': 'dev/0.0.5', 'remote': 'public',
-            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/torch_liberator.git'},
-        },
-
-        # For example data and CLI
-        {
-            'name': 'scriptconfig', 'branch': 'dev/0.5.8', 'remote': 'public',
-            'remotes': {'public': 'git@gitlab.kitware.com:utils/scriptconfig.git'},
-        },
-        {
-            'name': 'ndsampler', 'branch': 'dev/0.5.12', 'remote': 'public',
-            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/ndsampler.git'},
-        },
-
-        # netharn - training harness
-        {
-            'name': 'netharn', 'branch': 'dev/0.5.10', 'remote': 'public',
-            'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/netharn.git'},
-        },
-    ]
-
     repos = [CommonRepo(**kw) for kw in devel_repos]
-
     registery = RepoRegistry(repos)
     return registery
 
 
 def main():
-
-    registery = make_netharn_registry()
+    devel_repos = DEVEL_REPOS
+    registery = make_registry(devel_repos)
 
     only = ub.argval('--only', default=None)
     if only is not None:
