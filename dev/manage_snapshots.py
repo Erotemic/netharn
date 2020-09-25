@@ -219,6 +219,7 @@ def session_info(dpath):
         snapshots = os.listdir(check_dpath) if exists(check_dpath) else []
         snapshots = [join(check_dpath, fname) for fname in snapshots]
     elif exists(snap_dpath):
+        # Old snapshot directory name
         snapshots = os.listdir(snap_dpath) if exists(snap_dpath) else []
         snapshots = [join(snap_dpath, fname) for fname in snapshots]
     else:
@@ -374,11 +375,13 @@ def _devcheck_manage_monitor(workdir, dry=True):
 
     all_files = []
     factor = 100
+    max_keep = 200
 
     def _choose_action(file_infos):
         import kwarray
         file_infos = kwarray.shuffle(file_infos, rng=0)
         n_keep = (len(file_infos) // factor) + 1
+        n_keep = min(max_keep, n_keep)
 
         for info in file_infos[:n_keep]:
             info['action'] = 'keep'
