@@ -513,8 +513,9 @@ def _devcheck_manage_snapshots(workdir, recent=5, factor=10, dry=True):
         print('Use -f to confirm and force cleanup')
     else:
         print('About to free {}'.format(byte_str(total)))
-        for path in ub.flatten(all_remove):
-            ub.delete(path, verbose=True)
+        fpaths = list(ub.flatten(all_remove))
+        for path in ub.ProgIter(fpaths, desc='deleting'):
+            ub.delete(path)
 
 
 def main():
@@ -564,7 +565,7 @@ if __name__ == '__main__':
         python ~/code/netharn/dev/manage_snapshots.py --mode=monitor --workdir=~/work/voc_yolo2/
         python ~/code/netharn/dev/manage_snapshots.py --mode=monitor --workdir=.
         python ~/code/netharn/dev/manage_snapshots.py --mode=runs --workdir=.
-        python ~/code/netharn/dev/manage_snapshots.py --mode=snapshots --workdir=. --recent 2 --factor 40
+        python ~/code/netharn/dev/manage_snapshots.py --mode=snapshots --workdir=. --recent 2 --factor 40 -f
 
     Notes:
         # Remove random files
