@@ -389,34 +389,21 @@ def _devcheck_manage_monitor(workdir, dry=True):
             info['action'] = 'delete'
 
     for session in all_sessions:
-        print('session = {!r}'.format(session))
-        dpath = join(session.dpath, 'monitor', 'train', 'batch')
-        fpaths = list(glob.glob(join(dpath, '*.jpg')))
-        file_infos = [{'size': os.stat(p).st_size, 'fpath': p}
-                      for p in fpaths]
-        _choose_action(file_infos)
-        all_files.extend(file_infos)
-
-        dpath = join(session.dpath, 'monitor', 'vali', 'batch')
-        fpaths = list(glob.glob(join(dpath, '*.jpg')))
-        file_infos = [{'size': os.stat(p).st_size, 'fpath': p}
-                      for p in fpaths]
-        _choose_action(file_infos)
-        all_files.extend(file_infos)
-
-        dpath = join(session.dpath, 'monitor', 'train')
-        fpaths = list(glob.glob(join(dpath, '*.jpg')))
-        file_infos = [{'size': os.stat(p).st_size, 'fpath': p}
-                      for p in fpaths]
-        _choose_action(file_infos)
-        all_files.extend(file_infos)
-
-        dpath = join(session.dpath, 'monitor', 'vali')
-        fpaths = list(glob.glob(join(dpath, '*.jpg')))
-        file_infos = [{'size': os.stat(p).st_size, 'fpath': p}
-                      for p in fpaths]
-        _choose_action(file_infos)
-        all_files.extend(file_infos)
+        print('session = {!r}'.format(session.dpath))
+        dpaths = [
+            join(session.dpath, 'monitor', 'train', 'batch'),
+            join(session.dpath, 'monitor', 'vali', 'batch'),
+            join(session.dpath, 'monitor', 'train'),
+            join(session.dpath, 'monitor', 'vali'),
+        ]
+        exts = ['*.jpg', '*.png']
+        for dpath in dpaths:
+            for ext in exts:
+                fpaths = list(glob.glob(join(dpath, ext)))
+                file_infos = [{'size': os.stat(p).st_size, 'fpath': p}
+                              for p in fpaths]
+                _choose_action(file_infos)
+                all_files.extend(file_infos)
 
     grouped_actions = ub.group_items(all_files, lambda x: x['action'])
 
