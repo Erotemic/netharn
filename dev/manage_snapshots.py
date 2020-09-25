@@ -217,6 +217,7 @@ def session_info(dpath):
     check_dpath = join(dpath, 'checkpoints')
     if exists(check_dpath):
         snapshots = os.listdir(snap_dpath) if exists(snap_dpath) else []
+        snapshots = [join(dpath, fname) for fname in snapshots]
     elif exists(snap_dpath):
         snapshots = []
     else:
