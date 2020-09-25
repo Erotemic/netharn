@@ -463,10 +463,12 @@ def _devcheck_manage_snapshots(workdir, recent=5, factor=10, dry=True):
 
     for session in all_sessions:
         snapshots = session.details['snapshots']
-        epoch_to_snap = {
-            int(parse.parse('{}_epoch_{num:d}.pt', path).named['num']): path
-            for path in snapshots
-        }
+        epoch_to_snap = {}
+        for path in snapshots:
+            parsed = parse.parse('{}_epoch_{num:d}.pt', path)
+            if parsed:
+                epoch = int(parsed.named['num'])
+                epoch_to_snap[epoch] = path
         existing_epochs = sorted(epoch_to_snap.keys())
         # print('existing_epochs = {}'.format(ub.repr2(existing_epochs)))
         toremove = []
@@ -568,6 +570,7 @@ if __name__ == '__main__':
         python ~/code/netharn/dev/manage_snapshots.py --mode=monitor --workdir=~/work/voc_yolo2/
         python ~/code/netharn/dev/manage_snapshots.py --mode=monitor --workdir=.
         python ~/code/netharn/dev/manage_snapshots.py --mode=runs --workdir=.
+        python ~/code/netharn/dev/manage_snapshots.py --mode=snapshots --workdir=. --recent 2 --factor 40
 
     Notes:
         # Remove random files
