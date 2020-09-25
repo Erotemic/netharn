@@ -297,7 +297,7 @@ def _devcheck_remove_dead_runs(workdir, dry=True, dead_num_snap_thresh=10,
         if not (info['has_deploy'] or info['num_snapshots'] or info['has_best']):
             info['decision'] = 'bad'
         elif info['num_snapshots'] < dead_num_snap_thresh:
-            dt = info['last_modified']
+            dt = info.get('last_modified', now)
             if dt < long_time_ago:
                 info['decision'] = 'iffy'
             else:
@@ -567,6 +567,7 @@ if __name__ == '__main__':
         python ~/code/netharn/dev/manage_snapshots.py --mode=runs --workdir=~/work/voc_yolo2/
         python ~/code/netharn/dev/manage_snapshots.py --mode=monitor --workdir=~/work/voc_yolo2/
         python ~/code/netharn/dev/manage_snapshots.py --mode=monitor --workdir=.
+        python ~/code/netharn/dev/manage_snapshots.py --mode=runs --workdir=.
 
     Notes:
         # Remove random files
