@@ -216,10 +216,11 @@ def session_info(dpath):
     snap_dpath = join(dpath, 'torch_snapshots')
     check_dpath = join(dpath, 'checkpoints')
     if exists(check_dpath):
+        snapshots = os.listdir(check_dpath) if exists(check_dpath) else []
+        snapshots = [join(check_dpath, fname) for fname in snapshots]
+    elif exists(snap_dpath):
         snapshots = os.listdir(snap_dpath) if exists(snap_dpath) else []
         snapshots = [join(snap_dpath, fname) for fname in snapshots]
-    elif exists(snap_dpath):
-        snapshots = []
     else:
         snapshots = []
     dpath = realpath(dpath)
