@@ -260,7 +260,7 @@ def session_info(dpath):
     info['size'] = float(ub.cmd('du -s ' + dpath)['out'].split('\t')[0])
     if len(snapshots) > 0:
         contents = [join(dpath, c) for c in os.listdir(dpath)]
-        timestamps = [get_file_info(c)['last_modified'] for c in contents]
+        timestamps = [get_file_info(c)['last_modified'] for c in contents if exists(c)]
         unixtime = max(timestamps)
         dt = datetime.datetime.fromtimestamp(unixtime)
         info['last_modified'] = dt
