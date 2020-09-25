@@ -250,7 +250,7 @@ def session_info(dpath):
     best_snapshot_fpath = join(dpath, 'best_snapshot.pt')
     details = {}
     details['best_snapshot'] = best_snapshot_fpath if exists(best_snapshot_fpath) else None
-    details['deployed'] = list(glob.glob(join(dpath, '*.zip')))
+    details['deployed'] = [p for p in glob.glob(join(dpath, '*.zip')) if not ub.util_links.islink(p)]
     details['snapshots'] = snapshots
 
     info['dpath'] = dpath
