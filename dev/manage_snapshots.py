@@ -183,7 +183,7 @@ def collect_sessions(workdir):
     training_dpaths = list(glob.glob(join(run_dpath, '*/*')))
 
     all_sessions = []
-    for dpath in training_dpaths:
+    for dpath in ub.ProgIter(training_dpaths, desc='collect sessions'):
         session = Session(dpath)
         all_sessions.append(session)
     return all_sessions
@@ -389,8 +389,7 @@ def _devcheck_manage_monitor(workdir, dry=True):
         for info in file_infos[n_keep:]:
             info['action'] = 'delete'
 
-    for session in all_sessions:
-        print('session = {!r}'.format(session.dpath))
+    for session in ub.ProgIter(all_sessions, desc='checking monitor files'):
         dpaths = [
             join(session.dpath, 'monitor', 'train', 'batch'),
             join(session.dpath, 'monitor', 'vali', 'batch'),
