@@ -417,7 +417,7 @@ def _devcheck_manage_monitor(workdir, dry=True):
     else:
         delete = grouped_actions.get('delete', [])
         delete_fpaths = [item['fpath'] for item in delete]
-        for p in delete_fpaths:
+        for p in ub.ProgIter(delete_fpaths, desc='deleting'):
             ub.delete(p)
 
 
