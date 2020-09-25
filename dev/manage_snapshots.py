@@ -375,7 +375,7 @@ def _devcheck_manage_monitor(workdir, dry=True):
 
     all_files = []
     # factor = 100
-    max_keep = 500
+    max_keep = 300
 
     def _choose_action(file_infos):
         import kwarray
