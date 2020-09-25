@@ -465,6 +465,7 @@ def _devcheck_manage_snapshots(workdir, recent=5, factor=10, dry=True):
         snapshots = session.details['snapshots']
         epoch_to_snap = {}
         for path in snapshots:
+            print('path = {!r}'.format(path))
             parsed = parse.parse('{}_epoch_{num:d}.pt', path)
             if parsed:
                 epoch = int(parsed.named['num'])
