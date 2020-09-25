@@ -2298,32 +2298,36 @@ class CoreCallbacks(object):
             necessary to support distributed training.
         """
         batch = raw_batch
-        import warnings
-        warnings.warn(
-            'The behavior of prepare_batch will change in the future. '
-            'The new behavior will be a simple no-op '
-            'For maximum compatibility override prepare_batch.',
-            DeprecationWarning)
-        try:
-            if isinstance(raw_batch, (tuple, list)):
-                batch_inputs, batch_labels = raw_batch
-                raw_batch = {
-                    'input': batch_inputs,
-                    'label': batch_labels,
-                }
-            if isinstance(raw_batch, dict):
-                batch = raw_batch.copy()
-                batch = harn.xpu.move(batch)
-            else:
-                print('ERROR: raw_batch = {}'.format(type(raw_batch)))
-                raise TypeError(
-                    'could not prepare raw batch {}'.format(type(raw_batch)))
 
-        except Exception:
-            harn.warn('Error occurred in default prepare_batch. '
-                      'Perhaps you should overload it?')
-            raise
-        return batch
+        if harn.preferences['old_prepare_batch']:
+            import warnings
+            warnings.warn(
+                'The behavior of prepare_batch will change in the future. '
+                'The new behavior will be a simple no-op '
+                'For maximum compatibility override prepare_batch.',
+                DeprecationWarning)
+            try:
+                if isinstance(raw_batch, (tuple, list)):
+                    batch_inputs, batch_labels = raw_batch
+                    raw_batch = {
+                        'input': batch_inputs,
+                        'label': batch_labels,
+                    }
+                if isinstance(raw_batch, dict):
+                    batch = raw_batch.copy()
+                    batch = harn.xpu.move(batch)
+                else:
+                    print('ERROR: raw_batch = {}'.format(type(raw_batch)))
+                    raise TypeError(
+                        'could not prepare raw batch {}'.format(type(raw_batch)))
+
+            except Exception:
+                harn.warn('Error occurred in default prepare_batch. '
+                          'Perhaps you should overload it?')
+                raise
+            return batch
+        else:
+            return batch
 
     def run_batch(harn, batch):
         """
@@ -2855,6 +2859,9 @@ class FitHarnPreferences(scfg.Config):
         'allow_unicode': scfg.Value(True, help=(
             'allow for unicode characters in messages, otherwise '
             ' we approximate them with ascii')),
+
+        # Control deprecated
+        'old_prepare_batch': False,
     }
 
 
