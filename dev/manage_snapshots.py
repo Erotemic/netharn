@@ -389,6 +389,7 @@ def _devcheck_manage_monitor(workdir, dry=True):
             info['action'] = 'delete'
 
     for session in all_sessions:
+        print('session = {!r}'.format(session))
         dpath = join(session.dpath, 'monitor', 'train', 'batch')
         fpaths = list(glob.glob(join(dpath, '*.jpg')))
         file_infos = [{'size': os.stat(p).st_size, 'fpath': p}
