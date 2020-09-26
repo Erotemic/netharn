@@ -183,7 +183,7 @@ def collect_sessions(workdir):
     training_dpaths = list(glob.glob(join(run_dpath, '*/*')))
 
     all_sessions = []
-    for dpath in ub.ProgIter(training_dpaths, desc='collect sessions'):
+    for dpath in ub.ProgIter(training_dpaths, desc='collect sessions', freq=1):
         session = Session(dpath)
         all_sessions.append(session)
     return all_sessions
@@ -563,7 +563,7 @@ if __name__ == '__main__':
         python ~/code/netharn/dev/manage_snapshots.py --mode=snapshots --workdir=~/work/voc_yolo2/  --recent 2 --factor 40
         python ~/code/netharn/dev/manage_snapshots.py --mode=runs --workdir=~/work/voc_yolo2/
         python ~/code/netharn/dev/manage_snapshots.py --mode=monitor --workdir=~/work/voc_yolo2/
-        python ~/code/netharn/dev/manage_snapshots.py --mode=monitor --workdir=.
+        python ~/code/netharn/dev/manage_snapshots.py --mode=monitor --workdir=. -f
         python ~/code/netharn/dev/manage_snapshots.py --mode=runs --workdir=.
         python ~/code/netharn/dev/manage_snapshots.py --mode=snapshots --workdir=. --recent 2 --factor 40 -f
 
