@@ -729,7 +729,7 @@ DEVEL_REPOS = [
         'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwimage.git'},
     },
     {
-        'name': 'kwannot', 'branch': 'dev/1.1.0', 'remote': 'public',
+        'name': 'kwannot', 'branch': 'dev/0.1.0', 'remote': 'public',
         'remotes': {'public': 'git@gitlab.kitware.com:computer-vision/kwannot.git'},
     },
     {
