@@ -41,7 +41,8 @@ class Pretrained(api.Initializer, ub.NiceRepr):
             classification layer if class indexes are not aligned.
 
         association (str): controls how we search for the association between
-            the two model states. Can be strict, module-hack, prefix-hack, or embedding.
+            the two model states. Can be strict, module-hack, prefix-hack, or
+            embedding.
 
         info (dict, optional): specify explicit history info
 

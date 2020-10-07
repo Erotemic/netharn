@@ -355,7 +355,7 @@ class Initializer(object):
             initializer_ = (nh.initializers.Pretrained, {
                 'fpath': ub.expandpath(config['pretrained_fpath']),
                 'leftover': kw.get('leftover', None),
-                'mangle': kw.get('mangle', True),
+                'mangle': kw.get('mangle', False),
                 'association': kw.get('association', None),
             })
         elif config['init'] == 'cls':
