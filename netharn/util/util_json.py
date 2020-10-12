@@ -6,6 +6,7 @@ import six
 import torch
 import numpy as np
 import ubelt as ub
+from collections.abc import Generator
 from collections import OrderedDict
 
 
@@ -144,6 +145,20 @@ def ensure_json_serializable(dict_, normalize_containers=False, verbose=0):
         >>> data['foo'] = ub.ddict(lambda: int)
         >>> data['bar'] = np.array([1, 2, 3])
         >>> data['foo']['a'] = 1
+        >>> data['foo']['b'] = (1, np.array([1, 2, 3]), {3: np.int(3), 4: np.float16(1.0)})
+        >>> dict_ = data
+        >>> print(ub.repr2(data, nl=-1))
+        >>> assert list(find_json_unserializable(data))
+        >>> result = ensure_json_serializable(data, normalize_containers=True)
+        >>> print(ub.repr2(result, nl=-1))
+        >>> assert not list(find_json_unserializable(result))
+        >>> assert type(result) is dict
+
+    Example:
+        >>> data = ub.ddict(lambda: int)
+        >>> data['foo'] = ub.ddict(lambda: int)
+        >>> data['bar'] = np.array([1, 2, 3])
+        >>> data['foo']['a'] = 1
         >>> data['foo']['b'] = torch.FloatTensor([1, 2, 3])
         >>> result = ensure_json_serializable(data, normalize_containers=True)
         >>> assert type(result) is dict
@@ -161,100 +176,180 @@ def ensure_json_serializable(dict_, normalize_containers=False, verbose=0):
                     c = dict(c)
         return c
 
-    # inplace convert any ndarrays to lists
-    def _walk_json(data, prefix=[]):
-        items = None
-        if isinstance(data, list):
-            items = enumerate(data)
-        elif isinstance(data, tuple):
-            items = enumerate(data)
-        elif isinstance(data, dict):
-            items = data.items()
-        else:
-            raise TypeError(type(data))
-
-        root = prefix
-        level = {}
-        for key, value in items:
-            level[key] = value
-
-        # yield a dict so the user can choose to not walk down a path
-        yield root, level
-
-        for key, value in level.items():
-            if isinstance(value, (dict, list, tuple)):
-                path = prefix + [key]
-                for _ in _walk_json(value, prefix=path):
-                    yield _
-
-    def _convert(dict_, root, key, new_value):
-        d = dict_
-        for k in root:
-            d = d[k]
-        d[key] = new_value
-
-    def _flatmap(func, data):
-        if isinstance(data, list):
-            return [_flatmap(func, item) for item in data]
-        else:
-            return func(data)
-
-    to_convert = []
-    for root, level in ub.ProgIter(_walk_json(dict_), desc='walk json',
-                                   verbose=verbose):
-        for key, value in level.items():
-            if isinstance(value, tuple):
-                # Convert tuples on the fly so they become mutable
-                new_value = list(value)
-                _convert(dict_, root, key, new_value)
-            elif isinstance(value, np.ndarray):
-                new_value = value.tolist()
-                if 0:
-                    if len(value.shape) == 1:
-                        if value.dtype.kind in {'i', 'u'}:
-                            new_value = list(map(int, new_value))
-                        elif value.dtype.kind in {'f'}:
-                            new_value = list(map(float, new_value))
-                        elif value.dtype.kind in {'c'}:
-                            new_value = list(map(complex, new_value))
-                        else:
-                            pass
-                    else:
-                        if value.dtype.kind in {'i', 'u'}:
-                            new_value = _flatmap(int, new_value)
-                        elif value.dtype.kind in {'f'}:
-                            new_value = _flatmap(float, new_value)
-                        elif value.dtype.kind in {'c'}:
-                            new_value = _flatmap(complex, new_value)
-                        else:
-                            pass
-                            # raise TypeError(value.dtype)
-                to_convert.append((root, key, new_value))
-            elif isinstance(value, torch.Tensor):
-                new_value = value.data.cpu().numpy().tolist()
-                to_convert.append((root, key, new_value))
-            elif isinstance(value, (np.int16, np.int32, np.int64,
-                                    np.uint16, np.uint32, np.uint64)):
-                new_value = int(value)
-                to_convert.append((root, key, new_value))
-            elif isinstance(value, (np.float32, np.float64)):
-                new_value = float(value)
-                to_convert.append((root, key, new_value))
-            elif isinstance(value, (np.complex64, np.complex128)):
-                new_value = complex(value)
-                to_convert.append((root, key, new_value))
-            elif hasattr(value, '__json__'):
-                new_value = value.__json__()
-                to_convert.append((root, key, new_value))
-            elif normalize_containers:
-                if isinstance(value, dict):
-                    new_value = _norm_container(value)
-                    to_convert.append((root, key, new_value))
-
-    for root, key, new_value in to_convert:
-        _convert(dict_, root, key, new_value)
+    walker = IndexableWalker(dict_)
+    for prefix, value in walker:
+        if isinstance(value, tuple):
+            new_value = list(value)
+            walker[prefix] = new_value
+        elif isinstance(value, np.ndarray):
+            new_value = value.tolist()
+            walker[prefix] = new_value
+        elif isinstance(value, torch.Tensor):
+            new_value = value.data.cpu().numpy().tolist()
+            walker[prefix] = new_value
+        elif isinstance(value, (np.integer)):
+            new_value = int(value)
+            walker[prefix] = new_value
+        elif isinstance(value, (np.floating)):
+            new_value = float(value)
+            walker[prefix] = new_value
+        elif isinstance(value, (np.complex)):
+            new_value = complex(value)
+            walker[prefix] = new_value
+        elif hasattr(value, '__json__'):
+            new_value = value.__json__()
+            walker[prefix] = new_value
+        elif normalize_containers:
+            if isinstance(value, dict):
+                new_value = _norm_container(value)
+                walker[prefix] = new_value
 
     if normalize_containers:
         # normalize the outer layer
         dict_ = _norm_container(dict_)
     return dict_
+
+
+class IndexableWalker(Generator):
+    """
+    Traverses through a nested tree-liked indexable structure.
+
+    Generates a path and value to each node in the structure. The path is a
+    list of indexes which if applied in order will reach the value.
+
+    The ``__setitem__`` method can be used to modify a nested value based on the
+    path returned by the generator.
+
+    When generating values, you can use "send" to prevent traversal of a
+    particular branch.
+
+    Example:
+        >>> # Create nested data
+        >>> import numpy as np
+        >>> data = ub.ddict(lambda: int)
+        >>> data['foo'] = ub.ddict(lambda: int)
+        >>> data['bar'] = np.array([1, 2, 3])
+        >>> data['foo']['a'] = 1
+        >>> data['foo']['b'] = np.array([1, 2, 3])
+        >>> data['foo']['c'] = [1, 2, 3]
+        >>> data['baz'] = 3
+        >>> print('data = {}'.format(ub.repr2(data, nl=True)))
+        >>> # We can walk through every node in the nested tree
+        >>> walker = IndexableWalker(data)
+        >>> for path, value in walker:
+        >>>     print('walk path = {}'.format(ub.repr2(path, nl=0)))
+        >>>     if path[-1] == 'c':
+        >>>         # Use send to prevent traversing this branch
+        >>>         got = walker.send(False)
+        >>>         # We can modify the value based on the returned path
+        >>>         walker[path] = 'changed the value of c'
+        >>> print('data = {}'.format(ub.repr2(data, nl=True)))
+        >>> assert data['foo']['c'] == 'changed the value of c'
+    """
+
+    def __init__(self, data, dict_cls=(dict,), list_cls=(list, tuple)):
+        self.data = data
+        self.dict_cls = dict_cls
+        self.list_cls = list_cls
+        self.indexable_cls = self.dict_cls + self.list_cls
+
+        self._walk_gen = None
+
+    def __iter__(self):
+        """
+        Iterates through the indexable ``self.data``
+
+        Can send a False flag to prevent a branch from being traversed
+
+        Yields:
+            Tuple[List, Any] :
+                path (List): list of index operations to arrive at the value
+                value (object): the value at the path
+        """
+        return self
+
+    def __next__(self):
+        """ returns next item from this generator """
+        if self._walk_gen is None:
+            self._walk_gen = self._walk(self.data, prefix=[])
+        return next(self._walk_gen)
+
+    def send(self, arg):
+        """
+        send(arg) -> send 'arg' into generator,
+        return next yielded value or raise StopIteration.
+        """
+        # Note: this will error if called before __next__
+        self._walk_gen.send(arg)
+
+    def throw(self, type=None, value=None, traceback=None):
+        """
+        throw(typ[,val[,tb]]) -> raise exception in generator,
+        return next yielded value or raise StopIteration.
+        """
+        raise StopIteration
+
+    def __setitem__(self, path, value):
+        """
+        Set nested value by path
+
+        Args:
+            path (List): list of indexes into the nested structure
+            value (object): new value
+        """
+        d = self.data
+        *prefix, key = path
+        for k in prefix:
+            d = d[k]
+        d[key] = value
+
+    def __delitem__(self, path):
+        """
+        Remove nested value by path
+
+        Note:
+            It can be dangerous to use this while iterating (because we may try
+            to descend into a deleted location) or on leaf items that are
+            list-like (because the indexes of all subsequent items will be
+            modified).
+
+        Args:
+            path (List): list of indexes into the nested structure.
+                The item at the last index will be removed.
+        """
+        d = self.data
+        *prefix, key = path
+        for k in prefix:
+            d = d[k]
+        del d[key]
+
+    def _walk(self, data, prefix=[]):
+        """
+        Defines the underlying generator used by IndexableWalker
+        """
+        stack = [(data, prefix)]
+        while stack:
+            _data, _prefix = stack.pop()
+            # Create an items iterable of depending on the indexable data type
+            if isinstance(_data, self.list_cls):
+                items = enumerate(_data)
+            elif isinstance(_data, self.dict_cls):
+                items = _data.items()
+            else:
+                raise TypeError(type(_data))
+
+            for key, value in items:
+                # Yield the full path to this position and its value
+                path = _prefix + [key]
+                message = yield path, value
+                # If the value at this path is also indexable, then continue
+                # the traversal, unless the False message was explicitly sent
+                # by the caller.
+                if isinstance(value, self.indexable_cls):
+                    if message is False:
+                        # Because the `send` method will return the next value,
+                        # we yield a dummy value so we don't clobber the next
+                        # item in the traversal.
+                        yield None
+                    else:
+                        stack.append((value, path))

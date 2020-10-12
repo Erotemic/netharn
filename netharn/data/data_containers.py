@@ -152,12 +152,11 @@ class BatchContainer(ub.NiceRepr):
 
     def to(self, device):
         """ inplace move data onto a device """
-        for item in self.data:
-            if torch.is_tensor(item):
-                item.to(item)
-            else:
-                for subitem in item:
-                    subitem.to(device)
+        from netharn.util.util_json import IndexableWalker
+        walker = IndexableWalker(self.data)
+        for path, val in walker:
+            if torch.is_tensor(val):
+                walker[path] = val.to(device)
         return self
 
 
