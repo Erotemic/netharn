@@ -343,7 +343,43 @@ def load_partial_state(model, model_state_dict, leftover=None,
                 # I believe this is the correct way to solve the problem
                 paths1 = sorted(other_keys)
                 paths2 = sorted(self_state)
-                subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1, paths2)
+
+                if 1:
+                    # hack to filter to reduce tree size in embedding problem
+                    def shrink_paths(paths):
+                        new_paths = []
+                        for p in paths:
+                            p = p.replace('.0', ':0')
+                            p = p.replace('.1', ':1')
+                            p = p.replace('.2', ':2')
+                            p = p.replace('.3', ':3')
+                            p = p.replace('.4', ':4')
+                            p = p.replace('.5', ':5')
+                            p = p.replace('.6', ':6')
+                            p = p.replace('.7', ':7')
+                            p = p.replace('.8', ':8')
+                            p = p.replace('.9', ':9')
+                            p = p.replace('.weight', ':weight')
+                            p = p.replace('.bias', ':bias')
+                            p = p.replace('.num_batches_tracked', ':num_batches_tracked')
+                            p = p.replace('.running_mean', ':running_mean')
+                            p = p.replace('.running_var', ':running_var')
+                            p = p.replace('.conv1', ':conv1')
+                            p = p.replace('.conv2', ':conv2')
+                            p = p.replace('.conv3', ':conv3')
+                            p = p.replace('.bn1', ':bn1')
+                            p = p.replace('.bn2', ':bn2')
+                            p = p.replace('.bn3', ':bn3')
+                            new_paths.append(p)
+                        return new_paths
+
+                    paths1_ = shrink_paths(paths1)
+                    paths2_ = shrink_paths(paths2)
+
+                # Reducing the depth saves a lot of time
+                subpaths1, subpaths2 = maximum_common_ordered_subpaths(paths1_, paths2_, sep='.')
+                subpaths1 = [p.replace(':', '.') for p in subpaths1]
+                subpaths2 = [p.replace(':', '.') for p in subpaths2]
                 mapping = ub.dzip(subpaths1, subpaths2)
                 if verbose > 1:
                     print('mapping = {}'.format(ub.repr2(mapping, nl=1)))
@@ -710,8 +746,11 @@ def maximum_common_ordered_subpaths(paths1, paths2, sep='.'):
     tree1 = paths_to_tree(paths1)
     tree2 = paths_to_tree(paths2)
 
-    # _print_forest(tree1)
-    # _print_forest(tree2)
+    # from netharn.initializers._nx_ext.tree_embedding import forest_str
+    print(len(tree1.nodes))
+    print(len(tree2.nodes))
+    # print(forest_str(tree1))
+    # print(forest_str(tree2))
 
     # if 0:
     #     DiGM = isomorphism.DiGraphMatcher(tree1, tree2)

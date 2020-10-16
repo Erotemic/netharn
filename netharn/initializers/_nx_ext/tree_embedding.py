@@ -7,7 +7,7 @@ from .balanced_sequence import longest_common_balanced_sequence, UnbalancedExcep
 
 
 def maximum_common_ordered_tree_embedding(
-        tree1, tree2, node_affinity='auto', impl='iter-alt2', mode='chr'):
+        tree1, tree2, node_affinity='auto', impl='auto', mode='chr'):
     """
     Finds the maximum common subtree-embedding between two ordered trees.
 

@@ -906,6 +906,9 @@ class HyperParams(object):
         temp_initializer = hyper.make_initializer()
         init_history = temp_initializer.history()
 
+        # TODO: software versions
+
+
         train_info =  ub.odict([
             ('train_hashid', train_hashid),
 
@@ -1003,6 +1006,52 @@ class HyperParams(object):
             'dynamics'   : {'batch_step': 4},
         })
         return hyper
+
+
+def module_version_infos():
+    """
+
+    References:
+        https://packaging.python.org/guides/single-sourcing-package-version/
+    """
+    try:
+        from importlib import metadata
+    except ImportError:
+        # Running on pre-3.8 Python; use importlib-metadata package
+        import importlib_metadata as metadata
+    import sys
+    modnames = ['torch', 'cv2', 'netharn', 'PIL', 'numpy']
+    infos = []
+    for modname in modnames:
+        info = {'name': modname}
+
+        try:
+            module = sys.modules[modname]
+            version_0 = getattr(module, '__version__', None)
+        except Exception:
+            version_0 = None
+
+        try:
+            version_1 = metadata.version(modname)
+        except Exception:
+            version_1 = None
+
+        possible_versions = {version_1, version_0} - {None}
+        if len(possible_versions) == 1:
+            info['version'] = ub.peek(possible_versions)
+        else:
+            info['possible_versions'] = possible_versions
+
+        if modname == 'torch':
+            info['torch.version.cuda'] = torch.version.cuda
+            info['torch.cuda.is_available()'] = torch.cuda.is_available()
+
+        infos.append(info)
+
+    # The conda info step is too slow (3 seconds)
+    from netharn.util.collect_env import get_env_info
+    env_info = get_env_info()._asdict()
+    info['__env__'] = env_info
 
 if __name__ == '__main__':
     r"""

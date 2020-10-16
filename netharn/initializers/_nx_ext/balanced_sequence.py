@@ -80,6 +80,13 @@ def longest_common_balanced_sequence(
         open_to_node = IdentityDict()
     full_seq1 = seq1
     full_seq2 = seq2
+    if impl == 'auto':
+        if _cython_lcs_backend():
+            impl = 'iter-alt2-cython'
+        else:
+            impl = 'iter-alt2'
+    print('impl = {!r}'.format(impl))
+
     if impl == 'recurse':
         _memo = {}
         _seq_memo = {}
