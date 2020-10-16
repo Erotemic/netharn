@@ -487,7 +487,7 @@ class Optimizer(object):
             else:
                 optim_modules.append(adabelief_pytorch)
                 _lut.update({
-                    cls.__name__.lower(): cls
+                    cls.__name__.lower(): cls.__name__
                     for cls in [
                         adabelief_pytorch.AdaBelief,
                     ]
