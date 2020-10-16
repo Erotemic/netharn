@@ -460,26 +460,26 @@ class Optimizer(object):
             })
         else:
             from netharn.util import util_inspect
+
+            _lut = {}
+
             try:
                 import torch_optimizer
             except Exception:
                 torch_optimizer = None
-
-            _lut = {}
-
-            if torch_optimizer is not None:
-                # known = ['AccSGD', 'AdaBound', 'AdaMod', 'DiffGrad', 'Lamb',
-                #          'Lookahead', 'NovoGrad', 'RAdam', 'SGDW', 'Yogi']
-                # if 0:
-                #     for key in known:
-                #         cls = getattr(torch_optimizer, key, None)
-                #         print('cls = {!r}'.format(cls))
-                #         defaultkw = util_inspect.default_kwargs(cls)
-                #         print('defaultkw = {!r}'.format(defaultkw))
-                # _lut.update({k.lower(): k for k in known})
+            else:
                 _lut.update({
                     k: c.__name__
                     for k, c in torch_optimizer._NAME_OPTIM_MAP.items()})
+
+            try:
+                import adabelief_pytorch
+            except Exception:
+                adabelief_pytorch = None
+            else:
+                _lut.update({
+                    'AdaBelief': adabelief_pytorch.AdaBelief
+                })
 
             _lut.update({
                 k.lower(): k for k in dir(torch.optim)
