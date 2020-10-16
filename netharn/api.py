@@ -460,28 +460,37 @@ class Optimizer(object):
             })
         else:
             from netharn.util import util_inspect
-
             _lut = {}
+
+            optim_modules = [
+                torch.optim,
+            ]
 
             try:
                 import torch_optimizer
             except Exception:
                 torch_optimizer = None
             else:
+                optim_modules.append(torch_optimizer)
                 _lut.update({
-                    k: c.__name__
+                    k.lower(): c.__name__
                     for k, c in torch_optimizer._NAME_OPTIM_MAP.items()})
 
             try:
                 """
                 pip install adabelief_pytorch
+                python -c "import adabelief_pytorch; adabelief_pytorch.AdaBelief"
                 """
                 import adabelief_pytorch
             except Exception:
                 adabelief_pytorch = None
             else:
+                optim_modules.append(adabelief_pytorch)
                 _lut.update({
-                    'AdaBelief': adabelief_pytorch.AdaBelief
+                    cls.__name__.lower(): cls
+                    for cls in [
+                        adabelief_pytorch.AdaBelief,
+                    ]
                 })
 
             _lut.update({
@@ -490,23 +499,18 @@ class Optimizer(object):
 
             key = _lut[key]
 
-            cls = getattr(torch.optim, key, None)
-            if cls is not None:
-                defaultkw = util_inspect.default_kwargs(cls)
-                kw = defaultkw.copy()
-                kw.update()
-                optim_ = (cls, kw)
-            else:
-                if torch_optimizer is None:
-                    raise KeyError(key)
-                cls = getattr(torch_optimizer, key, None)
+            cls = None
+            for module in optim_modules:
+                cls = getattr(module, key, None)
                 if cls is not None:
                     defaultkw = util_inspect.default_kwargs(cls)
                     kw = defaultkw.copy()
                     kw.update()
                     optim_ = (cls, kw)
-                else:
-                    raise KeyError(key)
+                    break
+
+            if cls is None:
+                raise KeyError(key)
 
         return optim_
 
