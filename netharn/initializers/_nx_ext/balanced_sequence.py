@@ -85,7 +85,6 @@ def longest_common_balanced_sequence(
             impl = 'iter-alt2-cython'
         else:
             impl = 'iter-alt2'
-    print('impl = {!r}'.format(impl))
 
     if impl == 'recurse':
         _memo = {}
