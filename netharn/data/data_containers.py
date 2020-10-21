@@ -54,16 +54,16 @@ class BatchContainer(ub.NiceRepr):
     outputs or a set of items that have already been collated.
 
     Attributes:
-        data (List): Unlike ItemContainer, data is always a list where
-            len(data) is the number of devices this batch will run on.
-            Each item in the list may be either a pre-batched Tensor (in the
-            case where the each item in the batch has the same shape) or a list
-            of individual item Tensors (in the case where different batch items
+        data (List[Any]): Unlike ItemContainer, data is always a list where
+            len(data) is the number of devices this batch will run on.  Each
+            item in the list may be either a pre-batched Tensor (in the case
+            where the each item in the batch has the same shape) or a list of
+            individual item Tensors (in the case where different batch items
             may have different shapes).
     """
     def __init__(self, data, stack=False, padding_value=-1, cpu_only=False,
                  pad_dims=2):
-        self.data = data
+        self.data = data  # type: list
         self.meta = {
             'stack': stack,
             'padding_value': padding_value,
@@ -71,9 +71,45 @@ class BatchContainer(ub.NiceRepr):
             'pad_dims': pad_dims,
         }
 
+    @property
+    def nestshape(self):
+        return nestshape(self.data)
+
+    def numel(self):
+        """
+        The number of scalar elements held by this container
+        """
+        shapes = self.nestshape
+        total = sum([np.prod(s) for s in shapes])
+        return total
+
+    @property
+    def packshape(self):
+        """
+        The shape of this data if it was packed
+        """
+        # shape = np.maximum.reduce(self.nestshape)
+        # return shape
+        dim = 0
+        if self.stack:
+            # Should be a straight forward concatenation
+            shapes = [d.shape for d in self.data]
+            max_shape = np.maximum.reduce(shapes)  # should all be the same here
+            stacked_dim = sum([s[dim] for s in shapes])
+            max_shape[dim] = stacked_dim
+            pack_shape = tuple(max_shape.tolist())
+            return pack_shape
+        else:
+            shapes = nestshape(self.data)
+            max_shape = np.maximum.reduce(shapes)
+            stacked_dim = sum([s[dim] for s in shapes])
+            max_shape[dim] = stacked_dim
+            pack_shape = tuple(max_shape.tolist())
+            return pack_shape
+
     def __nice__(self):
         try:
-            shape_repr = ub.repr2(nestshape(self.data), nl=-2)
+            shape_repr = ub.repr2(self.nestshape, nl=-2)
             return 'nestshape(data)={}'.format(shape_repr)
         except Exception:
             return super().__repr__()
@@ -183,13 +219,16 @@ class ItemContainer(ub.NiceRepr):
             'pad_dims': pad_dims,
         }
 
+    @property
+    def nestshape(self):
+        return nestshape(self.data)
+
     def __nice__(self):
         try:
-            shape_repr = ub.repr2(nestshape(self.data), nl=-2)
+            shape_repr = ub.repr2(self.nestshape, nl=-2)
             return 'nestshape(data)={}'.format(shape_repr)
         except Exception:
             return super().__repr__()
-        # return 'nestshape(data)={}, **{}'.format(shape_repr, ub.repr2(self.meta, nl=0))
 
     @classmethod
     def demo(cls, key='img', rng=None, **kwargs):
@@ -868,6 +907,14 @@ class ContainerXPU(XPU):
 
 
 def nestshape(data):
+    """
+    Examine nested shape of the data
+
+    Example:
+        >>> data = [np.arange(10), np.arange(13)]
+        >>> nestshape(data)
+        [(10,), (13,)]
+    """
     import ubelt as ub
 
     def _recurse(d):

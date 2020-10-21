@@ -11,6 +11,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `allow_unicode` option to `FitHarnPreferences`, which can be set to False to
   disable utf8 characters in output formatting.
 
+* `IndexableWalker` in `netharn.util.util_json` (also exists in kwcoco)
+
+* New helper methods in `data_containers.BatchContainer`
+
 ### Fixed
 * Typo: directory `explit_checkpoints` renamed to `explicit_checkpoints`.
 

@@ -345,11 +345,11 @@ class IndexableWalker(Generator):
                 # If the value at this path is also indexable, then continue
                 # the traversal, unless the False message was explicitly sent
                 # by the caller.
-                if isinstance(value, self.indexable_cls):
-                    if message is False:
-                        # Because the `send` method will return the next value,
-                        # we yield a dummy value so we don't clobber the next
-                        # item in the traversal.
-                        yield None
-                    else:
+                if message is False:
+                    # Because the `send` method will return the next value,
+                    # we yield a dummy value so we don't clobber the next
+                    # item in the traversal.
+                    yield None
+                else:
+                    if isinstance(value, self.indexable_cls):
                         stack.append((value, path))

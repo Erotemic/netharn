@@ -300,6 +300,37 @@ def load_partial_state(model, model_state_dict, leftover=None,
         """
         other_keys = set(model_state_dict)
         self_keys = set(self_state)
+
+        if 0:
+            # Automatic way to reduce nodes in the trees?
+            # If node b always follows node a, can we contract it?
+            nodes1 = [n for p in other_keys for n in p.split('.')]
+            nodes2 = [n for p in self_keys for n in p.split('.')]
+            tups1 = list(tup for key in other_keys for tup in ub.iter_window(key.split('.'), 2))
+            tups2 = list(tup for key in self_keys for tup in ub.iter_window(key.split('.'), 2))
+            x = ub.ddict(list)
+            for a, b in tups1:
+                x[a].append(b)
+            for a, b in tups2:
+                x[a].append(b)
+
+            nodehist = ub.dict_hist(nodes1 + nodes2)
+
+            for k, v in x.items():
+                print('----')
+                print(k)
+                print(nodehist[k])
+                follow_hist = ub.dict_hist(v)
+                print(follow_hist)
+                total = sum(follow_hist.values())
+                if ub.allsame(follow_hist.values()) and total == nodehist[k]:
+                    print('CONTRACT')
+
+            # pair_freq = ub.dict_hist(ub.flatten([tups1, tups2]))
+            from netharn.initializers._nx_ext.tree_embedding import forest_str
+            from netharn.initializers._nx_ext.path_embedding import paths_to_otree
+            print(forest_str(paths_to_otree(other_keys, '.')))
+
         common_keys = other_keys.intersection(self_keys)
         if not common_keys:
             if association == 'strict':

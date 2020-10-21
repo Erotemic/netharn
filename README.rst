@@ -577,6 +577,17 @@ then it would produce this more detailed description of what it was doing:
    INFO: wrote single-file deployment to: '/home/joncrall/.cache/netharn/demo/fit/runs/demo/lnejaaum/deploy_ToyNet2d_lnejaaum_000_JWPNDC.zip'
    INFO: exiting fit harness.
 
+Related Packages
+================
+
+pytorch-lightning (https://github.com/PyTorchLightning/pytorch-lightning) has
+very similar goals to netharn. Currently, there are strengths and weaknesses to
+both, but in the future I do see one consuming functionality of the other.
+Currently (2020-10-21), pytorch-lightning does distributed training better,
+whereas netharn's logging and hyperparameter management outshines
+pytorch-lightning.
+
+
 
 .. |Pypi| image:: https://img.shields.io/pypi/v/netharn.svg
    :target: https://pypi.python.org/pypi/netharn
