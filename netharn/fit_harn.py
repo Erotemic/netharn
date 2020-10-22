@@ -88,6 +88,7 @@ Example:
     >>> # non-algorithmic behavior configs (do not change learned models)
     >>> harn.preferences['use_tensorboard'] = False
     >>> harn.preferences['timeout'] = 0.5
+    >>> harn.preferences['auto_prepare_batch'] = True
     >>> # start training.
     >>> harn.initialize(reset='delete')
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
@@ -132,7 +133,7 @@ TODO:
           called either after each epoch or after each batch iteration (for
           schedulers like CyclicLR, OneCycleLR).
 
-          [ ] - Show LR in the batch progress bar (if updated on an iteration basis)
+          [X] - Show LR in the batch progress bar (if updated on an iteration basis)
           [ ] - How does the netharn scheduler redesign interact with torch 1.1?
           [ ] - Stochastic Weight Averaging - https://pytorch.org/docs/stable/optim.html#putting-it-all-together
 
@@ -2314,21 +2315,12 @@ class CoreCallbacks(object):
         """
         batch = raw_batch
 
-        if harn.preferences['old_prepare_batch']:
-            import warnings
-            warnings.warn(
-                'The behavior of prepare_batch will change in the future. '
-                'The new behavior will be a simple no-op '
-                'For maximum compatibility override prepare_batch.',
-                DeprecationWarning)
+        if harn.preferences['auto_prepare_batch']:
+            # Automatically move data
             try:
                 if isinstance(raw_batch, (tuple, list)):
-                    batch_inputs, batch_labels = raw_batch
-                    raw_batch = {
-                        'input': batch_inputs,
-                        'label': batch_labels,
-                    }
-                if isinstance(raw_batch, dict):
+                    batch = harn.xpu.move(raw_batch)
+                elif isinstance(raw_batch, dict):
                     batch = raw_batch.copy()
                     batch = harn.xpu.move(batch)
                 else:
@@ -2879,6 +2871,16 @@ class FitHarnPreferences(scfg.Config):
             'limits the amount of time training can take')
         ),
 
+        'auto_prepare_batch': scfg.Value(False, help=(
+            'In the case where prepare_batch is not overwritten, '
+            'changes the behavior of the default prepare_batch '
+            'to automatically move tensors onto the model XPU'
+        )),
+
+        'verbose': scfg.Value(1, help=(
+            'verbosity level, '
+            'if >1 shows debug info in stdout')),
+
         # Deprecated
         'use_tqdm': scfg.Value(None, help='deprecated'),
 
@@ -2890,11 +2892,6 @@ class FitHarnPreferences(scfg.Config):
         'allow_unicode': scfg.Value(True, help=(
             'allow for unicode characters in messages, otherwise '
             ' we approximate them with ascii')),
-
-        # Control deprecated
-        'old_prepare_batch': False,
-
-        'verbose': scfg.Value(1, help='verbosity level'),
     }
 
 

@@ -303,6 +303,7 @@ useful to look at.  Its complexity is more than CIFAR but less than YOLO.
     >>> harn = netharn.FitHarn(hyper)
     >>> # non-algorithmic behavior preferences (do not change learned models)
     >>> harn.preferences['num_keep'] = 10
+    >>> harn.preferences['auto_prepare_batch'] = True
     >>> # start training.
     >>> harn.initialize(reset='delete')  # delete removes an existing run
     >>> harn.run()  # note: run calls initialize it hasn't already been called.
