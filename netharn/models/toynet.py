@@ -17,6 +17,8 @@ class ToyNet1d(layers.Module):
     """
     def __init__(self, input_channels=2, num_classes=2):
         super(ToyNet1d, self).__init__()
+        self.input_channels = input_channels
+        self.num_classes = num_classes
         self.layers = torch.nn.Sequential(*[
             torch.nn.Linear(input_channels, 8),
 
@@ -55,6 +57,8 @@ class ToyNet2d(layers.Module):
     """
     def __init__(self, input_channels=1, num_classes=2):
         super(ToyNet2d, self).__init__()
+        self.input_channels = input_channels
+        self.num_classes = num_classes
         self.layers = torch.nn.Sequential(*[
             torch.nn.Conv2d(input_channels, 8, kernel_size=3, padding=1, bias=False),
 

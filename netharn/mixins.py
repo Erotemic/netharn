@@ -41,7 +41,7 @@ def _dump_monitor_tensorboard(harn, mode='epoch', special_groupers=['loss'],
     import six
     from six.moves import cPickle as pickle
 
-    harn.debug('Plotting tensorboard data. serial={}, mode={}'.format(serial, mode))
+    # harn.debug('Plotting tensorboard data. serial={}, mode={}'.format(serial, mode))
 
     train_dpath = harn.train_dpath
 

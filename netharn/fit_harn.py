@@ -531,7 +531,8 @@ class InitializeMixin(object):
             # this allows us to print logging calls to the terminal
             stdout_handler = logging.StreamHandler(sys.stdout)
             stdout_handler.setFormatter(s_formatter)
-            if ub.argflag('--verbose'):
+
+            if harn.preferences['verbose'] > 1 or ub.argflag('--verbose'):
                 stdout_handler.setLevel(logging.DEBUG)
             else:
                 stdout_handler.setLevel(logging.INFO)
@@ -540,6 +541,9 @@ class InitializeMixin(object):
             if overwrite:
                 _log.addHandler(a_handler)
             _log.addHandler(stdout_handler)
+
+            # hack in attribute for internal use
+            _log._stdout_handler = stdout_handler
 
             harn._log = _log
             harn.debug('Initialized logging')
@@ -758,6 +762,14 @@ class ProgMixin(object):
             str : the message to be used in the progress bar
         """
         parts = ['{}:{:.4g}'.format(k, v) for k, v in metric_dict.items()]
+
+        if learn and harn.epoch == 0:
+            HACK_WARMUP = bool(harn.dynamics['warmup_iters'])
+            if HACK_WARMUP:
+                lrs = set(harn._current_lrs())
+                lr_str = ','.join(['{:.4g}'.format(lr) for lr in lrs])
+                parts.append('lr=' + lr_str)
+
         if harn.preferences['prog_backend'] == 'progiter':
             if learn and harn.scheduler and getattr(harn.scheduler, '__batchaware__', False):
                 lr = harn.scheduler.get_lr()
@@ -798,9 +810,10 @@ class ProgMixin(object):
             desc = 'epoch lr:{} │ {}'.format(lr_str, harn.monitor.message())
         if not harn.preferences['colored']:
             desc = strip_ansi(desc)
-        harn.debug(desc)
         harn.main_prog.set_description(desc, refresh=False)
         if isinstance(harn.main_prog, ub.ProgIter):
+            # Write progress message to the log file
+            harn.debug(harn.main_prog.format_message().strip())
             if not harn.main_prog.started:
                 # harn.main_prog.ensure_newline()
                 harn.main_prog.clearline = False
@@ -808,6 +821,7 @@ class ProgMixin(object):
                 harn.main_prog.adjust = False
                 harn.main_prog.begin()
         else:
+            harn.debug(desc)
             harn._update_prog_postfix(harn.main_prog)
 
 
@@ -905,6 +919,12 @@ class LogMixin(object):
             msg (str): a debug message to log
         """
         if harn._log:
+
+            if harn._log._stdout_handler.level <= logging.DEBUG:
+                # Use our hacked attribute to ensure newlines if we are
+                # writting debug info to stdout
+                harn._ensure_prog_newline()
+
             msg = strip_ansi(six.text_type(msg))
             # Encode to prevent errors on windows terminals
             # On windows there is a sometimes a UnicodeEncodeError:
@@ -1140,7 +1160,7 @@ class SnapshotMixin(object):
             save_fname = '_epoch_{:08d}.pt'.format(harn.epoch)
         elif mode == 'initial':
             dpath = ub.ensuredir((harn.train_dpath, 'initial_state'))
-            save_fname = 'initial_state.pt'.format(harn.epoch)
+            save_fname = 'initial_state.pt'.format()
         else:
             raise KeyError(mode)
 
@@ -1165,6 +1185,9 @@ class SnapshotMixin(object):
     def best_snapshot(harn):
         """
         Return the path to the current "best" snapshot.
+
+        Returns:
+            str - find the path to the best
         """
         # Netharn should populate best_snapshot.pt if there is a validation set.
         # Other names are to support older codebases.
@@ -1191,9 +1214,8 @@ class SnapshotMixin(object):
             if epoch_to_fpath:
                 fpath = epoch_to_fpath[max(epoch_to_fpath)]
 
-        if fpath is None:
-            raise Exception('cannot find / determine the best snapshot')
-
+        # if fpath is None:
+        #     raise Exception('cannot find / determine the best snapshot')
         return fpath
 
 
@@ -1331,15 +1353,15 @@ class ScheduleMixin(object):
                 warmup_iters = harn.dynamics['warmup_iters']
                 warmup_ratio = harn.dynamics['warmup_ratio']   # 1.0 / 3.0
                 if cur_iters < warmup_iters:
-                    for cur_iters in range(0, warmup_iters):
-                        regular_lr = _get_optimizer_values(harn.optimizer, 'initial_lr')
-                        if warmup == 'linear':
-                            k = (1 - (cur_iters + 1) / warmup_iters) * (1 - warmup_ratio)
-                            warmup_lr = [_lr * (1 - k) for _lr in regular_lr]
-                        else:
-                            raise KeyError(warmup)
-                        # harn.debug('warmup_lr = {}'.format(warmup_lr))
-                        _set_optimizer_values(harn.optimizer, 'lr', warmup_lr)
+                    # for cur_iters in range(0, warmup_iters):
+                    regular_lr = _get_optimizer_values(harn.optimizer, 'initial_lr')
+                    if warmup == 'linear':
+                        k = (1 - (cur_iters + 1) / warmup_iters) * (1 - warmup_ratio)
+                        warmup_lr = [_lr * (1 - k) for _lr in regular_lr]
+                    else:
+                        raise KeyError(warmup)
+                    # harn.debug('warmup_lr = {}'.format(warmup_lr))
+                    _set_optimizer_values(harn.optimizer, 'lr', warmup_lr)
 
         # TODO: REFACTOR SO NETHARN HAS A PROPER ITERATION MODE
         if getattr(harn.scheduler, '__batchaware__', False):
@@ -1655,53 +1677,24 @@ class CoreMixin(object):
         Returns:
             str: path to the deploy zipfile.
         """
-        harn._export()
+        static_modpath = harn._export()
         harn.debug('packaging deploying model')
 
         if True:
-            # HOTFIX: if the best snapshot doesnt exist we need to make one
-            def _find_best_snapshot(train_dpath):
-                """
-                Returns snapshot written by monitor if available otherwise takes the last
-                one.
-
-                Hack for a hotfix
-                """
-                # NOTE: Specific to netharn directory structure
-                # Netharn should populate best_snapshot.pt if there is a validation set.
-                # Other names are to support older codebases.
-                expected_names = [
-                    'best_snapshot.pt',
-                    'best_snapshot2.pt',
-                    'final_snapshot.pt',
-                    'deploy_snapshot.pt',
-                ]
-                def _existing_snapshots(train_dpath):
-                    # NOTE: Specific to netharn directory structure
-                    import parse
-                    snapshot_dpath = join(train_dpath, 'torch_snapshots/')
-                    prev_states = sorted(glob.glob(join(snapshot_dpath, '_epoch_*.pt')))
-                    snapshots = {parse.parse('{}_epoch_{num:d}.pt', path).named['num']: path
-                                 for path in prev_states}
-                    return snapshots
-                for snap_fname in expected_names:
-                    snap_fpath = join(train_dpath, snap_fname)
-                    if exists(snap_fpath):
-                        break
-
-                if not exists(snap_fpath):
-                    snap_fpath = None
-
-                if not snap_fpath:
-                    epoch_to_fpath = _existing_snapshots(train_dpath)
-                    if epoch_to_fpath:
-                        snap_fpath = epoch_to_fpath[max(epoch_to_fpath)]
-                return snap_fpath
-            if _find_best_snapshot(harn.train_dpath) is None:
-                harn.save_snapshot()
+            snap_fpath = harn.best_snapshot()
+            if snap_fpath is None:
+                # if the best snapshot doesnt exist we need to make one
+                harn.debug(
+                    'Cannot find "best" snapshot, write an explit one instead')
+                snap_fpath = harn.save_snapshot(explicit=True)
 
         try:
-            deploy_fpath = torch_liberator.DeployedModel(harn.train_dpath).package()
+            train_info_fpath = join(harn.train_dpath, 'train_info.json')
+            deploy_fpath = torch_liberator.DeployedModel.custom(
+                snap_fpath=snap_fpath,
+                model=static_modpath,
+                train_info_fpath=train_info_fpath,
+            ).package(harn.train_dpath)
             harn.info('wrote single-file deployment to: {!r}'.format(
                 deploy_fpath))
 
@@ -1938,6 +1931,8 @@ class CoreMixin(object):
             ### THIS IS THE CRITICAL LOOP ###
             #################################
 
+            STEP_LR_BEFORE = True
+
             for bx in range(n_batches):
                 if DEMO and bx > DEMO_BX:
                     break
@@ -1950,6 +1945,12 @@ class CoreMixin(object):
 
                     harn.bxs[tag] = bx
                     # harn.debug('{} batch iteration {}'.format(tag, bx))
+
+                    if STEP_LR_BEFORE:
+                        if learn:
+                            # Some schedulers update every batch
+                            # TODO: needs further rectification
+                            harn._step_scheduler_batch()
 
                     batch = harn.prepare_batch(raw_batch)
 
@@ -2030,14 +2031,26 @@ class CoreMixin(object):
                             # hack to force progiter to reach 100% at the end
                             # This should be fixed in progiter.
                             steps_taken = (bx - prog._iter_idx) + 1
-                            prog.update(steps_taken)
+                            if bx == 0:
+                                # HACK, after ubelt 0.9.3 we can use force=True
+                                prog._iter_idx += steps_taken
+                                prog._update_measurements()
+                                prog._update_estimates()
+                                prog.display_message()
+                                harn.debug(prog.format_message().strip())
+                            else:
+                                prog_updated = prog.update(steps_taken)
+                                if prog_updated:
+                                    harn.debug(prog.format_message().strip())
 
                         if use_tqdm:
                             harn._update_prog_postfix(prog)
 
-                    # Some schedulers update every batch
-                    if learn:
-                        harn._step_scheduler_batch()
+                    if not STEP_LR_BEFORE:
+                        # old way that I think is buggy
+                        if learn:
+                            # Some schedulers update every batch
+                            harn._step_scheduler_batch()
                 except SkipBatch:
                     harn.warn('skipping batch')
                     if harn.check_interval('display_' + tag, bx):
@@ -2057,6 +2070,8 @@ class CoreMixin(object):
         #         harn.optimizer.zero_grad()
 
         prog.refresh()
+        if not use_tqdm:
+            harn.debug(prog.format_message().strip())
         prog.close()
         harn.epoch_prog = None
 
@@ -2878,6 +2893,8 @@ class FitHarnPreferences(scfg.Config):
 
         # Control deprecated
         'old_prepare_batch': False,
+
+        'verbose': scfg.Value(1, help='verbosity level'),
     }
 
 

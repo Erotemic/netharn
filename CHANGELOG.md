@@ -18,6 +18,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 * Typo: directory `explit_checkpoints` renamed to `explicit_checkpoints`.
 
+* Fixed bug where epoch 0 would write a snapshot if it failed.
+
+
+### Changed
+
+* ProgIter information will now written to the log file pending release of ubelt 0.9.3.
+
+* Progress information now includes warmup LR information in the first epoch.
+
 
 ### Deprecated
 * Deprecate `colored` option in `FitHarnPreferences`. Use `NO_COLOR` environ to
