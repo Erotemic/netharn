@@ -307,7 +307,7 @@ class Initializer(object):
             >>> print(ub.repr2(nh.Initializer.coerce(config)))
             (
                 <class 'netharn.initializers.pretrained.Pretrained'>,
-                {... 'fpath': '/fit/nice/untitled', 'leftover': None, 'mangle': True},
+                {... 'fpath': '/fit/nice/untitled', 'leftover': None, 'mangle': False},
             )
             >>> print(ub.repr2(nh.Initializer.coerce({'init': 'kaiming_normal'})))
             (

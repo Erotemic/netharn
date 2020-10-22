@@ -365,12 +365,8 @@ class ChannelSpec(ub.NiceRepr):
             >>> dims = (4, 4)
             >>> inputs = ['flowx', 'flowy', 'disparity']
             >>> self = ChannelSpec('disparity,flowx|flowy')
-            >>> inputs = self.component_indices(components)
-            >>> from netharn.data import data_containers
-            >>> item = {k: data_containers.ItemContainer(v, stack=True)
-            >>>         for k, v in inputs.items()}
-            >>> batch = data_containers.container_collate([item, item])
-            >>> components = self.decode(batch)
+            >>> component_indices = self.component_indices()
+            >>> print('component_indices = {!r}'.format(component_indices))
         """
         parsed = self.parse()
         component_indices = dict()

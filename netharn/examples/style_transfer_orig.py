@@ -409,6 +409,7 @@ def train():
         xdoctest -m /home/joncrall/code/netharn/netharn/examples/style_transfer.py train
 
     Example:
+        >>> # xdoctest: +SKIP
         >>> import sys, ubelt
         >>> sys.path.append(ubelt.expandpath('~/code/netharn'))
         >>> from netharn.examples.style_transfer import *  # NOQA

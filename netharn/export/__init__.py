@@ -25,7 +25,7 @@ CommandLine:
     xdoctest -m netharn.export __doc__:0
 
 Example:
-    >>> # xdoc: +IGNORE_WANT
+    >>> # xdoctest: +IGNORE_WANT
     >>> # This example will train a small model and then deploy it.
     >>> import netharn as nh
     >>> import ubelt as ub
@@ -131,7 +131,7 @@ Example:
     >>> # This model is now loaded with the corret weights.
     >>> # You can use it as normal.
     >>> model.eval()
-    >>> images = harn._demo_batch(0)['input'][0:1]
+    >>> images = harn._demo_batch(0)[0][0:1]
     >>> outputs = model(images)
     >>> print('outputs = {!r}'.format(outputs))
     >>> # Not that the loaded model is independent of harn.model
