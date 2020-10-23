@@ -467,6 +467,7 @@ class Optimizer(object):
             ]
 
             try:
+                # Allow coerce to use torch_optimizer package if available
                 import torch_optimizer
             except Exception:
                 torch_optimizer = None
@@ -475,23 +476,6 @@ class Optimizer(object):
                 _lut.update({
                     k.lower(): c.__name__
                     for k, c in torch_optimizer._NAME_OPTIM_MAP.items()})
-
-            try:
-                """
-                pip install adabelief_pytorch
-                python -c "import adabelief_pytorch; adabelief_pytorch.AdaBelief"
-                """
-                import adabelief_pytorch
-            except Exception:
-                adabelief_pytorch = None
-            else:
-                optim_modules.append(adabelief_pytorch)
-                _lut.update({
-                    cls.__name__.lower(): cls.__name__
-                    for cls in [
-                        adabelief_pytorch.AdaBelief,
-                    ]
-                })
 
             _lut.update({
                 k.lower(): k for k in dir(torch.optim)

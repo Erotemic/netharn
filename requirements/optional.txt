@@ -23,4 +23,3 @@ kwcoco >= 0.1.0
 colormath
 
 torch-optimizer >= 0.0.1a9 ;python_version>='3.6'
-adabelief_pytorch

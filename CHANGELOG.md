@@ -23,6 +23,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+* Removed Python 3.5 support
+
 * ProgIter information will now written to the log file pending release of ubelt 0.9.3.
 
 * Progress information now includes warmup LR information in the first epoch.
